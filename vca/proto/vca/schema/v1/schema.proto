@@ -145,6 +145,10 @@ message Schema {
   // OID4VCI format identifier. The service fills it when a version is
   // published. The service ignores it on a write.
   map<string, string> configuration_ids = 19;
+  // The namespace of the ledger an anoncreds format writes its schema
+  // and its credential definition on, such as bcovrin:testnet. Empty
+  // unless formats holds FORMAT_ANONCREDS.
+  string ledger = 20;
 }
 
 // ClaimMapping maps one top level claim of a schema to a JSON-LD term.

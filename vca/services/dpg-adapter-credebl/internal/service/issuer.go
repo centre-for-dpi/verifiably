@@ -27,6 +27,15 @@ func (s *Service) RegisterCredentialConfiguration(
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("the configuration needs an id"))
 	}
+	switch cfg.GetFormat() {
+	case commonv1.Format_FORMAT_ANONCREDS:
+		return s.registerAnonCreds(ctx, cfg)
+	case commonv1.Format_FORMAT_LDP_VC:
+		return s.registerJSONLD(ctx, cfg)
+	}
+	if cfg.GetLedger() != "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("only an AnonCreds configuration names a ledger"))
+	}
 	format, err := wireFormat(cfg.GetFormat())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)

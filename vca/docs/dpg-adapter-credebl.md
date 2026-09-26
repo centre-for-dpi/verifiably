@@ -40,6 +40,10 @@ flow, and it checks presentations with DCQL queries.
 | `GET /v1/orgs/{org}/users` | Reads the members of an organisation with their roles. |
 | `POST /v1/orgs/{org}/agents/wallet` | Gives an organisation a wallet in the shared agent. |
 | `POST /v1/orgs/{org}/agents/did` | Asks the agent for a new primary `did:key`. |
+| `POST /v1/orgs/{org}/schemas` with the type `indy` | Writes an AnonCreds schema on a ledger. |
+| `POST /v1/orgs/{org}/cred-defs` | Writes the credential definition of an AnonCreds schema. |
+| `POST /v1/orgs/{org}/schemas` with the schema type `no_ledger` | Stores a W3C JSON-LD schema in the schema file server. |
+| `GET /v1/platform/ledgers` | Reads the names of the ledgers. |
 | `POST /v1/orgs/{org}/oid4vp/verifier` | Creates the OID4VP verifier. |
 | `POST /v1/orgs/{org}/oid4vp/presentation` | Starts an OID4VP transaction. |
 | `GET /v1/orgs/{org}/oid4vp/verifier-presentation` | Reads the answer of a transaction. |
@@ -57,6 +61,8 @@ The answer of `GetCapabilities` reports what the platform supports.
 | Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION` |
 | DID methods | `did:key` |
 | Key types | `Ed25519`, `secp256r1`, `secp256k1` |
+| Schema formats | AnonCreds on each ledger of the organisation, and W3C JSON-LD |
+| Ledgers | The Indy ledgers where the organisation holds a DID, with the names of the platform |
 | Status mechanisms | None. The platform embeds no status entry of VCA. |
 | DPG information | The platform name, `main at 2026-09-26` with the digest of the api gateway, every platform service, the shared Credo agent, and Keycloak |
 
@@ -82,6 +88,8 @@ CREDEBL is the only one of the three DPGs that reads DCQL.
 | Every client credential RPC | The adapter makes no client credential of an organisation yet. The admin pages offer no stack credential. |
 | `CreateTenant` with a dedicated agent | The platform starts a dedicated agent through the Docker socket. The stack file mounts none, so every tenant gets the shared agent. |
 | `ImportIssuerIdentity` | The agent keeps every key and takes no key reference. Set another primary DID in the platform. |
+| Issuing AnonCreds or W3C JSON-LD | The platform issues those formats over DIDComm. The adapter lists them as schema formats only. |
+| A revocable credential definition | The adapter writes every credential definition without a revocation registry. |
 | `ProvisionIssuerIdentity` for `did:indy` and `did:web` | The agent takes the private key in the request for those methods. The adapter never holds a key, so it makes `did:key` only. |
 | Every webhook RPC | The adapter sets no organisation webhook. |
 | `VerifyCredential` | The adapter does not send an uploaded credential to the platform. The scanner shows no stack check. |
@@ -148,6 +156,19 @@ roles of the organisation it reads.
 of the organisation of the adapter, the primary DID first. A new
 identity is a `did:key` that the agent makes and marks primary. The key
 stays in the Askar wallet of the agent.
+
+**An AnonCreds schema goes on the ledger of a DID.** The publish page
+offers AnonCreds on each Indy ledger where the organisation of the
+adapter holds a DID. The adapter writes the schema with that DID, at
+version 1.0, and then its credential definition with the tag `default`.
+The configuration id is the credential definition id. The platform needs
+one required claim, so a JSON Schema with no required list makes every
+claim required. `GetCapabilities` reads the DIDs once a minute at
+most. A platform that does not answer lists no ledger.
+
+**A W3C JSON-LD schema goes on no ledger.** The adapter stores it with
+the schema type `no_ledger`. The schema file server of the stack keeps
+the document, and the configuration id is its address.
 
 **The adapter creates the verifier once.** It creates the OID4VP
 verifier at the first request. It then stores the identifier. After a

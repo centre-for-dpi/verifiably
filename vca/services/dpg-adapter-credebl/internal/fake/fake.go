@@ -189,7 +189,11 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(path, "/template"):
 		f.send(w, "template-created.json")
 	case strings.HasSuffix(path, "/schemas"):
-		f.send(w, "schema-created.json")
+		f.send(w, schemaAnswer(body))
+	case strings.HasSuffix(path, "/cred-defs") && r.Method == http.MethodPost:
+		f.sendStatus(w, http.StatusCreated, "doc/cred-def-created.json")
+	case path == "/v1/platform/ledgers":
+		f.send(w, "doc/platform-ledgers.json")
 	case strings.HasSuffix(path, "/create-offer"):
 		f.send(w, "create-offer.json")
 	case strings.HasSuffix(path, "/oid4vp/verifier") && r.Method == http.MethodGet:
@@ -251,6 +255,28 @@ func (f *Server) serveOrgs(w http.ResponseWriter, r *http.Request, orgs Answer) 
 		return false
 	}
 	return true
+}
+
+// schemaAnswer picks the answer of a schema write by the type of the
+// body: an AnonCreds schema on a ledger, a W3C schema with no ledger, or
+// the schema of an SD-JWT template (P6-C2).
+func schemaAnswer(body []byte) string {
+	var req struct {
+		Type    string `json:"type"`
+		Payload struct {
+			SchemaType string `json:"schemaType"`
+		} `json:"schemaPayload"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		return "schema-created.json"
+	}
+	switch {
+	case req.Type == "indy":
+		return "doc/indy-schema-created.json"
+	case req.Payload.SchemaType == "no_ledger":
+		return "doc/w3c-schema-created.json"
+	}
+	return "schema-created.json"
 }
 
 // isDeleted reports whether the fake deleted the organisation.

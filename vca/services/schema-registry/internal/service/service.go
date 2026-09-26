@@ -165,12 +165,18 @@ func (s *Service) register(ctx context.Context, r record.Record) (map[string]str
 	_ = ignored
 	for _, f := range r.Formats {
 		id := record.ConfigurationID(r.Type, f)
+		ledger := ""
+		if f == record.FormatAnonCreds {
+			// The AnonCreds schema goes on the ledger of the version
+			// (P6-C2).
+			ledger = r.Ledger
+		}
 		if s.opts.Backend != nil {
 			resp, err := s.opts.Backend.RegisterCredentialConfiguration(ctx, connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{
 				Configuration: &backendv1.CredentialConfiguration{
 					Id: id, Format: record.FormatToProto(f), Type: r.Type, JsonSchema: r.JSONSchema,
 					Display: string(display), SdClaims: append([]string(nil), r.SDClaims...),
-					Contexts: append([]string(nil), r.Contexts...),
+					Contexts: append([]string(nil), r.Contexts...), Ledger: ledger,
 				},
 			}))
 			if err != nil {

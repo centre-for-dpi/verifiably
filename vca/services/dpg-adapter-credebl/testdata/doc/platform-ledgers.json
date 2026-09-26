@@ -1,0 +1,10 @@
+{
+  "statusCode": 200,
+  "message": "Ledgers details fetched successfully",
+  "data": [
+    { "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", "name": "Bcovrin Testnet", "networkType": "testnet", "poolConfig": "https://raw.githubusercontent.com/bcgov/von-network/main/BCovrin/genesis_test", "isActive": true, "networkString": "testnet", "nymTxnEndpoint": "http://test.bcovrin.vonx.io/register", "indyNamespace": "bcovrin:testnet", "networkUrl": null },
+    { "id": "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e", "name": "Indicio Testnet", "networkType": "testnet", "poolConfig": "https://raw.githubusercontent.com/Indicio-tech/indicio-network/main/genesis_files/pool_transactions_testnet_genesis", "isActive": true, "networkString": "testnet", "nymTxnEndpoint": "https://selfserve.indiciotech.io/nym", "indyNamespace": "indicio:testnet", "networkUrl": null },
+    { "id": "3c4d5e6f-7a8b-4c9d-8e0f-2a3b4c5d6e7f", "name": "Polygon Testnet", "networkType": "testnet", "poolConfig": "", "isActive": true, "networkString": "testnet", "nymTxnEndpoint": "", "indyNamespace": "polygon:testnet", "networkUrl": null },
+    { "id": "4d5e6f7a-8b9c-4d0e-9f1a-3b4c5d6e7f8a", "name": "NA", "networkType": "NA", "poolConfig": "NA", "isActive": true, "networkString": "NA", "nymTxnEndpoint": "NA", "indyNamespace": "no_ledger", "networkUrl": null }
+  ]
+}

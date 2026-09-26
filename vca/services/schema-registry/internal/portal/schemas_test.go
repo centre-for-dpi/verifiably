@@ -65,6 +65,10 @@ type stack struct {
 	state    topology.State
 	formats  []commonv1.Format
 	features []backendv1.Feature
+	// schemaFormats and ledgers are the schema targets the adapter
+	// lists beyond its issue formats (P6-C2).
+	schemaFormats []commonv1.Format
+	ledgers       []*backendv1.Ledger
 }
 
 // issuerPeer returns the issuer pair of a DPG.
@@ -86,6 +90,7 @@ func shellOf(stacks ...stack) *staffshell.Shell {
 		if s.state == topology.Live {
 			st.Capabilities = &backendv1.GetCapabilitiesResponse{
 				Formats: s.formats, Features: s.features, Roles: []commonv1.Role{commonv1.Role_ROLE_ISSUER},
+				SchemaFormats: s.schemaFormats, Ledgers: s.ledgers,
 				DpgInfo: &backendv1.DpgInfo{DisplayName: s.name},
 			}
 		}
@@ -441,5 +446,67 @@ func TestPublishOnTheOwnStackOnlyWhenItTakesSchemas(t *testing.T) {
 	if strings.Contains(without, msg.T("issuer.schemas.target.publish.label", secondStack)) ||
 		!strings.Contains(without, msg.T("issuer.schemas.target.none", secondStack)) {
 		t.Error("publish shows for a stack whose adapter takes no schema")
+	}
+}
+
+// ledgerStack is an own stack that registers AnonCreds schemas on one
+// ledger and W3C JSON-LD schemas beyond its issue format (P6-C2).
+func ledgerStack() *staffshell.Shell {
+	return shellOf(stack{
+		dpg: configv1.Dpg_DPG_CREDEBL, name: thirdStack, state: topology.Live, features: configAPI,
+		formats:       []commonv1.Format{commonv1.Format_FORMAT_DC_SD_JWT},
+		schemaFormats: []commonv1.Format{commonv1.Format_FORMAT_ANONCREDS, commonv1.Format_FORMAT_LDP_VC},
+		ledgers:       []*backendv1.Ledger{{Namespace: "bcovrin:testnet", Name: "Bcovrin Testnet"}, {Namespace: "indicio:testnet", Name: "Indicio Testnet"}},
+	})
+}
+
+// TestPublishOffersTheSchemaTargetsOfTheStack is P6-C2: a stack that
+// writes AnonCreds schemas on ledgers offers one target per ledger, and
+// the W3C JSON-LD schema. The version keeps the ledger. A stack that
+// lists no schema target offers neither.
+func TestPublishOffersTheSchemaTargetsOfTheStack(t *testing.T) {
+	svc, _ := registry(t)
+	h := staffServer(t, svc, ledgerStack(), nil)
+	body := get(t, h, "/portal/publish")
+	a11ytest.AssertPage(t, body)
+	for _, want := range []string{
+		`value="anoncreds@bcovrin:testnet"`, msg.T("schema.format.anoncreds.ledger.label", "Bcovrin Testnet"),
+		`value="anoncreds@indicio:testnet"`, `value="ldp_vc"`, `value="dc&#43;sd-jwt"`,
+		msg.T("issuer.schemas.upload.formats.keeps.hint", thirdStack),
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the publish page lacks %q", want)
+		}
+	}
+	rec := postUpload(t, h, farmerDoc, url.Values{"formats": {"anoncreds@bcovrin:testnet", "dc+sd-jwt"}, "target": {"publish"}})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
+	}
+	found, err := svc.Search(context.Background(), connect.NewRequest(&schemav1.SearchRequest{Query: "FarmerCredential"}))
+	if err != nil || len(found.Msg.GetSchemas()) != 1 {
+		t.Fatalf("search %v %v", found, err)
+	}
+	m := found.Msg.GetSchemas()[0]
+	if m.GetLedger() != "bcovrin:testnet" || !strings.Contains(FormatList(m), "anoncreds") {
+		t.Errorf("stored %v", m)
+	}
+	// One version goes on one ledger.
+	rec = postUpload(t, h, farmerDoc, url.Values{"formats": {"anoncreds@bcovrin:testnet", "anoncreds@indicio:testnet"}, "target": {"draft"}})
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), msg.T("issuer.schemas.upload.error.ledgers")) {
+		t.Errorf("two ledgers: %d", rec.Code)
+	}
+	// A ledger the stack does not list fails.
+	rec = postUpload(t, h, farmerDoc, url.Values{"formats": {"anoncreds@sovrin:mainnet"}, "target": {"draft"}})
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), msg.T("issuer.schemas.upload.error.formats")) {
+		t.Errorf("an unknown ledger: %d", rec.Code)
+	}
+	plain := get(t, staffServer(t, svc, deployment(), nil), "/portal/publish")
+	if strings.Contains(plain, "anoncreds@") || strings.Contains(plain, `value="ldp_vc"`) {
+		t.Error("a stack with no schema target offers one")
+	}
+	// The detail page of the stored version names its ledger.
+	detail := get(t, h, "/portal/schemas/"+m.GetId())
+	if !strings.Contains(detail, msg.T("issuer.schemas.ledger.label")) || !strings.Contains(detail, "bcovrin:testnet") {
+		t.Error("the detail page does not name the ledger")
 	}
 }

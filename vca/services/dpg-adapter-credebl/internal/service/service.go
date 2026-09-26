@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -70,6 +71,10 @@ type Service struct {
 	pageSizeMax  int
 	versions     map[string]string
 	now          func() time.Time
+
+	// ledgerMu guards ledgers, the ledgers of the capability answer.
+	ledgerMu sync.Mutex
+	ledgers  ledgerCache
 }
 
 // New returns the service.
@@ -131,11 +136,16 @@ func failed(action string, err error) *connect.Error {
 // GetCapabilities reports what the CREDEBL platform supports
 // (ADR-016 decision 6).
 func (s *Service) GetCapabilities(
-	_ context.Context, _ *connect.Request[backendv1.GetCapabilitiesRequest],
+	ctx context.Context, _ *connect.Request[backendv1.GetCapabilitiesRequest],
 ) (*connect.Response[backendv1.GetCapabilitiesResponse], error) {
+	ledgers, schemaFormats := s.schemaTargets(ctx)
 	return connect.NewResponse(&backendv1.GetCapabilitiesResponse{
-		Adapter:    AdapterName,
-		DpgVersion: s.dpgVersion,
+		// An AnonCreds schema on a ledger and a W3C JSON-LD schema
+		// (P6-C2). The platform issues them over DIDComm only.
+		Ledgers:       ledgers,
+		SchemaFormats: schemaFormats,
+		Adapter:       AdapterName,
+		DpgVersion:    s.dpgVersion,
 		Formats: []commonv1.Format{
 			commonv1.Format_FORMAT_DC_SD_JWT,
 			commonv1.Format_FORMAT_VC_SD_JWT,

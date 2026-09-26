@@ -42,10 +42,14 @@ const (
 	FormatJwtVcJSON = "jwt_vc_json"
 	FormatLdpVc     = "ldp_vc"
 	FormatMsoMdoc   = "mso_mdoc"
+	// FormatAnonCreds is an AnonCreds schema with its credential
+	// definition on a ledger (P6-C2). It is not an OID4VCI format, so
+	// the issuer metadata leaves it out.
+	FormatAnonCreds = "anoncreds"
 )
 
 // Formats lists every format a schema can offer, in enum order.
-var Formats = []string{FormatVcSdJwt, FormatDcSdJwt, FormatJwtVcJSON, FormatLdpVc, FormatMsoMdoc}
+var Formats = []string{FormatVcSdJwt, FormatDcSdJwt, FormatJwtVcJSON, FormatLdpVc, FormatMsoMdoc, FormatAnonCreds}
 
 // MaxTypeLength caps the credential type.
 const MaxTypeLength = 200
@@ -103,6 +107,8 @@ type Record struct {
 	ConfigurationIDs map[string]string `json:"configuration_ids,omitempty"`
 	Contexts         []string          `json:"contexts,omitempty"`
 	ClaimMappings    []ClaimMapping    `json:"claim_mappings,omitempty"`
+	// Ledger is the namespace of the ledger of the anoncreds format.
+	Ledger string `json:"ledger,omitempty"`
 }
 
 // Mapping returns the mapping of one claim, when the version has one.
@@ -134,6 +140,12 @@ func (r Record) Validate() error {
 		if !contains(Formats, f) {
 			return fmt.Errorf("record: the format %q is not supported", f)
 		}
+	}
+	switch {
+	case r.Offers(FormatAnonCreds) && r.Ledger == "":
+		return errors.New("record: the anoncreds format needs the ledger of its schema")
+	case !r.Offers(FormatAnonCreds) && r.Ledger != "":
+		return errors.New("record: only the anoncreds format names a ledger")
 	}
 	for i, d := range r.Display {
 		if strings.TrimSpace(d.Name) == "" {
@@ -280,6 +292,8 @@ func FormatFromProto(f commonv1.Format) (string, error) {
 		return FormatLdpVc, nil
 	case commonv1.Format_FORMAT_MSO_MDOC:
 		return FormatMsoMdoc, nil
+	case commonv1.Format_FORMAT_ANONCREDS:
+		return FormatAnonCreds, nil
 	}
 	return "", fmt.Errorf("record: the format %s is not supported", f)
 }
@@ -297,6 +311,8 @@ func FormatToProto(f string) commonv1.Format {
 		return commonv1.Format_FORMAT_LDP_VC
 	case FormatMsoMdoc:
 		return commonv1.Format_FORMAT_MSO_MDOC
+	case FormatAnonCreds:
+		return commonv1.Format_FORMAT_ANONCREDS
 	}
 	return commonv1.Format_FORMAT_UNSPECIFIED
 }
@@ -344,6 +360,7 @@ func FromProto(m *schemav1.Schema) (Record, error) {
 		RetentionDays:    int(m.GetRetentionDays()),
 		Contexts:         trimmed(m.GetContexts()),
 		ClaimMappings:    MappingsFromProto(m.GetClaimMappings()),
+		Ledger:           strings.TrimSpace(m.GetLedger()),
 	}
 	for _, d := range m.GetDisplay() {
 		r.Display = append(r.Display, Display{
@@ -374,6 +391,7 @@ func ToProto(r Record) *schemav1.Schema {
 		SearchableClaims: append([]string(nil), r.SearchableClaims...), TenantId: r.TenantID, CreatedBy: r.CreatedBy,
 		RetentionDays: toInt32(int64(r.RetentionDays)), Display: DisplayToProto(r.Display),
 		Contexts: append([]string(nil), r.Contexts...), ClaimMappings: MappingsToProto(r.ClaimMappings),
+		Ledger: r.Ledger,
 	}
 	for _, f := range r.Formats {
 		m.Formats = append(m.Formats, FormatToProto(f))

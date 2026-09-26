@@ -206,6 +206,7 @@ var States = []schemav1.State{schemav1.State_STATE_DRAFT, schemav1.State_STATE_P
 var Formats = []commonv1.Format{
 	commonv1.Format_FORMAT_VC_SD_JWT, commonv1.Format_FORMAT_DC_SD_JWT,
 	commonv1.Format_FORMAT_JWT_VC_JSON, commonv1.Format_FORMAT_LDP_VC, commonv1.Format_FORMAT_MSO_MDOC,
+	commonv1.Format_FORMAT_ANONCREDS,
 }
 
 // StateText returns the reader facing name of a state.
@@ -268,6 +269,8 @@ func FormatValue(f commonv1.Format) string {
 		return "ldp_vc"
 	case commonv1.Format_FORMAT_MSO_MDOC:
 		return "mso_mdoc"
+	case commonv1.Format_FORMAT_ANONCREDS:
+		return "anoncreds"
 	}
 	return ""
 }
@@ -588,12 +591,18 @@ func (p *Portal) summaryCard(m *schemav1.Schema) (template.HTML, error) {
 		{{Text: "Credential type"}, {Text: m.GetType()}},
 		{{Text: "State"}, {HTML: badge}},
 		{{Text: "Formats"}, {Text: FormatList(m)}},
+	}
+	if ledger := m.GetLedger(); ledger != "" {
+		// The ledger of the AnonCreds schema (P6-C2).
+		rows = append(rows, components.Row{{Text: msg.T("issuer.schemas.ledger.label")}, {Text: ledger}})
+	}
+	rows = append(rows, []components.Row{
 		{{Text: "Created"}, {Text: stamp(m.GetCreatedAt().AsTime().String(), m.GetCreatedAt() != nil)}},
 		{{Text: "Published"}, {Text: stamp(m.GetPublishedAt().AsTime().String(), m.GetPublishedAt() != nil)}},
 		{{Text: "Retired"}, {Text: stamp(m.GetRetiredAt().AsTime().String(), m.GetRetiredAt() != nil)}},
 		{{Text: "Version history"}, {HTML: link(p.versionsURL(m.GetId()), "Every version of this schema")}},
 		{{Text: msg.T("issuer.mapping.title.label")}, {HTML: link(p.mappingURL(m.GetId(), m.GetVersion()), msg.T("issuer.schemas.action.mapping.label"))}},
-	}
+	}...)
 	table, err := p.opts.Kit.HTML("table", components.Table{
 		ID: "summary-table", Caption: "Schema summary", Columns: []string{"Field", "Value"}, Rows: rows,
 	})

@@ -117,6 +117,7 @@ func TestAgentTypeChoice(t *testing.T) {
 	if got := caps.Msg.GetTenantAgentTypes(); len(got) != 1 || got[0] != backendv1.DpgTenant_AGENT_TYPE_SHARED {
 		t.Errorf("tenant agent types = %v, want the shared agent only", got)
 	}
+	before := len(f.Calls())
 	_, err = svc.CreateTenant(context.Background(), connect.NewRequest(&backendv1.CreateTenantRequest{
 		Name: "[ORGANISATION]", AgentType: backendv1.DpgTenant_AGENT_TYPE_DEDICATED,
 	}))
@@ -124,8 +125,8 @@ func TestAgentTypeChoice(t *testing.T) {
 	if !strings.Contains(err.Error(), "shared agent") {
 		t.Errorf("the message %q does not name the shared agent", err)
 	}
-	if len(f.Calls()) != 0 {
-		t.Errorf("the refused request called the platform: %v", f.Calls())
+	if len(f.Calls()) != before {
+		t.Errorf("the refused request called the platform: %v", f.Calls()[before:])
 	}
 }
 

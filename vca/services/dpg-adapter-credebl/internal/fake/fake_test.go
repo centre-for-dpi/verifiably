@@ -236,3 +236,25 @@ func TestFakeServesTheOrganisationCalls(t *testing.T) {
 		t.Errorf("a missing answer gave %d", code)
 	}
 }
+
+// TestFakeServesTheSchemaCalls covers the answers of P6-C2.
+func TestFakeServesTheSchemaCalls(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	for body, want := range map[string]string{
+		`{"type":"indy"}`: "/SCHEMA/",
+		`{"type":"json","schemaPayload":{"schemaType":"no_ledger"}}`: "schema-file-server",
+		`{"type":"json","schemaPayload":{"schemaType":"json"}}`:      "schemaLedgerId",
+		`not json`: "schemaLedgerId",
+	} {
+		if got := post(t, f, "/v1/orgs/org-1/schemas", body); !strings.Contains(got, want) {
+			t.Errorf("%s gave %q, want %q", body, got, want)
+		}
+	}
+	if code, body := call(t, f, http.MethodPost, "/v1/orgs/org-1/cred-defs"); code != 201 || !strings.Contains(body, "CLAIM_DEF") {
+		t.Errorf("cred-defs = %d %s", code, body)
+	}
+	if body := get(t, f, "/v1/platform/ledgers"); !strings.Contains(body, "bcovrin:testnet") {
+		t.Errorf("ledgers = %s", body)
+	}
+}

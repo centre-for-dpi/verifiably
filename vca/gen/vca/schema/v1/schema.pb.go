@@ -226,8 +226,12 @@ type Schema struct {
 	// OID4VCI format identifier. The service fills it when a version is
 	// published. The service ignores it on a write.
 	ConfigurationIds map[string]string `protobuf:"bytes,19,rep,name=configuration_ids,json=configurationIds,proto3" json:"configuration_ids,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// The namespace of the ledger an anoncreds format writes its schema
+	// and its credential definition on, such as bcovrin:testnet. Empty
+	// unless formats holds FORMAT_ANONCREDS.
+	Ledger        string `protobuf:"bytes,20,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Schema) Reset() {
@@ -391,6 +395,13 @@ func (x *Schema) GetConfigurationIds() map[string]string {
 		return x.ConfigurationIds
 	}
 	return nil
+}
+
+func (x *Schema) GetLedger() string {
+	if x != nil {
+		return x.Ledger
+	}
+	return ""
 }
 
 // ClaimMapping maps one top level claim of a schema to a JSON-LD term.
@@ -1903,7 +1914,7 @@ const file_vca_schema_v1_schema_proto_rawDesc = "" +
 	"\blogo_uri\x18\x04 \x01(\tR\alogoUri\x12)\n" +
 	"\x10background_color\x18\x05 \x01(\tR\x0fbackgroundColor\x12\x1d\n" +
 	"\n" +
-	"text_color\x18\x06 \x01(\tR\ttextColor\"\xf1\x06\n" +
+	"text_color\x18\x06 \x01(\tR\ttextColor\"\x89\a\n" +
 	"\x06Schema\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x05R\aversion\x12\x12\n" +
@@ -1928,7 +1939,8 @@ const file_vca_schema_v1_schema_proto_rawDesc = "" +
 	"\x0eretention_days\x18\x10 \x01(\x05R\rretentionDays\x12\x1a\n" +
 	"\bcontexts\x18\x11 \x03(\tR\bcontexts\x12B\n" +
 	"\x0eclaim_mappings\x18\x12 \x03(\v2\x1b.vca.schema.v1.ClaimMappingR\rclaimMappings\x12X\n" +
-	"\x11configuration_ids\x18\x13 \x03(\v2+.vca.schema.v1.Schema.ConfigurationIdsEntryR\x10configurationIds\x1aC\n" +
+	"\x11configuration_ids\x18\x13 \x03(\v2+.vca.schema.v1.Schema.ConfigurationIdsEntryR\x10configurationIds\x12\x16\n" +
+	"\x06ledger\x18\x14 \x01(\tR\x06ledger\x1aC\n" +
 	"\x15ConfigurationIdsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"i\n" +

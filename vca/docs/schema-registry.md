@@ -25,6 +25,7 @@ A record never changes after the store writes it, except for its state.
 | `configuration_ids` | The DPG configuration id per format, set at publish time. |
 | `contexts` | The JSON-LD context IRIs that extend the VCDM 2.0 context. |
 | `claim_mappings` | Per claim: the term IRI and the labels per locale. |
+| `ledger` | The ledger of the `anoncreds` format, such as `bcovrin:testnet`. Empty for any other format. |
 
 The service checks the contexts and the claim mappings before it stores
 a version. Each context is an absolute http or https IRI with a host,
@@ -51,7 +52,8 @@ stateDiagram-v2
 `Publish` calls `RegisterCredentialConfiguration` on the issuer backend
 once per format (ADR-013 decision 3). The DPG returns the configuration
 id it stores. The record keeps that id. When the backend fails, the state
-does not change and the RPC returns `unavailable`.
+does not change and the RPC returns `unavailable`. The call of the
+`anoncreds` format names the ledger of the version.
 
 `Retire` with version zero retires every published version of the schema.
 Issuance with a retired version stops. Verifiers can still read it.
@@ -83,7 +85,8 @@ across restarts.
 ### Issuer metadata
 
 Each published version produces one `credential_configurations_supported`
-entry per format (ADR-013 decision 4). The entry key is the configuration
+entry per format (ADR-013 decision 4). The `anoncreds` format has no
+entry, because OID4VCI has no such format. The entry key is the configuration
 id the DPG returned, or the derived id when there is no DPG. The entry
 carries `format`, `scope`, the binding methods, and the signing
 algorithms. It also carries the display metadata and the claims with
@@ -157,7 +160,10 @@ An empty display name takes the title.
 
 The publish target follows the probe of the peers (ADR-034 decision 5).
 A publish registers the version with the adapter of the own pair. The
-form offers only the formats that adapter lists. It offers publish only
+form offers only the formats that adapter lists, with its schema
+formats. It offers AnonCreds once per ledger that the adapter lists, as
+"AnonCreds on" and the ledger name. One version goes on one ledger. It
+offers publish only
 when the adapter lists `FEATURE_CREDENTIAL_CONFIG_API`. Otherwise the
 upload stays a draft. The page also names the other live stacks that
 take schemas. Each link opens the publish page of that stack. The detail

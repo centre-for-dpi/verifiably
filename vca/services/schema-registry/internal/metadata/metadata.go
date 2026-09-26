@@ -252,6 +252,11 @@ func Configurations(published []record.Record, opts Options) map[string]map[stri
 	out := map[string]map[string]any{}
 	for _, r := range record.Sorted(published) {
 		for _, f := range r.Formats {
+			if f == record.FormatAnonCreds {
+				// An AnonCreds schema goes on a ledger, and OID4VCI has
+				// no such format (P6-C2).
+				continue
+			}
 			out[ConfigurationID(r, f)] = Configuration(r, f, opts)
 		}
 	}
@@ -295,6 +300,9 @@ func PublicSchema(r record.Record, opts Options) map[string]any {
 	}
 	if r.Offers(record.FormatVcSdJwt) || r.Offers(record.FormatDcSdJwt) {
 		e["vct"] = Vct(opts.BaseURL, r)
+	}
+	if r.Ledger != "" {
+		e["ledger"] = r.Ledger
 	}
 	if !r.PublishedAt.IsZero() {
 		e["published_at"] = r.PublishedAt.UTC().Format(time.RFC3339)

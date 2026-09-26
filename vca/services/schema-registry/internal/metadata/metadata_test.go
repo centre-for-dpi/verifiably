@@ -313,3 +313,23 @@ func TestMappingValidatesIRIs(t *testing.T) {
 		t.Fatalf("a broken document: %v", got)
 	}
 }
+
+// TestIssuerMetadataLeavesOutAnonCreds is P6-C2: an AnonCreds schema
+// goes on a ledger, not in the OID4VCI issuer metadata.
+func TestIssuerMetadataLeavesOutAnonCreds(t *testing.T) {
+	r := published()
+	r.Formats = []string{record.FormatDcSdJwt, record.FormatAnonCreds}
+	r.Ledger = "bcovrin:testnet"
+	configs := Configurations([]record.Record{r}, Options{BaseURL: "https://r"})
+	if len(configs) != 1 {
+		t.Errorf("configurations = %v, want the dc+sd-jwt entry only", configs)
+	}
+	for _, c := range configs {
+		if c["format"] == record.FormatAnonCreds {
+			t.Error("the issuer metadata offers an anoncreds entry")
+		}
+	}
+	if doc := PublicSchema(r, Options{BaseURL: "https://r"}); doc["ledger"] != "bcovrin:testnet" {
+		t.Errorf("the public schema does not name the ledger: %v", doc)
+	}
+}

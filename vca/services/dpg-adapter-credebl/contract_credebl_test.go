@@ -18,6 +18,7 @@ import (
 	"connectrpc.com/connect"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/config"
 )
@@ -168,5 +169,37 @@ func TestContractIssuerIdentity(t *testing.T) {
 		if !strings.HasPrefix(id, "did:") {
 			t.Errorf("identifier %q is not a DID", id)
 		}
+	}
+}
+
+// TestContractSchemaTargets reads the ledgers and the schema formats of
+// the capability answer, and writes an AnonCreds schema with its
+// credential definition on the ledger that VCA_CREDEBL_CONTRACT_LEDGER
+// names, when it names one (P6-C2).
+func TestContractSchemaTargets(t *testing.T) {
+	a := newContractApp(t)
+	ctx := context.Background()
+	caps, err := a.Service.GetCapabilities(ctx, connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+	if err != nil {
+		t.Fatalf("GetCapabilities: %v", err)
+	}
+	if len(caps.Msg.GetSchemaFormats()) == 0 {
+		t.Fatal("the answer lists no schema format")
+	}
+	ledger := os.Getenv("VCA_CREDEBL_CONTRACT_LEDGER")
+	if ledger == "" {
+		t.Skip("set VCA_CREDEBL_CONTRACT_LEDGER to write an AnonCreds schema on the real ledger")
+	}
+	res, err := a.Service.RegisterCredentialConfiguration(ctx, connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{
+		Configuration: &backendv1.CredentialConfiguration{
+			Id: "ContractCheck", Format: commonv1.Format_FORMAT_ANONCREDS, Type: "ContractCheck" + time.Now().UTC().Format("150405"),
+			JsonSchema: `{"type":"object","properties":{"check":{"type":"string"}},"required":["check"]}`, Ledger: ledger,
+		},
+	}))
+	if err != nil {
+		t.Fatalf("RegisterCredentialConfiguration: %v", err)
+	}
+	if res.Msg.GetId() == "" {
+		t.Fatal("the answer carries no credential definition id")
 	}
 }

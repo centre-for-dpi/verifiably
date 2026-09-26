@@ -1219,6 +1219,7 @@ var en = map[string]string{
 	"issuer.schemas.upload.name.hint":                     "The name a wallet shows. Empty takes the title of the document.",
 	"issuer.schemas.upload.formats.label":                 "Formats",
 	"issuer.schemas.upload.formats.hint":                  "The formats that {1} issues.",
+	"issuer.schemas.upload.formats.keeps.hint":            "The formats that {1} issues. {1} keeps an AnonCreds or a JSON-LD schema for its own exchanges and issues no credential of it here.",
 	"issuer.schemas.upload.submit.label":                  "Upload",
 	"issuer.schemas.upload.card.label":                    "From a file",
 	"issuer.schemas.upload.error.file":                    "Choose a JSON Schema file.",
@@ -1447,13 +1448,18 @@ var en = map[string]string{
 	"issuer.notifications.callbacks.text":                 "{1} calls back when an issuance session changes state. The adapter of this pair takes each call.",
 
 	// Schema registry.
-	"schema.format.vc_sd_jwt.label":   "SD-JWT VC (vc)",
-	"schema.format.dc_sd_jwt.label":   "SD-JWT VC",
-	"schema.format.jwt_vc_json.label": "JWT VC",
-	"schema.format.ldp_vc.label":      "JSON-LD",
-	"schema.format.mso_mdoc.label":    "mdoc",
-	"schema.delete.published":         "Retire a published version.",
-	"schema.delete.retired":           "A retired version stays, so verifiers can read it.",
+	"schema.format.vc_sd_jwt.label":        "SD-JWT VC (vc)",
+	"schema.format.dc_sd_jwt.label":        "SD-JWT VC",
+	"schema.format.jwt_vc_json.label":      "JWT VC",
+	"schema.format.ldp_vc.label":           "JSON-LD",
+	"schema.format.mso_mdoc.label":         "mdoc",
+	"schema.format.anoncreds.label":        "AnonCreds",
+	"schema.format.anoncreds.ledger.label": "AnonCreds on {1}",
+	"schema.format.anoncreds.ledger.text":  "The stack writes the schema and its credential definition on this ledger.",
+	"issuer.schemas.ledger.label":          "Ledger",
+	"issuer.schemas.upload.error.ledgers":  "Choose one ledger. One version goes on one ledger.",
+	"schema.delete.published":              "Retire a published version.",
+	"schema.delete.retired":                "A retired version stays, so verifiers can read it.",
 
 	// Holder portal.
 	"holder.nav.discover.label":               "Discover",

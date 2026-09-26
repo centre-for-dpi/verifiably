@@ -441,3 +441,32 @@ func TestPublishSendsContexts(t *testing.T) {
 		}
 	}
 }
+
+// TestPublishSendsTheLedgerOfAnAnonCredsFormat is P6-C2: the
+// registration of an anoncreds format names the ledger of the version,
+// and the other formats name none.
+func TestPublishSendsTheLedgerOfAnAnonCredsFormat(t *testing.T) {
+	s, fb := newService(t, &fakeBackend{})
+	m := schema("Registration")
+	m.Formats = []commonv1.Format{commonv1.Format_FORMAT_DC_SD_JWT, commonv1.Format_FORMAT_ANONCREDS}
+	m.Ledger = "bcovrin:testnet"
+	created, err := s.Create(context.Background(), connect.NewRequest(&schemav1.CreateRequest{Schema: m}))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := s.Publish(context.Background(), connect.NewRequest(&schemav1.PublishRequest{Id: created.Msg.GetSchema().GetId()})); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if len(fb.calls) != 2 {
+		t.Fatalf("calls = %v", fb.calls)
+	}
+	for _, c := range fb.calls {
+		want := ""
+		if c.GetFormat() == commonv1.Format_FORMAT_ANONCREDS {
+			want = "bcovrin:testnet"
+		}
+		if c.GetLedger() != want {
+			t.Errorf("%v names the ledger %q, want %q", c.GetFormat(), c.GetLedger(), want)
+		}
+	}
+}

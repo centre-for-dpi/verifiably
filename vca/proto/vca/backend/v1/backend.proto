@@ -323,6 +323,23 @@ message GetCapabilitiesResponse {
   // no multi tenancy. AGENT_TYPE_UNSPECIFIED is always accepted and
   // lets the DPG pick.
   repeated DpgTenant.AgentType tenant_agent_types = 14;
+  // The ledgers RegisterCredentialConfiguration writes an AnonCreds
+  // schema and its credential definition on. Empty when the adapter
+  // writes to no ledger.
+  repeated Ledger ledgers = 15;
+  // The formats RegisterCredentialConfiguration registers a schema in
+  // beyond formats. Examples are an AnonCreds schema on one of the
+  // ledgers and a W3C JSON-LD schema. The DPG keeps the schema. The
+  // adapter issues in these formats only when formats lists them too.
+  repeated vca.common.v1.Format schema_formats = 16;
+}
+
+// Ledger is one verifiable data registry a DPG writes schemas on.
+message Ledger {
+  // The namespace of the ledger, such as bcovrin:testnet.
+  string namespace = 1;
+  // The name of the ledger as the DPG shows it.
+  string name = 2;
 }
 
 // DpgInfo names the DPG behind an adapter. The pages show it, so a
@@ -377,6 +394,9 @@ message CredentialConfiguration {
   // The render templates the DPG puts in the credentials of this
   // configuration, such as an SVG card. Empty when the DPG has none.
   repeated RenderTemplate render_templates = 8;
+  // The namespace of the ledger of an AnonCreds configuration, as one of
+  // the ledgers that GetCapabilities lists. Empty for any other format.
+  string ledger = 9;
 }
 
 // RenderTemplate is one render method of a credential, as the DPG hosts

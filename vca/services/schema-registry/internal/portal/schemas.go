@@ -57,9 +57,19 @@ type target struct {
 	live bool
 	// takes is true when the adapter lists FEATURE_CREDENTIAL_CONFIG_API.
 	takes bool
-	// formats are the formats the adapter issues.
+	// formats are the formats the adapter issues, and the schema formats
+	// it registers beyond them (P6-C2).
 	formats []commonv1.Format
+	// ledgers are the ledgers the adapter writes AnonCreds schemas on.
+	ledgers []*backendv1.Ledger
+	// keeps is true when the adapter registers a schema format that it
+	// does not issue.
+	keeps bool
 }
+
+// anonCredsPrefix starts the form value of an AnonCreds target: the
+// format, then the namespace of the ledger.
+const anonCredsPrefix = "anoncreds@"
 
 // targetOf returns the publish target of the own pair.
 func targetOf(f staffshell.Frame) target {
@@ -69,14 +79,86 @@ func targetOf(f staffshell.Frame) target {
 	}
 	t := target{known: true, name: f.Snapshot().StackName(own.Peer.Dpg), live: own.State == topology.Live}
 	t.takes = t.live && own.Has(backendv1.Feature_FEATURE_CREDENTIAL_CONFIG_API)
+	offered := append(append([]commonv1.Format(nil), own.Capabilities.GetFormats()...), own.Capabilities.GetSchemaFormats()...)
+	t.ledgers = own.Capabilities.GetLedgers()
 	for _, fm := range Formats {
-		for _, got := range own.Capabilities.GetFormats() {
-			if got == fm {
-				t.formats = append(t.formats, fm)
-			}
+		if fm == commonv1.Format_FORMAT_ANONCREDS && len(t.ledgers) == 0 {
+			// An AnonCreds schema needs a ledger to go on.
+			continue
+		}
+		if hasFormat(offered, fm) {
+			t.formats = append(t.formats, fm)
+			t.keeps = t.keeps || !hasFormat(own.Capabilities.GetFormats(), fm)
 		}
 	}
 	return t
+}
+
+// ledger returns the ledger of a namespace the target writes on.
+func (t target) ledger(namespace string) (*backendv1.Ledger, bool) {
+	for _, l := range t.ledgers {
+		if l.GetNamespace() == namespace {
+			return l, true
+		}
+	}
+	return nil, false
+}
+
+// formatOptions are the choices of the format field: one per format,
+// and one per ledger for AnonCreds (P6-C2).
+func (t target) formatOptions(u upload) []components.ChoiceOption {
+	out := make([]components.ChoiceOption, 0, len(t.formats)+len(t.ledgers))
+	for _, fm := range t.formats {
+		if fm != commonv1.Format_FORMAT_ANONCREDS {
+			out = append(out, components.ChoiceOption{
+				Value: FormatValue(fm), Title: FormatLabel(fm), Meta: FormatValue(fm), Checked: hasFormat(u.formats, fm),
+			})
+			continue
+		}
+		for _, l := range t.ledgers {
+			name := l.GetName()
+			if name == "" {
+				name = l.GetNamespace()
+			}
+			out = append(out, components.ChoiceOption{
+				Value: anonCredsPrefix + l.GetNamespace(), Title: msg.T("schema.format.anoncreds.ledger.label", name),
+				Text: msg.T("schema.format.anoncreds.ledger.text"), Meta: l.GetNamespace(),
+				Checked: hasFormat(u.formats, fm) && u.ledger == l.GetNamespace(),
+			})
+		}
+	}
+	return out
+}
+
+// readFormats reads the format choices of the form into the upload. It
+// reports false for a value the target does not offer, or for more than
+// one ledger.
+func (t target) readFormats(values []string, u *upload) bool {
+	ok := true
+	for _, v := range values {
+		if ns, anon := strings.CutPrefix(strings.TrimSpace(v), anonCredsPrefix); anon {
+			if _, known := t.ledger(ns); !known || !hasFormat(t.formats, commonv1.Format_FORMAT_ANONCREDS) {
+				ok = false
+				continue
+			}
+			if u.ledger != "" && u.ledger != ns {
+				u.ledgerErr = true
+				continue
+			}
+			u.ledger = ns
+			if !hasFormat(u.formats, commonv1.Format_FORMAT_ANONCREDS) {
+				u.formats = append(u.formats, commonv1.Format_FORMAT_ANONCREDS)
+			}
+			continue
+		}
+		fm := ParseFormat(v)
+		if fm == commonv1.Format_FORMAT_UNSPECIFIED || fm == commonv1.Format_FORMAT_ANONCREDS || !hasFormat(t.formats, fm) {
+			ok = false
+			continue
+		}
+		u.formats = append(u.formats, fm)
+	}
+	return ok
 }
 
 // canPublish reports whether a publish can go to the target. Without a
@@ -292,9 +374,13 @@ type upload struct {
 	typ     string
 	name    string
 	formats []commonv1.Format
-	target  string
-	errText string
-	fileErr string
+	// ledger is the ledger of the AnonCreds format, and ledgerErr
+	// reports a form that chose two.
+	ledger    string
+	ledgerErr bool
+	target    string
+	errText   string
+	fileErr   string
 }
 
 // publishPage renders the publish from a file page.
@@ -307,6 +393,15 @@ func (p *Portal) publishPage(w http.ResponseWriter, r *http.Request) error {
 	}
 	u.formats = defaultFormat(t.formats)
 	return p.renderPublish(w, r, f, t, u)
+}
+
+// formatsHint is the hint of the format field. It says so when the
+// stack keeps a schema in a format it does not issue (P6-C2).
+func formatsHint(t target, stackName string) string {
+	if t.keeps {
+		return msg.T("issuer.schemas.upload.formats.keeps.hint", stackName)
+	}
+	return msg.T("issuer.schemas.upload.formats.hint", stackName)
 }
 
 // defaultFormat picks the format the form checks first: dc+sd-jwt when
@@ -328,12 +423,7 @@ func (p *Portal) renderPublish(w http.ResponseWriter, r *http.Request, f staffsh
 	if stackName == "" {
 		stackName = msg.T("issuer.stack.this.label")
 	}
-	formats := make([]components.ChoiceOption, 0, len(t.formats))
-	for _, fm := range t.formats {
-		formats = append(formats, components.ChoiceOption{
-			Value: FormatValue(fm), Title: FormatLabel(fm), Meta: FormatValue(fm), Checked: hasFormat(u.formats, fm),
-		})
-	}
+	formats := t.formatOptions(u)
 	targets := []components.ChoiceOption{}
 	if t.canPublish() {
 		targets = append(targets, components.ChoiceOption{Value: "publish", Title: msg.T("issuer.schemas.target.publish.label", stackName),
@@ -353,7 +443,7 @@ func (p *Portal) renderPublish(w http.ResponseWriter, r *http.Request, f staffsh
 	}
 	if len(formats) > 0 {
 		fields = append(fields, b.add("choice", components.Choice{ID: "formats", Legend: msg.T("issuer.schemas.upload.formats.label"),
-			Hint: msg.T("issuer.schemas.upload.formats.hint", stackName), Options: formats, Multiple: true}))
+			Hint: formatsHint(t, stackName), Options: formats, Multiple: true}))
 	}
 	fields = append(fields,
 		b.add("choice", components.Choice{ID: "target", Legend: msg.T("issuer.schemas.target.legend.label"), Options: targets}),
@@ -405,15 +495,13 @@ func (p *Portal) publishFile(w http.ResponseWriter, r *http.Request) error {
 	}
 	u := upload{typ: strings.TrimSpace(r.PostFormValue("type")), name: strings.TrimSpace(r.PostFormValue("name")),
 		target: r.PostFormValue("target")}
-	for _, v := range r.PostForm["formats"] {
-		if fm := ParseFormat(v); fm != commonv1.Format_FORMAT_UNSPECIFIED && hasFormat(t.formats, fm) {
-			u.formats = append(u.formats, fm)
-		} else {
-			u.errText = msg.T("issuer.schemas.upload.error.formats")
-		}
+	if !t.readFormats(r.PostForm["formats"], &u) {
+		u.errText = msg.T("issuer.schemas.upload.error.formats")
 	}
 	doc, fileErr := uploaded(r)
 	switch {
+	case u.ledgerErr:
+		u.errText = msg.T("issuer.schemas.upload.error.ledgers")
 	case fileErr != nil:
 		u.fileErr = msg.T("issuer.schemas.upload.error.file")
 		u.errText = u.fileErr
@@ -448,7 +536,7 @@ func (p *Portal) publishFile(w http.ResponseWriter, r *http.Request) error {
 	}
 	ctx := r.Context()
 	created, err := p.opts.Client.Create(ctx, staffshell.AsActor(ctx, &schemav1.CreateRequest{Schema: &schemav1.Schema{
-		Type: typ, JsonSchema: string(doc), Formats: u.formats, CreatedBy: staffshell.Actor(ctx),
+		Type: typ, JsonSchema: string(doc), Formats: u.formats, Ledger: u.ledger, CreatedBy: staffshell.Actor(ctx),
 		Display: []*schemav1.Display{{Name: name, Locale: "en", Description: documentText(parsed, "description")}},
 	}}))
 	if err != nil {
