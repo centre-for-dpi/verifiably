@@ -3,6 +3,7 @@
 package fake_test
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -63,7 +64,8 @@ func TestFakeIssuesFromTheClaimsStore(t *testing.T) {
 		t.Fatal(errErr)
 	}
 	postJSON(t, f, "/v1/certify/pre-authorized-data", `{"credential_configuration_id":"vca-residence-ldp","claims":{"id":"s-1"}}`)
-	status, body := postJSON(t, f, "/v1/certify/issuance/credential", `{"format":"ldp_vc"}`)
+	residence := `{"format":"ldp_vc","credential_definition":{"type":["ResidencePermitCredential","VerifiableCredential"]}}`
+	status, body := postJSON(t, f, "/v1/certify/issuance/credential", residence)
 	if status != http.StatusOK {
 		t.Fatalf("credential = %d %s", status, body)
 	}
@@ -87,7 +89,7 @@ func TestFakeIssuesFromTheClaimsStore(t *testing.T) {
 	if errErr := w.Put(row); errErr != nil {
 		t.Fatal(errErr)
 	}
-	if _, body := postJSON(t, f, "/v1/certify/issuance/credential", `{"format":"ldp_vc"}`); strings.Contains(body, "credentialStatus") {
+	if _, body := postJSON(t, f, "/v1/certify/issuance/credential", residence); strings.Contains(body, "credentialStatus") {
 		t.Errorf("the entry stays: %s", body)
 	}
 	// Another format gets the recorded answer.
@@ -96,13 +98,13 @@ func TestFakeIssuesFromTheClaimsStore(t *testing.T) {
 	}
 	// No row answers the error of the plugin.
 	postJSON(t, f, "/v1/certify/pre-authorized-data", `{"credential_configuration_id":"vca-residence-ldp","claims":{"id":"other"}}`)
-	if status, body := postJSON(t, f, "/v1/certify/issuance/credential", `{"format":"ldp_vc"}`); status != http.StatusBadRequest ||
+	if status, body := postJSON(t, f, "/v1/certify/issuance/credential", residence); status != http.StatusBadRequest ||
 		!strings.Contains(body, "ERROR_FETCHING_DATA_RECORD_FROM_TABLE") {
 		t.Errorf("no row = %d %s", status, body)
 	}
-	// A row of an unknown configuration, and a broken template.
-	for _, id := range []string{"unknown", "broken"} {
-		if id == "broken" {
+	// A request for a type no configuration has, and a broken template.
+	for _, id := range []string{"Unknown", "Broken"} {
+		if id == "Broken" {
 			bad := map[string]any{"credentialConfigKeyId": "broken", "credentialFormat": "ldp_vc", "vcTemplate": "%%", "metaDataDisplay": []any{},
 				"credentialTypes": []string{"VerifiableCredential", "Broken"}}
 			raw2, merr := json.Marshal(bad)
@@ -115,7 +117,8 @@ func TestFakeIssuesFromTheClaimsStore(t *testing.T) {
 			t.Fatal(errErr)
 		}
 		postJSON(t, f, "/v1/certify/pre-authorized-data", `{"claims":{"id":"`+id+`"}}`)
-		if status, _ := postJSON(t, f, "/v1/certify/issuance/credential", `{"format":"ldp_vc"}`); status != http.StatusBadRequest {
+		request := `{"format":"ldp_vc","credential_definition":{"type":["VerifiableCredential","` + id + `"]}}`
+		if status, _ := postJSON(t, f, "/v1/certify/issuance/credential", request); status != http.StatusBadRequest {
 			t.Errorf("%s = %d", id, status)
 		}
 	}
@@ -131,7 +134,130 @@ func TestFakeIssuesFromTheClaimsStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	postJSON(t, f, "/v1/certify/pre-authorized-data", `{"claims":{"id":"text"}}`)
-	if status, _ := postJSON(t, f, "/v1/certify/issuance/credential", `{"format":"ldp_vc"}`); status != http.StatusInternalServerError {
+	text := `{"format":"ldp_vc","credential_definition":{"type":["Text","VerifiableCredential"]}}`
+	if status, _ := postJSON(t, f, "/v1/certify/issuance/credential", text); status != http.StatusInternalServerError {
 		t.Errorf("text template = %d", status)
+	}
+}
+
+// register stores one ldp_vc configuration with a template in the fake.
+func register(t *testing.T, f *fake.Server, id, typ, template string) {
+	t.Helper()
+	entry := map[string]any{
+		"credentialConfigKeyId": id, "credentialFormat": "ldp_vc", "scope": "vca_credential",
+		"credentialTypes": []string{"VerifiableCredential", typ}, "metaDataDisplay": []any{},
+		"vcTemplate": base64.StdEncoding.EncodeToString([]byte(template)),
+	}
+	raw, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status, body := postJSON(t, f, "/v1/certify/credential-configurations", string(raw)); status != http.StatusCreated {
+		t.Fatalf("create %s = %d %s", id, status, body)
+	}
+}
+
+// TestFakePicksTheTemplateFromTheRequest: Certify 0.14.0 picks the
+// configuration from the scope of the token and the body of the request,
+// never from the row. The fake does the same, so a test sees what a row
+// of one configuration gives under the template of another. The guard
+// of the template then decides: it renders only for the row of its own
+// configuration.
+func TestFakePicksTheTemplateFromTheRequest(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	dir := t.TempDir()
+	f.SetClaimsDir(dir)
+	plain := "{\n  \"type\": [\"VerifiableCredential\", \"%s\"],\n  \"credentialSubject\": {\"value\": \"${c1}\"}\n}\n"
+	register(t, f, "farmer", "FarmerRegistration", strings.Replace(plain, "%s", "FarmerRegistration", 1))
+	register(t, f, "licence", "MedicalLicence", strings.Replace(plain, "%s", "MedicalLicence", 1))
+	guarded := "#if($config_id == 'guarded')\n" + strings.Replace(plain, "%s", "GuardedLicence", 1) + "#end\n"
+	register(t, f, "guarded", "GuardedLicence", guarded)
+	w := claims.Writer{Dir: dir}
+	if err := w.Put(claims.Row{Subject: claims.Key("s-1"), ConfigID: "farmer", ExpiresAt: time.Now().Add(time.Hour),
+		Claims: []string{"plot 17"}}); err != nil {
+		t.Fatal(err)
+	}
+	postJSON(t, f, "/v1/certify/pre-authorized-data", `{"credential_configuration_id":"farmer","claims":{"id":"s-1"}}`)
+	ask := func(typ string) (int, string) {
+		return postJSON(t, f, "/v1/certify/issuance/credential",
+			`{"format":"ldp_vc","credential_definition":{"type":["VerifiableCredential","`+typ+`"]}}`)
+	}
+	// An unguarded template of another configuration renders the row.
+	if status, body := ask("MedicalLicence"); status != http.StatusOK || !strings.Contains(body, "MedicalLicence") ||
+		!strings.Contains(body, "plot 17") {
+		t.Errorf("unguarded = %d %s", status, body)
+	}
+	// A guarded template of another configuration renders nothing.
+	if status, body := ask("GuardedLicence"); status == http.StatusOK || strings.Contains(body, "plot 17") {
+		t.Errorf("guarded = %d %s", status, body)
+	}
+	// A guarded template renders the row of its own configuration.
+	if err := w.Put(claims.Row{Subject: claims.Key("s-1"), ConfigID: "guarded", ExpiresAt: time.Now().Add(time.Hour),
+		Claims: []string{"licence 9"}}); err != nil {
+		t.Fatal(err)
+	}
+	if status, body := ask("GuardedLicence"); status != http.StatusOK || !strings.Contains(body, "licence 9") {
+		t.Errorf("own row = %d %s", status, body)
+	}
+	// A request that names no type finds no configuration.
+	if status, _ := postJSON(t, f, "/v1/certify/issuance/credential", `{"format":"ldp_vc"}`); status != http.StatusBadRequest {
+		t.Errorf("no type = %d", status)
+	}
+	// A bearer token names the row by its sub. A token that does not
+	// read leaves the staged subject.
+	if err := w.Put(claims.Row{Subject: "token-row", ConfigID: "guarded", ExpiresAt: time.Now().Add(time.Hour),
+		Claims: []string{"licence 10"}}); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"format":"ldp_vc","credential_definition":{"type":["VerifiableCredential","GuardedLicence"]}}`
+	for token, want := range map[string]string{
+		"Bearer e30." + base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"token-row"}`)) + ".s": "licence 10",
+		"Bearer e30." + base64.RawURLEncoding.EncodeToString([]byte(`{}`)) + ".s":                  "licence 9",
+		"Bearer e30.%%%.s": "licence 9",
+		"Bearer x":         "licence 9",
+		"Basic x":          "licence 9",
+	} {
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, f.URL()+"/v1/certify/issuance/credential",
+			strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", token)
+		resp, err := f.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := io.ReadAll(resp.Body)
+		if cerr := resp.Body.Close(); err != nil || cerr != nil {
+			t.Fatal(err, cerr)
+		}
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("%s: %s, want %s", token, raw, want)
+		}
+	}
+}
+
+// TestRenderFollowsTheVelocityBlocks: the renderer keeps the block of a
+// true condition, drops the block of a false one, and nests.
+func TestRenderFollowsTheVelocityBlocks(t *testing.T) {
+	template := "#if($config_id == 'a')\nA\n#if($v_status_uri && $v_status_uri != \"\")\nS ${v_status_uri}\n#end\n" +
+		"#if($claim_169_values)\nQ\n#end\n#if($other)\nO\n#end\nZ ${c1}\n#end\n"
+	cases := []struct {
+		row  claims.Row
+		want string
+	}{
+		{claims.Row{ConfigID: "a", StatusURI: "u", Claims: []string{"1"}}, "A\nS u\nZ 1\n"},
+		{claims.Row{ConfigID: "a", Claims: []string{"1"}}, "A\nZ 1\n"},
+		{claims.Row{ConfigID: "b", StatusURI: "u", Claims: []string{"1"}}, ""},
+		{claims.Row{Claims: []string{"1"}}, ""},
+	}
+	for _, c := range cases {
+		if got := fake.Render(template, c.row); got != c.want {
+			t.Errorf("Render(%+v) = %q, want %q", c.row, got, c.want)
+		}
+	}
+	if got := fake.Render("#if($config_id == \"a\")\nX\n#end\n", claims.Row{ConfigID: "a"}); got != "X\n" {
+		t.Errorf("double quotes = %q", got)
 	}
 }

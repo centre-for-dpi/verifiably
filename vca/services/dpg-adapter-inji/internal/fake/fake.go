@@ -208,7 +208,7 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case path == "/v1/certify/oauth/token":
 		f.send(w, "token.json")
 	case path == "/v1/certify/issuance/credential":
-		if f.fromStore(w, body) {
+		if f.fromStore(w, r, body) {
 			return
 		}
 		f.send(w, f.identityAnswer(credentialAnswer(body, credential)))

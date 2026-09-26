@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/claims"
@@ -44,31 +45,90 @@ func (f *Server) stagedSubject() string {
 	return claims.Key(staged.Claims["id"])
 }
 
+// credentialRequest is the part of a credential request the fake reads.
+type credentialRequest struct {
+	Format     string `json:"format"`
+	Definition struct {
+		Type []string `json:"type"`
+	} `json:"credential_definition"`
+}
+
+// configurationFor returns the stored entry that a credential request
+// names, as VCIssuanceUtil.getScopeCredentialMapping of Certify 0.14.0
+// picks it: by the format and the types of the request, never by the
+// row. Every VCA entry has the same scope. The caller holds the lock.
+func (f *Server) configurationFor(req credentialRequest) (configEntry, bool) {
+	want := slices.Clone(req.Definition.Type)
+	slices.Sort(want)
+	for _, raw := range f.configs.stored {
+		var e configEntry
+		if json.Unmarshal(raw, &e) != nil || e.Format != req.Format {
+			continue
+		}
+		have := slices.Clone(e.Types)
+		slices.Sort(have)
+		if len(want) > 0 && slices.Equal(have, want) {
+			return e, true
+		}
+	}
+	return configEntry{}, false
+}
+
+// tokenSubject reads sub of a bearer JWT. The fake checks no
+// signature: it models the data provider, which reads sub of the token
+// that Certify checked.
+func tokenSubject(header string) (string, bool) {
+	token, ok := strings.CutPrefix(header, "Bearer ")
+	if !ok {
+		return "", false
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return "", false
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", false
+	}
+	var claims struct {
+		Sub string `json:"sub"`
+	}
+	if json.Unmarshal(raw, &claims) != nil || claims.Sub == "" {
+		return "", false
+	}
+	return claims.Sub, true
+}
+
 // fromStore answers a credential request from the claims store. It
 // reports false when the store is off, so the recorded answer applies.
-func (f *Server) fromStore(w http.ResponseWriter, body []byte) bool {
-	var req struct {
-		Format string `json:"format"`
-	}
+// Like Certify, it takes the template of the configuration the request
+// names and fills it with the row of the token subject, whatever
+// configuration the row was staged for.
+func (f *Server) fromStore(w http.ResponseWriter, r *http.Request, body []byte) bool {
+	var req credentialRequest
 	f.mu.Lock()
 	dir, subject := f.claimsDir, f.stagedSubject()
 	f.mu.Unlock()
+	if sub, ok := tokenSubject(r.Header.Get("Authorization")); ok {
+		subject = sub
+	}
 	if dir == "" || json.Unmarshal(body, &req) != nil || req.Format != "ldp_vc" {
 		return false
+	}
+	f.mu.Lock()
+	entry, known := f.configurationFor(req)
+	f.mu.Unlock()
+	if !known {
+		// Certify answers invalid_scope when no configuration of the
+		// scope of the token matches the request.
+		http.Error(w, `{"error":"invalid_scope"}`, http.StatusBadRequest)
+		return true
 	}
 	row, ok, err := claims.Writer{Dir: dir}.Find(subject)
 	if err != nil || !ok {
 		// The plugin answers ERROR_FETCHING_DATA_RECORD_FROM_TABLE when
 		// the query finds no row.
 		http.Error(w, `{"error":"ERROR_FETCHING_DATA_RECORD_FROM_TABLE"}`, http.StatusBadRequest)
-		return true
-	}
-	f.mu.Lock()
-	raw := f.configs.stored[row.ConfigID]
-	f.mu.Unlock()
-	var entry configEntry
-	if json.Unmarshal(raw, &entry) != nil {
-		http.Error(w, "unknown configuration", http.StatusBadRequest)
 		return true
 	}
 	text, err := base64.StdEncoding.DecodeString(entry.VcTemplateValue)
@@ -78,7 +138,9 @@ func (f *Server) fromStore(w http.ResponseWriter, body []byte) bool {
 	}
 	var credential map[string]any
 	if err := json.Unmarshal([]byte(render(string(text), row)), &credential); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// Certify answers JSON_PROCESSING_ERROR when the template does
+		// not render a JSON object.
+		http.Error(w, `{"error":"JSON_PROCESSING_ERROR"}`, http.StatusInternalServerError)
 		return true
 	}
 	f.sendJSON(w, map[string]any{"format": "ldp_vc", "credential": credential})
@@ -88,31 +150,92 @@ func (f *Server) fromStore(w http.ResponseWriter, body []byte) bool {
 // variable is one ${name} of a template.
 var variable = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
-// render fills a template from a row: every ${name}, and a #if block
-// that the status address guards. Other blocks go.
+// The conditions of a #if line that the fake understands: an equality
+// with a quoted text, a non empty test, and a bare reference.
+var (
+	equalsText = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_]*) == (?:'([^']*)'|"([^"]*)")$`)
+	nonEmpty   = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_]*) && \$([A-Za-z_][A-Za-z0-9_]*) != ""$`)
+	reference  = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_]*)$`)
+)
+
+// holds reports whether a #if condition holds for the values. Velocity
+// 1.7 compares a null reference as false, so a missing value never
+// equals a text.
+func holds(condition string, values map[string]string) bool {
+	if m := equalsText.FindStringSubmatch(condition); m != nil {
+		v, ok := values[m[1]]
+		return ok && v == m[2]+m[3]
+	}
+	if m := nonEmpty.FindStringSubmatch(condition); m != nil && m[1] == m[2] {
+		return values[m[1]] != ""
+	}
+	if m := reference.FindStringSubmatch(condition); m != nil {
+		return values[m[1]] != ""
+	}
+	return false
+}
+
+// Render fills a template from a row the way the Velocity engine of
+// Certify does for the templates VCA writes: every ${name}, and every
+// #if block on lines of their own, nested. A block whose condition
+// fails goes.
+func Render(template string, row claims.Row) string { return render(template, row) }
+
+// openIf splits a line that opens a #if block into the condition and
+// the text after the closing parenthesis, which belongs to the block.
+func openIf(line string) (condition, rest string, ok bool) {
+	body, found := strings.CutPrefix(line, "#if(")
+	if !found {
+		return "", "", false
+	}
+	depth := 1
+	for i, r := range body {
+		switch r {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return body[:i], body[i+1:], true
+			}
+		}
+	}
+	return "", "", false
+}
+
+// render fills a template from a row. The row gives the reserved
+// columns and the claim columns under their names, as the data provider
+// returns them.
 func render(template string, row claims.Row) string {
 	values := map[string]string{
 		"_issuer": FakeIssuer, "_holderId": FakeHolder,
 		claims.ValidFromColumn: row.ValidFrom, claims.ValidUntilColumn: row.ValidUntil,
 		claims.StatusURIColumn: row.StatusURI, claims.StatusIndexColumn: row.StatusIndex,
 	}
+	if row.ConfigID != "" {
+		values[claims.ConfigColumn] = row.ConfigID
+	}
 	for i, v := range row.Claims {
 		values[claims.ColumnName(i)] = v
 	}
 	var out []string
-	skip := false
+	var open []bool
+	shown := func() bool { return !slices.Contains(open, false) }
 	for _, line := range strings.Split(template, "\n") {
-		switch {
-		case strings.HasPrefix(line, "#if("):
-			skip = !strings.Contains(line, "$"+claims.StatusURIColumn) || row.StatusURI == ""
-			continue
-		case line == "#end":
-			skip = false
-			continue
-		case skip:
+		trimmed := strings.TrimSpace(line)
+		if condition, rest, ok := openIf(trimmed); ok {
+			open = append(open, holds(condition, values))
+			if rest == "" {
+				continue
+			}
+			line = rest
+		} else if trimmed == "#end" && len(open) > 0 {
+			open = open[:len(open)-1]
 			continue
 		}
-		out = append(out, line)
+		if shown() {
+			out = append(out, line)
+		}
 	}
 	return variable.ReplaceAllStringFunc(strings.Join(out, "\n"), func(m string) string {
 		return values[variable.FindStringSubmatch(m)[1]]

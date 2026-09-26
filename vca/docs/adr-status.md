@@ -554,7 +554,7 @@ A row that is not `Done` carries a note.
 |---|---|---|---|---|
 | ADR-051 | 1 Certify reads `certify.vca_claims` | Done | `deploy/vca/dpg/inji/certify/vca_claims.sql`, `deploy/vca/dpg/inji/certify/certify-vca-store.properties` | Both containers run `PostgresDataProviderPlugin` on the foreign table. `TestInjiStackRunsCertifyOnTheVcaStore` pins it. The nightly contract run confirms it against a running Certify. |
 | ADR-051 | 2 The adapter writes one file per subject | Done | `vca/services/dpg-adapter-inji/internal/claims` | The volume `inji-claims` sits in memory. The adapter renames each finished file and sweeps expired rows. |
-| ADR-051 | 3 One scope for every configuration | Done | `vca/services/dpg-adapter-inji/internal/inji/configs.go` | Every configuration has the scope `vca_credential`. |
+| ADR-051 | 3 One scope for every configuration | Done | `vca/services/dpg-adapter-inji/internal/inji/configs.go` | Every configuration has the scope `vca_credential`. ADR-056 decision 1 adds a guard on `config_id` to every template. |
 | ADR-051 | 4 Templates read the columns `c1` to `c64` | Done | `vca/services/dpg-adapter-inji/internal/inji/configs.go`, `vca/services/dpg-adapter-inji/internal/service/configs.go` | The adapter keeps the claim order with the registration. |
 | ADR-051 | 5 The subject key per flow | Done | `vca/services/dpg-adapter-inji/internal/service/issuer.go`, `vca/services/dpg-adapter-inji/internal/authz` | The pre-authorized code stages the staging id. A presentation during issuance names its holder. The holder authorization server puts the staging id in its token. |
 | ADR-051 | 6 The adapter serves the presentation definition | Done | `vca/services/dpg-adapter-inji/internal/service/iar.go` | `SetPresentationRequirement` stores it. The issuer settings card waits for a later unit. |
@@ -599,12 +599,24 @@ A row that is not `Done` carries a note.
 | ADR-055 | 4 The CREDEBL platform admin is a required setting | Not started | `vca/internal/cli/bootstrap.go` | Bootstrap signs in as a placeholder user today. |
 | ADR-055 | 5 The secret scan checks `key=value` files | Done | `vca/hack/secret-scan.sh`, `vca/hack/secret-scan_test.sh` | The rule covers `.properties`, `.conf`, `.ini` and `.env` files. `TestSecretScanScript` runs the cases. |
 
+## ADR-056: The claims store and the holder authorization server refuse what a claim did not stage
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-056 | 1 A guard on `config_id` in every template | Done | `vca/services/dpg-adapter-inji/internal/inji/configs.go` | `TestARowOfOneConfigurationIssuesNoOtherConfiguration` shows that a farmer row gives no medical licence through the fake Certify. Publish every schema again after the upgrade. |
+| ADR-056 | 2 Binding only on vouched claims | Not started | `vca/services/dpg-adapter-inji/internal/authz/bind.go` | |
+| ADR-056 | 3 The row lives as long as its token | Not started | `vca/services/dpg-adapter-inji/internal/authz`, `deploy/vca/dpg/inji/certify/certify-vca-store.properties` | |
+| ADR-056 | 4 Offer claims go at the token or at expiry | Not started | `vca/services/dpg-adapter-inji/internal/service/holderclaim.go` | |
+| ADR-056 | 5 Bounded parameters, a rate limit, no store walk | Not started | `vca/services/dpg-adapter-inji/internal/authz` | |
+| ADR-056 | 6 A key ring and a rotation command | Not started | `vca/services/dpg-adapter-inji/internal/authz/keys.go`, `vca/internal/cli` | |
+| ADR-056 | 7 Claim values without control characters | Not started | `vca/services/dpg-adapter-inji/internal/claims` | |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 229 |
-| Partial | 27 |
+| Done | 240 |
+| Partial | 29 |
 | Deferred | 3 |
-| Not started | 48 |
-| Total | 307 |
+| Not started | 42 |
+| Total | 314 |

@@ -399,6 +399,19 @@ Certify picks the configuration from the request body. A schema with
 more than 64 claims fails the registration. Every configuration
 declares the optional claim `id`.
 
+**The configuration guard.** A token with the scope `vca_credential`
+authorizes every configuration of the scope. The wallet names the type
+in its request. Certify fills the template of that type from the row
+of the token subject. So each template opens with
+`#if($config_id == '<id>')` and ends with `#end` (ADR-056 decision 1).
+For a row of another configuration, the template renders nothing.
+Certify then fails to read the credential as JSON and answers an
+error. This holds for every channel, because every channel reads the
+same table. The guard quotes the configuration id. So an id holds at
+most 128 letters, digits, and the signs `. _ : + ~ -`. A template from an
+earlier release has no guard. Publish every schema again after an
+upgrade.
+
 The key of a row follows the flow:
 
 | Flow | Key |
@@ -485,6 +498,7 @@ cannot open it, so the start fails. The key signs access tokens only.
 | Another person claims an offer | The binding rule compares a claim of the ID token with a claim of the credential. An unverified email never matches. |
 | A copy of the store gives codes or keys | The store keeps the SHA-256 of each code, state, and `jti`. The token key sits under AES-256-GCM with the pair session key. |
 | A token reaches another service | `aud` names the credential endpoint of one Certify. The token lives five minutes and carries the scope `vca_credential` only. |
+| A token for one credential asks for another type | The template of every configuration renders only a row of that configuration (ADR-056 decision 1). A farmer row gives no medical licence. |
 | A mix up of servers | The redirect carries `iss` (RFC 9207). |
 
 What stays open: the tokens are bearer tokens, so the server offers no

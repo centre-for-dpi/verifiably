@@ -49,6 +49,10 @@ var Columns = len(reserved) + MaxClaims
 // returns each column under its name, and the template of a
 // configuration reads them.
 const (
+	// ConfigColumn holds the credential configuration of the row. The
+	// template of every configuration renders only when it holds the id
+	// of that configuration (ADR-056 decision 1).
+	ConfigColumn = "config_id"
 	// ValidFromColumn holds the start of the validity window.
 	ValidFromColumn = "v_valid_from"
 	// ValidUntilColumn holds the end of the validity window.

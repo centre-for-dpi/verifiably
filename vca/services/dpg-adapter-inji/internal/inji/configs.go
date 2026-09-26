@@ -347,6 +347,10 @@ const StagingClaim = "id"
 // entry carries a Velocity template that places the claims and the
 // status entry of VCA, when the staging call passes one.
 func BuildConfiguration(in ConfigInput, p Profiles) (ConfigurationDTO, error) {
+	if !configID.MatchString(in.ID) {
+		return ConfigurationDTO{}, fmt.Errorf("inji: the configuration id %q does not fit the template guard; "+
+			"use at most 128 letters, digits, and the signs . _ : + ~ -", in.ID)
+	}
 	claims, err := schemaClaims(in.JSONSchema)
 	if err != nil {
 		return ConfigurationDTO{}, err
@@ -372,7 +376,7 @@ func BuildConfiguration(in ConfigInput, p Profiles) (ConfigurationDTO, error) {
 		if dto.QrSettings != nil {
 			dto.QrSignatureAlgo = p.Ldp.Algorithm
 		}
-		dto.VcTemplate = encodeTemplate(ldpTemplate(dto.ContextURLs, in, claims, dto.QrSettings))
+		dto.VcTemplate = encodeTemplate(guarded(in.ID, ldpTemplate(dto.ContextURLs, in, claims, dto.QrSettings)))
 	case "vc+sd-jwt":
 		dto.SdJwtVct = in.Type
 		dto.KeyManagerAppID, dto.KeyManagerRefID = p.SdJwt.AppID, p.SdJwt.RefID
@@ -383,7 +387,7 @@ func BuildConfiguration(in ConfigInput, p Profiles) (ConfigurationDTO, error) {
 		if dto.QrSettings != nil {
 			dto.QrSignatureAlgo = p.SdJwt.Algorithm
 		}
-		dto.VcTemplate = encodeTemplate(sdJwtTemplate(claims, dto.QrSettings))
+		dto.VcTemplate = encodeTemplate(guarded(in.ID, sdJwtTemplate(claims, dto.QrSettings)))
 	case "mso_mdoc":
 		ns := MdocNamespace(in.Type)
 		dto.DocType = in.Type
@@ -395,7 +399,7 @@ func BuildConfiguration(in ConfigInput, p Profiles) (ConfigurationDTO, error) {
 		if _, taken := dto.MsoMdocClaims[StagingClaim]; !taken {
 			dto.MsoMdocClaims[StagingClaim] = map[string]ClaimDisplay{}
 		}
-		dto.VcTemplate = encodeTemplate(mdocTemplate(in.Type, ns, claims))
+		dto.VcTemplate = encodeTemplate(guarded(in.ID, mdocTemplate(in.Type, ns, claims)))
 	default:
 		return ConfigurationDTO{}, fmt.Errorf("%w, not %q", ErrUnsupportedFormat, in.Format)
 	}
@@ -575,6 +579,23 @@ func placeholder(c claim) string {
 		return `"${` + c.column + `}"`
 	}
 	return "${" + c.column + "}"
+}
+
+// configID is a configuration id that the guard of a template can
+// quote. Velocity 1.7 reads a single quoted text as it is, but it turns
+// a doubled quote into one quote and reads a backslash escape, so the
+// id holds neither, nor a space or a control character.
+var configID = regexp.MustCompile(`^[A-Za-z0-9._:+~-]{1,128}$`)
+
+// guarded wraps a template in the guard of its configuration (ADR-056
+// decision 1). Certify 0.14.0 picks the template from the request and
+// fills it from the row of the token subject, whatever configuration
+// the row was staged for. The Postgres data provider returns the column
+// config_id of the row. Velocity renders the body only when that column
+// holds the id of this configuration. Otherwise the output is empty,
+// Certify fails to read it as JSON, and it answers an error.
+func guarded(id, template string) string {
+	return "#if($" + claimstore.ConfigColumn + " == '" + id + "')\n" + template + "#end\n"
 }
 
 // statusGuard opens the part of a template that only a status address
