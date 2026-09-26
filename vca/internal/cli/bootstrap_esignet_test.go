@@ -334,3 +334,129 @@ func readMode0600(t *testing.T, path string) []byte {
 	}
 	return data
 }
+
+// mockIdentityFake is the identity store of the fake mock identity
+// system 0.10.1.
+type mockIdentityFake struct {
+	mu      sync.Mutex
+	ids     map[string]map[string]any
+	creates int
+	status  int
+}
+
+// fakeMockIdentity answers POST /v1/mock-identity-system/identity. A
+// known individual id answers duplicate_individual_id with status 200,
+// as IdentityServiceImpl and its ResponseWrapper do.
+func fakeMockIdentity(t *testing.T, state *mockIdentityFake) *httptest.Server {
+	t.Helper()
+	state.ids = map[string]map[string]any{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		state.mu.Lock()
+		defer state.mu.Unlock()
+		if state.status != 0 {
+			w.WriteHeader(state.status)
+			return
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/mock-identity-system/identity" {
+			http.NotFound(w, r)
+			return
+		}
+		var body struct {
+			RequestTime string         `json:"requestTime"`
+			Request     map[string]any `json:"request"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RequestTime == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		state.creates++
+		id := anyval.As[string](body.Request["individualId"])
+		answer := map[string]any{"response": map[string]string{"status": "CREATED"}, "errors": []any{}}
+		if _, taken := state.ids[id]; taken {
+			answer = map[string]any{"response": nil, "errors": []any{map[string]string{"errorCode": "duplicate_individual_id"}}}
+		} else {
+			state.ids[id] = body.Request
+		}
+		if err := json.NewEncoder(w).Encode(answer); err != nil {
+			t.Error(err)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestBootstrapAddsTheSampleIdentities is P6-I7f. The CSV data provider
+// of inji-certify-esignet reads the farmer data of the release by the
+// individual id that the eSignet token carries. The bootstrap of an
+// Inji issuer or holder pair adds each farmer of that file to the mock
+// identity system, so a holder signs in at the eSignet login page with
+// an individual id of the file and claims in Inji Web. The PIN and the
+// password are random. A second run finds them present.
+func TestBootstrapAddsTheSampleIdentities(t *testing.T) {
+	kc := &keycloakState{}
+	keycloak := fakeKeycloak(t, kc)
+	defer keycloak.Close()
+	mock := &mockIdentityFake{}
+	srv := fakeMockIdentity(t, mock)
+	var out bytes.Buffer
+	opts := injiOptions(t, keycloak.URL, &out)
+	opts.Values[EnvBootstrapMockIdentityURL] = srv.URL
+	sample, err := os.ReadFile(filepath.Join(repoRoot(), "deploy", "vca", "dpg", "inji", "certify", "farmer_identity_data.csv")) // #nosec G304 -- a fixed test path
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(filepath.Dir(opts.Dir), "vca", "dpg", "inji", "certify", "farmer_identity_data.csv")
+	if merr := os.MkdirAll(filepath.Dir(target), 0o750); merr != nil {
+		t.Fatal(merr)
+	}
+	if werr := os.WriteFile(target, sample, 0o600); werr != nil {
+		t.Fatal(werr)
+	}
+	got, err := Bootstrap(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Bootstrap: %v", err)
+	}
+	if len(mock.ids) != 3 {
+		t.Fatalf("identities = %d, want the 3 farmers of the release", len(mock.ids))
+	}
+	jane := mock.ids["5860356276"]
+	names := anyval.As[[]any](jane["fullName"])
+	if len(names) != 1 {
+		t.Fatalf("fullName = %v", jane["fullName"])
+	}
+	name := mustMap(t, names[0])
+	if name["language"] != "eng" || name["value"] != "Jane Thompson" || jane["dateOfBirth"] != "1998/01/24" ||
+		jane["phone"] != "+917550166914" || jane["postalCode"] != "560068" {
+		t.Errorf("identity = %v", jane)
+	}
+	pin := anyval.As[string](jane["pin"])
+	if len(pin) != 6 || strings.Trim(pin, "0123456789") != "" || anyval.As[string](jane["password"]) == "" {
+		t.Errorf("pin %q, password %v", pin, jane["password"])
+	}
+	for _, field := range []string{"givenName", "familyName", "middleName", "nickName", "preferredUsername", "gender",
+		"streetAddress", "locality", "region", "country", "preferredLang", "encodedPhoto", "email", "zoneInfo", "locale"} {
+		if jane[field] == nil || jane[field] == "" {
+			t.Errorf("the schema of the mock identity system needs %s", field)
+		}
+	}
+	if !strings.Contains(strings.Join(got.Steps, "\n"), "3 added, 0 present") {
+		t.Errorf("steps = %v", got.Steps)
+	}
+	again, err := Bootstrap(context.Background(), opts)
+	if err != nil || len(mock.ids) != 3 || !strings.Contains(strings.Join(again.Steps, "\n"), "0 added, 3 present") {
+		t.Fatalf("a second run = %v, %v", again.Steps, err)
+	}
+	mock.status = http.StatusInternalServerError
+	if _, err := Bootstrap(context.Background(), opts); err == nil || !strings.Contains(err.Error(), EnvBootstrapMockIdentityURL) {
+		t.Fatalf("a failing mock identity system = %v", err)
+	}
+	// A deploy root without the stack file skips the step.
+	if err := os.Remove(target); err != nil {
+		t.Fatal(err)
+	}
+	mock.status = 0
+	creates := mock.creates
+	if _, err := Bootstrap(context.Background(), opts); err != nil || mock.creates != creates {
+		t.Fatalf("a root without the sample data = %v, %d calls", err, mock.creates-creates)
+	}
+}

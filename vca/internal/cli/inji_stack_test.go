@@ -239,7 +239,9 @@ func TestInjiStackRunsMimotoWithWhatItNeeds(t *testing.T) {
 		"client_id":              EsignetClientID,
 		"client_alias":           EsignetClientID,
 		"proxy_token_endpoint":   "http://inji-esignet:8088/v1/esignet/oauth/v2/token",
-		"authorization_audience": "http://inji-esignet:8088/v1/esignet/oauth/v2/token",
+		// eSignet checks the audience of the client assertion against
+		// its public token endpoint, on the login page (P6-I7f).
+		"authorization_audience": "http://localhost:17089/v1/esignet/oauth/v2/token",
 		"redirect_uri":           DefaultInjiWebURL + "/redirect",
 		"protocol":               "OpenId4VCI",
 		"enabled":                "true",
@@ -440,7 +442,7 @@ func TestInjiStackRunsCertifyAsTheReleaseDoes(t *testing.T) {
 		"inji-certify-esignet": {
 			profile: "default,csvdp-farmer", profileFile: "certify-csvdp-farmer.properties",
 			plugin:    "MockCSVDataProviderPlugin",
-			issuerURI: "${INJI_ESIGNET_PUBLIC_URL:http://localhost:17082}/v1/esignet",
+			issuerURI: "${INJI_ESIGNET_PUBLIC_URL:http://localhost:17089}/v1/esignet",
 			jwks:      "http://inji-esignet:8088/v1/esignet/oauth/.well-known/jwks.json",
 			audiences: []string{EsignetClientID, "${mosip.certify.domain.url}${server.servlet.path}/issuance/credential"},
 		},
@@ -535,6 +537,104 @@ func TestInjiStackRunsCertifyAsTheReleaseDoes(t *testing.T) {
 		props := readProperties(t, filepath.Join(repoRoot(), "deploy", "vca", filepath.FromSlash(source)))
 		if props["mosip.certify.domain.url"] != domain {
 			t.Errorf("%s domain = %q, want %q", name, props["mosip.certify.domain.url"], domain)
+		}
+	}
+}
+
+// TestInjiStackRunsEsignetWithItsLoginPage is P6-I7f. eSignet 1.5.1 runs
+// as the compose file of its release runs it: a Postgres that the init
+// script of the release prepares for eSignet and for the mock identity
+// system, a Redis, the mock plugin, and the local profile. Its login
+// page, oidc-ui 1.5.1, serves the authorize page of a browser and sends
+// /v1/esignet to eSignet. The mock identity names the identity by its
+// individual id, so the CSV data provider of Certify finds it. A
+// credential scope of the farmer sample maps onto the credential
+// endpoint of the Certify that takes eSignet tokens.
+func TestInjiStackRunsEsignetWithItsLoginPage(t *testing.T) {
+	stack := readCertifyServices(t)
+	both := func(name string) certifyService {
+		t.Helper()
+		svc, ok := stack[name]
+		if !ok {
+			t.Fatalf("the Inji stack has no %s service", name)
+		}
+		if strings.Join(svc.Profiles, ",") != "issuer-inji,holder-inji" {
+			t.Errorf("%s profiles = %v, want issuer-inji,holder-inji", name, svc.Profiles)
+		}
+		return svc
+	}
+	db := both("inji-esignet-postgres")
+	if db.Image != "postgres:15.8" {
+		t.Errorf("the eSignet database image = %q; its init script names the locale en_US.UTF-8", db.Image)
+	}
+	sql := mountedFile(t, mountSource(db.Volumes, "/docker-entrypoint-initdb.d/init.sql"))
+	for _, want := range []string{"CREATE DATABASE mosip_esignet", "CREATE DATABASE mosip_mockidentitysystem", "CREATE TABLE mockidentitysystem.mock_identity("} {
+		if !strings.Contains(sql, want) {
+			t.Errorf("the eSignet init script lacks %q", want)
+		}
+	}
+	if redis := both("inji-esignet-redis"); redis.Image != "redis:7.4.1-alpine" {
+		t.Errorf("the eSignet Redis image = %q", redis.Image)
+	}
+
+	certify := readProperties(t, filepath.Join(repoRoot(), "deploy", "vca", "dpg", "inji", "certify", "certify-csvdp-farmer.properties"))
+	credentialEndpoint := strings.NewReplacer("${mosip.certify.domain.url}", certify["mosip.certify.domain.url"],
+		"${server.servlet.path}", "/v1/certify").Replace("${mosip.certify.domain.url}${server.servlet.path}/issuance/credential")
+	esignet := both("inji-esignet")
+	for key, want := range map[string]string{
+		"active_profile_env":            "default,local",
+		"plugin_name_env":               "esignet-mock-plugin.jar",
+		"SPRING_DATASOURCE_URL":         "jdbc:postgresql://inji-esignet-postgres:5432/mosip_esignet?currentSchema=esignet",
+		"MOSIP_ESIGNET_MOCK_DOMAIN_URL": "http://inji-mock-identity:8082",
+		"SPRING_REDIS_HOST":             "inji-esignet-redis",
+		"MOSIP_ESIGNET_DOMAIN_URL":      "${INJI_ESIGNET_PUBLIC_URL:-http://localhost:17089}",
+		// The key set of the pair host belongs to its auth service, so
+		// eSignet names the path of its own service.
+		"MOSIP_ESIGNET_JWKS_URI":                          "${INJI_ESIGNET_PUBLIC_URL:-http://localhost:17089}/v1/esignet/oauth/.well-known/jwks.json",
+		"MOSIP_ESIGNET_SUPPORTED_CREDENTIAL_SCOPES":       "{'mock_identity_vc_ldp'}",
+		"MOSIP_ESIGNET_CREDENTIAL_SCOPE_RESOURCE_MAPPING": "{'mock_identity_vc_ldp': '" + credentialEndpoint + "'}",
+	} {
+		if esignet.Environment[key] != want {
+			t.Errorf("inji-esignet %s = %q, want %q", key, esignet.Environment[key], want)
+		}
+	}
+	if !strings.Contains(certify["mosip.certify.authn.issuer-uri"], "${INJI_ESIGNET_PUBLIC_URL:http://localhost:17089}/v1/esignet") {
+		t.Errorf("Certify expects the issuer %q, not the one of the login page", certify["mosip.certify.authn.issuer-uri"])
+	}
+	for _, dep := range []string{"inji-esignet-postgres", "inji-esignet-redis", "inji-mock-identity"} {
+		if _, ok := esignet.DependsOn[dep]; !ok {
+			t.Errorf("inji-esignet does not wait for %s", dep)
+		}
+	}
+	mock := both("inji-mock-identity")
+	for key, want := range map[string]string{
+		"active_profile_env":            "default,local",
+		"SPRING_DATASOURCE_URL":         "jdbc:postgresql://inji-esignet-postgres:5432/mosip_mockidentitysystem?currentSchema=mockidentitysystem",
+		"MOSIP_MOCK_IDA_KYC_PSUT_FIELD": "individualId",
+	} {
+		if mock.Environment[key] != want {
+			t.Errorf("inji-mock-identity %s = %q, want %q", key, mock.Environment[key], want)
+		}
+	}
+
+	ui := both("inji-esignet-ui")
+	if ui.Image != "mosipid/oidc-ui:1.5.1" {
+		t.Errorf("the login page image = %q", ui.Image)
+	}
+	if len(ui.Ports) != 1 || !strings.HasSuffix(ui.Ports[0], ":3000") || !strings.Contains(ui.Ports[0], "INJI_ESIGNET_UI_HOST_PORT:-17089") {
+		t.Errorf("inji-esignet-ui ports = %v; oidc-ui listens on 3000", ui.Ports)
+	}
+	if ui.Environment["OIDC_UI_PUBLIC_URL"] != "esignet-ui" {
+		t.Errorf("the assets of the login page share /static with VCA: OIDC_UI_PUBLIC_URL = %q", ui.Environment["OIDC_UI_PUBLIC_URL"])
+	}
+	conf := mountedFile(t, mountSource(ui.Volumes, "/etc/nginx/nginx.conf"))
+	for _, want := range []string{
+		"listen 3000;", "set $esignet http://inji-esignet:8088;", "location /v1/esignet {",
+		"location /esignet-ui/ {", "alias /usr/share/nginx/esignet-ui/theme/;", "alias /usr/share/nginx/esignet-ui/locales/;",
+		"try_files $uri /esignet-ui/index.html;",
+	} {
+		if !strings.Contains(conf, want) {
+			t.Errorf("the nginx file of the login page lacks %q", want)
 		}
 	}
 }

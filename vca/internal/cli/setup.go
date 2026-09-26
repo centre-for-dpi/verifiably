@@ -157,6 +157,11 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	for name, value := range LinkValuesWith(req.Pair, linkValues, req.Peers) {
 		extra[name] = value
 	}
+	// The browser addresses of the Inji stack follow the deployment. A
+	// flag or an env file value of the operator still wins below.
+	for name, value := range InjiPublicValues(req.Pair, values, req.Domain, req.Peers) {
+		extra[name] = value
+	}
 	for name, value := range Passthrough(settings, req.Flags, req.File) {
 		extra[name] = value
 	}

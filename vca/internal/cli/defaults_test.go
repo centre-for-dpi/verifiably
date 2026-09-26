@@ -319,21 +319,28 @@ func TestBuildPlanDerivesTheOidcPublicURLFromThePublicURL(t *testing.T) {
 func TestDpgHostPortsOfTheInjiHolderNameInjiWeb(t *testing.T) {
 	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI}
 	ports := DpgHostPorts(holder)
-	if len(ports) != 2 {
+	// The eSignet login page sits between the Keycloak and Inji Web
+	// (P6-I7f).
+	if len(ports) != 3 {
 		t.Fatalf("got %+v", ports)
 	}
 	if ports[0].Container != "inji-keycloak" || ports[0].Port != 8080 {
 		t.Errorf("port 0 = %+v", ports[0])
 	}
-	web := ports[1]
+	if ports[1].Container != EsignetUIContainer || ports[1].Host != 17089 || ports[1].Port != 3000 {
+		t.Errorf("port 1 = %+v", ports[1])
+	}
+	web := ports[2]
 	if web.Container != "inji-web" || web.Host != 17085 || web.Port != 3004 || web.Env != "INJI_WEB_HOST_PORT" {
-		t.Errorf("port 1 = %+v", web)
+		t.Errorf("port 2 = %+v", web)
 	}
 	if DefaultInjiWebURL != "http://localhost:17085" {
 		t.Errorf("DefaultInjiWebURL = %q", DefaultInjiWebURL)
 	}
 	issuer := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_INJI}
-	if len(DpgHostPorts(issuer)) != 1 {
-		t.Error("the Inji issuer pair names the Inji Web port")
+	for _, d := range DpgHostPorts(issuer) {
+		if d.Container == "inji-web" {
+			t.Error("the Inji issuer pair names the Inji Web port")
+		}
 	}
 }

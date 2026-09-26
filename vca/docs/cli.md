@@ -368,7 +368,7 @@ A terminal run with no DPG name and no `--role` asks for both.
 | DPG | What the command does |
 |---|---|
 | `waltid` | Asks the walt.id adapter of the issuer pair for its identity. The adapter provisions a `did:web` of the host and a key, and keeps the key. |
-| `inji` | Creates or updates the realm of the role in Keycloak. An issuer or a holder pair then registers the VCA client in eSignet. |
+| `inji` | Creates or updates the realm of the role in Keycloak. An issuer or a holder pair then registers the VCA client in eSignet. It also adds the sample identities to the mock identity system. |
 | `credebl` | Signs in and creates the organisation of the deployment. |
 
 Each run checks first, so a second run changes nothing.
@@ -411,7 +411,17 @@ The run reaches eSignet at `http://127.0.0.1` and
 `INJI_ESIGNET_HOST_PORT`, or 17082. An eSignet whose client API needs a
 token answers 401. The run then names `VCA_BOOTSTRAP_ESIGNET_TOKEN`.
 
-Seven more variables steer the run:
+Next, the `inji` run of an issuer or a holder pair reads the farmers of
+`deploy/vca/dpg/inji/certify/farmer_identity_data.csv`.
+It adds each one to the mock identity system of the stack. That file is the sample data of the CSV
+data provider of `inji-certify-esignet`. A holder signs in at the eSignet
+login page with an individual id of the file. The mock identity system
+takes the one time code `111111`. The PIN and the password of each
+identity are random, and the run keeps neither. A farmer that the
+system holds counts as present. The run reaches the system at
+`http://127.0.0.1` and `INJI_MOCK_IDENTITY_HOST_PORT`, or 17083.
+
+Eight more variables steer the run:
 
 | Variable | What it holds |
 |---|---|
@@ -422,8 +432,9 @@ Seven more variables steer the run:
 | `VCA_BOOTSTRAP_ADAPTER_URL` | The walt.id adapter address for this run. It beats the host port of the adapter. |
 | `VCA_BOOTSTRAP_ESIGNET_URL` | The eSignet address for this run, without `/v1/esignet`. |
 | `VCA_BOOTSTRAP_ESIGNET_TOKEN` | A bearer token with the scope `add_oidc_client`, when the eSignet client API needs one. |
+| `VCA_BOOTSTRAP_MOCK_IDENTITY_URL` | The mock identity system address for this run. |
 
-No service reads these seven variables, so they are not in the `Config`
+No service reads these eight variables, so they are not in the `Config`
 message.
 
 ## dpg realm

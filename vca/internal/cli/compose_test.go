@@ -214,6 +214,9 @@ func TestDpgStackFilesExistAndArePinned(t *testing.T) {
 			// Certify reads the presentation definition from this nginx
 			// (P6-I4b).
 			"nginx:1.27.2-alpine",
+			// The login page of eSignet and the mock identity system
+			// (P6-I7f).
+			"mosipid/oidc-ui:1.5.1", "mosipid/mock-identity-system:0.10.1",
 		},
 		"dpg/credebl.yaml": {"quay.io/keycloak/keycloak:25.0"},
 	}

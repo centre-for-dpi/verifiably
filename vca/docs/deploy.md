@@ -417,6 +417,7 @@ Each one checks its caller or serves public data only.
 | `/catalog`, `/catalog/*` | `verifier-discovery` | The read only catalogue that a wallet reads. |
 | `/oid4vp/*` | `verifier-ingest` | The OID4VP request object and the direct post endpoint. The transaction id and the `state` guard the post. |
 | `/offers/*` | `dpg-adapter-inji` | A hosted credential offer. A random id names it, and it expires. |
+| `/authorize`, `/login`, `/consent`, `/claim-details`, `/something-went-wrong`, `/page-not-found`, `/esignet-ui/*`, `/theme/*`, `/locales/*`, `/images/*`, `/v1/esignet/*`, `/.well-known/openid-configuration`, `/.well-known/oauth-authorization-server` | `inji-esignet-ui` of the `issuer-inji` pair | The eSignet login page is a browser page, not an RPC. A holder signs in there for a claim in Inji Web or an authorization code offer. eSignet checks the client, the PKCE code, and the transaction at each step. The rest is its metadata and the files of the page. |
 
 ### The CLI and the proxy
 
@@ -490,6 +491,55 @@ A verifier outside the host resolves the DID there.
 The database of an earlier release has another name.
 Remove the volume `inji-certify-db` once, so the init script of the
 release runs.
+
+### eSignet and its login page
+
+The `issuer-inji` and `holder-inji` profiles run eSignet 1.5.1 with the
+mock identity system 0.10.1, as the compose file of the eSignet release
+does.
+`deploy/vca/dpg/inji/esignet/` holds the init script of their database
+and the nginx file of the login page.
+Its `SOURCE.md` cites each upstream file.
+
+| Container | What it does | Host port |
+|---|---|---|
+| `inji-esignet` | The authorization server of Certify and a login provider | 17082, `INJI_ESIGNET_HOST_PORT` |
+| `inji-esignet-ui` | The login page, oidc-ui 1.5.1 | 17089, `INJI_ESIGNET_UI_HOST_PORT` |
+| `inji-mock-identity` | The identities that eSignet signs in | 17083, `INJI_MOCK_IDENTITY_HOST_PORT` |
+| `inji-esignet-postgres` | The database of eSignet and of the mock identity system | none |
+| `inji-esignet-redis` | The cache of eSignet | none |
+
+A browser opens the login page at `INJI_ESIGNET_PUBLIC_URL`.
+eSignet puts that address in its tokens, and Certify checks it.
+`vca setup` writes it into the `.env` of the Inji issuer and holder
+pairs:
+
+| Deployment | `INJI_ESIGNET_PUBLIC_URL` |
+|---|---|
+| Local | `http://localhost:17089` |
+| Base domain | `https://issuer-inji.<domain>` |
+| Issuer pair on a host of its own | The public URL of the Inji issuer pair |
+| Holder pair with no issuer host | `http://<holder host>:17089` |
+
+The Caddyfile of the Inji issuer pair publishes the login page on its
+host, as it publishes the Keycloak site.
+The routes are in the route table of the getting started guide.
+The page keeps its files under `/esignet-ui`, so `/static` stays with
+VCA.
+eSignet names its key set under `/v1/esignet`, so the key set of the
+pair host stays with the auth service.
+The issuer pair also names the address in
+`VCA_INJI_AUTHORIZATION_SERVER`, the authorization server of an
+authorization code offer.
+
+`vca dpg bootstrap inji` adds the farmers of the Certify sample data to
+the mock identity system.
+Sign in with an individual id of that file and the one time code
+`111111` of the mock identity system.
+The mock identity system names each identity by its individual id.
+The CSV data provider of Certify then finds the row of the identity.
+`INJI_ESIGNET_DB_PASSWORD` sets the password of the database.
+Its default is `esignet`.
 
 ### The Inji holder stack
 
@@ -666,16 +716,16 @@ Your value always wins over the default.
 ## The resource floor
 
 One role with one DPG stays under 4 GB of memory (ADR-008 decision 7).
-The Inji issuer is the one exception (ADR-049).
+The Inji issuer and the Inji holder are the exceptions (ADR-049).
 The whole legacy stack needed 8 GB to 12 GB and about 25 ports.
 
 | Role and DPG | VCA services | VCA memory | DPG memory | Total memory | CPUs |
 |---|---|---|---|---|---|
 | `issuer-waltid` | 9 | 864 MiB | 2048 MiB | 2912 MiB | 3.25 |
-| `issuer-inji` | 9 | 864 MiB | 4000 MiB | 4864 MiB | 3.25 |
+| `issuer-inji` | 9 | 864 MiB | 4256 MiB | 5120 MiB | 3.25 |
 | `issuer-credebl` | 9 | 864 MiB | 2560 MiB | 3424 MiB | 3.25 |
 | `holder-waltid` | 3 | 288 MiB | 2048 MiB | 2336 MiB | 1.75 |
-| `holder-inji` | 3 | 288 MiB | 3584 MiB | 3872 MiB | 1.75 |
+| `holder-inji` | 3 | 288 MiB | 3840 MiB | 4128 MiB | 1.75 |
 | `holder-credebl` | 3 | 288 MiB | 2560 MiB | 2848 MiB | 1.75 |
 | `verifier-waltid` | 7 | 672 MiB | 2048 MiB | 2720 MiB | 2.75 |
 | `verifier-inji` | 7 | 672 MiB | 2560 MiB | 3232 MiB | 2.75 |
@@ -688,9 +738,9 @@ One stack is the four roles of one DPG together:
 
 | Selection | `waltid` | `inji` | `credebl` |
 |---|---|---|---|
-| `--all --dpg <dpg>` | 4064 MiB | 7040 MiB | 4576 MiB |
+| `--all --dpg <dpg>` | 4064 MiB | 7552 MiB | 4576 MiB |
 
-`--all` alone starts every role of every DPG and needs 15680 MiB.
+`--all` alone starts every role of every DPG and needs 16192 MiB.
 The four roles of one DPG share one DPG stack and one Keycloak, so a
 stack counts once.
 
@@ -700,14 +750,15 @@ The holder role runs the wallet portal, the wallet auth service, and one
 DPG adapter.
 Each service is one static Go binary in a distroless image.
 The DPG figure is the floor of the stack in `deploy/vca/dpg/`.
-The Inji holder role adds 1024 MiB to the Inji stack.
+The Inji holder role adds 1280 MiB to the Inji stack.
 It runs Mimoto with its Postgres and its Redis, and Inji Web.
-The Inji issuer role adds 1440 MiB.
+The Inji issuer role adds 1696 MiB.
 It runs Inji Verify with its Postgres, and the nginx of the presentation definition.
 Certify checks a presentation during issuance with them.
 It also runs the second Certify, which takes the tokens of eSignet.
 Certify 0.14.0 takes the tokens of one authorization server only, so the stack runs it twice (ADR-049).
-So the `issuer-inji` pair needs more than the 4 GB target of ADR-008 decision 7.
+Both Inji roles run the Postgres, the Redis, and the login page of eSignet.
+So the `issuer-inji` and `holder-inji` pairs need more than the 4 GB target of ADR-008 decision 7.
 `vca doctor` marks it in the floor report.
 An added figure counts for each role that brings it.
 The admin role talks to no DPG.

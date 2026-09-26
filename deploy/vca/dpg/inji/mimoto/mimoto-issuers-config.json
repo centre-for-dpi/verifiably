@@ -20,7 +20,7 @@
       "client_alias": "vca-inji",
       "wellknown_endpoint": "http://inji-certify-nginx:8091/.well-known/openid-credential-issuer",
       "redirect_uri": "http://localhost:17085/redirect",
-      "authorization_audience": "http://inji-esignet:8088/v1/esignet/oauth/v2/token",
+      "authorization_audience": "http://localhost:17089/v1/esignet/oauth/v2/token",
       "token_endpoint": "http://localhost:17085/v1/mimoto/get-token/InjiCertify",
       "proxy_token_endpoint": "http://inji-esignet:8088/v1/esignet/oauth/v2/token",
       "qr_code_type": "EmbeddedVC",

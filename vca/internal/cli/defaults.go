@@ -152,6 +152,10 @@ func DpgHostPorts(p Pair) []DpgPort {
 		return nil
 	}
 	out := []DpgPort{{Container: name, Host: KeycloakHostPort(p.Dpg), Env: KeycloakHostPortEnv(p.Dpg), Port: 8080}}
+	if runsEsignet(p) {
+		// The browser opens the eSignet login page here (P6-I7f).
+		out = append(out, esignetUIPort)
+	}
 	if isInjiHolder(p) {
 		out = append(out, DpgPort{Container: "inji-web", Host: 17085, Env: "INJI_WEB_HOST_PORT", Port: 3004})
 	}

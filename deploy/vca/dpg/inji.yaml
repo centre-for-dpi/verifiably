@@ -101,7 +101,7 @@ services:
       INJI_CERTIFY_KEYSTORE_PASSWORD: ${INJI_CERTIFY_KEYSTORE_PASSWORD:-certify}
       INJI_CERTIFY_DID: ${INJI_CERTIFY_DID:-did:web:inji-certify-nginx}
       # The browser address of the stack eSignet. Its tokens carry it.
-      INJI_ESIGNET_PUBLIC_URL: ${INJI_ESIGNET_PUBLIC_URL:-http://localhost:17082}
+      INJI_ESIGNET_PUBLIC_URL: ${INJI_ESIGNET_PUBLIC_URL:-http://localhost:17089}
       # Presentation during issuance (P6-I4b). Certify asks Inji Verify
       # of this stack for the presentation it wants before it issues,
       # and reads the definition over HTTP. The names are the
@@ -169,13 +169,79 @@ services:
     networks:
       - vca
 
+  # eSignet 1.5.1 with the mock identity system 0.10.1 and its login
+  # page (P6-I7f). The layout follows docker-compose/docker-compose.yml
+  # of mosip/esignet v1.5.1, and dpg/inji/esignet/SOURCE.md names every
+  # file. eSignet signs the holder in for a claim in Inji Web and for an
+  # authorization code offer, and it is a login provider of the issuer
+  # and holder portals.
+  inji-esignet-postgres:
+    # The init script names the locale en_US.UTF-8, so the image is the
+    # Debian one. It prepares eSignet and the mock identity system.
+    image: postgres:15.8
+    profiles: [issuer-inji, holder-inji]
+    container_name: inji-esignet-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${INJI_ESIGNET_DB_PASSWORD:-esignet}
+    volumes:
+      - inji-esignet-db:/var/lib/postgresql/data
+      - ./dpg/inji/esignet/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - vca
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mosip_mockidentitysystem"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  inji-esignet-redis:
+    image: redis:7.4.1-alpine
+    profiles: [issuer-inji, holder-inji]
+    container_name: inji-esignet-redis
+    restart: unless-stopped
+    networks:
+      - vca
+
   inji-esignet:
     image: mosipid/esignet-with-plugins:1.5.1
     profiles: [issuer-inji, holder-inji]
     container_name: inji-esignet
     restart: unless-stopped
+    user: root
+    depends_on:
+      inji-esignet-postgres:
+        condition: service_healthy
+      inji-esignet-redis:
+        condition: service_started
+      inji-mock-identity:
+        condition: service_started
     environment:
-      MOSIP_ESIGNET_HOST: ${INJI_ESIGNET_HOST:-inji-esignet}
+      container_user: mosip
+      # The local profile of the release clears the scope rule of the
+      # client API, so vca dpg bootstrap registers the VCA client.
+      active_profile_env: default,local
+      plugin_name_env: esignet-mock-plugin.jar
+      SPRING_DATASOURCE_URL: jdbc:postgresql://inji-esignet-postgres:5432/mosip_esignet?currentSchema=esignet
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${INJI_ESIGNET_DB_PASSWORD:-esignet}
+      MOSIP_ESIGNET_MOCK_DOMAIN_URL: http://inji-mock-identity:8082
+      MOSIP_ESIGNET_INTEGRATION_KEY_BINDER: MockKeyBindingWrapperService
+      SPRING_CACHE_TYPE: redis
+      SPRING_REDIS_HOST: inji-esignet-redis
+      SPRING_REDIS_PASSWORD: ""
+      # The browser opens the login page at this address, and the tokens
+      # carry it. vca setup sets it from the public address of the
+      # deployment.
+      MOSIP_ESIGNET_DOMAIN_URL: ${INJI_ESIGNET_PUBLIC_URL:-http://localhost:17089}
+      # The key set of a pair host belongs to its auth service, so eSignet
+      # names the path of its own service.
+      MOSIP_ESIGNET_JWKS_URI: ${INJI_ESIGNET_PUBLIC_URL:-http://localhost:17089}/v1/esignet/oauth/.well-known/jwks.json
+      # The credential scope of the farmer sample. Its token names the
+      # credential endpoint of inji-certify-esignet as the audience.
+      MOSIP_ESIGNET_SUPPORTED_CREDENTIAL_SCOPES: "{'mock_identity_vc_ldp'}"
+      MOSIP_ESIGNET_CREDENTIAL_SCOPE_RESOURCE_MAPPING: "{'mock_identity_vc_ldp': 'http://inji-certify-nginx:8091/v1/certify/issuance/credential'}"
     ports:
       - "${VCA_BIND:-0.0.0.0}:${INJI_ESIGNET_HOST_PORT:-17082}:8088"
     networks:
@@ -186,8 +252,51 @@ services:
     profiles: [issuer-inji, holder-inji]
     container_name: inji-mock-identity
     restart: unless-stopped
+    user: root
+    depends_on:
+      inji-esignet-postgres:
+        condition: service_healthy
+    environment:
+      container_user: mosip
+      active_profile_env: default,local
+      SPRING_DATASOURCE_URL: jdbc:postgresql://inji-esignet-postgres:5432/mosip_mockidentitysystem?currentSchema=mockidentitysystem
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${INJI_ESIGNET_DB_PASSWORD:-esignet}
+      MOSIP_MOCK_IDA_KYC_TRANSACTION_TIMEOUT_SECS: "900"
+      # The token of eSignet names the identity by its individual id, so
+      # the CSV data provider of Certify finds the row of the identity.
+      MOSIP_MOCK_IDA_KYC_PSUT_FIELD: individualId
     ports:
       - "${VCA_BIND:-0.0.0.0}:${INJI_MOCK_IDENTITY_HOST_PORT:-17083}:8082"
+    networks:
+      - vca
+
+  # The login page of eSignet. A browser opens its authorize page; the
+  # issuer pair publishes it on its public host (ADR-047 decision 4).
+  inji-esignet-ui:
+    image: mosipid/oidc-ui:1.5.1
+    profiles: [issuer-inji, holder-inji]
+    container_name: inji-esignet-ui
+    restart: unless-stopped
+    user: root
+    depends_on:
+      inji-esignet:
+        condition: service_started
+    environment:
+      container_user: mosip
+      # The files of the page move under /esignet-ui, so they do not take
+      # /static of the VCA pages on the same host.
+      OIDC_UI_PUBLIC_URL: esignet-ui
+      DEFAULT_WELLKNOWN: "%5B%7B%22name%22%3A%22OpenID%20Configuration%22%2C%22value%22%3A%22%2F.well-known%2Fopenid-configuration%22%7D%2C%7B%22name%22%3A%22Jwks%20Json%22%2C%22value%22%3A%22%2F.well-known%2Fjwks.json%22%7D%2C%7B%22name%22%3A%22Authorization%20Server%22%2C%22value%22%3A%22%2F.well-known%2Foauth-authorization-server%22%7D%5D"
+    # The start script of the image moves the files once. A restart of
+    # the same container finds them moved and starts nginx only.
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - "if [ -d /usr/share/nginx/esignet-ui ]; then nginx; else ./configure_start.sh nginx; fi; sleep infinity"
+    volumes:
+      - ./dpg/inji/esignet/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "${VCA_BIND:-0.0.0.0}:${INJI_ESIGNET_UI_HOST_PORT:-17089}:3000"
     networks:
       - vca
 
@@ -371,6 +480,7 @@ services:
 volumes:
   inji-certify-db:
   inji-certify-keys:
+  inji-esignet-db:
   inji-verify-db:
   inji-mimoto-db:
   inji-mimoto-redis:

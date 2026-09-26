@@ -484,19 +484,28 @@ var dpgMemoryMiB = map[configv1.Dpg]int{
 // (32 MiB), because Certify checks a presentation during issuance. It
 // also runs the second Certify 0.14.0 that takes eSignet tokens
 // (768 MiB), because Certify takes the tokens of one authorization
-// server only (ADR-049).
+// server only (ADR-049). Both profiles run the Postgres (128 MiB), the
+// Redis (64 MiB), and the login page (64 MiB) of eSignet.
 var dpgRoleMemoryMiB = map[configv1.Dpg]map[commonv1.Role]int{
-	configv1.Dpg_DPG_INJI: {commonv1.Role_ROLE_HOLDER: 1024, commonv1.Role_ROLE_ISSUER: 1440},
+	configv1.Dpg_DPG_INJI: {
+		commonv1.Role_ROLE_HOLDER: 1024 + esignetMemoryMiB,
+		commonv1.Role_ROLE_ISSUER: 1440 + esignetMemoryMiB,
+	},
 }
+
+// esignetMemoryMiB is the memory of the Postgres, the Redis, and the
+// login page of eSignet in the Inji stack (P6-I7f).
+const esignetMemoryMiB = 128 + 64 + 64
 
 // FloorTargetMiB is the memory target of one role with one DPG
 // (ADR-008 decision 7).
 const FloorTargetMiB = 4096
 
 // floorAboveTarget lists the pairs whose floor rises above the target.
-// ADR-049 names them: the Inji issuer runs Certify twice.
+// ADR-049 names them: the Inji issuer runs Certify twice, and the Inji
+// holder runs Mimoto, Inji Web, and eSignet with their stores.
 var floorAboveTarget = map[configv1.Dpg]map[commonv1.Role]bool{
-	configv1.Dpg_DPG_INJI: {commonv1.Role_ROLE_ISSUER: true},
+	configv1.Dpg_DPG_INJI: {commonv1.Role_ROLE_ISSUER: true, commonv1.Role_ROLE_HOLDER: true},
 }
 
 // AboveFloorTarget reports a pair whose floor ADR-049 lets rise above

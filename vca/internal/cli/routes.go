@@ -60,6 +60,8 @@ import (
 //	          /status-token/status/*  (strip)      status-token
 //	          /status-token/.well-known/jwks.json  (strip)
 //	          /offers/*                            dpg-adapter-inji
+//	          /authorize  /login  /consent  /v1/esignet/* and the files
+//	          of the page                          inji-esignet-ui (Inji)
 //	holder    /                                    wallet-portal (redirect to /wallet/)
 //	          /wallet/*                            wallet-portal (the wallet)
 //	          /static/*                            wallet-portal
@@ -194,7 +196,8 @@ type ServiceRoute struct {
 }
 
 // PairRoutes lists every route of every service of a pair, in service
-// name order and then in catalogue order. The values map overrides a
+// name order and then in catalogue order, and then the browser paths of
+// the DPG stack that the pair publishes. The values map overrides a
 // host port, as HostPorts does.
 func PairRoutes(p Pair, values map[string]string) []ServiceRoute {
 	var out []ServiceRoute
@@ -203,7 +206,55 @@ func PairRoutes(p Pair, values map[string]string) []ServiceRoute {
 			out = append(out, ServiceRoute{Service: a.Service.Name, Route: r, Host: a.Host})
 		}
 	}
+	for _, set := range dpgRouteSets(p) {
+		host := portFrom(values, set.Port.Env, set.Port.Host)
+		for _, r := range set.Routes {
+			out = append(out, ServiceRoute{Service: set.Port.Container, Route: r, Host: host})
+		}
+	}
 	return out
+}
+
+// EsignetUIContainer is the login page of the eSignet of the Inji stack,
+// oidc-ui 1.5.1.
+const EsignetUIContainer = "inji-esignet-ui"
+
+// esignetUIPort is the host port of the login page in the stack file.
+var esignetUIPort = DpgPort{Container: EsignetUIContainer, Host: 17089, Env: "INJI_ESIGNET_UI_HOST_PORT", Port: 3000}
+
+// dpgRouteSet is a container of a DPG stack whose browser paths the
+// proxy of a pair publishes on the public host of the pair.
+type dpgRouteSet struct {
+	// Port is the container and its host port.
+	Port DpgPort
+	// Note is the note of its rows in the route table.
+	Note string
+	// Routes are the paths of the container.
+	Routes []Route
+}
+
+// esignetUIRoutes are the paths of the eSignet login page. Its router
+// draws the pages at the root, and the page reads its configuration and
+// the eSignet API there too. OIDC_UI_PUBLIC_URL puts its files under
+// /esignet-ui, so /static stays with the VCA pages. The key set of the
+// host stays with the auth service of the pair: eSignet names its own
+// path in its metadata.
+var esignetUIRoutes = []Route{
+	{Match: "/authorize"}, {Match: "/login"}, {Match: "/consent"}, {Match: "/claim-details"},
+	{Match: "/something-went-wrong"}, {Match: "/page-not-found"},
+	{Match: "/esignet-ui/*"}, {Match: "/theme/*"}, {Match: "/locales/*"}, {Match: "/images/*"},
+	{Match: "/v1/esignet/*"},
+	{Match: "/.well-known/openid-configuration"}, {Match: "/.well-known/oauth-authorization-server"},
+}
+
+// dpgRouteSets lists the DPG containers that the proxy of a pair
+// publishes. The Inji issuer pair publishes the eSignet login page, as
+// it owns the Keycloak site of the stack (ADR-047 decision 4, P6-I7f).
+func dpgRouteSets(p Pair) []dpgRouteSet {
+	if p.Dpg == configv1.Dpg_DPG_INJI && p.Role == commonv1.Role_ROLE_ISSUER {
+		return []dpgRouteSet{{Port: esignetUIPort, Note: "The eSignet login page.", Routes: esignetUIRoutes}}
+	}
+	return nil
 }
 
 // PageLink is one HTML page of a pair that an operator opens.
@@ -299,6 +350,14 @@ func routeRows(role commonv1.Role) []routeRow {
 			note = "Only the `" + strings.Join(served[match], "`, `") + "` adapter."
 		}
 		out = append(out, routeRow{match: match, service: "dpg-adapter-<dpg>", note: note})
+	}
+	for _, d := range Dpgs() {
+		for _, set := range dpgRouteSets(Pair{Role: role, Dpg: d}) {
+			note := "Only the `" + ShortName(d.String()) + "` stack. " + set.Note
+			for _, r := range set.Routes {
+				out = append(out, routeRow{match: r.Match, service: set.Port.Container, note: note})
+			}
+		}
 	}
 	return out
 }

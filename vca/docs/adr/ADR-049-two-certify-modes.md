@@ -11,5 +11,5 @@
   5. The floor of an Inji pair can rise above the 4 GB target for a container that a DPG feature needs. `vca doctor` names each such pair in its floor report.
 - Consequences:
   1. Every issuance path of Certify works on one deployment.
-  2. The Inji issuer pair needs more than 4 GB.
+  2. The Inji issuer and holder pairs need more than 4 GB.
   3. Certify makes every key type at its start. A key that an operator adds later reaches the second container at its next start.

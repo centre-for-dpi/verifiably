@@ -265,6 +265,19 @@ The `issuer` role. Its home page is `/issuer/` on `issuance`.
 | `/status-token/status/*` | `status-token` | The service sees the path without `/status-token`. |
 | `/status-token/.well-known/jwks.json` | `status-token` | The service sees the path without `/status-token`. |
 | `/offers/*` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
+| `/authorize` | `inji-esignet-ui` | Only the `inji` stack. The eSignet login page. |
+| `/login` | `inji-esignet-ui` | Only the `inji` stack. The eSignet login page. |
+| `/consent` | `inji-esignet-ui` | Only the `inji` stack. The eSignet login page. |
+| `/claim-details` | `inji-esignet-ui` | Only the `inji` stack. The eSignet login page. |
+| `/something-went-wrong` | `inji-esignet-ui` | Only the `inji` stack. The eSignet login page. |
+| `/page-not-found` | `inji-esignet-ui` | Only the `inji` stack. The eSignet login page. |
+| `/esignet-ui/*` | `inji-esignet-ui` | Only the `inji` stack. The eSignet login page. |
+| `/theme/*` | `inji-esignet-ui` | Only the `inji` stack. The eSignet login page. |
+| `/locales/*` | `inji-esignet-ui` | Only the `inji` stack. The eSignet login page. |
+| `/images/*` | `inji-esignet-ui` | Only the `inji` stack. The eSignet login page. |
+| `/v1/esignet/*` | `inji-esignet-ui` | Only the `inji` stack. The eSignet login page. |
+| `/.well-known/openid-configuration` | `inji-esignet-ui` | Only the `inji` stack. The eSignet login page. |
+| `/.well-known/oauth-authorization-server` | `inji-esignet-ui` | Only the `inji` stack. The eSignet login page. |
 | `/vca.*` | none | The proxy answers 404. |
 | Every other path | `issuance` | |
 

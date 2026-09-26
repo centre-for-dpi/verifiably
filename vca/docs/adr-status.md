@@ -536,7 +536,7 @@ A row that is not `Done` carries a note.
 | ADR-049 | 2 `inji-certify` is its own authorization server | Done | `deploy/vca/dpg/inji/certify/certify-preauth.properties` | The pre-authorized data provider reads the staged claims. |
 | ADR-049 | 3 `inji-certify-esignet` takes eSignet tokens | Done | `deploy/vca/dpg/inji/certify/certify-csvdp-farmer.properties`, `vca/services/dpg-adapter-inji` | An authorization code offer names it through `VCA_INJI_OFFER_ISSUER`. |
 | ADR-049 | 4 The second container waits for the keys | Done | `deploy/vca/dpg/inji.yaml` | It waits for the readiness check of `inji-certify`. |
-| ADR-049 | 5 The doctor names a floor above the target | Done | `vca/internal/cli/dpgconfig.go`, `vca/internal/cli/doctor.go` | The floor report marks `issuer-inji`. |
+| ADR-049 | 5 The doctor names a floor above the target | Done | `vca/internal/cli/dpgconfig.go`, `vca/internal/cli/doctor.go` | The floor report marks `issuer-inji` and `holder-inji`. |
 
 ## Counts
 

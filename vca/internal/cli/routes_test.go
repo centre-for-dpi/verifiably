@@ -413,3 +413,49 @@ func TestIssuancePagesAreRouted(t *testing.T) {
 		}
 	}
 }
+
+// TestInjiIssuerRoutesTheEsignetLoginPage is P6-I7f. The login page of
+// eSignet is a browser page, not an RPC, so the Inji issuer pair
+// publishes it on its public host, as it owns the Keycloak site
+// (ADR-047 decision 4). Its assets live under /esignet-ui, so they leave
+// /static to the VCA pages, and the key set of the host stays with the
+// auth service. The route table and the deploy document name each path.
+func TestInjiIssuerRoutesTheEsignetLoginPage(t *testing.T) {
+	issuer := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_INJI}
+	want := []string{
+		"/authorize", "/login", "/consent", "/claim-details", "/something-went-wrong", "/page-not-found",
+		"/esignet-ui/*", "/theme/*", "/locales/*", "/images/*", "/v1/esignet/*",
+		"/.well-known/openid-configuration", "/.well-known/oauth-authorization-server",
+	}
+	got := Caddyfile(issuer, map[string]string{"VCA_PUBLIC_URL": "https://issuer-inji.labs.example", "INJI_ESIGNET_UI_HOST_PORT": "27089"})
+	for _, match := range want {
+		block := "\t# " + EsignetUIContainer + "\n\thandle " + match + " {\n\t\treverse_proxy 127.0.0.1:27089\n\t}\n"
+		if strings.Count(got, block) != 1 {
+			t.Errorf("the issuer Caddyfile does not send %s to the login page:\n%s", match, got)
+		}
+	}
+	for _, sr := range PairRoutes(issuer, nil) {
+		if sr.Service == EsignetUIContainer && (sr.Route.Match == "/.well-known/jwks.json" || sr.Route.Match == "/static/*") {
+			t.Errorf("the login page takes %s of the pair", sr.Route.Match)
+		}
+	}
+	for _, p := range AllPairs() {
+		if p == issuer {
+			continue
+		}
+		if strings.Contains(Caddyfile(p, map[string]string{"VCA_PUBLIC_URL": "https://x.example"}), EsignetUIContainer) {
+			t.Errorf("%s routes the login page of the Inji stack", p.Name())
+		}
+	}
+	table := RouteTable()
+	for _, match := range want {
+		row := "| `" + match + "` | `" + EsignetUIContainer + "` | Only the `inji` stack. The eSignet login page. |"
+		if !strings.Contains(table, row) {
+			t.Errorf("the route table has no row %q", row)
+		}
+	}
+	doc := readText(t, filepath.Join(docsDir(), "deploy.md"))
+	if !strings.Contains(doc, "| `/authorize`, `/login`, `/consent`") || !strings.Contains(doc, "`"+EsignetUIContainer+"` of the `issuer-inji` pair") {
+		t.Error("docs/deploy.md does not name the login page in the table of plain HTTP paths")
+	}
+}

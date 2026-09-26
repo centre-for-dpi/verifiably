@@ -345,6 +345,10 @@ twice, on one database and one key store (ADR-049, P6-I0).
 | `inji-certify` | Certify itself | `PreAuthDataProviderPlugin`, which reads the staged claims | Every call of the adapter: staging, `Issue`, the configuration API, the ledger, the keys, and a presentation during issuance |
 | `inji-certify-esignet` | The eSignet of the stack | `MockCSVDataProviderPlugin`, with the farmer data of the release | A claim in Inji Web, and an authorization code offer through eSignet |
 
+The holder signs in at the eSignet login page of the stack, oidc-ui
+1.5.1. The mock identity system holds the identity. `vca setup` names
+its address in `VCA_INJI_AUTHORIZATION_SERVER` of the issuer pair.
+
 `VCA_INJI_CERTIFY_URL` names `inji-certify`. `VCA_INJI_OFFER_ISSUER`
 names `inji-certify-esignet` behind the nginx of the stack, and an
 authorization code offer names it as the credential issuer. The second
@@ -488,7 +492,7 @@ files.
 | Sessions | A Redis, as `application-default.properties` of the release sets it |
 | Token login | The provider `google` trusts `vca-holder-realm` of the stack Keycloak, the client `vca-holder`, and the key set of that realm |
 | Browser login | Inji Web signs the holder in through the same realm and client |
-| eSignet | `mosip.esignet.host` and the issuer list name the eSignet of the stack. `vca dpg bootstrap` writes the key of `vca-inji` into the client key store. |
+| eSignet | `mosip.esignet.host` and the issuer list name the eSignet of the stack. The client assertion names the token endpoint of the login page, `INJI_ESIGNET_PUBLIC_URL`. `vca dpg bootstrap` writes the key of `vca-inji` into the client key store. |
 | Inji Web | Port 3004. It serves the issuer list to Mimoto and sends `/v1/mimoto/` to it. |
 
 ## The paper document channel
