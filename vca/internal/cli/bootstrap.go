@@ -225,18 +225,15 @@ func readIssuerFile(path string) (string, string, bool) {
 // instead (ADR-008 decision 4).
 //
 // An issuer or a holder pair then registers the VCA client in the
-// eSignet of the stack (registerEsignetClient), and adds the sample
-// identities of the Certify data provider to the mock identity system
-// (addSampleIdentities).
+// eSignet of the stack (registerEsignetClient). The run adds no
+// identity anywhere: the people who claim a credential come from the
+// systems of the operator (ADR-050 decision 1).
 func BootstrapInji(ctx context.Context, opts BootstrapOptions) (BootstrapResult, error) {
 	result, err := bootstrapRealm(ctx, opts, "Inji")
 	if err != nil || !usesEsignet(opts.Pair) {
 		return result, err
 	}
-	if err := registerEsignetClient(ctx, opts, &result); err != nil {
-		return result, err
-	}
-	return result, addSampleIdentities(ctx, opts, &result)
+	return result, registerEsignetClient(ctx, opts, &result)
 }
 
 // realmPath returns the path of the realm of the pair role. The realm

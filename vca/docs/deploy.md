@@ -532,12 +532,9 @@ The issuer pair also names the address in
 `VCA_INJI_AUTHORIZATION_SERVER`, the authorization server of an
 authorization code offer.
 
-`vca dpg bootstrap inji` adds the farmers of the Certify sample data to
-the mock identity system.
-Sign in with an individual id of that file and the one time code
-`111111` of the mock identity system.
-The mock identity system names each identity by its individual id.
-The CSV data provider of Certify then finds the row of the identity.
+`vca dpg bootstrap inji` registers the VCA client in eSignet.
+It adds no identity anywhere (ADR-050).
+The people who sign in come from the identity system of the operator.
 `INJI_ESIGNET_DB_PASSWORD` sets the password of the database.
 Its default is `esignet`.
 
