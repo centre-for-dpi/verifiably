@@ -103,6 +103,9 @@ message Offer {
   string schema_id = 14;
   // The schema version of the credential.
   int32 schema_version = 15;
+  // The identity QR text of CHANNEL_CLAIM169_QR, per the MOSIP QR code
+  // specification 1.1.0. The document of pdf_ref carries the same code.
+  string identity_qr = 16;
 
   // State names the offer phase.
   enum State {

@@ -14,6 +14,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuancev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1"
@@ -797,4 +798,67 @@ func TestIssueOverTheDigitalCredentialsApi(t *testing.T) {
 		Delivery: &issuancev1.Delivery{Channel: backendv1.Channel_CHANNEL_DC_API},
 	}))
 	wantCode(t, err, connect.CodeInvalidArgument)
+}
+
+// TestIssueOverTheIdentityQrChannel asks the adapter for the credential
+// and prints the Claim 169 code the stack signed on the document. The
+// scanner reads the code back from the document.
+func TestIssueOverTheIdentityQrChannel(t *testing.T) {
+	text := identityText(t)
+	withChannel := func(o *service.Options, h *harness) {
+		h.adapter.capabilities.Channels = append(h.adapter.capabilities.Channels, backendv1.Channel_CHANNEL_CLAIM169_QR)
+	}
+	h := newHarness(t, func(o *service.Options, h *harness) {
+		withChannel(o, h)
+		h.adapter.credential.Claim169Qr = text
+	})
+	offer := h.issue(t, backendv1.Channel_CHANNEL_CLAIM169_QR, nil)
+	if offer.GetState() != issuancev1.Offer_STATE_DELIVERED || offer.GetIdentityQr() != text || offer.GetPdfRef() == "" {
+		t.Fatalf("offer %v", offer)
+	}
+	if offer.GetCredential().GetFormat() != commonv1.Format_FORMAT_LDP_VC || offer.GetChannel() != backendv1.Channel_CHANNEL_CLAIM169_QR {
+		t.Fatalf("offer %v", offer)
+	}
+	document, ok := h.service.Document(context.Background(), offer.GetPdfRef())
+	if !ok {
+		t.Fatal("the document is missing")
+	}
+	res, err := ingest.Decode(document, ingest.Options{})
+	if err != nil || res.Detected != ingest.TypeCWTClaim169 {
+		t.Fatalf("the scanner reads %v: %v", res.Detected, err)
+	}
+	stored, err := h.service.GetOffer(context.Background(), connect.NewRequest(&issuancev1.GetOfferRequest{Id: offer.GetId()}))
+	if err != nil || stored.Msg.GetOffer().GetIdentityQr() != text {
+		t.Fatalf("the stored offer lost the code: %v", err)
+	}
+
+	without := newHarness(t, func(o *service.Options, h *harness) { h.adapter.credential.Claim169Qr = text })
+	_, err = without.service.Issue(context.Background(), connect.NewRequest(&issuancev1.IssueRequest{
+		SchemaId: "farmer", SubjectData: `{"fullName":"Ada","farmerID":"FM-1"}`,
+		Delivery: &issuancev1.Delivery{Channel: backendv1.Channel_CHANNEL_CLAIM169_QR},
+	}))
+	wantCode(t, err, connect.CodeInvalidArgument)
+
+	for name, code := range map[string]string{"none": "", "broken": "NCF not a code"} {
+		h := newHarness(t, func(o *service.Options, h *harness) {
+			withChannel(o, h)
+			h.adapter.credential.Claim169Qr = code
+		})
+		_, err = h.service.Issue(context.Background(), connect.NewRequest(&issuancev1.IssueRequest{
+			SchemaId: "farmer", SubjectData: `{"fullName":"Ada","farmerID":"FM-1"}`,
+			Delivery: &issuancev1.Delivery{Channel: backendv1.Channel_CHANNEL_CLAIM169_QR},
+		}))
+		if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	failing := newHarness(t, func(o *service.Options, h *harness) {
+		withChannel(o, h)
+		h.adapter.issueErr = connect.NewError(connect.CodeUnavailable, errors.New("down"))
+	})
+	_, err = failing.service.Issue(context.Background(), connect.NewRequest(&issuancev1.IssueRequest{
+		SchemaId: "farmer", SubjectData: `{"fullName":"Ada","farmerID":"FM-1"}`,
+		Delivery: &issuancev1.Delivery{Channel: backendv1.Channel_CHANNEL_CLAIM169_QR},
+	}))
+	wantCode(t, err, connect.CodeUnavailable)
 }

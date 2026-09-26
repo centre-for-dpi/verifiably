@@ -4,6 +4,7 @@ package ingest_test
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -73,6 +74,41 @@ func TestDecodeClaim169WithPrefix(t *testing.T) {
 	if _, _, err := ingest.DecodeClaim169(text); err != nil {
 		t.Fatalf("a scheme prefix must decode: %v", err)
 	}
+}
+
+// TestDecodeClaim169WithAColonInTheText decodes a QR text whose base45
+// has a colon among its first characters. The colon is a base45 letter
+// there, not the end of a scheme prefix. The length of the key id
+// changes the first bytes of the stream, and so the first letters.
+func TestDecodeClaim169WithAColonInTheText(t *testing.T) {
+	claims, err := cbor.Marshal(map[int64]any{1: "did:web:issuer.test", 169: map[any]any{"name": "Asha"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 5000 {
+		kid := strings.Repeat("k", i%200) + strconv.Itoa(i)
+		protected, perr := cbor.Marshal(map[int64]any{1: -8, 4: []byte(kid)})
+		if perr != nil {
+			t.Fatal(perr)
+		}
+		msg, merr := cbor.Marshal(cbor.Tag{Number: 18, Content: []any{protected, map[any]any{}, claims, []byte("signature")}})
+		if merr != nil {
+			t.Fatal(merr)
+		}
+		text := pixelpass.EncodeBase45(deflate(t, msg))
+		if cut := strings.IndexByte(text, ':'); cut <= 0 || cut > 8 {
+			continue
+		}
+		cwt, _, err := ingest.DecodeClaim169(text)
+		if err != nil {
+			t.Fatalf("a colon of the base45 text must decode: %v", err)
+		}
+		if cwt.Data["name"] != "Asha" || string(cwt.Sign1.KeyID) != kid {
+			t.Fatalf("claim 169 = %v", cwt.Data)
+		}
+		return
+	}
+	t.Fatal("no QR text had an early colon")
 }
 
 func TestDecodeClaim169Errors(t *testing.T) {

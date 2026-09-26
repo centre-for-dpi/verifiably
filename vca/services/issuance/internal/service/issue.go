@@ -191,6 +191,8 @@ func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 	}
 	r.channel = channel
 	switch {
+	case channel == backendv1.Channel_CHANNEL_CLAIM169_QR:
+		err = s.issueIdentityQR(ctx, &offer, spec, schema, r)
 	case isDocument(channel) && caps.SupportsChannel(backendv1.Channel_CHANNEL_PDF):
 		err = s.issueDocument(ctx, &offer, spec, schema, r)
 	case isDocument(channel):
@@ -243,6 +245,12 @@ func (s *Service) checkChannel(caps clients.Capabilities, channel backendv1.Chan
 		// device (ADR-043 decision 2), so every stack with such offers has it.
 		if !caps.SupportsChannel(backendv1.Channel_CHANNEL_OID4VCI_PREAUTH) && !caps.SupportsChannel(channel) {
 			return badRequest("the DPG adapter cannot build an offer for the Digital Credentials API")
+		}
+	case backendv1.Channel_CHANNEL_CLAIM169_QR:
+		// Only a stack signs the identity QR code, so only an adapter that
+		// lists the channel has it (ADR-043 decision 2).
+		if !caps.SupportsChannel(channel) {
+			return badRequest("the DPG adapter signs no identity QR code")
 		}
 	default:
 		return badRequest(fmt.Sprintf("the channel %s is not a delivery channel", channel))
@@ -330,6 +338,46 @@ func (s *Service) credentialDocument(ctx context.Context, offer *offers.Offer,
 	}
 	offer.Credential = credential.GetPayload()
 	offer.Format = int32(credential.GetFormat())
+	offer.State = offers.StateDelivered
+	offer.ClaimedAt = s.opts.Now().UTC()
+	return s.keepDocument(ctx, offer, document, r)
+}
+
+// issueIdentityQR asks the adapter for a credential and prints the Claim
+// 169 code the stack signed beside it (ADR-043 decision 1). The document
+// carries the code of the stack unchanged, per the MOSIP QR code
+// specification 1.1.0.
+func (s *Service) issueIdentityQR(ctx context.Context, offer *offers.Offer,
+	spec *backendv1.IssueSpec, schema *schemav1.Schema, r request,
+) error {
+	resp, err := s.opts.Issuer.Issue(ctx, connect.NewRequest(&backendv1.IssueRequest{Spec: spec}))
+	if err != nil {
+		offer.State = offers.StateFailed
+		offer.Error = err.Error()
+		return connect.NewError(connect.CodeOf(err), fmt.Errorf("ask for the credential: %w", err))
+	}
+	payload, perr := render.IdentityPayload(resp.Msg.GetClaim169Qr())
+	if perr != nil {
+		return connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+			"the stack signed no identity QR code for this credential; give the schema identity claims such as fullName: %w", perr))
+	}
+	document, rerr := render.Render(render.Document{
+		Title:     displayName(schema, s.opts.DocumentTitle),
+		Issuer:    s.opts.DocumentIssuer,
+		Claims:    r.claims,
+		Order:     schema.GetSdClaims(),
+		Note:      "Scan the QR code to check this identity.",
+		Footer:    s.opts.DocumentFooter,
+		QRPayload: payload,
+		IssuedAt:  s.opts.Now().UTC(),
+	})
+	if rerr != nil {
+		return internal("render the document", rerr)
+	}
+	credential := resp.Msg.GetCredential()
+	offer.Credential = credential.GetPayload()
+	offer.Format = int32(credential.GetFormat())
+	offer.IdentityQR = payload
 	offer.State = offers.StateDelivered
 	offer.ClaimedAt = s.opts.Now().UTC()
 	return s.keepDocument(ctx, offer, document, r)

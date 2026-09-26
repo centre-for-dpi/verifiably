@@ -192,10 +192,13 @@ func (s *Service) GetCapabilities(
 		}
 		// The adapter runs the pre-authorized flow end to end, so the
 		// deployment can hand a citizen a paper document as well
-		// (ADR-016 decision 3).
+		// (ADR-016 decision 3). A configuration with identity claims
+		// makes Certify sign a Claim 169 QR code beside the credential,
+		// which Issue returns (ADR-043 decision 1).
 		out.Channels = []backendv1.Channel{
 			backendv1.Channel_CHANNEL_OID4VCI_PREAUTH,
 			backendv1.Channel_CHANNEL_PDF,
+			backendv1.Channel_CHANNEL_CLAIM169_QR,
 		}
 		if s.authorizationServer != "" {
 			out.Channels = append(out.Channels, backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE)

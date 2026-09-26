@@ -17,6 +17,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/app"
@@ -300,5 +301,37 @@ func TestContractProvisionIdentity(t *testing.T) {
 		Method: "did:web", KeyType: "Ed25519",
 	})); err != nil {
 		t.Fatalf("ProvisionIssuerIdentity: %v", err)
+	}
+}
+
+// TestContractIdentityQR registers a configuration with identity claims
+// and issues one credential of it. Certify signs a Claim 169 QR code per
+// the QR code specification 1.1.0, and the ingest decoder reads it. It
+// needs writes.
+func TestContractIdentityQR(t *testing.T) {
+	writeEnv(t)
+	a := newContractApp(t)
+	ctx := context.Background()
+	id := "VcaContractIdentity" + time.Now().UTC().Format("20060102150405")
+	if _, err := a.Service.RegisterCredentialConfiguration(ctx, connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{
+		Configuration: &backendv1.CredentialConfiguration{
+			Id: id, Format: commonv1.Format_FORMAT_LDP_VC, Type: id,
+			JsonSchema: `{"type":"object","properties":{"fullName":{"type":"string"},"dateOfBirth":{"type":"string"}}}`,
+		},
+	})); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	resp, err := a.Service.Issue(ctx, connect.NewRequest(&backendv1.IssueRequest{Spec: &backendv1.IssueSpec{
+		ConfigurationId: id, SubjectData: `{"fullName":"Wanjiku Njeri","dateOfBirth":"1987-04-12"}`,
+	}}))
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	cwt, _, err := ingest.DecodeClaim169(resp.Msg.GetClaim169Qr())
+	if err != nil {
+		t.Fatalf("the identity QR does not decode: %v", err)
+	}
+	if cwt.Data["4"] != "Wanjiku Njeri" {
+		t.Fatalf("claim 169 = %v", cwt.Data)
 	}
 }

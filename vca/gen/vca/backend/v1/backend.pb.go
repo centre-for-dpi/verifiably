@@ -1611,7 +1611,12 @@ type IssueResponse struct {
 	// The credential as the DPG produced it.
 	Credential *v1.Credential `protobuf:"bytes,1,opt,name=credential,proto3" json:"credential,omitempty"`
 	// The DPG assigned id of the credential, when the DPG has one.
-	CredentialId  string `protobuf:"bytes,2,opt,name=credential_id,json=credentialId,proto3" json:"credential_id,omitempty"`
+	CredentialId string `protobuf:"bytes,2,opt,name=credential_id,json=credentialId,proto3" json:"credential_id,omitempty"`
+	// The identity QR text the DPG signed beside the credential, per the
+	// MOSIP QR code specification 1.1.0: claim 169 in a CWT, then zlib,
+	// then base45. Empty when the DPG signed none. An adapter fills it
+	// when it lists CHANNEL_CLAIM169_QR.
+	Claim169Qr    string `protobuf:"bytes,3,opt,name=claim169_qr,json=claim169Qr,proto3" json:"claim169_qr,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1656,6 +1661,13 @@ func (x *IssueResponse) GetCredential() *v1.Credential {
 func (x *IssueResponse) GetCredentialId() string {
 	if x != nil {
 		return x.CredentialId
+	}
+	return ""
+}
+
+func (x *IssueResponse) GetClaim169Qr() string {
+	if x != nil {
+		return x.Claim169Qr
 	}
 	return ""
 }
@@ -6428,12 +6440,14 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"expires_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12\x10\n" +
 	"\x03pin\x18\x05 \x01(\tR\x03pin\"=\n" +
 	"\fIssueRequest\x12-\n" +
-	"\x04spec\x18\x01 \x01(\v2\x19.vca.backend.v1.IssueSpecR\x04spec\"o\n" +
+	"\x04spec\x18\x01 \x01(\v2\x19.vca.backend.v1.IssueSpecR\x04spec\"\x90\x01\n" +
 	"\rIssueResponse\x129\n" +
 	"\n" +
 	"credential\x18\x01 \x01(\v2\x19.vca.common.v1.CredentialR\n" +
 	"credential\x12#\n" +
-	"\rcredential_id\x18\x02 \x01(\tR\fcredentialId\"D\n" +
+	"\rcredential_id\x18\x02 \x01(\tR\fcredentialId\x12\x1f\n" +
+	"\vclaim169_qr\x18\x03 \x01(\tR\n" +
+	"claim169Qr\"D\n" +
 	"\x11IssueBatchRequest\x12/\n" +
 	"\x05specs\x18\x01 \x03(\v2\x19.vca.backend.v1.IssueSpecR\x05specs\"\xdf\x01\n" +
 	"\x12IssueBatchResponse\x12=\n" +

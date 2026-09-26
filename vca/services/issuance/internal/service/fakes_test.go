@@ -3,10 +3,16 @@
 package service_test
 
 import (
+	"bytes"
+	"compress/zlib"
 	"context"
 	"sync"
+	"testing"
 
 	"connectrpc.com/connect"
+	"github.com/fxamacker/cbor/v2"
+
+	"github.com/centre-for-dpi/vc-adapters/core/pixelpass"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -201,4 +207,31 @@ func allChannels() *backendv1.GetCapabilitiesResponse {
 		},
 		Roles: []commonv1.Role{commonv1.Role_ROLE_ISSUER},
 	}
+}
+
+// identityText builds the text of a Claim 169 QR code of the MOSIP QR
+// code specification 1.1.0: a COSE_Sign1 CWT, then zlib, then base45.
+func identityText(t *testing.T) string {
+	t.Helper()
+	protected, err := cbor.Marshal(map[int]any{1: -8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := cbor.Marshal(map[int]any{1: "did:web:certify.inji.example", 169: map[int]any{4: "Wanjiku Njeri", 9: 2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, err := cbor.Marshal(cbor.Tag{Number: 18, Content: []any{protected, map[int]any{}, claims, []byte("signature")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var z bytes.Buffer
+	w := zlib.NewWriter(&z)
+	if _, err := w.Write(msg); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return pixelpass.EncodeBase45(z.Bytes())
 }

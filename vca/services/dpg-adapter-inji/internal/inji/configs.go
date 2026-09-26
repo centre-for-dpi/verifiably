@@ -131,6 +131,11 @@ type ConfigurationDTO struct {
 	DocType                     string                             `json:"doctype,omitempty"`
 	SdJwtVct                    string                             `json:"sdJwtVct,omitempty"`
 	CredentialStatusPurposes    []string                           `json:"credentialStatusPurposes,omitempty"`
+	// QrSettings asks Certify for an identity QR code per the MOSIP QR
+	// code specification 1.1.0 beside each credential.
+	QrSettings []map[string]string `json:"qrSettings,omitempty"`
+	// QrSignatureAlgo signs the identity QR code.
+	QrSignatureAlgo string `json:"qrSignatureAlgo,omitempty"`
 }
 
 // ConfigResponse is the answer of a create or an update.
@@ -336,14 +341,22 @@ func BuildConfiguration(in ConfigInput, p Profiles) (ConfigurationDTO, error) {
 		dto.KeyManagerAppID, dto.KeyManagerRefID = p.Ldp.AppID, p.Ldp.RefID
 		dto.SignatureAlgo, dto.SignatureCryptoSuite = p.Ldp.Algorithm, p.Ldp.CryptoSuite
 		dto.CredentialSubjectDefinition = claimDisplays(claims, locales, markers)
-		dto.VcTemplate = encodeTemplate(ldpTemplate(dto.ContextURLs, in, claims))
+		dto.QrSettings = qrSettings(claims)
+		if dto.QrSettings != nil {
+			dto.QrSignatureAlgo = p.Ldp.Algorithm
+		}
+		dto.VcTemplate = encodeTemplate(ldpTemplate(dto.ContextURLs, in, claims, dto.QrSettings))
 	case "vc+sd-jwt":
 		dto.SdJwtVct = in.Type
 		dto.KeyManagerAppID, dto.KeyManagerRefID = p.SdJwt.AppID, p.SdJwt.RefID
 		dto.SignatureAlgo = p.SdJwt.Algorithm
 		dto.SdClaim = strings.Join(in.SDClaims, ",")
 		dto.SdJwtClaims = claimDisplays(claims, locales, []string{StatusIndexClaim, StatusURIClaim})
-		dto.VcTemplate = encodeTemplate(sdJwtTemplate(claims))
+		dto.QrSettings = qrSettings(claims)
+		if dto.QrSettings != nil {
+			dto.QrSignatureAlgo = p.SdJwt.Algorithm
+		}
+		dto.VcTemplate = encodeTemplate(sdJwtTemplate(claims, dto.QrSettings))
 	case "mso_mdoc":
 		ns := MdocNamespace(in.Type)
 		dto.DocType = in.Type
@@ -516,8 +529,9 @@ const statusGuard = `#if($` + StatusURIClaim + ` && $` + StatusURIClaim + ` != "
 
 // ldpTemplate returns the Velocity template of a JSON-LD credential. It
 // follows the sample template of the Certify stack, with the data model
-// 2.0 context and the bitstring status list entry of VCA (ADR-018).
-func ldpTemplate(contexts []string, in ConfigInput, claims []claim) string {
+// 2.0 context and the bitstring status list entry of VCA (ADR-018). With
+// qrSettings, the subject carries the identity QR code Certify signs.
+func ldpTemplate(contexts []string, in ConfigInput, claims []claim, qr []map[string]string) string {
 	var b strings.Builder
 	b.WriteString("{\n  \"@context\": [")
 	for i, c := range contexts {
@@ -547,14 +561,16 @@ func ldpTemplate(contexts []string, in ConfigInput, claims []claim) string {
 	for _, c := range claims {
 		b.WriteString(",\n    " + quote(c.name) + ": " + placeholder(c))
 	}
+	b.WriteString(identityQRPart(qr, "    "))
 	b.WriteString("\n  }\n}\n")
 	return b.String()
 }
 
 // sdJwtTemplate returns the Velocity template of an SD-JWT VC. Certify
 // adds iss, vct, cnf, and the times. The status claim points at the
-// token status list of VCA (ADR-019).
-func sdJwtTemplate(claims []claim) string {
+// token status list of VCA (ADR-019). With qrSettings, the payload
+// carries the identity QR code Certify signs.
+func sdJwtTemplate(claims []claim, qr []map[string]string) string {
 	var b strings.Builder
 	b.WriteString("{\n")
 	b.WriteString(statusGuard + "\n")
@@ -566,6 +582,7 @@ func sdJwtTemplate(claims []claim) string {
 		}
 		b.WriteString("  " + quote(c.name) + ": " + placeholder(c))
 	}
+	b.WriteString(identityQRPart(qr, "  "))
 	b.WriteString("\n}\n")
 	return b.String()
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
+	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/render"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
@@ -44,16 +45,58 @@ func (p *Pages) result(pg page) error {
 	caps := p.caps(pg)
 	name := p.offerSchemaName(pg, offer)
 	b := p.blocks()
-	parts := []template.HTML{p.offerBlock(b, offer, name, p.issuerName(pg, caps))}
-	parts = append(parts, p.handoff(b, pg.f))
+	issuer := p.issuerName(pg, caps)
+	title, lead := msg.T("issuer.issue.result.title.label"), msg.T("issuer.issue.result.lead", name)
+	var parts []template.HTML
+	if offer.GetIdentityQr() != "" {
+		// The identity QR channel prints a signed code, so the holder
+		// needs no wallet and the page points at no wallet.
+		title, lead = msg.T("issuer.issue.result.identity.title.label"), msg.T("issuer.issue.result.identity.lead", name)
+		parts = append(parts, p.identityBlock(b, offer, name, issuer))
+	} else {
+		parts = append(parts, p.offerBlock(b, offer, name, issuer), p.handoff(b, pg.f))
+	}
 	actions := b.add("button", components.Button{Text: msg.T("issuer.issue.again.label"), Href: IssuePath, Variant: "primary"})
 	if b.err != nil {
 		return b.err
 	}
 	return p.render(pg, components.Page{
-		Title: msg.T("issuer.issue.result.title.label"), Label: msg.T("issuer.nav.issue.label"),
-		Lead: msg.T("issuer.issue.result.lead", name), Description: msg.T("issuer.issue.lead"),
+		Title: title, Label: msg.T("issuer.nav.issue.label"),
+		Lead: lead, Description: msg.T("issuer.issue.lead"),
 		Actions: actions, Content: components.Join(parts...),
+	})
+}
+
+// identityBlock is the identity QR code of the stack, the attributes it
+// carries, and the document that prints it (ADR-043 decision 1).
+func (p *Pages) identityBlock(b *blocks, offer *issuancev1.Offer, schema, issuer string) template.HTML {
+	var qrPart []template.HTML
+	if src, ok := qrImage(offer.GetIdentityQr()); ok {
+		qrPart = append(qrPart, b.add("qr", components.QR{Src: src, Alt: msg.T("issuer.issue.result.identity.alt", schema, issuer), Size: 256}))
+	}
+	var body []template.HTML
+	if attrs, err := render.IdentityAttributes(offer.GetIdentityQr()); err == nil {
+		rows := make([]components.Row, 0, len(attrs))
+		for _, a := range attrs {
+			rows = append(rows, components.Row{{Text: a.Name}, {Text: a.Value}})
+		}
+		body = append(body, b.add("table", components.Table{ID: "identity-attributes",
+			Caption: msg.T("issuer.issue.result.identity.caption.label"),
+			Columns: []string{msg.T("issuer.issue.result.identity.attribute.label"), msg.T("issuer.issue.result.identity.value.label")},
+			Rows:    rows}))
+	}
+	if ref := offer.GetPdfRef(); ref != "" {
+		body = append(body, actionRow(b.add("button", components.Button{Text: msg.T("issuer.issue.result.pdf.label"),
+			Href: service.DocumentPath + url.PathEscape(ref), Variant: "secondary"})))
+	}
+	content := components.Join(body...)
+	if len(qrPart) > 0 {
+		content = template.HTML(`<div class="media-row"><div>`) + components.Join(qrPart...) +
+			template.HTML(`</div><div>`) + content + template.HTML(`</div></div>`)
+	}
+	return b.add("block", components.Block{
+		ID: "identity", Title: msg.T("issuer.issue.result.identity.label"), Meta: stateText(offer.GetState()),
+		Lead: msg.T("issuer.issue.result.channel", msg.T("issuer.issue.claim169.label")), Body: content,
 	})
 }
 

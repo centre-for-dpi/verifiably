@@ -55,7 +55,7 @@ The answer of `GetCapabilities` reports what the deployment supports.
 | Item | Value |
 | --- | --- |
 | Formats | `ldp_vc`, `vc+sd-jwt`, `mso_mdoc` |
-| Channels | OID4VCI pre-authorized code and document. An identity provider adds the authorization code flow. |
+| Channels | OID4VCI pre-authorized code, document, and identity QR (Claim 169). An identity provider adds the authorization code flow. |
 | Protocols | OID4VCI, OID4VP, OID4VP with Presentation Exchange |
 | Roles | The roles whose URL the configuration sets |
 | Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_REVOCATION`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ISSUER_IDENTITY_PROVISION`, and `FEATURE_ISSUER_IDENTITY_IMPORT_X509` with a Certify URL. `FEATURE_VERIFY_UPLOAD` with an Inji Verify URL. |
@@ -81,6 +81,8 @@ shows a feature on this stack only when the answer lists it (ADR-034).
 | Every tenant RPC | Inji keeps no tenants. |
 | Every webhook RPC | Inji keeps no tenants to hold a webhook. |
 | `VerifyCredential` of a JWT VC, an mDoc, or a Claim 169 QR code | Inji Verify 0.16.0 checks JSON-LD and SD-JWT credentials only. The adapter answers `invalid_argument`. |
+| An identity QR code beside an mDoc | The adapter asks for the code in `ldp_vc` and `vc+sd-jwt` entries only. An mDoc element needs a digest of its own. |
+| An identity QR code of a schema without identity claims | Claim 169 names identity attributes only. The adapter asks for no code, and `Issue` returns none. |
 
 Each of these answers with the Connect code `unimplemented` and a
 sentence that names the alternative.
@@ -258,6 +260,35 @@ reports a success for a presentation that answers with another
 credential. The adapter records the claim names of the request. When the answer arrives, it checks that at
 least one presented credential carries one of those names. It lowers the
 verdict when nothing matches, and it adds a failed check that says so.
+
+## The identity QR channel
+
+Inji Certify 0.14.0 signs an identity QR code per the MOSIP QR code
+specification 1.1.0 beside a credential. The configuration asks for it
+with `qrSettings` and `qrSignatureAlgo`. Each entry of `qrSettings` is
+a Velocity template of one object. Its keys are the attribute names of
+the PixelPass key mapper, such as `Full Name` and `Date of Birth`.
+PixelPass turns them into the integer keys of claim 169. Certify signs
+the claims as a CWT with the key of the configuration. It then hands
+the base45 text to the credential template as `claim_169_values`.
+
+`RegisterCredentialConfiguration` maps each string claim that names an
+identity attribute onto its key. `fullName` and `name` become
+`Full Name`. `dateOfBirth` and `birthDate` become `Date of Birth`.
+`gender`, `email`, `mobileNumber`, `nationality`, and `address` map
+too. The entry signs with the algorithm of its credential key. The
+template writes the first code into the claim `identityQR`, under a
+guard for a credential without a code.
+
+`Issue` reads the claim back from the credential. It checks the text
+with the Claim 169 decoder of `core/ingest` and returns it in
+`claim169_qr`. The issuance service prints it on a document for the
+channel `CHANNEL_CLAIM169_QR`.
+
+The key names of the stack sample differ from the mapper in one place.
+The sample writes `Date Of Birth`, and the mapper knows
+`Date of Birth`. The adapter uses the mapper name, so the date gets the
+key 8.
 
 ## The paper document channel
 

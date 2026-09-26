@@ -137,6 +137,26 @@ the outcome into the toast region of the page. The QR code and the link
 stay on the page for every other browser. The draft changes often, so
 the script tests for each part of the API before it uses it.
 
+### The identity QR channel
+
+The channel prints the identity QR code that a stack signs (ADR-043
+decision 1). The code follows the QR code specification 1.1.0 of the
+identity platform: claim 169 of a CWT in a COSE_Sign1 envelope, then
+zlib, then base45. The delivery step offers the channel only when the
+adapter lists `CHANNEL_CLAIM169_QR`.
+
+The service asks the adapter for the credential with `Issue`. The
+answer carries the code in `claim169_qr`. The service reads the code
+back with `core/ingest` before it prints it. A stack that signed no
+code gives `failed_precondition`, and the page says to add identity
+claims to the schema. The document carries the code of the stack
+unchanged, so an offline reader and the VCA scanner both read it.
+
+The result page shows the code, the attributes it carries, and the
+document. It names each attribute as the specification does, such as
+Full Name or Date of Birth. It shows a face image or a fingerprint as
+included, never as its bytes.
+
 The result page shows the QR code of the offer. Its text names the
 schema and the issuer. The page also shows the offer link. It shows
 the transaction code when the stack sets one. It shows the document
@@ -172,13 +192,14 @@ then names the staff member (ADR-039 decision 1).
 ## The channels
 
 ADR-016 decision 5 names five channels. ADR-043 decision 1 adds the
-Digital Credentials API.
+Digital Credentials API and the identity QR code.
 
 | Channel | What the citizen gets |
 | --- | --- |
 | `oid4vci` | An offer URI. A wallet claims the credential. |
 | `dc_api` | The same offer, which the browser hands to the wallet of the device. |
 | `pdf` | An A4 page with a QR code. |
+| `claim169_qr` | An A4 page with the identity QR code the stack signed. |
 | `email` | A message with a link to the page. |
 | `sms` | A short message with the link. |
 | `link` | The link alone. |
@@ -201,6 +222,7 @@ The QR payload holds one of two things:
   The document of a stack that signs only on a claim carries it too.
 - The credential in the PixelPass form, for a signed credential. The
   form is CBOR, then zlib, then base45. The MOSIP tools read it.
+- The identity QR code of the stack, for the identity QR channel.
 
 A page lives as long as its offer. The endpoint
 `GET /issuance/pdf/{ref}` serves it with the type `application/pdf` and

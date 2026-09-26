@@ -99,9 +99,26 @@ func (c CWT) JSON() ([]byte, error) {
 // decision 3). The steps are base45 decode, zlib inflate, COSE_Sign1
 // parse, and CWT parse. It returns the steps it ran, so the operator
 // sees where a broken code failed.
+//
+// The colon is a letter of the base45 alphabet, so a text such as
+// HC1:... can be a prefixed code or a plain one. The decoder reads the
+// whole text first and the text after the prefix second.
 func DecodeClaim169(text string) (CWT, []string, error) {
+	text = strings.TrimSpace(text)
+	c, steps, err := decodeClaim169(text)
+	if err == nil {
+		return c, steps, nil
+	}
+	if rest, ok := cutScheme(text); ok {
+		return decodeClaim169(rest)
+	}
+	return c, steps, err
+}
+
+// decodeClaim169 runs the four steps on a text without a prefix.
+func decodeClaim169(text string) (CWT, []string, error) {
 	steps := []string{"base45"}
-	raw, err := DecodeBase45Payload(text)
+	raw, err := decodeBase45(text)
 	if err != nil {
 		return CWT{}, steps, err
 	}
@@ -124,13 +141,17 @@ func DecodeClaim169(text string) (CWT, []string, error) {
 	return c, steps, nil
 }
 
-// DecodeBase45Payload strips a scheme prefix such as HC1: and decodes the
-// base45 text of RFC 9285.
-func DecodeBase45Payload(text string) ([]byte, error) {
-	text = strings.TrimSpace(text)
+// cutScheme returns the text after a scheme prefix such as HC1:. ok is
+// false when the text has no such prefix.
+func cutScheme(text string) (string, bool) {
 	if cut := strings.IndexByte(text, ':'); cut > 0 && cut <= 8 {
-		text = text[cut+1:]
+		return text[cut+1:], true
 	}
+	return "", false
+}
+
+// decodeBase45 decodes one base45 text.
+func decodeBase45(text string) ([]byte, error) {
 	if text == "" {
 		return nil, errors.New("ingest: the QR text is empty")
 	}

@@ -431,6 +431,11 @@ message IssueResponse {
   vca.common.v1.Credential credential = 1;
   // The DPG assigned id of the credential, when the DPG has one.
   string credential_id = 2;
+  // The identity QR text the DPG signed beside the credential, per the
+  // MOSIP QR code specification 1.1.0: claim 169 in a CWT, then zlib,
+  // then base45. Empty when the DPG signed none. An adapter fills it
+  // when it lists CHANNEL_CLAIM169_QR.
+  string claim169_qr = 3;
 }
 
 // IssueBatchRequest asks for many credentials in one call.

@@ -16,6 +16,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/inji"
@@ -229,7 +230,22 @@ func (s *Service) Issue(
 	return connect.NewResponse(&backendv1.IssueResponse{
 		Credential:   credential,
 		CredentialId: inji.KeyID(credential.GetPayload()),
+		Claim169Qr:   identityQR(credential.GetPayload()),
 	}), nil
+}
+
+// identityQR returns the Claim 169 code Certify signed beside the
+// credential. A code the scanner cannot read stays out, so the identity
+// QR channel never prints a broken code.
+func identityQR(credential []byte) string {
+	text := inji.IdentityQR(credential)
+	if text == "" {
+		return ""
+	}
+	if _, _, err := ingest.DecodeClaim169(text); err != nil {
+		return ""
+	}
+	return text
 }
 
 // issueOne runs the pre-authorized flow for one subject.

@@ -64,6 +64,8 @@ type Offer struct {
 	CreatedAt     time.Time         `json:"created_at"`
 	ExpiresAt     time.Time         `json:"expires_at"`
 	ClaimedAt     time.Time         `json:"claimed_at,omitempty"`
+	// IdentityQR is the Claim 169 code of the identity QR channel.
+	IdentityQR string `json:"identity_qr,omitempty"`
 }
 
 // Job is the stored state of one batch.

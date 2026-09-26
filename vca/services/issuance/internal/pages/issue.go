@@ -65,6 +65,7 @@ var channels = []struct {
 	{backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE, "issuer.issue.auth_code"},
 	{backendv1.Channel_CHANNEL_DC_API, "issuer.issue.dc_api"},
 	{backendv1.Channel_CHANNEL_PDF, "issuer.issue.pdf"},
+	{backendv1.Channel_CHANNEL_CLAIM169_QR, "issuer.issue.claim169"},
 }
 
 // maxSchemas caps the published schemas the issue page lists.

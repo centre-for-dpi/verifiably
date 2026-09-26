@@ -135,3 +135,32 @@ Facts the adapter relies on:
 - The stack sample runs `MockCSVDataProviderPlugin` and
   `LoggerAuditService` in the `DataProvider` plugin mode:
   https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/certify-csvdp-farmer.properties
+
+## Identity QR code (Certify 0.14.0, QR code specification 1.1.0)
+
+| File | Source |
+| --- | --- |
+| `credential-ldp-claim169.json` | The credential answer of an `ldp_vc` configuration with `qrSettings`. The template the adapter registers puts the first entry of `claim_169_values` in `credentialSubject.identityQR`: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/CertifyIssuanceServiceImpl.java. The code is a COSE_Sign1 CWT with claim 169, zlib, and base45. A key that was thrown away signed it. |
+
+Facts the adapter relies on:
+
+- `CredentialConfigurationDTO` carries `qrSettings`, a list of objects,
+  and `qrSignatureAlgo`:
+  https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-core/src/main/java/io/mosip/certify/core/dto/CredentialConfigurationDTO.java
+- Certify evaluates `qrSettings` as a Velocity template, maps each key
+  with `CLAIM_169_KEY_MAPPER` and `CLAIM_169_VALUE_MAPPER`, signs the
+  CWT with `qrSignatureAlgo` or else the proof algorithm, and puts the
+  base45 texts in `claim_169_values` for every format
+  (`CertifyIssuanceServiceImpl`, `Credential.signQRData`, and
+  `VelocityTemplatingEngineImpl.formatQRData` of the tag).
+- The stack sample row has `qr_settings` with `Full Name`,
+  `Phone Number`, and `Date Of Birth`, and `qr_signature_algo` `EdDSA`:
+  https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/certify_init.sql
+- The key mapper names `ID`, `Version`, `Language`, `Full Name`,
+  `First Name`, `Middle Name`, `Last Name`, `Date of Birth`, `Gender`,
+  `Address`, `Email ID`, `Phone Number`, `Nationality`,
+  `Marital Status`, and `Guardian`. The value mapper turns `Male`,
+  `Female`, and `Others` into 1, 2, and 3:
+  https://raw.githubusercontent.com/inji/pixelpass/develop/kotlin/PixelPass/src/commonMain/kotlin/io/mosip/pixelpass/shared/Constants.kt
+- The attribute table of claim 169 and the CWT layout:
+  https://docs.mosip.io/1.2.0/readme/standards-and-specifications/mosip-standards/169-qr-code-specification

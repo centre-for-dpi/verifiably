@@ -170,7 +170,7 @@ func timestamp(t time.Time) *timestamppb.Timestamp {
 // channelName maps a contract channel onto a delivery channel.
 func channelName(c backendv1.Channel) delivery.Channel {
 	switch c {
-	case backendv1.Channel_CHANNEL_PDF:
+	case backendv1.Channel_CHANNEL_PDF, backendv1.Channel_CHANNEL_CLAIM169_QR:
 		return delivery.ChannelPDF
 	case backendv1.Channel_CHANNEL_EMAIL:
 		return delivery.ChannelEmail
@@ -216,6 +216,7 @@ func view(o offers.Offer) *issuancev1.Offer {
 		CreatedAt:     timestamp(o.CreatedAt),
 		ExpiresAt:     timestamp(o.ExpiresAt),
 		ClaimedAt:     timestamp(o.ClaimedAt),
+		IdentityQr:    o.IdentityQR,
 	}
 	if len(o.Credential) > 0 {
 		out.Credential = &commonv1.Credential{
