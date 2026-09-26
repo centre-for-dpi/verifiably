@@ -297,8 +297,9 @@ type mimotoVerifier struct {
 
 // mimotoFiles renders the issuer list and the trusted verifiers of the
 // Inji holder pair from the addresses of the deployment. values holds
-// the settings of the run with the values of InjiPublicValues.
-func mimotoFiles(values map[string]string, domain string, peers PeerOverrides) ([]File, error) {
+// the settings of the run with the values of InjiPublicValues. The
+// display of the issuer comes from its identity and the brand (plan N8).
+func mimotoFiles(values map[string]string, domain string, peers PeerOverrides, id InjiIssuerIdentity, brand InjiBrand) ([]File, error) {
 	web := injiWebURL(values)
 	authz := strings.TrimRight(values[injiAuthzIssuerHolderEnv], "/")
 	if authz == "" {
@@ -310,12 +311,7 @@ func mimotoFiles(values map[string]string, domain string, peers PeerOverrides) (
 	if !ok {
 		return nil, fmt.Errorf("render %s: the Inji issuer pair runs no adapter", MimotoIssuersFile)
 	}
-	display := mimotoDisplay{
-		Name: "Inji Certify", Language: "en", Title: "Inji Certify of this stack",
-		Description: "Claim a credential of the Inji Certify of this stack",
-	}
-	display.Logo.URL = "https://inji.github.io/inji-config/logos/mosipid-logo.png"
-	display.Logo.AltText = "The logo of the issuer"
+	display := injiIssuerDisplay(id, originOf(authz), brand)
 	issuers := map[string][]mimotoIssuer{"issuers": {{
 		IssuerID: mimotoIssuerID, CredentialIssuer: mimotoIssuerID, Display: []mimotoDisplay{display},
 		Protocol: "OpenId4VCI", ClientID: EsignetClientID, ClientAlias: EsignetClientID,

@@ -15,8 +15,8 @@ import (
 // eSignet 1.5.1 runs in the Inji stack only with a real authenticator
 // (ADR-053). The operator names the authenticator at setup. The image
 // mosipid/esignet-with-plugins:1.5.1 bundles the MOSIP IDA and the
-// Sunbird RC plugins. A custom plugin comes from the operator. The mock
-// plugin of the image is not an option.
+// Sunbird RC plugins. A custom plugin comes from the operator. Only
+// these three are options.
 const (
 	// EsignetAuthenticatorEnv is the setting that names the
 	// authenticator. vca deploy reads it from the .env of the pair.

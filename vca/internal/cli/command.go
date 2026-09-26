@@ -433,6 +433,12 @@ func newSetupCommand(env *Environment) *cobra.Command {
 				if jwkErr != nil {
 					return jwkErr
 				}
+				// Inji Web shows the issuer as it described itself, with
+				// the logo of the theme (plan N8).
+				injiIssuerID, idErr := ReadInjiIssuerIdentity(root)
+				if idErr != nil {
+					return idErr
+				}
 				plan, err := BuildPlan(SetupRequest{
 					Pair:        p,
 					Flags:       flags,
@@ -448,6 +454,8 @@ func newSetupCommand(env *Environment) *cobra.Command {
 					Keycloak:    keycloak,
 					Stacks:      stacks,
 					WalletJWK:   walletJWK,
+					InjiIssuer:  injiIssuerID,
+					Brand:       ReadInjiBrand(ThemePath(env.Root, "", env.Getenv)),
 				})
 				if err != nil {
 					return err
@@ -882,7 +890,41 @@ func newDpgCommand(env *Environment) *cobra.Command {
 	dpg.AddCommand(newDpgRealmCommand(env))
 	dpg.AddCommand(newDpgUpgradeSecretsCommand(env))
 	dpg.AddCommand(newDpgRotateAuthzKeyCommand(env))
+	dpg.AddCommand(newDpgApplyCommand(env))
 	return dpg
+}
+
+// newDpgApplyCommand builds vca dpg apply (plan N8).
+func newDpgApplyCommand(env *Environment) *cobra.Command {
+	return &cobra.Command{
+		Use:   "apply <dpg>",
+		Short: "Show the issuer identity in the wallet of the stack.",
+		Long: "apply reads the issuer identity from the adapter of the issuer pair on " +
+			"its host port. It keeps the identity in the directory of the pair. It " +
+			"then writes the name and the logo of the issuer into the issuer list of " +
+			"Mimoto, and restarts Mimoto and Inji Web. Run it after the issuer edits " +
+			"the identity in the issuer portal. Only the Inji stack has such a list.",
+		Example: "  vca dpg apply inji",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			d, err := ParseDpg(args[0])
+			if err != nil {
+				return err
+			}
+			if d != configv1.Dpg_DPG_INJI {
+				return fmt.Errorf("dpg apply: only the Inji stack keeps an issuer list, not %s", args[0])
+			}
+			pair := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: d}
+			values, err := bootstrapValues(env, filepath.Join(env.Root, "deploy"), pair)
+			if err != nil {
+				return err
+			}
+			return DpgApplyInji(cmd.Context(), ApplyOptions{
+				Root: env.Root, Values: values, Client: env.HTTP, Out: cmd.OutOrStdout(), Run: env.Run,
+				Brand: ReadInjiBrand(ThemePath(env.Root, "", env.Getenv)),
+			})
+		},
+	}
 }
 
 // newDpgRotateAuthzKeyCommand builds vca dpg rotate-authz-key (ADR-056

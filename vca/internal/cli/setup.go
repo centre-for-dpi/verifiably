@@ -68,6 +68,12 @@ type SetupRequest struct {
 	// registers the client with the holder authorization server of its
 	// adapter (ADR-052 decision 5). Empty registers no such client.
 	WalletJWK string
+	// InjiIssuer is the identity of the Inji issuer, from
+	// ReadInjiIssuerIdentity. Inji Web shows it (plan N8).
+	InjiIssuer InjiIssuerIdentity
+	// Brand is the logo and the wordmark of the theme, from
+	// ReadInjiBrand. Inji Web shows the logo of the issuer pair.
+	Brand InjiBrand
 	// ReadFile reads a file that a setting names, such as the plugin
 	// properties of eSignet. Nil means os.ReadFile.
 	ReadFile func(string) ([]byte, error)
@@ -228,7 +234,7 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 		return Plan{}, err
 	}
 	shared = append(shared, keycloak...)
-	mimoto, err := mimotoSharedFiles(req.Pair, stackValues, req.Domain, req.Peers)
+	mimoto, err := mimotoSharedFiles(req.Pair, stackValues, req.Domain, req.Peers, req.InjiIssuer, req.Brand)
 	if err != nil {
 		return Plan{}, err
 	}

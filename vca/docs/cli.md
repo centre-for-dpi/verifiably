@@ -16,6 +16,7 @@ The source is `vca/cmd/vca` and `vca/internal/cli`.
 - `vca dpg realm` turns self registration of a realm on or off.
 - `vca dpg upgrade-secrets` keeps the old passwords of volumes from an earlier release.
 - `vca dpg rotate-authz-key` rotates the token key of the Inji holder authorization server.
+- `vca dpg apply` shows the issuer identity in the wallet of the Inji stack.
 - `vca admin` calls the admin service.
 - `vca migrate` carries the data of a legacy deployment into the services.
 - `vca theme` checks and applies the theme file of every page.
@@ -534,6 +535,29 @@ its host port, as `vca dpg bootstrap` does, or at
 `VCA_BOOTSTRAP_ADAPTER_URL`. It proves that it holds the pair session
 key with a token derived from it. The proxy of the pair does not publish
 the rotation.
+
+## dpg apply
+
+```sh
+vca dpg apply inji
+```
+
+Inji Web lists the issuer under the name and the logo of the issuer
+list of Mimoto. `vca setup --role holder --dpg inji` writes that list.
+Before the issuer names itself, the list shows "Issuer of" and the host
+of the issuer pair.
+
+Run the command after the issuer edits the identity in the issuer
+portal. The run reads the identity from the adapter of the issuer pair
+on its host port, or at `VCA_BOOTSTRAP_ADAPTER_URL`. It keeps it in
+`deploy/issuer-inji/identity.json`, which a later holder setup reads.
+It then writes the name into the issuer list and restarts `inji-mimoto`
+and `inji-web`.
+
+The logo is `/static/logo.svg` of the issuer pair when the theme file
+has a logo. PNG and WebP logos keep their own extension. Without a
+logo, the list carries an inline image of the wordmark. No file of the
+list or of the credential template loads an image from another host.
 
 ## admin
 

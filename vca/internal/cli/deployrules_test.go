@@ -22,9 +22,7 @@ var cdnHosts = []string{
 // a CDN host, by file and host, with the unit of the no mock plan that
 // removes the line (ADR-050). TestPendingCdnEntriesStillMatch fails
 // when an entry no longer matches, so the entry goes with the fix.
-var pendingCdn = []nomockException{
-	{"deploy/vca/dpg/inji/mimoto/credential-template.html", "github.io", "N8"},
-}
+var pendingCdn = []nomockException{}
 
 // pendingCdnCovers says whether a pending entry covers a file and host.
 func pendingCdnCovers(path, host string) bool {

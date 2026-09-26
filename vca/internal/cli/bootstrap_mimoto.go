@@ -83,11 +83,11 @@ func injiWebURL(values map[string]string) string {
 // directory, the issuer list, and the trusted verifiers (P6-I7h). setup
 // writes them, so the directory belongs to the operator before compose
 // mounts it.
-func mimotoSharedFiles(p Pair, values map[string]string, domain string, peers PeerOverrides) ([]File, error) {
+func mimotoSharedFiles(p Pair, values map[string]string, domain string, peers PeerOverrides, id InjiIssuerIdentity, brand InjiBrand) ([]File, error) {
 	if !isInjiHolder(p) {
 		return nil, nil
 	}
-	files, err := mimotoFiles(values, domain, peers)
+	files, err := mimotoFiles(values, domain, peers, id, brand)
 	if err != nil {
 		return nil, err
 	}
