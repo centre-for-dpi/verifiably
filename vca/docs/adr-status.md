@@ -542,10 +542,10 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-050 | 1 No mock artefact or sample data set ships | Not started | `vca/`, `deploy/` | The Inji stack still runs the mock identity system and the farmer sample. |
-| ADR-050 | 2 A configurable workflow replaces each artefact | Not started | `vca/services`, `vca/internal/cli` | Follows the records ADR-051 to ADR-055. |
-| ADR-050 | 3 Test doubles stay in test paths | Not started | `vca/internal/cli/nomock_test.go` | The guard test checks that no deployment file names them. |
-| ADR-050 | 4 A guard test scans the tree | Not started | `vca/internal/cli/nomock_test.go` | The test does not exist yet. |
+| ADR-050 | 1 No mock artefact or sample data set ships | Partial | `vca/`, `deploy/` | `vca dpg bootstrap inji` adds no identity. The Inji stack still runs the mock identity system and the farmer sample. The pending list of `nomock_test.go` names each one. |
+| ADR-050 | 2 A configurable workflow replaces each artefact | Partial | `vca/services`, `vca/internal/cli` | Setup generates the stack secrets and asks for the certificate subject (ADR-055). ADR-051 to ADR-054 wait. |
+| ADR-050 | 3 Test doubles stay in test paths | Done | `vca/internal/cli/nomock_test.go` | `TestNoDeploymentReachesTestdata` and `TestNoBinaryImportsAFakePackage` keep test doubles out of every deployment. |
+| ADR-050 | 4 A guard test scans the tree | Done | `vca/internal/cli/nomock_test.go` | The allowlist gives a reason per entry. The pending list shrinks with each unit and fails on an entry that matches nothing. |
 | ADR-050 | 5 A stack secret has no default | Done | `deploy/vca/dpg/*.yaml`, `vca/internal/cli/stackenv.go` | Every stack file requires its passwords with `${NAME:?set by vca setup}`. `TestStackFilesHaveNoSecretDefault` pins it. |
 
 ## ADR-051: The VCA claims store is the data provider of Inji Certify
@@ -603,8 +603,8 @@ A row that is not `Done` carries a note.
 
 | Status | Decisions |
 |---|---|
-| Done | 227 |
-| Partial | 25 |
+| Done | 229 |
+| Partial | 27 |
 | Deferred | 3 |
-| Not started | 52 |
+| Not started | 48 |
 | Total | 307 |
