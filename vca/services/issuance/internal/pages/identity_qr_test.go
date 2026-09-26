@@ -11,6 +11,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/pixelpass"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	issuancev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1"
@@ -18,20 +19,24 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
 )
 
+// canonical encodes CBOR in the core deterministic form of RFC 8949
+// section 4.2.1, so the same claims always give the same QR text.
+var canonical = anyval.Must(cbor.CoreDetEncOptions().EncMode())
+
 // identityText builds a Claim 169 QR text: a COSE_Sign1 CWT, then zlib,
 // then base45, per the MOSIP QR code specification 1.1.0.
 func identityText(t *testing.T) string {
 	t.Helper()
-	protected, err := cbor.Marshal(map[int]any{1: -8})
+	protected, err := canonical.Marshal(map[int]any{1: -8})
 	if err != nil {
 		t.Fatal(err)
 	}
-	claims, err := cbor.Marshal(map[int]any{1: "did:web:certify.inji.example",
+	claims, err := canonical.Marshal(map[int]any{1: "did:web:certify.inji.example",
 		169: map[int]any{4: "Wanjiku Njeri", 8: "1984-03-12", 9: 2}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	msg, err := cbor.Marshal(cbor.Tag{Number: 18, Content: []any{protected, map[int]any{}, claims, []byte("signature")}})
+	msg, err := canonical.Marshal(cbor.Tag{Number: 18, Content: []any{protected, map[int]any{}, claims, []byte("signature")}})
 	if err != nil {
 		t.Fatal(err)
 	}

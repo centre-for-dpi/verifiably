@@ -39,8 +39,9 @@ func Encode(data []byte) (string, error) {
 	payload := data
 	var v any
 	if json.Unmarshal(data, &v) == nil {
-		// JSON values always encode as CBOR.
-		payload = anyval.Must(cbor.Marshal(v))
+		// JSON values always encode as CBOR. The canonical form sorts
+		// the map keys, so one document always gives one QR text.
+		payload = anyval.Must(encMode().Marshal(v))
 	}
 	var buf bytes.Buffer
 	// Writes to a bytes.Buffer cannot fail.
@@ -87,6 +88,14 @@ func Decode(s string) ([]byte, error) {
 // decodesAsCBOR reports whether raw decodes as CBOR into v.
 func decodesAsCBOR(raw []byte, v any) bool {
 	return decMode().Unmarshal(raw, v) == nil
+}
+
+// encMode sorts map keys by their encoded bytes, the order of the core
+// deterministic encoding of RFC 8949 section 4.2.1. Numbers keep the
+// default encoding.
+func encMode() cbor.EncMode {
+	// The options are valid constants, so EncMode cannot fail.
+	return anyval.Must(cbor.EncOptions{Sort: cbor.SortCoreDeterministic}.EncMode())
 }
 
 // decMode decodes CBOR maps as map[string]any so encoding/json can

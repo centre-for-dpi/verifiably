@@ -142,3 +142,46 @@ func FuzzParseDecode(f *testing.F) {
 		}
 	})
 }
+
+// TestEncodeWritesCanonicalCBOR proves one JSON document always gives
+// one QR text, with the CBOR map keys in the core deterministic order of
+// RFC 8949 section 4.2.1: sorted by their encoded bytes, so a shorter
+// key comes before a longer one. JSON numbers stay 64 bit floats, as
+// before.
+func TestEncodeWritesCanonicalCBOR(t *testing.T) {
+	doc := []byte(`{"name":"Asha","id":"7","gender":"F","dob":"1990-01-01","address":{"zip":"00100","city":"Nairobi"},"a":1,"bb":2}`)
+	want, err := Encode(doc)
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	for range 50 {
+		if got, again := Encode(doc); again != nil || got != want {
+			t.Fatalf("the same document gave another text: %v", again)
+		}
+	}
+	raw, err := DecodeBase45(want)
+	if err != nil {
+		t.Fatalf("DecodeBase45: %v", err)
+	}
+	zr, err := zlib.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("zlib: %v", err)
+	}
+	var inflated bytes.Buffer
+	if _, err := inflated.ReadFrom(zr); err != nil {
+		t.Fatalf("inflate: %v", err)
+	}
+	// The keys in canonical order: a, bb, id, dob, name, gender, address,
+	// and inside the address zip before city.
+	canonical := []byte{0xa7, 0x61, 'a', 0xfb, 0x3f, 0xf0, 0, 0, 0, 0, 0, 0,
+		0x62, 'b', 'b', 0xfb, 0x40, 0, 0, 0, 0, 0, 0, 0, 0x62, 'i', 'd', 0x61, '7',
+		0x63, 'd', 'o', 'b', 0x6a}
+	canonical = append(canonical, "1990-01-01"...)
+	canonical = append(canonical, 0x64, 'n', 'a', 'm', 'e', 0x64, 'A', 's', 'h', 'a',
+		0x66, 'g', 'e', 'n', 'd', 'e', 'r', 0x61, 'F', 0x67, 'a', 'd', 'd', 'r', 'e', 's', 's',
+		0xa2, 0x63, 'z', 'i', 'p', 0x65, '0', '0', '1', '0', '0', 0x64, 'c', 'i', 't', 'y', 0x67)
+	canonical = append(canonical, "Nairobi"...)
+	if !bytes.Equal(inflated.Bytes(), canonical) {
+		t.Fatalf("CBOR = % x\nwant   % x", inflated.Bytes(), canonical)
+	}
+}

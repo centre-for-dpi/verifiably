@@ -60,15 +60,17 @@ func Encode(data []byte) (Code, error) {
 	return EncodeVersion(data, version)
 }
 
-// EncodeVersion returns a level M symbol of the named version with the
-// data mask of the lowest penalty score. It fails when the version is out
-// of range or too small for data.
+// EncodeVersion returns a level M symbol of the named version. Its data
+// mask has the fewest false finder patterns and then the lowest penalty
+// score. It fails when the version is out of range or too small for
+// data.
 func EncodeVersion(data []byte, version int) (Code, error) {
 	return EncodeMask(data, version, -1)
 }
 
 // EncodeMask returns a level M symbol of the named version and data mask.
-// A mask below zero selects the mask with the lowest penalty score.
+// A mask below zero selects the mask with the fewest false finder
+// patterns and then the lowest penalty score.
 func EncodeMask(data []byte, version, mask int) (Code, error) {
 	if len(data) == 0 {
 		return Code{}, ErrEmpty

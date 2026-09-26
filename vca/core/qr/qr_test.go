@@ -284,18 +284,18 @@ func TestEncodeChoosesTheMaskWithTheLowestPenalty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
-	best := -1
+	best, bestFalse := -1, -1
 	for mask := 0; mask < 8; mask++ {
 		other, err := EncodeMask(data, code.Version, mask)
 		if err != nil {
 			t.Fatalf("EncodeMask %d: %v", mask, err)
 		}
-		score := scoreOf(other)
-		if best < 0 || score < best {
-			best = score
+		falseFinders, score := scoreFalseFinders(other), scoreOf(other)
+		if best < 0 || falseFinders < bestFalse || falseFinders == bestFalse && score < best {
+			best, bestFalse = score, falseFinders
 		}
 	}
-	if got := scoreOf(code); got != best {
+	if got := scoreOf(code); got != best || scoreFalseFinders(code) != bestFalse {
 		t.Fatalf("penalty of the chosen mask = %d, want the lowest %d", got, best)
 	}
 }

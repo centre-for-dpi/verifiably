@@ -249,16 +249,18 @@ func (m *matrix) applyMask(pattern int) {
 	}
 }
 
-// bestMask returns the mask pattern with the lowest penalty score.
+// bestMask returns the mask pattern with the fewest false finder
+// patterns and, among those, the lowest penalty score. A false finder
+// hides the symbol from a ZXing scanner, so it outweighs every penalty.
 func (m *matrix) bestMask() int {
-	best, bestScore := 0, -1
+	best, bestFalse, bestScore := 0, -1, -1
 	for pattern := 0; pattern < 8; pattern++ {
 		m.applyMask(pattern)
 		m.drawFormat(pattern)
-		score := m.penalty()
+		falseFinders, score := m.falseFinders(), m.penalty()
 		m.applyMask(pattern)
-		if bestScore < 0 || score < bestScore {
-			best, bestScore = pattern, score
+		if bestScore < 0 || falseFinders < bestFalse || falseFinders == bestFalse && score < bestScore {
+			best, bestFalse, bestScore = pattern, falseFinders, score
 		}
 	}
 	return best

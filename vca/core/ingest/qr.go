@@ -12,6 +12,7 @@ import (
 	_ "image/png"  // the upload page accepts PNG
 
 	"github.com/makiuchi-d/gozxing"
+	multiqr "github.com/makiuchi-d/gozxing/multi/qrcode"
 	"github.com/makiuchi-d/gozxing/qrcode"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
@@ -22,14 +23,23 @@ var ErrNoQRCode = errors.New("ingest: the upload holds no QR code")
 
 // DecodeQRImage reads the text of the QR code of one image
 // (ISO/IEC 18004, ADR-023 decision 3).
+//
+// The first pass stops at the first three finder patterns it confirms.
+// A data shape that reads as a finder pattern can hide the real lower
+// left one, so a valid symbol fails that pass. The second pass keeps
+// every candidate pattern and tries each triple that forms a symbol.
 func DecodeQRImage(img image.Image) (string, error) {
 	// The reader builds the bitmap from the image and never fails here.
 	bitmap := anyval.Must(gozxing.NewBinaryBitmapFromImage(img))
 	result, err := qrcode.NewQRCodeReader().Decode(bitmap, nil)
-	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrNoQRCode, err)
+	if err == nil {
+		return result.GetText(), nil
 	}
-	return result.GetText(), nil
+	results, multiErr := multiqr.NewQRCodeMultiReader().DecodeMultiple(bitmap, nil)
+	if multiErr == nil && len(results) > 0 {
+		return results[0].GetText(), nil
+	}
+	return "", fmt.Errorf("%w: %w", ErrNoQRCode, err)
 }
 
 // DecodeQRFrames returns the text of the first frame that holds a QR

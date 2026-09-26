@@ -3,6 +3,7 @@
 package ingest_test
 
 import (
+	"bytes"
 	"errors"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	"github.com/centre-for-dpi/vc-adapters/core/pixelpass"
 )
@@ -81,17 +83,17 @@ func TestDecodeClaim169WithPrefix(t *testing.T) {
 // there, not the end of a scheme prefix. The length of the key id
 // changes the first bytes of the stream, and so the first letters.
 func TestDecodeClaim169WithAColonInTheText(t *testing.T) {
-	claims, err := cbor.Marshal(map[int64]any{1: "did:web:issuer.test", 169: map[any]any{"name": "Asha"}})
+	claims, err := canonical.Marshal(map[int64]any{1: "did:web:issuer.test", 169: map[any]any{"name": "Asha"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := range 5000 {
 		kid := strings.Repeat("k", i%200) + strconv.Itoa(i)
-		protected, perr := cbor.Marshal(map[int64]any{1: -8, 4: []byte(kid)})
+		protected, perr := canonical.Marshal(map[int64]any{1: -8, 4: []byte(kid)})
 		if perr != nil {
 			t.Fatal(perr)
 		}
-		msg, merr := cbor.Marshal(cbor.Tag{Number: 18, Content: []any{protected, map[any]any{}, claims, []byte("signature")}})
+		msg, merr := canonical.Marshal(cbor.Tag{Number: 18, Content: []any{protected, map[any]any{}, claims, []byte("signature")}})
 		if merr != nil {
 			t.Fatal(merr)
 		}
@@ -201,5 +203,41 @@ func TestInflateLimits(t *testing.T) {
 	big := deflate(t, make([]byte, ingest.MaxInflatedBytes+16))
 	if _, err := ingest.Inflate(big); err == nil {
 		t.Error("an oversized payload wants an error")
+	}
+}
+
+// TestDecodeClaim169ReadsAnyKeyOrder decodes one claim set whose maps a
+// stack wrote in different key orders. Canonical CBOR sorts the keys,
+// but a reader must accept every order a valid encoder may write.
+func TestDecodeClaim169ReadsAnyKeyOrder(t *testing.T) {
+	// entry encodes one key and its value.
+	entry := func(k, v any) []byte {
+		out := append([]byte{}, anyval.Must(canonical.Marshal(k))...)
+		return append(out, anyval.Must(canonical.Marshal(v))...)
+	}
+	name, birth, gender, note := entry(4, "Wanjiku Njeri"), entry(8, "1987-04-12"), entry(9, 2), entry("note", "y")
+	issuer, iat := entry(1, "did:web:issuer.test"), entry(6, 1774958400)
+	orders := [][][]byte{
+		{name, birth, gender, note},
+		{note, name, birth, gender},
+		{gender, note, name, birth},
+		{birth, gender, note, name},
+	}
+	for i, order := range orders {
+		identity := append([]byte{0xa4}, bytes.Join(order, nil)...)
+		for j, claims := range [][]byte{
+			bytes.Join([][]byte{{0xa3}, issuer, iat, entry(169, cbor.RawMessage(identity))}, nil),
+			bytes.Join([][]byte{{0xa3}, entry(169, cbor.RawMessage(identity)), iat, issuer}, nil),
+		} {
+			text := pixelpass.EncodeBase45(deflate(t, sign1(t, claims, j == 0)))
+			cwt, _, err := ingest.DecodeClaim169(text)
+			if err != nil {
+				t.Fatalf("order %d/%d: %v", i, j, err)
+			}
+			got := jsonText(t, cwt.Data)
+			if got != `{"4":"Wanjiku Njeri","8":"1987-04-12","9":2,"note":"y"}` || cwt.Issuer != "did:web:issuer.test" {
+				t.Fatalf("order %d/%d: claim 169 = %s, issuer %q", i, j, got, cwt.Issuer)
+			}
+		}
 	}
 }

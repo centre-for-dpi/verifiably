@@ -16,8 +16,13 @@ import (
 	"github.com/makiuchi-d/gozxing"
 	"github.com/makiuchi-d/gozxing/qrcode"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/pixelpass"
 )
+
+// canonical encodes CBOR in the core deterministic form of RFC 8949
+// section 4.2.1, so the same claims always give the same QR text.
+var canonical = anyval.Must(cbor.CoreDetEncOptions().EncMode())
 
 // qrImage builds an image that holds the QR code of text.
 func qrImage(t *testing.T, text string) image.Image {
@@ -66,16 +71,16 @@ func deflate(t *testing.T, data []byte) []byte {
 // sign1 wraps payload in an untagged or a tagged COSE_Sign1 message.
 func sign1(t *testing.T, payload []byte, tagged bool) []byte {
 	t.Helper()
-	protected, err := cbor.Marshal(map[int64]any{1: -7, 4: []byte("key-1")})
+	protected, err := canonical.Marshal(map[int64]any{1: -7, 4: []byte("key-1")})
 	if err != nil {
 		t.Fatalf("protected header: %v", err)
 	}
 	msg := []any{protected, map[any]any{}, payload, []byte("signature")}
 	var out []byte
 	if tagged {
-		out, err = cbor.Marshal(cbor.Tag{Number: 18, Content: msg})
+		out, err = canonical.Marshal(cbor.Tag{Number: 18, Content: msg})
 	} else {
-		out, err = cbor.Marshal(msg)
+		out, err = canonical.Marshal(msg)
 	}
 	if err != nil {
 		t.Fatalf("COSE_Sign1: %v", err)
@@ -86,7 +91,7 @@ func sign1(t *testing.T, payload []byte, tagged bool) []byte {
 // claim169QR builds the text of a MOSIP Claim 169 QR code.
 func claim169QR(t *testing.T, data map[any]any, tagged bool) string {
 	t.Helper()
-	claims, err := cbor.Marshal(map[int64]any{
+	claims, err := canonical.Marshal(map[int64]any{
 		1: "did:web:issuer.test", 2: "subject-1", 3: "verifier", 4: 1900000000, 5: 1700000000, 6: 1700000000,
 		169: data,
 	})
