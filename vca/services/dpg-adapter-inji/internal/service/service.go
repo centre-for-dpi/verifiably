@@ -271,14 +271,15 @@ func (s *Service) GetCapabilities(
 	}
 	if s.mimoto != nil {
 		// The holder RPCs drive Mimoto with the session of its token
-		// login. Mimoto renders a PDF of a credential, and the holder
-		// claims a credential in Inji Web (P6-I7a decision).
+		// login. Mimoto renders a PDF of a credential, the holder claims
+		// a credential in Inji Web (P6-I7a decision), and the holder sets
+		// and enters the PIN of the wallet (P6-I7c).
 		out.Roles = append(out.Roles, commonv1.Role_ROLE_HOLDER)
 		if !slices.Contains(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VP) {
 			out.Protocols = append(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VP)
 		}
 		out.Features = append(out.Features, backendv1.Feature_FEATURE_WALLET_DOCUMENT,
-			backendv1.Feature_FEATURE_WALLET_CLAIM_IN_STACK)
+			backendv1.Feature_FEATURE_WALLET_CLAIM_IN_STACK, backendv1.Feature_FEATURE_WALLET_PIN)
 	}
 	out.DpgInfo = s.dpgInfo()
 	return connect.NewResponse(out), nil

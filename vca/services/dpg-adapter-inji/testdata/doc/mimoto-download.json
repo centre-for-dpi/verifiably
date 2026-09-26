@@ -1,0 +1,7 @@
+{
+  "issuerDisplayName": "Inji Certify",
+  "issuerLogo": "https://inji.github.io/inji-config/logos/mosipid-logo.png",
+  "credentialTypeDisplayName": "Farmer Credential",
+  "credentialTypeLogo": "https://certify.inji.example/farmer.png",
+  "credentialId": "e41f7b2a-3c58-4d9e-8a16-5b0c2d7e9f31"
+}

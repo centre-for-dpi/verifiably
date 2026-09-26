@@ -49,7 +49,8 @@ Inji database, and it never restarts an Inji container.
 | `GET /v1/verify/vp-result/{id}` | Reads the answer of a transaction. |
 | `POST /v1/verify/vc-verification` | Checks one uploaded or scanned credential. |
 | `POST /v1/mimoto/auth/{provider}/token-login` | Opens a Mimoto session with the ID token of the holder login. |
-| `POST /v1/mimoto/wallets` | Makes the Mimoto wallet of a holder on the first login. |
+| `GET /v1/mimoto/wallets` | Lists the wallet of a holder and its lock status. The answer sets the CSRF cookie. |
+| `POST /v1/mimoto/wallets` | Makes the Mimoto wallet with the PIN the holder sets on first use. |
 | `POST /v1/mimoto/wallets/{id}/unlock` | Puts the wallet key in the session. |
 | `GET /v1/mimoto/wallets/{id}/credentials` | Lists the held credentials by name. |
 | `GET /v1/mimoto/wallets/{id}/credentials/{credentialId}` | Reads the PDF of a held credential. |
@@ -66,7 +67,7 @@ The answer of `GetCapabilities` reports what the deployment supports.
 | Channels | OID4VCI pre-authorized code, OID4VCI authorization code, document, and identity QR (Claim 169) with a Certify URL |
 | Protocols | OID4VCI, OID4VP, OID4VP with Presentation Exchange |
 | Roles | The roles whose URL the configuration sets. `ROLE_HOLDER` with a Mimoto URL. |
-| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_REVOCATION`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ISSUER_IDENTITY_PROVISION`, and `FEATURE_ISSUER_IDENTITY_IMPORT_X509` with a Certify URL. `FEATURE_PRESENTATION_DURING_ISSUANCE` with a Certify URL and `VCA_INJI_PRESENTATION_DURING_ISSUANCE`. `FEATURE_VERIFY_UPLOAD` with an Inji Verify URL. `FEATURE_WALLET_DOCUMENT` and `FEATURE_WALLET_CLAIM_IN_STACK` with a Mimoto URL. |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_REVOCATION`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ISSUER_IDENTITY_PROVISION`, and `FEATURE_ISSUER_IDENTITY_IMPORT_X509` with a Certify URL. `FEATURE_PRESENTATION_DURING_ISSUANCE` with a Certify URL and `VCA_INJI_PRESENTATION_DURING_ISSUANCE`. `FEATURE_VERIFY_UPLOAD` with an Inji Verify URL. `FEATURE_WALLET_DOCUMENT`, `FEATURE_WALLET_CLAIM_IN_STACK`, and `FEATURE_WALLET_PIN` with a Mimoto URL. |
 | DID methods | `did:web`, the one DID of the Certify configuration |
 | Key types | `Ed25519`, `secp256r1`, `secp256k1`, `RSA` |
 | Status mechanisms | Bitstring status list and token status list, when the configuration names a Certify URL |
@@ -88,7 +89,7 @@ shows a feature on this stack only when the answer lists it (ADR-034).
 | Every holder RPC without `VCA_INJI_MIMOTO_URL` | The adapter drives no wallet. |
 | `AcceptOffer` | Mimoto downloads a credential only in the browser, with its own client. The answer names Inji Web, where the holder claims. The answer lists `FEATURE_WALLET_CLAIM_IN_STACK`. |
 | The bytes of a held credential | Mimoto lists names and logos only. `ListCredentials` returns no `credential`, and the wallet shows the PDF of `GetCredentialDocument`. |
-| The wallet PIN for Inji Web | The adapter makes the Mimoto wallet with a random PIN and keeps it. Inji Web asks the holder for that PIN before a claim. The holder does not know it yet, so a claim in Inji Web cannot open that wallet. A later unit shares the PIN or lets the holder set it. |
+| A PIN that the holder did not type | The adapter never stores the PIN of a Mimoto wallet. The holder sets it on first use and enters it in each session. |
 | `Register` without an ID token, or with a token Mimoto does not trust | Mimoto opens a session only from a trusted ID token. The adapter answers `failed_precondition` or `permission_denied`, and the wallet keeps the browser store. |
 | Every tenant RPC | Inji keeps no tenants. |
 | Every webhook RPC | Inji keeps no tenants to hold a webhook. |
@@ -372,10 +373,9 @@ that P6-I7b builds.
    default of open question G.10 applies only to the download.
 2. `Register` logs in with the ID token of the holder login. The
    wallet authentication service passes it on every login (ADR-020
-   decision 3). The adapter keeps the session cookie per wallet. It
-   makes one Mimoto wallet with a random PIN on the first login and
-   unlocks it in each session. The PIN stays in the adapter store with
-   mode 0600, like the walt.id wallet session.
+   decision 3). The adapter keeps the session cookie per wallet. The
+   holder sets the PIN of the Mimoto wallet, see "The wallet PIN"
+   below (P6-I7c).
 3. `ListCredentials`, `Present`, and `DeleteCredential` call Mimoto
    with that session. A listed credential carries the names only,
    because Mimoto returns no credential bytes.
@@ -391,16 +391,44 @@ that P6-I7b builds.
 
 ### What P6-I7b built
 
-The adapter follows the decision. `TestRegisterCreatesMimotoWallet`,
+The adapter follows the decision. `TestRegisterLeavesThePinToTheHolder`,
 `TestListCredentials`, `TestAcceptOfferPointsAtInjiWeb`,
 `TestPresentThroughMimoto`, `TestDelete`, and
 `TestCapabilitiesListHolderRole` run against the fake Mimoto.
 `TestContractHolderThroughMimoto` runs against a real Mimoto with
-`VCA_INJI_CONTRACT_MIMOTO_URL` and `VCA_INJI_CONTRACT_ID_TOKEN`.
+`VCA_INJI_CONTRACT_MIMOTO_URL` and an ID token or a test holder.
 
-The adapter keeps the PIN of each wallet in `VCA_INJI_STORE_FILE`. A
-store in memory forgets the PINs at a restart and locks every wallet,
-so the service warns at start.
+The adapter keeps the session of each wallet in `VCA_INJI_STORE_FILE`.
+A store in memory forgets the sessions at a restart. Every holder then
+signs in again, and the service warns at start.
+
+### The wallet PIN
+
+Mimoto keeps a PIN of six digits per wallet, and Inji Web asks the
+holder for it before a claim. P6-I7c chose the design that keeps the
+holder in control. **The holder sets the PIN on first use in the VCA
+wallet. The adapter never stores it.** The other design is a PIN that
+the adapter makes and the wallet shows once. It puts a secret of the
+holder in the adapter store. It also leaves the holder with a PIN that
+the holder did not choose.
+
+| Step | What happens |
+| --- | --- |
+| Login | `Register` opens a Mimoto session and lists the wallets of the user. It makes no wallet and unlocks none. The wallet id it returns is a handle of the adapter, stable per holder. |
+| Lock state | `GetWalletLock` lists the wallets again. No wallet gives `WALLET_LOCK_NEEDS_NEW_PIN`. A wallet the session has not opened gives `WALLET_LOCK_NEEDS_PIN`. A wallet that Mimoto lists as locked gives `WALLET_LOCK_LOCKED_OUT`. |
+| PIN step | The wallet portal asks for the PIN at `/wallet/pin`. On first use it takes the PIN twice. `UnlockWallet` makes the wallet with that PIN when the holder has none, then unlocks it. The PIN goes to Mimoto and nowhere else. |
+| Wrong PIN | Mimoto answers `invalid_pin`, and the fourth wrong PIN `last_attempt_before_lockout`. The page shows the sentence beside the field. The fifth wrong PIN locks the wallet for an hour (423). |
+| Claim | Inji Web asks for the same PIN. The holder knows it, so the claim opens the wallet. The credential then shows in the VCA wallet. |
+| Lost key | A session that lost the wallet key answers `wallet_locked`. The adapter marks the wallet locked, and the wallet asks for the PIN again. |
+
+The adapter lists `FEATURE_WALLET_PIN` with a Mimoto URL. The wallet
+list sets the CSRF cookie of Mimoto. Every call that changes state
+repeats it in the `X-XSRF-TOKEN` header.
+
+A record of an earlier release held a random PIN. The next login keeps
+its wallet id and removes the PIN from the store. The holder does not
+know that PIN. The holder resets it in Inji Web, which deletes that
+wallet. The holder then sets a new PIN in the VCA wallet.
 
 The wallet portal uses the stack for what Mimoto does. It lists the
 held credentials, presents them, deletes them, and serves their PDF.

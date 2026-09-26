@@ -12,6 +12,7 @@
 # VCA_INJI_CONTRACT_HOLDER_PASSWORD, and
 # VCA_INJI_CONTRACT_HOLDER_REDIRECT_URI (the redirect URI of the holder
 # pair). VCA_INJI_CONTRACT_MIMOTO_URL defaults to the host port of Mimoto.
+# VCA_INJI_CONTRACT_HOLDER_PIN is the wallet PIN of the test holder.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

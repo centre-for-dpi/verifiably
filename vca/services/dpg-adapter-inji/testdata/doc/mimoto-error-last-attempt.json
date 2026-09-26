@@ -1,0 +1,4 @@
+{
+  "errorCode": "last_attempt_before_lockout",
+  "errorMessage": "Incorrect passcode. Last attempt remaining before your Wallet is permanently locked"
+}

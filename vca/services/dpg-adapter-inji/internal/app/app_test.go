@@ -16,6 +16,7 @@ import (
 	"connectrpc.com/connect"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/fake"
@@ -192,5 +193,43 @@ func TestBuildWiresTheHolderRole(t *testing.T) {
 	caps, err := a.Service.GetCapabilities(t.Context(), connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
 	if err != nil || len(caps.Msg.GetRoles()) != 1 || caps.Msg.GetRoles()[0].String() != "ROLE_HOLDER" {
 		t.Fatalf("capabilities = %v %v", caps, err)
+	}
+}
+
+// TestHolderPinPathOverConnect runs the PIN path of P6-I7c through the
+// Connect handler, as wallet-auth and the wallet portal call it: the
+// login, the lock state, the PIN the holder sets, the list, and a claim
+// in Inji Web with the same PIN that then shows in the list.
+func TestHolderPinPathOverConnect(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	a, err := app.Build(config.Config{
+		MimotoURL: f.URL(), WebURL: "http://localhost:17085", OfferTTL: time.Minute, Timeout: time.Second, MaxBytes: 1 << 20,
+	}, app.Deps{HTTP: f.Client()})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	srv := httptest.NewServer(a.Mux)
+	defer srv.Close()
+	holder := backendv1connect.NewHolderBackendServiceClient(srv.Client(), srv.URL)
+	ctx := t.Context()
+	reg, err := holder.Register(ctx, connect.NewRequest(&backendv1.RegisterRequest{PairwiseSubject: "iss|sub", IdToken: "id.token.of.the.login"}))
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	wallet := reg.Msg.GetWalletId()
+	lock, err := holder.GetWalletLock(ctx, connect.NewRequest(&backendv1.GetWalletLockRequest{WalletId: wallet}))
+	if err != nil || lock.Msg.GetState() != backendv1.WalletLock_WALLET_LOCK_NEEDS_NEW_PIN {
+		t.Fatalf("lock = %v %v", lock, err)
+	}
+	if _, err = holder.UnlockWallet(ctx, connect.NewRequest(&backendv1.UnlockWalletRequest{WalletId: wallet, Pin: "271828"})); err != nil {
+		t.Fatalf("UnlockWallet: %v", err)
+	}
+	if err = f.ClaimInInjiWeb("id.token.of.the.login", "271828"); err != nil {
+		t.Fatalf("the claim in Inji Web: %v", err)
+	}
+	list, err := holder.ListCredentials(ctx, connect.NewRequest(&backendv1.ListCredentialsRequest{WalletId: wallet}))
+	if err != nil || len(list.Msg.GetCredentials()) != 3 {
+		t.Fatalf("ListCredentials = %v %v", list, err)
 	}
 }

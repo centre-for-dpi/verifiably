@@ -26,6 +26,8 @@
 //	POST /accept          accept a pending offer
 //	POST /reject          decline a pending offer, when the stack can
 //	POST /delete     remove one credential
+//	GET  /pin        set or enter the PIN of the stack wallet (P6-I7c)
+//	POST /pin        pass the PIN to the stack wallet
 //	GET  /present          the intake and the request card (spec HO4, decision 5)
 //	POST /present          share the selected claims
 //	POST /present/read     open a pasted request link
@@ -173,6 +175,8 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+p.opts.Prefix+"/reject", p.handle(p.reject))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/delete", p.handle(p.remove))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/document", p.handle(p.document))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/pin", p.handle(p.pinPage))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/pin", p.handle(p.pinSubmit))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/present", p.handle(p.presentPage))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/present", p.handle(p.submit))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/present/read", p.handle(p.presentRead))

@@ -86,7 +86,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 			"setting", config.Prefix+"PUBLIC_URL")
 	}
 	if cfg.MimotoURL != "" && cfg.StoreFile == "" {
-		deps.Log.Warn("no store file, so a restart forgets the Mimoto wallet PINs",
+		deps.Log.Warn("no store file, so a restart forgets the Mimoto sessions and every holder signs in again",
 			"setting", config.Prefix+"STORE_FILE")
 	}
 	deps.Log.Info("Inji adapter ready",

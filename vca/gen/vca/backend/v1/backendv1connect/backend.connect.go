@@ -128,6 +128,12 @@ const (
 	// HolderBackendServiceGetCredentialDocumentProcedure is the fully-qualified name of the
 	// HolderBackendService's GetCredentialDocument RPC.
 	HolderBackendServiceGetCredentialDocumentProcedure = "/vca.backend.v1.HolderBackendService/GetCredentialDocument"
+	// HolderBackendServiceGetWalletLockProcedure is the fully-qualified name of the
+	// HolderBackendService's GetWalletLock RPC.
+	HolderBackendServiceGetWalletLockProcedure = "/vca.backend.v1.HolderBackendService/GetWalletLock"
+	// HolderBackendServiceUnlockWalletProcedure is the fully-qualified name of the
+	// HolderBackendService's UnlockWallet RPC.
+	HolderBackendServiceUnlockWalletProcedure = "/vca.backend.v1.HolderBackendService/UnlockWallet"
 	// VerifierBackendServiceCreateRequestProcedure is the fully-qualified name of the
 	// VerifierBackendService's CreateRequest RPC.
 	VerifierBackendServiceCreateRequestProcedure = "/vca.backend.v1.VerifierBackendService/CreateRequest"
@@ -656,6 +662,13 @@ type HolderBackendServiceClient interface {
 	// credential, such as a PDF. An adapter serves it when it lists
 	// FEATURE_WALLET_DOCUMENT.
 	GetCredentialDocument(context.Context, *connect.Request[v1.GetCredentialDocumentRequest]) (*connect.Response[v1.GetCredentialDocumentResponse], error)
+	// GetWalletLock reports whether the wallet needs the PIN of the
+	// holder. An adapter serves it when it lists FEATURE_WALLET_PIN.
+	GetWalletLock(context.Context, *connect.Request[v1.GetWalletLockRequest]) (*connect.Response[v1.GetWalletLockResponse], error)
+	// UnlockWallet opens the wallet with the PIN the holder enters. It
+	// makes the wallet with that PIN when the holder has none. The adapter
+	// never stores the PIN.
+	UnlockWallet(context.Context, *connect.Request[v1.UnlockWalletRequest]) (*connect.Response[v1.UnlockWalletResponse], error)
 }
 
 // NewHolderBackendServiceClient constructs a client for the vca.backend.v1.HolderBackendService
@@ -747,6 +760,18 @@ func NewHolderBackendServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(holderBackendServiceMethods.ByName("GetCredentialDocument")),
 			connect.WithClientOptions(opts...),
 		),
+		getWalletLock: connect.NewClient[v1.GetWalletLockRequest, v1.GetWalletLockResponse](
+			httpClient,
+			baseURL+HolderBackendServiceGetWalletLockProcedure,
+			connect.WithSchema(holderBackendServiceMethods.ByName("GetWalletLock")),
+			connect.WithClientOptions(opts...),
+		),
+		unlockWallet: connect.NewClient[v1.UnlockWalletRequest, v1.UnlockWalletResponse](
+			httpClient,
+			baseURL+HolderBackendServiceUnlockWalletProcedure,
+			connect.WithSchema(holderBackendServiceMethods.ByName("UnlockWallet")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -765,6 +790,8 @@ type holderBackendServiceClient struct {
 	rejectOffer           *connect.Client[v1.RejectOfferRequest, v1.RejectOfferResponse]
 	listEvents            *connect.Client[v1.ListEventsRequest, v1.ListEventsResponse]
 	getCredentialDocument *connect.Client[v1.GetCredentialDocumentRequest, v1.GetCredentialDocumentResponse]
+	getWalletLock         *connect.Client[v1.GetWalletLockRequest, v1.GetWalletLockResponse]
+	unlockWallet          *connect.Client[v1.UnlockWalletRequest, v1.UnlockWalletResponse]
 }
 
 // Register calls vca.backend.v1.HolderBackendService.Register.
@@ -832,6 +859,16 @@ func (c *holderBackendServiceClient) GetCredentialDocument(ctx context.Context, 
 	return c.getCredentialDocument.CallUnary(ctx, req)
 }
 
+// GetWalletLock calls vca.backend.v1.HolderBackendService.GetWalletLock.
+func (c *holderBackendServiceClient) GetWalletLock(ctx context.Context, req *connect.Request[v1.GetWalletLockRequest]) (*connect.Response[v1.GetWalletLockResponse], error) {
+	return c.getWalletLock.CallUnary(ctx, req)
+}
+
+// UnlockWallet calls vca.backend.v1.HolderBackendService.UnlockWallet.
+func (c *holderBackendServiceClient) UnlockWallet(ctx context.Context, req *connect.Request[v1.UnlockWalletRequest]) (*connect.Response[v1.UnlockWalletResponse], error) {
+	return c.unlockWallet.CallUnary(ctx, req)
+}
+
 // HolderBackendServiceHandler is an implementation of the vca.backend.v1.HolderBackendService
 // service.
 type HolderBackendServiceHandler interface {
@@ -867,6 +904,13 @@ type HolderBackendServiceHandler interface {
 	// credential, such as a PDF. An adapter serves it when it lists
 	// FEATURE_WALLET_DOCUMENT.
 	GetCredentialDocument(context.Context, *connect.Request[v1.GetCredentialDocumentRequest]) (*connect.Response[v1.GetCredentialDocumentResponse], error)
+	// GetWalletLock reports whether the wallet needs the PIN of the
+	// holder. An adapter serves it when it lists FEATURE_WALLET_PIN.
+	GetWalletLock(context.Context, *connect.Request[v1.GetWalletLockRequest]) (*connect.Response[v1.GetWalletLockResponse], error)
+	// UnlockWallet opens the wallet with the PIN the holder enters. It
+	// makes the wallet with that PIN when the holder has none. The adapter
+	// never stores the PIN.
+	UnlockWallet(context.Context, *connect.Request[v1.UnlockWalletRequest]) (*connect.Response[v1.UnlockWalletResponse], error)
 }
 
 // NewHolderBackendServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -954,6 +998,18 @@ func NewHolderBackendServiceHandler(svc HolderBackendServiceHandler, opts ...con
 		connect.WithSchema(holderBackendServiceMethods.ByName("GetCredentialDocument")),
 		connect.WithHandlerOptions(opts...),
 	)
+	holderBackendServiceGetWalletLockHandler := connect.NewUnaryHandler(
+		HolderBackendServiceGetWalletLockProcedure,
+		svc.GetWalletLock,
+		connect.WithSchema(holderBackendServiceMethods.ByName("GetWalletLock")),
+		connect.WithHandlerOptions(opts...),
+	)
+	holderBackendServiceUnlockWalletHandler := connect.NewUnaryHandler(
+		HolderBackendServiceUnlockWalletProcedure,
+		svc.UnlockWallet,
+		connect.WithSchema(holderBackendServiceMethods.ByName("UnlockWallet")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.backend.v1.HolderBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case HolderBackendServiceRegisterProcedure:
@@ -982,6 +1038,10 @@ func NewHolderBackendServiceHandler(svc HolderBackendServiceHandler, opts ...con
 			holderBackendServiceListEventsHandler.ServeHTTP(w, r)
 		case HolderBackendServiceGetCredentialDocumentProcedure:
 			holderBackendServiceGetCredentialDocumentHandler.ServeHTTP(w, r)
+		case HolderBackendServiceGetWalletLockProcedure:
+			holderBackendServiceGetWalletLockHandler.ServeHTTP(w, r)
+		case HolderBackendServiceUnlockWalletProcedure:
+			holderBackendServiceUnlockWalletHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1041,6 +1101,14 @@ func (UnimplementedHolderBackendServiceHandler) ListEvents(context.Context, *con
 
 func (UnimplementedHolderBackendServiceHandler) GetCredentialDocument(context.Context, *connect.Request[v1.GetCredentialDocumentRequest]) (*connect.Response[v1.GetCredentialDocumentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.GetCredentialDocument is not implemented"))
+}
+
+func (UnimplementedHolderBackendServiceHandler) GetWalletLock(context.Context, *connect.Request[v1.GetWalletLockRequest]) (*connect.Response[v1.GetWalletLockResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.GetWalletLock is not implemented"))
+}
+
+func (UnimplementedHolderBackendServiceHandler) UnlockWallet(context.Context, *connect.Request[v1.UnlockWalletRequest]) (*connect.Response[v1.UnlockWalletResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.UnlockWallet is not implemented"))
 }
 
 // VerifierBackendServiceClient is a client for the vca.backend.v1.VerifierBackendService service.

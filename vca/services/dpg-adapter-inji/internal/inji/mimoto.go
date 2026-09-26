@@ -20,6 +20,8 @@ import (
 // session cookie (P6-I7a decision, docs/dpg-adapter-inji.md).
 //
 //   - POST /v1/mimoto/auth/{provider}/token-login opens the session.
+//   - GET /v1/mimoto/wallets lists the wallets of the user and sets the
+//     CSRF cookie that every call that changes state repeats.
 //   - POST /v1/mimoto/wallets makes a wallet with a PIN of six digits.
 //   - POST /v1/mimoto/wallets/{id}/unlock puts the wallet key in the session.
 //   - GET, DELETE /v1/mimoto/wallets/{id}/credentials[/{credentialId}]
@@ -31,6 +33,42 @@ const mimotoPath = "/v1/mimoto"
 // ErrMimotoSession reports a session that Mimoto no longer knows, or a
 // token it refused. The holder signs in again.
 var ErrMimotoSession = errors.New("inji: Mimoto refused the session")
+
+// The errors of the wallet PIN, by the errorCode of the answer of
+// Mimoto 0.21.0 (WalletsController).
+var (
+	// ErrMimotoPIN is a wrong PIN (invalid_pin).
+	ErrMimotoPIN = errors.New("inji: the PIN does not open the wallet")
+	// ErrMimotoLastAttempt is a wrong PIN with one attempt left before
+	// the lock (last_attempt_before_lockout).
+	ErrMimotoLastAttempt = errors.New("inji: the PIN does not open the wallet, and one attempt is left")
+	// ErrMimotoLockedOut is a wallet that too many wrong PINs locked
+	// (423 temporarily_locked or permanently_locked).
+	ErrMimotoLockedOut = errors.New("inji: too many wrong PINs locked the wallet")
+	// ErrMimotoWalletLocked is a session without the key of the wallet
+	// (wallet_locked).
+	ErrMimotoWalletLocked = errors.New("inji: the wallet is locked in this session")
+)
+
+// xsrfCookie is the CSRF cookie of Mimoto. A call that changes state
+// repeats its value in xsrfHeader (CookieCsrfTokenRepository).
+const (
+	xsrfCookie = "XSRF-TOKEN"
+	xsrfHeader = "X-XSRF-TOKEN"
+)
+
+// Wallet is one wallet of the user.
+type Wallet struct {
+	// ID is the wallet id.
+	ID string `json:"walletId"`
+	// Name is the name the holder gave it.
+	Name string `json:"walletName"`
+	// Status is empty, temporarily_locked, or permanently_locked.
+	Status string `json:"walletStatus"`
+}
+
+// Locked reports a wallet that too many wrong PINs locked.
+func (w Wallet) Locked() bool { return strings.HasSuffix(w.Status, "_locked") }
 
 // Mimoto calls the Mimoto service of the stack.
 type Mimoto struct {
@@ -80,12 +118,99 @@ func (m *Mimoto) call(ctx context.Context, r dpgclient.Request, cookie string) (
 			r.Header = http.Header{}
 		}
 		r.Header.Set("Cookie", cookie)
+		if token := cookieValue(cookie, xsrfCookie); token != "" && r.Method != http.MethodGet {
+			r.Header.Set(xsrfHeader, token)
+		}
 	}
 	resp, err := m.client.Do(ctx, r)
 	if dpgclient.IsStatus(err, http.StatusUnauthorized) || dpgclient.IsStatus(err, http.StatusForbidden) {
 		return nil, fmt.Errorf("%w: %w", ErrMimotoSession, err)
 	}
+	if code := errorCode(err); code != nil {
+		return nil, fmt.Errorf("%w: %w", code, err)
+	}
 	return resp, err
+}
+
+// errorCode maps the errorCode of a Mimoto error answer onto an error of
+// the PIN, or nil.
+func errorCode(err error) error {
+	var status *dpgclient.StatusError
+	if !errors.As(err, &status) {
+		return nil
+	}
+	if status.Status == http.StatusLocked {
+		return ErrMimotoLockedOut
+	}
+	var body struct {
+		Code string `json:"errorCode"`
+	}
+	if json.Unmarshal([]byte(status.Body), &body) == nil {
+		switch body.Code {
+		case "invalid_pin":
+			return ErrMimotoPIN
+		case "last_attempt_before_lockout":
+			return ErrMimotoLastAttempt
+		case "temporarily_locked", "permanently_locked":
+			return ErrMimotoLockedOut
+		case "wallet_locked":
+			return ErrMimotoWalletLocked
+		}
+	}
+	return nil
+}
+
+// cookieValue returns the value of one cookie of a Cookie header.
+func cookieValue(cookie, name string) string {
+	for _, part := range strings.Split(cookie, ";") {
+		if k, v, ok := strings.Cut(strings.TrimSpace(part), "="); ok && k == name {
+			return v
+		}
+	}
+	return ""
+}
+
+// mergeCookies adds the cookies of the Set-Cookie headers to a Cookie
+// header, and replaces a cookie of the same name.
+func mergeCookies(cookie string, h http.Header) string {
+	names := []string{}
+	values := map[string]string{}
+	add := func(pair string) {
+		k, v, ok := strings.Cut(strings.TrimSpace(pair), "=")
+		if !ok || k == "" {
+			return
+		}
+		if _, seen := values[k]; !seen {
+			names = append(names, k)
+		}
+		values[k] = v
+	}
+	for _, part := range strings.Split(cookie, ";") {
+		add(part)
+	}
+	for _, line := range h.Values("Set-Cookie") {
+		pair, _, _ := strings.Cut(line, ";")
+		add(pair)
+	}
+	parts := make([]string, 0, len(names))
+	for _, k := range names {
+		parts = append(parts, k+"="+values[k])
+	}
+	return strings.Join(parts, "; ")
+}
+
+// Wallets lists the wallets of the user of the session. The answer of a
+// GET carries the CSRF cookie, so it returns the cookie with it.
+func (m *Mimoto) Wallets(ctx context.Context, cookie string) ([]Wallet, string, error) {
+	resp, err := m.call(ctx, dpgclient.Request{Method: http.MethodGet, Path: "/wallets", Accept: "application/json"}, cookie)
+	if err != nil {
+		return nil, cookie, err
+	}
+	var out []Wallet
+	if err := json.Unmarshal(resp.Body, &out); err != nil {
+		return nil, cookie, fmt.Errorf("inji: read the Mimoto wallets: %w", err)
+	}
+	return out, mergeCookies(cookie, resp.Header), nil
 }
 
 // TokenLogin opens a session with the ID token for the provider bean of

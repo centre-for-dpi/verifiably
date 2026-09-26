@@ -57,6 +57,11 @@ type fakeHolder struct {
 	madeDids   []*backendv1.CreateDidRequest
 	defaultDid string
 	keysErr    error
+	// The PIN of a stack wallet (P6-I7c): the lock state, the PIN of the
+	// wallet once set, and the PINs the holder typed.
+	lock  backendv1.WalletLock
+	pin   string
+	typed []string
 }
 
 func (f *fakeHolder) ListKeys(context.Context, *connect.Request[backendv1.ListKeysRequest]) (*connect.Response[backendv1.ListKeysResponse], error) {

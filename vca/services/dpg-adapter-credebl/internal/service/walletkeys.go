@@ -56,3 +56,14 @@ func (s *Service) ListEvents(context.Context, *connect.Request[backendv1.ListEve
 func (s *Service) GetCredentialDocument(context.Context, *connect.Request[backendv1.GetCredentialDocumentRequest]) (*connect.Response[backendv1.GetCredentialDocumentResponse], error) {
 	return nil, unimplemented("this adapter renders no document of a held credential")
 }
+
+// GetWalletLock answers Unimplemented. The adapter drives no wallet
+// with a PIN, so it lists no FEATURE_WALLET_PIN.
+func (s *Service) GetWalletLock(context.Context, *connect.Request[backendv1.GetWalletLockRequest]) (*connect.Response[backendv1.GetWalletLockResponse], error) {
+	return nil, unimplemented("this adapter drives no wallet with a PIN")
+}
+
+// UnlockWallet answers Unimplemented for the same reason.
+func (s *Service) UnlockWallet(context.Context, *connect.Request[backendv1.UnlockWalletRequest]) (*connect.Response[backendv1.UnlockWalletResponse], error) {
+	return nil, unimplemented("this adapter drives no wallet with a PIN")
+}

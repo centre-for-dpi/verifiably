@@ -1,0 +1,4 @@
+{
+  "errorCode": "invalid_pin",
+  "errorMessage": "Invalid PIN or wallet key provided"
+}

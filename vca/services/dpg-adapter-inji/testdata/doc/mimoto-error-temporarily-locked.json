@@ -1,0 +1,4 @@
+{
+  "errorCode": "temporarily_locked",
+  "errorMessage": "You’ve reached the maximum number of attempts. Your wallet is now temporarily locked"
+}

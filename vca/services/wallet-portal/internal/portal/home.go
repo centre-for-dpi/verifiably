@@ -3,6 +3,7 @@
 package portal
 
 import (
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
@@ -22,19 +24,29 @@ import (
 // tile to discovery (ADR-021 decision 6).
 func (p *Portal) mine(w http.ResponseWriter, r *http.Request) error {
 	b := p.pen(r)
-	resp, err := p.opts.Service.ListMine(r.Context(),
-		connect.NewRequest(&walletportalv1.ListMineRequest{}))
 	var parts []template.HTML
-	if err != nil {
-		parts = append(parts, b.part("card", components.Card{
-			ID: "wallet-problem", Title: msg.T("holder.problem.title"), Text: msg.T("holder.problem.text"),
-		}))
+	// A stack wallet with a PIN lists nothing before the holder sets or
+	// enters the PIN (P6-I7c). The home page then asks for it.
+	if state, lerr := p.walletLock(b, r); lerr == nil && pinShut(state) {
+		parts = append(parts, p.pinCard(b, state))
 	} else {
-		parts = append(parts, p.cardList(b, resp.Msg.GetCards()))
+		resp, err := p.opts.Service.ListMine(r.Context(),
+			connect.NewRequest(&walletportalv1.ListMineRequest{}))
+		if err != nil {
+			parts = append(parts, b.part("card", components.Card{
+				ID: "wallet-problem", Title: msg.T("holder.problem.title"), Text: msg.T("holder.problem.text"),
+			}))
+		} else {
+			parts = append(parts, p.cardList(b, resp.Msg.GetCards()))
+		}
 	}
 	parts = append(parts, p.recent(b, r))
 	if p.hybrid(b) {
-		parts = append(parts, p.stackCard(b, msg.T("holder.stack.text")))
+		text := msg.T("holder.stack.text")
+		if p.pinGate(b) {
+			text += " " + msg.T("holder.stack.pin")
+		}
+		parts = append(parts, p.stackCard(b, text))
 	}
 	if p.opts.Service.BrowserStorage() || p.hybrid(b) {
 		parts = append(parts, p.browserCard(b))
@@ -189,3 +201,15 @@ func validity(card *walletportalv1.Card) string {
 	}
 	return "<p>" + template.HTMLEscapeString(parts) + "</p>"
 }
+
+// walletLock returns the PIN state of the stack wallet, or an error when
+// the stack keeps no PIN or does not answer.
+func (p *Portal) walletLock(b *pen, r *http.Request) (backendv1.WalletLock, error) {
+	if !p.pinGate(b) {
+		return backendv1.WalletLock_WALLET_LOCK_UNSPECIFIED, errNoPin
+	}
+	return p.opts.Service.WalletLock(r.Context())
+}
+
+// errNoPin reports a stack that keeps no PIN.
+var errNoPin = errors.New("portal: the stack wallet keeps no PIN")

@@ -49,6 +49,14 @@ func TestWalletKeyRpcsAreUnimplemented(t *testing.T) {
 			_, err := svc.GetCredentialDocument(ctx, connect.NewRequest(&backendv1.GetCredentialDocumentRequest{}))
 			return err
 		},
+		"GetWalletLock": func() error {
+			_, err := svc.GetWalletLock(ctx, connect.NewRequest(&backendv1.GetWalletLockRequest{}))
+			return err
+		},
+		"UnlockWallet": func() error {
+			_, err := svc.UnlockWallet(ctx, connect.NewRequest(&backendv1.UnlockWalletRequest{}))
+			return err
+		},
 	}
 	for name, call := range calls {
 		if connect.CodeOf(call()) != connect.CodeUnimplemented {

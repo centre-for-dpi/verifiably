@@ -245,6 +245,12 @@ uses both places:
 | Present | The stack for a stack credential. The wallet itself for a browser credential. |
 | Delete | Where the credential sits. |
 | Document | `GET /wallet/document?id=` returns the PDF of a stack credential through the `Document` RPC. The card shows the link when the adapter lists `FEATURE_WALLET_DOCUMENT`. |
+| PIN | `GET /wallet/pin` asks for the PIN of the stack wallet when the adapter lists `FEATURE_WALLET_PIN`. On first use the holder sets it and types it twice. Later the holder enters it once per session. The home page lists the stack only after that step. |
+
+The PIN belongs to the holder. The service passes it to the adapter
+with `UnlockWallet` and keeps it nowhere. The wallet page of the stack
+asks for the same PIN, so the holder claims there with it. Too many
+wrong PINs lock the stack wallet, and the page then names the way out.
 
 The service asks the live probe of the own pair on each request. The
 blob routes answer `404` while the wallet keeps no browser store. A card

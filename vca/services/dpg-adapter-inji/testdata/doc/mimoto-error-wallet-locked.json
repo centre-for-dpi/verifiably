@@ -1,0 +1,4 @@
+{
+  "errorCode": "wallet_locked",
+  "errorMessage": "Wallet is locked"
+}

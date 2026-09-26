@@ -184,3 +184,14 @@ func (s *Service) ListEvents(
 func (s *Service) GetCredentialDocument(context.Context, *connect.Request[backendv1.GetCredentialDocumentRequest]) (*connect.Response[backendv1.GetCredentialDocumentResponse], error) {
 	return nil, unimplemented("the walt.id wallet renders no document of a credential")
 }
+
+// GetWalletLock answers Unimplemented. The walt.id wallet keeps no PIN,
+// so the adapter lists no FEATURE_WALLET_PIN.
+func (s *Service) GetWalletLock(context.Context, *connect.Request[backendv1.GetWalletLockRequest]) (*connect.Response[backendv1.GetWalletLockResponse], error) {
+	return nil, unimplemented("the walt.id wallet keeps no PIN")
+}
+
+// UnlockWallet answers Unimplemented for the same reason.
+func (s *Service) UnlockWallet(context.Context, *connect.Request[backendv1.UnlockWalletRequest]) (*connect.Response[backendv1.UnlockWalletResponse], error) {
+	return nil, unimplemented("the walt.id wallet keeps no PIN")
+}

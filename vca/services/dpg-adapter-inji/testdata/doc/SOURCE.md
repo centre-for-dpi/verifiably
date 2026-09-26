@@ -209,7 +209,24 @@ The holder role of P6-I7b replays these answers.
 | `mimoto-wallet.json` | The answer of `POST /wallets`, a `WalletResponseDto` with the `walletId`. `WalletsController.java` above. |
 | `mimoto-credentials.json` | The answer of `GET /wallets/{id}/credentials`, a list of `VerifiableCredentialResponseDTO` with names, logos, and ids. The names are those of the Farmer and National ID samples of the stack. `WalletCredentialsController.java` above. |
 | `mimoto-presentation.json` | The answer of `POST /wallets/{id}/presentations`, with the `presentationId` and the verifier of the request. `WalletPresentationsController.java` above. |
+| `mimoto-wallets.json` | The answer of `GET /wallets`, a list of `WalletDetailsResponseDto` with `walletId`, `walletName`, and `walletStatus` (`null`, `temporarily_locked`, or `permanently_locked`). `WalletsController.java` above. |
+| `mimoto-error-invalid-pin.json`, `mimoto-error-last-attempt.json`, `mimoto-error-temporarily-locked.json`, `mimoto-error-wallet-locked.json` | The `ErrorDTO` answers of the unlock and of a session without the wallet key: `invalid_pin` and `last_attempt_before_lockout` with 400, `temporarily_locked` with 423, and `wallet_locked` with 400. `WalletsController.java` above. |
+| `mimoto-download.json` | The answer of the download `POST /wallets/{id}/credentials` of Inji Web, a `VerifiableCredentialResponseDTO` of the Inji Certify of the stack. `WalletCredentialsController.java` and `VerifiableCredentialRequestDTO.java` above. |
 | `mimoto-credential.pdf` | A one page PDF in place of the rendered credential, which Mimoto returns for `Accept: application/pdf`. Its content is a stand in. The wallet reads only the media type and the bytes. |
+
+The PIN design of P6-I7c relies on these facts of the release:
+
+- A wallet PIN has six digits (`mosip.inji.user.wallet.pin.validation.regex`),
+  and five wrong PINs lock the wallet for 60 minutes
+  (`wallet.passcode.*` of
+  https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/docker-compose/config/mimoto-default.properties).
+- Every call that changes state needs the `X-XSRF-TOKEN` header with
+  the value of the `XSRF-TOKEN` cookie, except the token login. A GET
+  sets that cookie (`CsrfTokenCookieFilter`):
+  https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/src/main/java/io/mosip/mimoto/config/Config.java
+- Inji Web lists the wallets, asks for the PIN, unlocks, and downloads
+  with the same session calls:
+  https://raw.githubusercontent.com/mosip/inji-web/v0.16.0/inji-web/src/utils/api.ts
 
 The fake answers the token login with a `Set-Cookie` header, as the
 session filter of Mimoto does. It answers `401` for a refused token and

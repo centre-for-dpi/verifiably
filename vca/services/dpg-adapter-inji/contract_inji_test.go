@@ -495,6 +495,19 @@ func TestContractHolderThroughMimoto(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
+	// The holder sets the PIN on first use and enters it later (P6-I7c).
+	// The test holder uses VCA_INJI_CONTRACT_HOLDER_PIN.
+	lock, err := a.Service.GetWalletLock(ctx, connect.NewRequest(&backendv1.GetWalletLockRequest{WalletId: reg.Msg.GetWalletId()}))
+	if err != nil {
+		t.Fatalf("GetWalletLock: %v", err)
+	}
+	if lock.Msg.GetState() != backendv1.WalletLock_WALLET_LOCK_OPEN {
+		if _, err = a.Service.UnlockWallet(ctx, connect.NewRequest(&backendv1.UnlockWalletRequest{
+			WalletId: reg.Msg.GetWalletId(), Pin: envOr("VCA_INJI_CONTRACT_HOLDER_PIN", "246810"),
+		})); err != nil {
+			t.Fatalf("UnlockWallet from %v: %v", lock.Msg.GetState(), err)
+		}
+	}
 	list, err := a.Service.ListCredentials(ctx, connect.NewRequest(&backendv1.ListCredentialsRequest{WalletId: reg.Msg.GetWalletId()}))
 	if err != nil {
 		t.Fatalf("ListCredentials: %v", err)

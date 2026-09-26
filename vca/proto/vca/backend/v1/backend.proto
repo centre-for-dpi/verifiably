@@ -90,6 +90,13 @@ service HolderBackendService {
   // credential, such as a PDF. An adapter serves it when it lists
   // FEATURE_WALLET_DOCUMENT.
   rpc GetCredentialDocument(GetCredentialDocumentRequest) returns (GetCredentialDocumentResponse);
+  // GetWalletLock reports whether the wallet needs the PIN of the
+  // holder. An adapter serves it when it lists FEATURE_WALLET_PIN.
+  rpc GetWalletLock(GetWalletLockRequest) returns (GetWalletLockResponse);
+  // UnlockWallet opens the wallet with the PIN the holder enters. It
+  // makes the wallet with that PIN when the holder has none. The adapter
+  // never stores the PIN.
+  rpc UnlockWallet(UnlockWalletRequest) returns (UnlockWalletResponse);
 }
 
 // VerifierBackendService drives the verifier side of a DPG.
@@ -252,6 +259,10 @@ enum Feature {
   // AcceptOffer. The wallet portal links the holder there, and it keeps
   // the browser store for a credential the holder pastes.
   FEATURE_WALLET_CLAIM_IN_STACK = 24;
+  // The wallet of the stack keeps a PIN that the holder sets and enters.
+  // The wallet portal asks the holder for it through GetWalletLock and
+  // UnlockWallet. The adapter never stores the PIN.
+  FEATURE_WALLET_PIN = 25;
 }
 
 // GetCapabilitiesRequest has no fields.
@@ -921,6 +932,42 @@ message GetCredentialDocumentResponse {
   // The media type, such as application/pdf.
   string media_type = 2;
 }
+
+// WalletLock is the state of the PIN of a wallet.
+enum WalletLock {
+  WALLET_LOCK_UNSPECIFIED = 0;
+  // The wallet is open for this session.
+  WALLET_LOCK_OPEN = 1;
+  // The holder has no wallet yet and sets its PIN on first use.
+  WALLET_LOCK_NEEDS_NEW_PIN = 2;
+  // The wallet exists and needs the PIN of the holder for this session.
+  WALLET_LOCK_NEEDS_PIN = 3;
+  // Too many wrong PINs locked the wallet.
+  WALLET_LOCK_LOCKED_OUT = 4;
+}
+
+// GetWalletLockRequest names the wallet.
+message GetWalletLockRequest {
+  // The wallet id of Register.
+  string wallet_id = 1;
+}
+
+// GetWalletLockResponse gives the state of the PIN.
+message GetWalletLockResponse {
+  // The state of the PIN.
+  WalletLock state = 1;
+}
+
+// UnlockWalletRequest carries the PIN the holder entered.
+message UnlockWalletRequest {
+  // The wallet id of Register.
+  string wallet_id = 1;
+  // The PIN, six digits for Mimoto. The adapter never stores it.
+  string pin = 2;
+}
+
+// UnlockWalletResponse has no fields.
+message UnlockWalletResponse {}
 
 // WalletEvent is one entry of the event log of a wallet.
 message WalletEvent {
