@@ -173,7 +173,9 @@ The token exchange authenticates with the method of the record
 Its `iss` and `sub` are the client id, its `aud` is the token endpoint,
 and its `exp` is one minute away.
 It carries a fresh `jti`.
-The key is ES256 or Ed25519, as every VCA key (ADR-011 decision 5).
+A P-256 key signs with ES256 and an Ed25519 key with EdDSA (ADR-011 decision 5).
+An RSA key of 2048 bits or more signs with RS256.
+That serves a provider that takes nothing else, such as eSignet (ADR-048).
 
 ## Public and internal URLs
 

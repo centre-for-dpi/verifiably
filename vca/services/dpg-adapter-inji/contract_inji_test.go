@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -409,5 +410,59 @@ func TestContractPresentationDuringIssuance(t *testing.T) {
 	}
 	if answer["status"] != "require_interaction" || answer["openid4vp_request"] == nil {
 		t.Fatalf("answer = %v", answer)
+	}
+}
+
+// TestContractAuthCodeOfferNamesEsignet builds an authorization code
+// offer with no configured identity provider. The offer names the
+// authorization server of the Certify metadata, and that server serves
+// OpenID Connect discovery with private_key_jwt, as eSignet does. It
+// needs a public URL.
+func TestContractAuthCodeOfferNamesEsignet(t *testing.T) {
+	cfg := contractEnv(t)
+	configurationID := os.Getenv("VCA_INJI_CONTRACT_CONFIGURATION_ID")
+	if cfg.CertifyURL == "" || cfg.PublicURL == "" || configurationID == "" {
+		t.Skip("set VCA_INJI_CONTRACT_PUBLIC_URL and _CONFIGURATION_ID to run the eSignet case")
+	}
+	a := newContractApp(t)
+	ctx := context.Background()
+	offer, err := a.Service.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
+		Spec: &backendv1.IssueSpec{ConfigurationId: configurationID}, Channel: backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE,
+	}))
+	if err != nil {
+		t.Fatalf("CreateOffer: %v", err)
+	}
+	document, ok := a.Service.HostedOffer(ctx, offer.Msg.GetOfferId())
+	if !ok {
+		t.Fatal("the adapter does not host the offer")
+	}
+	var doc struct {
+		Grants struct {
+			Code struct {
+				Server string `json:"authorization_server"`
+			} `json:"authorization_code"`
+		} `json:"grants"`
+	}
+	if jerr := json.Unmarshal([]byte(document), &doc); jerr != nil || doc.Grants.Code.Server == "" {
+		t.Fatalf("offer = %s", document)
+	}
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Get(strings.TrimRight(doc.Grants.Code.Server, "/") + "/.well-known/openid-configuration")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Error(cerr)
+		}
+	}()
+	var meta struct {
+		Issuer  string   `json:"issuer"`
+		Methods []string `json:"token_endpoint_auth_methods_supported"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimRight(meta.Issuer, "/") != strings.TrimRight(doc.Grants.Code.Server, "/") || !slices.Contains(meta.Methods, "private_key_jwt") {
+		t.Fatalf("discovery = %+v", meta)
 	}
 }

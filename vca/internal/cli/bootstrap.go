@@ -223,8 +223,15 @@ func readIssuerFile(path string) (string, string, bool) {
 // eSignet log in against. Keycloak imports a realm from its data
 // directory only when the realm is absent, so the CLI uses the admin API
 // instead (ADR-008 decision 4).
+//
+// An issuer or a holder pair then registers the VCA client in the
+// eSignet of the stack (registerEsignetClient).
 func BootstrapInji(ctx context.Context, opts BootstrapOptions) (BootstrapResult, error) {
-	return bootstrapRealm(ctx, opts, "Inji")
+	result, err := bootstrapRealm(ctx, opts, "Inji")
+	if err != nil || !usesEsignet(opts.Pair) {
+		return result, err
+	}
+	return result, registerEsignetClient(ctx, opts, &result)
 }
 
 // realmPath returns the path of the realm of the pair role. The realm

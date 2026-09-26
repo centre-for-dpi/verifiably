@@ -368,7 +368,7 @@ A terminal run with no DPG name and no `--role` asks for both.
 | DPG | What the command does |
 |---|---|
 | `waltid` | Asks the walt.id adapter of the issuer pair for its identity. The adapter provisions a `did:web` of the host and a key, and keeps the key. |
-| `inji` | Creates or updates the realm of the role in Keycloak. |
+| `inji` | Creates or updates the realm of the role in Keycloak. An issuer or a holder pair then registers the VCA client in eSignet. |
 | `credebl` | Signs in and creates the organisation of the deployment. |
 
 Each run checks first, so a second run changes nothing.
@@ -385,7 +385,24 @@ once. An older run left `waltid-issuer.json` beside the `.env` file.
 A new run imports that file into the adapter and says the file can go.
 A pair of another role needs no issuer identity.
 
-Five more variables steer the run:
+The `inji` run of an issuer or a holder pair registers the VCA client
+`vca-inji` in the eSignet of the stack. eSignet 1.5.1 takes
+`private_key_jwt` only, with an RS256 assertion from an RSA key. The
+first run makes a 2048 bit RSA key in `deploy/esignet-inji/vca-client.pem`
+with mode 0600. The directory holds a `.gitignore` that ignores all of
+it, so the key never reaches a tracked file. The run sends only the
+public key, with `POST /v1/esignet/client-mgmt/oauth-client`. A later
+run keeps the key. eSignet then answers `duplicate_client_id`, and the
+run adds the redirect URI of its pair with a `PUT`. The file
+`vca-client.json` keeps the redirect URIs of the runs. The last line
+names the client, the key file, and the eSignet issuer. The provider
+form of the admin portal takes them.
+
+The run reaches eSignet at `http://127.0.0.1` and
+`INJI_ESIGNET_HOST_PORT`, or 17082. An eSignet whose client API needs a
+token answers 401. The run then names `VCA_BOOTSTRAP_ESIGNET_TOKEN`.
+
+Seven more variables steer the run:
 
 | Variable | What it holds |
 |---|---|
@@ -394,8 +411,10 @@ Five more variables steer the run:
 | `VCA_BOOTSTRAP_ADMIN_PASSWORD` | The DPG administrator password. |
 | `VCA_BOOTSTRAP_ORG` | The CREDEBL organisation name. |
 | `VCA_BOOTSTRAP_ADAPTER_URL` | The walt.id adapter address for this run. It beats the host port of the adapter. |
+| `VCA_BOOTSTRAP_ESIGNET_URL` | The eSignet address for this run, without `/v1/esignet`. |
+| `VCA_BOOTSTRAP_ESIGNET_TOKEN` | A bearer token with the scope `add_oidc_client`, when the eSignet client API needs one. |
 
-No service reads these five variables, so they are not in the `Config`
+No service reads these seven variables, so they are not in the `Config`
 message.
 
 ## dpg realm

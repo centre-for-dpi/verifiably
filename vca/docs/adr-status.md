@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-047, one row per decision.
+ADR-048, one row per decision.
 
 The status values are:
 
@@ -520,12 +520,20 @@ A row that is not `Done` carries a note.
 | ADR-047 | 3 The CLI uses host ports on `VCA_BIND` | Done | `vca/internal/cli/bootstrap.go` | `vca dpg bootstrap waltid` calls the adapter at `127.0.0.1`. Every other command calls the public `AdminService`. |
 | ADR-047 | 4 Protocol paths stay public | Done | `vca/internal/cli/services.go`, `vca/docs/deploy.md` | The status services and the trust registry publish their lists and key sets only. |
 
+## ADR-048: Client assertion keys of a login provider
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-048 | 1 The key type decides the algorithm | Done | `vca/services/internal/oidcflow/flow.go`, `vca/core/jose` | `SignRS256` refuses a key under 2048 bits. |
+| ADR-048 | 2 RS256 for a provider that takes nothing else | Done | `vca/core/jose/jose.go` | `Sign` keeps ES256 and EdDSA only. |
+| ADR-048 | 3 The eSignet client of the Inji stack | Done | `vca/internal/cli/bootstrap_esignet.go` | The key lives in `deploy/esignet-inji/vca-client.pem`. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 175 |
+| Done | 178 |
 | Partial | 20 |
 | Deferred | 3 |
 | Not started | 70 |
-| Total | 268 |
+| Total | 271 |

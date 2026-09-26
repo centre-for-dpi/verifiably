@@ -394,3 +394,36 @@ func mustKeyF(f *testing.F) any {
 	}
 	return k
 }
+
+// TestSignRS256 signs a client assertion with an RSA key, as a provider
+// that takes only RS256 assertions asks, and verifies it.
+func TestSignRS256(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := SignRS256(key, "k1", "JWT", map[string]any{"iss": "client"})
+	if err != nil {
+		t.Fatalf("SignRS256: %v", err)
+	}
+	payload, hdr, err := Verify(token, &key.PublicKey, []Algorithm{RS256})
+	if err != nil || hdr.Alg != string(RS256) || hdr.Kid != "k1" || !strings.Contains(string(payload), `"iss":"client"`) {
+		t.Fatalf("verify: %s %+v %v", payload, hdr, err)
+	}
+	small, err := rsa.GenerateKey(rand.Reader, 1024) //nolint:gosec // G403: the test proves that a small key is refused
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, tc := range map[string]struct {
+		key    *rsa.PrivateKey
+		claims any
+	}{
+		"nil key":    {nil, map[string]any{}},
+		"small key":  {small, map[string]any{}},
+		"bad claims": {key, map[string]any{"c": make(chan int)}},
+	} {
+		if _, err := SignRS256(tc.key, "", "JWT", tc.claims); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+}

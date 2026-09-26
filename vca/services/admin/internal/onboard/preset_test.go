@@ -68,6 +68,11 @@ func TestPresetESignetUsesPrivateKeyJWT(t *testing.T) {
 	if record.Kind != oidcflow.KindESignet || record.RolesClaimPath != "" {
 		t.Errorf("record = %+v", record)
 	}
+	// eSignet registers an RSA key and takes RS256 assertions. The
+	// bootstrap of the stack registers the client and writes the key.
+	if !strings.Contains(p.Hint, "RSA") || !strings.Contains(p.Hint, "vca dpg bootstrap") {
+		t.Errorf("hint = %q", p.Hint)
+	}
 }
 
 func TestPresetKeycloakFillsRealmAndConsole(t *testing.T) {

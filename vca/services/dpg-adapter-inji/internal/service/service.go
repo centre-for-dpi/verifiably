@@ -202,13 +202,14 @@ func (s *Service) GetCapabilities(
 		// (ADR-016 decision 3). A configuration with identity claims
 		// makes Certify sign a Claim 169 QR code beside the credential,
 		// which Issue returns (ADR-043 decision 1).
+		// The authorization code offer names the configured identity
+		// provider, else the authorization server Certify names in its
+		// metadata: eSignet in the stack file.
 		out.Channels = []backendv1.Channel{
 			backendv1.Channel_CHANNEL_OID4VCI_PREAUTH,
 			backendv1.Channel_CHANNEL_PDF,
 			backendv1.Channel_CHANNEL_CLAIM169_QR,
-		}
-		if s.authorizationServer != "" {
-			out.Channels = append(out.Channels, backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE)
+			backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE,
 		}
 		out.Protocols = append(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VCI)
 		// RegisterCredentialConfiguration writes the configuration API of

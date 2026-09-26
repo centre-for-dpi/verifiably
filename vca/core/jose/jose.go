@@ -3,7 +3,8 @@
 // Package jose signs and verifies compact JWS tokens and parses JWK material.
 // It wraps github.com/go-jose/go-jose/v4 (RFC 7515, RFC 7517, RFC 7518).
 // It supports ES256 and EdDSA for signing. It supports RS256 in addition
-// for verification of tokens issued by identity providers.
+// for verification of tokens issued by identity providers, and for a
+// client assertion at a provider that takes RS256 only (SignRS256).
 // The package is pure. It holds no state and performs no I/O.
 package jose
 
@@ -88,6 +89,11 @@ func Sign(key crypto.PrivateKey, kid, typ string, claims any) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return sign(key, alg, kid, typ, claims)
+}
+
+// sign builds the compact JWS of Sign and SignRS256.
+func sign(key crypto.PrivateKey, alg Algorithm, kid, typ string, claims any) (string, error) {
 	payload, err := json.Marshal(claims)
 	if err != nil {
 		return "", fmt.Errorf("jose: marshal claims: %w", err)
@@ -107,6 +113,23 @@ func Sign(key crypto.PrivateKey, kid, typ string, claims any) (string, error) {
 	// CompactSerialize fails only for multi-signature objects. Sign makes one.
 	out := anyval.Must(jws.CompactSerialize())
 	return out, nil
+}
+
+// MinRSABits is the smallest RSA key SignRS256 accepts.
+const MinRSABits = 2048
+
+// SignRS256 returns a compact JWS signed with RS256. It exists for a
+// client assertion at an identity provider that takes RS256 only, such
+// as the private_key_jwt method of some national providers (ADR-035
+// decision 4). VCA signs its own tokens with ES256 or EdDSA (Sign).
+func SignRS256(key *rsa.PrivateKey, kid, typ string, claims any) (string, error) {
+	if key == nil || key.N == nil {
+		return "", errors.New("jose: no RSA key")
+	}
+	if key.N.BitLen() < MinRSABits {
+		return "", fmt.Errorf("jose: the RSA key has %d bits, fewer than %d", key.N.BitLen(), MinRSABits)
+	}
+	return sign(key, RS256, kid, typ, claims)
 }
 
 // PeekHeader decodes the protected header of a compact JWS without verification.

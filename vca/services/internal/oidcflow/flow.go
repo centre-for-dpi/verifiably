@@ -4,8 +4,13 @@ package oidcflow
 
 import (
 	"context"
+	"crypto"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -318,14 +323,16 @@ const clientAssertionTTL = time.Minute
 // clientAssertion signs the client assertion of private_key_jwt with
 // the key behind the private_key reference of the record. The claims
 // follow RFC 7523 section 3: iss and sub are the client id, aud is the
-// token endpoint, jti is unique, exp is one minute away. The key is
-// ES256 or Ed25519 (ADR-011 decision 5).
+// token endpoint, jti is unique, exp is one minute away. A P-256 key
+// signs with ES256 and an Ed25519 key with EdDSA (ADR-011 decision 5).
+// An RSA key signs with RS256, for a provider such as eSignet that takes
+// RS256 only.
 func (f *Flow) clientAssertion(p Provider, tokenEndpoint string) (string, error) {
 	pemBytes, err := f.secrets()(p.PrivateKey)
 	if err != nil {
 		return "", err
 	}
-	key, err := ParseKeyPEM([]byte(pemBytes))
+	key, err := ParseClientKeyPEM([]byte(pemBytes))
 	if err != nil {
 		return "", wrap(ErrSecret, "private_key of %s: %v", p.ID, err)
 	}
@@ -346,11 +353,37 @@ func (f *Flow) clientAssertion(p Provider, tokenEndpoint string) (string, error)
 		"iat": now.Unix(),
 		"exp": now.Add(clientAssertionTTL).Unix(),
 	}
-	token, err := jose.Sign(key, kid, "JWT", claims)
+	var token string
+	if rsaKey, isRSA := key.(*rsa.PrivateKey); isRSA {
+		token, err = jose.SignRS256(rsaKey, kid, "JWT", claims)
+	} else {
+		token, err = jose.Sign(key, kid, "JWT", claims)
+	}
 	if err != nil {
 		return "", wrap(ErrSecret, "sign the client assertion of %s: %v", p.ID, err)
 	}
 	return token, nil
+}
+
+// ParseClientKeyPEM reads the private key of a client assertion: an EC
+// key, an RSA key in PKCS #1, or a PKCS #8 key of either type or of
+// Ed25519.
+func ParseClientKeyPEM(raw []byte) (crypto.PrivateKey, error) {
+	block, _ := pem.Decode(raw)
+	if block == nil {
+		return nil, errors.New("oidcflow: no PEM block in the client key")
+	}
+	if k, err := x509.ParseECPrivateKey(block.Bytes); err == nil {
+		return k, nil
+	}
+	if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+		return k, nil
+	}
+	k, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("oidcflow: parse the client key: %w", err)
+	}
+	return k, nil
 }
 
 // PeekAssertion returns the claims of a client assertion without

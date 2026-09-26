@@ -749,3 +749,42 @@ func TestWebhookServiceUnimplementedWithoutFeature(t *testing.T) {
 		}
 	}
 }
+
+// TestAuthCodeOfferNamesEsignet names the authorization server Certify
+// trusts when the deployment names none: the eSignet of the stack, as
+// the issuer metadata lists it. The authorization code channel is then
+// on for every Certify deployment.
+func TestAuthCodeOfferNamesEsignet(t *testing.T) {
+	svc, f := newServiceWith(t, both, func(o *serviceOptions) { o.AuthorizationServer = "" })
+	ctx := context.Background()
+	caps, err := svc.GetCapabilities(ctx, connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasChannel(caps.Msg.GetChannels(), backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE) {
+		t.Fatalf("channels = %v", caps.Msg.GetChannels())
+	}
+	resp, err := svc.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
+		Spec: farmerSpec(), Channel: backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE,
+	}))
+	if err != nil {
+		t.Fatalf("CreateOffer: %v", err)
+	}
+	document, ok := svc.HostedOffer(ctx, resp.Msg.GetOfferId())
+	if !ok {
+		t.Fatal("the offer document is missing")
+	}
+	var offer map[string]any
+	if jerr := json.Unmarshal([]byte(document), &offer); jerr != nil {
+		t.Fatal(jerr)
+	}
+	grant := mustAs[map[string]any](t, mustAs[map[string]any](t, offer["grants"])["authorization_code"])
+	if grant["authorization_server"] != "https://esignet.example.org/v1/esignet" {
+		t.Fatalf("grant = %v, want the eSignet that Certify names", grant)
+	}
+	f.SetStatus("/v1/certify/issuance/.well-known/openid-credential-issuer", http.StatusInternalServerError)
+	_, err = svc.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
+		Spec: farmerSpec(), Channel: backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE,
+	}))
+	wantCode(t, err, connect.CodeUnavailable)
+}

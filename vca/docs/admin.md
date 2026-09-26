@@ -124,6 +124,11 @@ The preset fills the fields the operator leaves empty: the roles claim
 path (`realm_access.roles` for Keycloak, `groups` for WSO2), the scopes,
 and the token endpoint method (`private_key_jwt` for eSignet). For a
 Keycloak discovery URL the preset reads the realm and its console URL.
+eSignet takes an RS256 client assertion from an RSA key. The command
+`vca dpg bootstrap` of the Inji stack registers the client `vca-inji`
+and writes the key file. The key reference of the form names that
+file. The auth service signs the assertion with the key type: RS256
+for RSA, ES256 for P-256, and EdDSA for Ed25519.
 The form then takes the issuer URL, the client, the secret references,
 the token endpoint method, and the register action. It ends with the
 roles and the stacks. The stack boxes list the stacks with a present

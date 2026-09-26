@@ -31,7 +31,7 @@ Set at least one Inji URL. Each URL turns on one role.
 | `VCA_INJI_CERTIFY_URL` | The base URL of Inji Certify. |
 | `VCA_INJI_VERIFY_URL` | The base URL of Inji Verify. |
 | `VCA_INJI_PUBLIC_URL` | The address a wallet reaches this adapter on. |
-| `VCA_INJI_AUTHORIZATION_SERVER` | The identity provider of the authorization code flow. |
+| `VCA_INJI_AUTHORIZATION_SERVER` | The identity provider of the authorization code flow. Empty names the first authorization server of the Certify metadata, eSignet in the stack file. |
 | `VCA_INJI_OFFER_ISSUER` | The issuer identifier of a hosted offer. |
 | `VCA_INJI_METADATA_PATH` | The path of the issuer metadata on Inji Certify. |
 | `VCA_INJI_VERIFY_CLIENT_ID` | The DID Inji Verify shows a wallet. |

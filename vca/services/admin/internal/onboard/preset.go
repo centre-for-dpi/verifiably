@@ -47,7 +47,7 @@ func Presets() []Preset {
 		{Kind: oidcflow.KindESignet, Label: "eSignet",
 			Scopes:          []string{"openid", "profile"},
 			TokenAuthMethod: oidcflow.TokenAuthPrivateKeyJWT,
-			Hint:            "The token endpoint takes a signed client assertion. Name the private key reference."},
+			Hint:            "The token endpoint takes an RS256 client assertion from an RSA key. The command vca dpg bootstrap registers the client and writes the key file."},
 		{Kind: oidcflow.KindGeneric, Label: "Generic OpenID Connect",
 			TokenAuthMethod: oidcflow.TokenAuthClientSecretBasic,
 			Hint:            "Any provider that serves OpenID Connect Discovery."},

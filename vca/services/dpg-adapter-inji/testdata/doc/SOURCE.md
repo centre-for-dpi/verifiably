@@ -168,6 +168,35 @@ Facts the adapter relies on:
   fixture uses the OAuth fields `error` and `error_description`. The
   nightly contract run confirms it.
 
+## eSignet 1.5.1 as the authorization server and a login provider
+
+The eSignet facts steer `vca dpg bootstrap` and the authorization code
+offer. The CLI test answers the client API from these shapes.
+
+- The client API is `POST /v1/esignet/client-mgmt/oauth-client` with
+  `RequestWrapper<ClientDetailCreateRequestV2>` and
+  `PUT /v1/esignet/client-mgmt/oauth-client/{client_id}` with
+  `ClientDetailUpdateRequestV2`:
+  https://raw.githubusercontent.com/mosip/esignet/v1.5.1/esignet-service/src/main/java/io/mosip/esignet/controllers/ClientManagementController.java
+- The create request needs `clientName`, `publicKey`, `userClaims`,
+  `authContextRefs`, `logoUri`, `redirectUris` (at most 5),
+  `grantTypes`, `clientAuthMethods`, and `clientNameLangMap`:
+  https://raw.githubusercontent.com/mosip/esignet/v1.5.1/esignet-core/src/main/java/io/mosip/esignet/core/dto/ClientDetailCreateRequest.java
+- The public key is an RSA JWK (`RsaJsonWebKey` in
+  `IdentityProviderUtil.getJWKString`). A known client id answers
+  `duplicate_client_id`:
+  https://raw.githubusercontent.com/mosip/esignet/v1.5.1/esignet-core/src/main/java/io/mosip/esignet/core/util/IdentityProviderUtil.java
+  and https://raw.githubusercontent.com/mosip/esignet/v1.5.1/client-management-service-impl/src/main/java/io/mosip/esignet/services/ClientManagementServiceImpl.java
+- The token endpoint takes `private_key_jwt` only, and discovery names
+  `RS256` in `token_endpoint_auth_signing_alg_values_supported`. The
+  client API needs the scope `add_oidc_client`, except in the `local`
+  profile of the eSignet compose file, which clears the rule:
+  https://raw.githubusercontent.com/mosip/esignet/v1.5.1/esignet-service/src/main/resources/application-default.properties
+  and https://raw.githubusercontent.com/mosip/esignet/v1.5.1/esignet-service/src/main/resources/application-local.properties
+- The issuer metadata of Certify names its authorization server in
+  `authorization_servers` (`mosip.certify.authorization.url`,
+  `certify-default.properties` above).
+
 ## Identity QR code (Certify 0.14.0, QR code specification 1.1.0)
 
 | File | Source |

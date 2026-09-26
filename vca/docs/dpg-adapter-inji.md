@@ -56,7 +56,7 @@ The answer of `GetCapabilities` reports what the deployment supports.
 | Item | Value |
 | --- | --- |
 | Formats | `ldp_vc`, `vc+sd-jwt`, `mso_mdoc` |
-| Channels | OID4VCI pre-authorized code, document, and identity QR (Claim 169). An identity provider adds the authorization code flow. |
+| Channels | OID4VCI pre-authorized code, OID4VCI authorization code, document, and identity QR (Claim 169) with a Certify URL |
 | Protocols | OID4VCI, OID4VP, OID4VP with Presentation Exchange |
 | Roles | The roles whose URL the configuration sets |
 | Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_REVOCATION`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ISSUER_IDENTITY_PROVISION`, and `FEATURE_ISSUER_IDENTITY_IMPORT_X509` with a Certify URL. `FEATURE_PRESENTATION_DURING_ISSUANCE` with a Certify URL and `VCA_INJI_PRESENTATION_DURING_ISSUANCE`. `FEATURE_VERIFY_UPLOAD` with an Inji Verify URL. |
@@ -257,6 +257,13 @@ public name and an internal name then needs no rewrite rule.
 **The adapter hosts the authorization code offer.** Inji Certify hosts
 no such offer. The adapter builds the document, serves it at
 `/offers/{id}`, and points the wallet at it.
+
+**The offer names eSignet.** The authorization code offer names
+`VCA_INJI_AUTHORIZATION_SERVER`. Without it, the offer names the first
+authorization server of the Certify metadata. In the stack file that
+is eSignet, whose token Certify takes at its credential endpoint.
+eSignet is also a login provider of the issuer and holder portals.
+`vca dpg bootstrap` registers the VCA client there with an RSA key.
 
 **The wrong credential can pass the DPG check.** Inji Verify sometimes
 reports a success for a presentation that answers with another

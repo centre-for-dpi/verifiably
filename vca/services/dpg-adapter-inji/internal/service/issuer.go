@@ -124,11 +124,27 @@ func (s *Service) presentationOffer(ctx context.Context, spec *backendv1.IssueSp
 	return s.hostOffer(ctx, spec, server.Issuer)
 }
 
-// authorizationCodeOffer builds and stores the offer document.
+// authorizationCodeOffer builds and stores the offer document. The offer
+// names the configured identity provider, else the first authorization
+// server of the Certify metadata, which is eSignet in the stack file.
+// A wallet then signs the holder in at eSignet, and Certify takes the
+// eSignet token at its credential endpoint.
 func (s *Service) authorizationCodeOffer(ctx context.Context, spec *backendv1.IssueSpec) (
 	*connect.Response[backendv1.CreateOfferResponse], error,
 ) {
-	return s.hostOffer(ctx, spec, s.authorizationServer)
+	server := s.authorizationServer
+	if server == "" {
+		meta, err := s.certify.Metadata(ctx)
+		if err != nil {
+			return nil, failed("read the issuer metadata", err)
+		}
+		if len(meta.AuthorizationServers) == 0 {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(
+				"the Certify metadata names no authorization server; set VCA_INJI_AUTHORIZATION_SERVER to the eSignet issuer"))
+		}
+		server = meta.AuthorizationServers[0]
+	}
+	return s.hostOffer(ctx, spec, server)
 }
 
 // hostOffer builds and stores the authorization code offer document of

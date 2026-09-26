@@ -549,7 +549,8 @@ func TestDpgBootstrapReadsTheKeycloakPassword(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	body := "VCA_PUBLIC_URL=https://issuer.example\nVCA_DPG_URL=" + server.URL + "\n"
+	esignet := fakeEsignet(t, &esignetFake{})
+	body := "VCA_PUBLIC_URL=https://issuer.example\nVCA_DPG_URL=" + server.URL + "\n" + EnvBootstrapEsignetURL + "=" + esignet.URL + "\n"
 	if err := os.WriteFile(filepath.Join(dir, EnvFileName), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}

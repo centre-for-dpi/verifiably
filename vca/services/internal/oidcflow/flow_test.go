@@ -4,6 +4,11 @@ package oidcflow_test
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow/oidctest"
 )
@@ -623,5 +629,74 @@ func TestTokenExchangeClientSecretPost(t *testing.T) {
 	// No secret reference means none.
 	if (oidcflow.Provider{}).EffectiveTokenAuth() != oidcflow.TokenAuthNone {
 		t.Error("a public client has a method")
+	}
+}
+
+// TestTokenExchangePrivateKeyJWTWithRSA signs the client assertion with
+// RS256 when the key is RSA. eSignet 1.5.1 registers an RSA public key
+// and takes RS256 assertions only.
+func TestTokenExchangePrivateKeyJWTWithRSA(t *testing.T) {
+	idp := oidctest.New()
+	defer idp.Close()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	idp.ClientAssertionKey = &key.PublicKey
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, block := range map[string]*pem.Block{
+		"pkcs1": {Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)},
+		"pkcs8": {Type: "PRIVATE KEY", Bytes: pkcs8},
+	} {
+		path := filepath.Join(t.TempDir(), name+".pem")
+		if werr := os.WriteFile(path, pem.EncodeToMemory(block), 0o600); werr != nil {
+			t.Fatal(werr)
+		}
+		p := testProvider(idp)
+		p.TokenAuthMethod = oidcflow.TokenAuthPrivateKeyJWT
+		p.PrivateKey = oidcflow.SecretRef{Store: oidcflow.SecretFile, Name: path}
+		if _, lerr := runLogin(t, newFlow(t), idp, p); lerr != nil {
+			t.Fatalf("%s: login with an RSA key: %v", name, lerr)
+		}
+		hdr, herr := jose.PeekHeader(idp.LastTokenForm.Get("client_assertion"))
+		if herr != nil || hdr.Alg != "RS256" {
+			t.Fatalf("%s: header %+v %v", name, hdr, herr)
+		}
+	}
+	// An Ed25519 key in PKCS#8 signs with EdDSA; a key of another type
+	// is a secret fault.
+	_, edKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edDER, err := x509.MarshalPKCS8PrivateKey(edKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edPath := filepath.Join(t.TempDir(), "ed.pem")
+	if werr := os.WriteFile(edPath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: edDER}), 0o600); werr != nil {
+		t.Fatal(werr)
+	}
+	idp.ClientAssertionKey = edKey.Public()
+	p := testProvider(idp)
+	p.TokenAuthMethod = oidcflow.TokenAuthPrivateKeyJWT
+	p.PrivateKey = oidcflow.SecretRef{Store: oidcflow.SecretFile, Name: edPath}
+	if _, lerr := runLogin(t, newFlow(t), idp, p); lerr != nil {
+		t.Fatalf("login with an Ed25519 key: %v", lerr)
+	}
+	small, err := rsa.GenerateKey(rand.Reader, 1024) //nolint:gosec // G403: the test proves that a small key is refused
+	if err != nil {
+		t.Fatal(err)
+	}
+	smallPath := filepath.Join(t.TempDir(), "small.pem")
+	if werr := os.WriteFile(smallPath, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(small)}), 0o600); werr != nil {
+		t.Fatal(werr)
+	}
+	p.PrivateKey = oidcflow.SecretRef{Store: oidcflow.SecretFile, Name: smallPath}
+	if _, lerr := runLogin(t, newFlow(t), idp, p); !errors.Is(lerr, oidcflow.ErrSecret) {
+		t.Fatalf("a small RSA key = %v", lerr)
 	}
 }

@@ -270,7 +270,7 @@ func (p *Provider) validAssertion(typ, assertion string) bool {
 	if typ != ClientAssertionType || assertion == "" {
 		return false
 	}
-	raw, _, err := jose.Verify(assertion, p.ClientAssertionKey, []jose.Algorithm{jose.ES256, jose.EdDSA})
+	raw, _, err := jose.Verify(assertion, p.ClientAssertionKey, []jose.Algorithm{jose.ES256, jose.EdDSA, jose.RS256})
 	if err != nil {
 		return false
 	}

@@ -27,3 +27,4 @@ each decision of each record.
 - [ADR-045: Full DPG surfacing](adr/ADR-045-full-dpg-surfacing.md)
 - [ADR-046: Issuer identity through the DPG](adr/ADR-046-issuer-identity.md)
 - [ADR-047: The public RPC surface of a pair](adr/ADR-047-public-rpc-surface.md)
+- [ADR-048: Client assertion keys of a login provider](adr/ADR-048-client-assertion-keys.md)

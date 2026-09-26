@@ -365,11 +365,15 @@ func injiRoleOptions(t *testing.T, role commonv1.Role, base string, out io.Write
 	if err := os.WriteFile(filepath.Join(root, RealmFileOf(pair)), body, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// Every Inji run of an issuer or a holder pair registers the VCA
+	// client in eSignet too.
+	esignet := fakeEsignet(t, &esignetFake{})
 	return BootstrapOptions{
-		Pair:   pair,
-		Dir:    dir,
-		Values: map[string]string{"VCA_DPG_URL": base, "VCA_PUBLIC_URL": "https://issuer.example", EnvBootstrapSecret: "s3cret"},
-		Out:    out,
+		Pair: pair,
+		Dir:  dir,
+		Values: map[string]string{"VCA_DPG_URL": base, "VCA_PUBLIC_URL": "https://issuer.example", EnvBootstrapSecret: "s3cret",
+			EnvBootstrapEsignetURL: esignet.URL},
+		Out: out,
 	}
 }
 
