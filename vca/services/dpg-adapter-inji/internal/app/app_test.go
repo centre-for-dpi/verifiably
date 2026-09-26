@@ -526,3 +526,39 @@ func TestBuildServesTheKeyRotation(t *testing.T) {
 		t.Fatalf("rotation = %d %+v %v", resp.StatusCode, rot, err)
 	}
 }
+
+// TestBuildServesTheMetadataWhereRfc8414PutsIt is finding 10 of the
+// review: RFC 8414 section 3 puts the metadata of the issuer
+// https://host/authz at https://host/.well-known/oauth-authorization-server/authz.
+// The adapter serves it there and at the appended path, and it answers
+// the openid-configuration names of both forms too.
+func TestBuildServesTheMetadataWhereRfc8414PutsIt(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	a := build(t, f, func(c *config.Config) {
+		c.AuthzIssuer = "https://adapter.example/authz"
+		c.AuthzKeySecret = "0123456789abcdef0123456789abcdef"
+	})
+	srv := httptest.NewServer(a.Mux)
+	defer srv.Close()
+	for _, path := range []string{
+		"/.well-known/oauth-authorization-server/authz", "/.well-known/openid-configuration/authz",
+		"/authz/.well-known/oauth-authorization-server", "/authz/.well-known/openid-configuration",
+	} {
+		resp, err := srv.Client().Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var meta map[string]any
+		derr := json.NewDecoder(resp.Body).Decode(&meta)
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Error(cerr)
+		}
+		if derr != nil || resp.StatusCode != http.StatusOK || meta["issuer"] != "https://adapter.example/authz" {
+			t.Errorf("%s = %d %v %v", path, resp.StatusCode, meta, derr)
+		}
+	}
+	if got := a.Authz.WellKnownPaths(); len(got) != 2 || got[0] != "/.well-known/oauth-authorization-server/authz" {
+		t.Errorf("WellKnownPaths = %v", got)
+	}
+}

@@ -266,6 +266,8 @@ The `issuer` role. Its home page is `/issuer/` on `issuance`.
 | `/status-token/.well-known/jwks.json` | `status-token` | The service sees the path without `/status-token`. |
 | `/offers/*` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
 | `/authz/*` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
+| `/.well-known/oauth-authorization-server/authz` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
+| `/.well-known/openid-configuration/authz` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
 | `/authorize` | `inji-esignet-ui` | Only the `inji` stack. The eSignet login page. |
 | `/login` | `inji-esignet-ui` | Only the `inji` stack. The eSignet login page. |
 | `/consent` | `inji-esignet-ui` | Only the `inji` stack. The eSignet login page. |
@@ -295,6 +297,8 @@ The `holder` role. Its home page is `/wallet/` on `wallet-portal`.
 | `/static/*` | `wallet-portal` |  |
 | `/offers/*` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
 | `/authz/*` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
+| `/.well-known/oauth-authorization-server/authz` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
+| `/.well-known/openid-configuration/authz` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
 | `/vca.*` | none | The proxy answers 404. |
 | `/auth/vca.*` | none | The proxy answers 404. |
 | Every other path | `wallet-portal` | |
@@ -319,6 +323,8 @@ The `verifier` role. Its home page is `/portal/` on `verifier-results`.
 | `/static/*` | `verifier-results` |  |
 | `/offers/*` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
 | `/authz/*` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
+| `/.well-known/oauth-authorization-server/authz` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
+| `/.well-known/openid-configuration/authz` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |
 | `/vca.*` | none | The proxy answers 404. |
 | Every other path | `verifier-results` | |
 

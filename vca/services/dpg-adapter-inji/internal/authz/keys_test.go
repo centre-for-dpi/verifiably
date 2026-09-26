@@ -249,3 +249,29 @@ func TestABurntCodeWithABrokenIssuerSideIsLogged(t *testing.T) {
 		t.Fatalf("logs = %s", logs)
 	}
 }
+
+// TestMetadataAtTheWellKnownPaths: the server names the RFC 8414 paths
+// of its issuer and serves the metadata there and under the appended
+// openid-configuration name (review finding 10).
+func TestMetadataAtTheWellKnownPaths(t *testing.T) {
+	h := newHarness(t)
+	paths := h.srv.WellKnownPaths()
+	if strings.Join(paths, " ") != "/.well-known/oauth-authorization-server/authz /.well-known/openid-configuration/authz" {
+		t.Fatalf("paths = %v", paths)
+	}
+	for _, c := range []struct {
+		handler http.Handler
+		path    string
+	}{
+		{h.srv.MetadataHandler(), paths[0]},
+		{h.srv.Handler(), "/.well-known/openid-configuration"},
+	} {
+		path := c.path
+		res := httptest.NewRecorder()
+		c.handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, path, nil))
+		var meta map[string]any
+		if err := json.Unmarshal(res.Body.Bytes(), &meta); err != nil || meta["issuer"] != h.web.URL+"/authz" {
+			t.Errorf("%s = %d %s", path, res.Code, res.Body.String())
+		}
+	}
+}

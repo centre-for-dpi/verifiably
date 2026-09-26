@@ -59,7 +59,9 @@ import (
 //	          /status-bitstring/.well-known/jwks.json  (strip)
 //	          /status-token/status/*  (strip)      status-token
 //	          /status-token/.well-known/jwks.json  (strip)
-//	          /offers/*                            dpg-adapter-inji
+//	          /offers/*  /authz/*                  dpg-adapter-inji
+//	          /.well-known/oauth-authorization-server/authz
+//	          /.well-known/openid-configuration/authz  dpg-adapter-inji
 //	          /authorize  /login  /consent  /v1/esignet/* and the files
 //	          of the page                          inji-esignet-ui (Inji)
 //	holder    /                                    wallet-portal (redirect to /wallet/)

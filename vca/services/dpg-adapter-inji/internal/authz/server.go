@@ -68,7 +68,10 @@ const (
 
 // The paths of the server under its issuer.
 const (
-	MetadataPath  = "/.well-known/oauth-authorization-server"
+	MetadataPath = "/.well-known/oauth-authorization-server"
+	// OpenIDPath serves the same metadata for a client that looks for
+	// OpenID Connect discovery (RFC 8414 section 5).
+	OpenIDPath    = "/.well-known/openid-configuration"
 	JWKSPath      = "/.well-known/jwks.json"
 	AuthorizePath = "/authorize"
 	CallbackPath  = "/callback"
@@ -258,11 +261,31 @@ func (s *Server) Issuer() string { return s.issuer }
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+MetadataPath, s.metadata)
+	mux.HandleFunc("GET "+OpenIDPath, s.metadata)
 	mux.HandleFunc("GET "+JWKSPath, s.jwks)
 	mux.HandleFunc("GET "+AuthorizePath, s.authorize)
 	mux.HandleFunc("GET "+CallbackPath, s.callback)
 	mux.HandleFunc("POST "+TokenPath, s.token)
 	return newGuard(s.limits, s.now).wrap(mux)
+}
+
+// WellKnownPaths returns the paths where RFC 8414 section 3 puts the
+// metadata of the issuer: the well-known name inserted before the path
+// of the issuer, for oauth-authorization-server and for
+// openid-configuration. The adapter serves them at the root of its
+// public URL (review finding 10).
+func (s *Server) WellKnownPaths() []string {
+	path := ""
+	if u, err := url.Parse(s.issuer); err == nil {
+		path = strings.TrimRight(u.Path, "/")
+	}
+	return []string{MetadataPath + path, OpenIDPath + path}
+}
+
+// MetadataHandler serves the metadata at the paths of WellKnownPaths,
+// under the rate limit of a client route.
+func (s *Server) MetadataHandler() http.Handler {
+	return newGuard(s.limits, s.now).wrap(http.HandlerFunc(s.metadata))
 }
 
 // metadata serves the RFC 8414 document. Mimoto 0.21.0 reads the

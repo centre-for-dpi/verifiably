@@ -156,6 +156,11 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		// on the host port of the adapter. The proxy does not publish it
 		// (ADR-056 decision 6).
 		mux.Handle(authz.RotatePath, holder.RotationHandler())
+		// RFC 8414 section 3 puts the metadata before the path of the
+		// issuer. The proxy publishes these paths too.
+		for _, path := range holder.WellKnownPaths() {
+			mux.Handle("GET "+path, holder.MetadataHandler())
+		}
 	}
 	if cfg.CertifyURL != "" && cfg.PublicURL == "" {
 		deps.Log.Warn("no public URL, so the authorization code channel is off",

@@ -166,3 +166,37 @@ func TestNoPublicRouteReachesTheRotation(t *testing.T) {
 		}
 	}
 }
+
+// TestInjiPairsPublishTheRfc8414Metadata is finding 10 of the review:
+// RFC 8414 section 3 puts the metadata of the issuer https://host/authz
+// at https://host/.well-known/oauth-authorization-server/authz. The
+// proxy of an Inji pair sends that path and its openid-configuration
+// twin to the adapter, next to /authz/*.
+func TestInjiPairsPublishTheRfc8414Metadata(t *testing.T) {
+	issuer := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_INJI}
+	want := []string{
+		"/.well-known/oauth-authorization-server" + InjiAuthzPath,
+		"/.well-known/openid-configuration" + InjiAuthzPath,
+	}
+	routed := map[string]string{}
+	for _, sr := range PairRoutes(issuer, nil) {
+		routed[sr.Route.Match] = sr.Service
+	}
+	caddy := Caddyfile(issuer, map[string]string{"VCA_PUBLIC_URL": "https://issuer-inji.labs.example"})
+	table := RouteTable()
+	for _, match := range want {
+		if routed[match] != "dpg-adapter-inji" {
+			t.Errorf("%s goes to %q, want dpg-adapter-inji", match, routed[match])
+		}
+		if !strings.Contains(caddy, "\thandle "+match+" {\n") {
+			t.Errorf("the issuer Caddyfile has no handle for %s", match)
+		}
+		if !strings.Contains(table, "| `"+match+"` | `dpg-adapter-<dpg>` | Only the `inji` adapter. |") {
+			t.Errorf("the route table has no row for %s", match)
+		}
+	}
+	// The eSignet metadata of the stack keeps its own exact paths.
+	if routed["/.well-known/oauth-authorization-server"] != EsignetUIContainer {
+		t.Errorf("the eSignet metadata goes to %q", routed["/.well-known/oauth-authorization-server"])
+	}
+}

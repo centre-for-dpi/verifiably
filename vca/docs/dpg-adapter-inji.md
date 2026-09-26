@@ -437,6 +437,7 @@ Connect.
 | Path | What it does |
 | --- | --- |
 | `GET /authz/.well-known/oauth-authorization-server` | RFC 8414 metadata: the code grant, PKCE S256, the client methods `none` and `private_key_jwt`, and the scope `vca_credential` |
+| `GET /.well-known/oauth-authorization-server/authz` | The same metadata where RFC 8414 section 3 puts it. `/.well-known/openid-configuration/authz` and `/authz/.well-known/openid-configuration` serve it too. |
 | `GET /authz/.well-known/jwks.json` | The public token key. Its `kid` is the RFC 7638 thumbprint. |
 | `GET /authz/authorize` | Checks the client, the redirect URI, the state, and the PKCE challenge. Then it sends the browser to the holder provider. |
 | `GET /authz/callback` | Finishes the sign in, finds the claims, writes the claims row, and sends the wallet a one time code |
@@ -568,6 +569,7 @@ earlier release moves into the ring at the first start.
 | A token reaches another service | `aud` names the credential endpoint of one Certify. The token lives five minutes and carries the scope `vca_credential` only. |
 | A token for one credential asks for another type | The template of every configuration renders only a row of that configuration (ADR-056 decision 1). A farmer row gives no medical licence. |
 | A mix up of servers | The redirect carries `iss` (RFC 9207). |
+| A wallet that follows RFC 8414 finds no server | The proxy publishes the metadata at the inserted and the appended paths, for both well-known names. |
 
 What stays open: the tokens are bearer tokens, so the server offers no
 DPoP. A credential without an offer depends on the sign in source that

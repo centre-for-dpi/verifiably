@@ -353,7 +353,13 @@ func Catalog() []Service {
 			// the adapter. Both are plain HTTP, not Connect. The Connect
 			// services of every adapter stay on the compose network
 			// (ADR-047, ADR-052 decision 1).
-			Routes: []Route{{Match: "/offers/*"}, {Match: InjiAuthzPath + "/*"}}},
+			// RFC 8414 section 3 puts the metadata of the server before the
+			// path of its issuer (ADR-056, review finding 10).
+			Routes: []Route{
+				{Match: "/offers/*"}, {Match: InjiAuthzPath + "/*"},
+				{Match: "/.well-known/oauth-authorization-server" + InjiAuthzPath},
+				{Match: "/.well-known/openid-configuration" + InjiAuthzPath},
+			}},
 		// The walt.id adapter keeps the issuer identity in its data volume
 		// (ADR-046 decision 4).
 		// The verifier pair also reaches verifier-api2 of the stack file,

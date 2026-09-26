@@ -418,6 +418,7 @@ Each one checks its caller or serves public data only.
 | `/oid4vp/*` | `verifier-ingest` | The OID4VP request object and the direct post endpoint. The transaction id and the `state` guard the post. |
 | `/offers/*` | `dpg-adapter-inji` | A hosted credential offer. A random id names it, and it expires. |
 | `/authz/*` | `dpg-adapter-inji` | The holder authorization server (ADR-052): its metadata, key set, authorize, callback, and token endpoints. PKCE, the registered redirect URIs, one time codes, and the client check guard it. |
+| `/.well-known/oauth-authorization-server/authz`, `/.well-known/openid-configuration/authz` | `dpg-adapter-inji` | The metadata of the holder authorization server where RFC 8414 section 3 puts it. |
 | `/iar/presentation-definition.json` | `dpg-adapter-inji` | The proxy does not publish it. Certify reads it on the compose network. It is the presentation definition that a wallet sees anyway. `GET` only. |
 | `/authorize`, `/login`, `/consent`, `/claim-details`, `/something-went-wrong`, `/page-not-found`, `/esignet-ui/*`, `/theme/*`, `/locales/*`, `/images/*`, `/v1/esignet/*`, `/.well-known/openid-configuration`, `/.well-known/oauth-authorization-server` | `inji-esignet-ui` of the `issuer-inji` pair | The eSignet login page is a browser page, not an RPC. A holder signs in there for a claim in Inji Web or an authorization code offer. eSignet checks the client, the PKCE code, and the transaction at each step. The rest is its metadata and the files of the page. |
 
