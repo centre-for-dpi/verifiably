@@ -313,12 +313,23 @@ func (b *blocks) add(name string, data any) template.HTML {
 
 func (p *Portal) blocks() *blocks { return &blocks{kit: p.opts.Kit} }
 
-// form wraps content in a POST form with the synchronizer token.
+// form wraps content in a POST form with the synchronizer token, in the
+// one row layout of the class filters. It suits a form with buttons only,
+// such as the actions of a table row. A form with a field uses
+// stackedForm, and a test fails on a one row POST form with a field.
 func form(action, csrf string, content ...template.HTML) template.HTML {
 	open := `<form class="filters" action="` + template.HTMLEscapeString(action) + `" method="post">` +
 		`<input type="hidden" name="` + oidcflow.CSRFField + `" value="` + template.HTMLEscapeString(csrf) + `">`
 	parts := append([]template.HTML{template.HTML(open)}, content...) //nolint:gosec // both parts are escaped
 	return components.Join(append(parts, template.HTML(`</form>`))...)
+}
+
+// stackedForm wraps the fields in a POST form that puts one field under
+// the other, since the fields carry hints of different lengths.
+func stackedForm(action, csrf string, fields template.HTML) template.HTML {
+	open := `<form action="` + template.HTMLEscapeString(action) + `" method="post">` +
+		`<input type="hidden" name="` + oidcflow.CSRFField + `" value="` + template.HTMLEscapeString(csrf) + `">`
+	return components.Join(template.HTML(open), fields, template.HTML(`</form>`)) //nolint:gosec // both parts are escaped
 }
 
 // getForm wraps content in a GET form, for filters and the login page.

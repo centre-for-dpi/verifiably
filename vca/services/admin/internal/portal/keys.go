@@ -196,7 +196,7 @@ func (p *Portal) vcaKeys(b *blocks, s session, keys []*adminv1.ApiKey, tenants [
 		}
 		create = b.add("card", components.Card{
 			ID: "create-key", Title: msg.T("admin.keys.new.label"), Text: msg.T("admin.keys.new.text"),
-			Body: form(at+"/keys", s.CSRF,
+			Body: stackedForm(at+"/keys", s.CSRF, components.Join(
 				b.add("field", components.Field{ID: "display_name", Label: msg.T("admin.keys.display_name.label"), Required: true}),
 				b.add("field", components.Field{ID: "tenant_id", Label: msg.T("admin.keys.column.tenant.label"), Type: "select", Options: options,
 					Hint: msg.T("admin.keys.tenant.hint")}),
@@ -209,7 +209,7 @@ func (p *Portal) vcaKeys(b *blocks, s session, keys []*adminv1.ApiKey, tenants [
 				b.add("field", components.Field{ID: "expires_days", Label: msg.T("admin.keys.expiry.label"), Type: "select", Options: expiries,
 					Hint: msg.T("admin.keys.expiry.hint")}),
 				b.add("button", components.Button{Text: msg.T("admin.keys.create.label"), Type: "submit", Variant: "primary"}),
-			),
+			)),
 		})
 	}
 	return b.add("block", components.Block{
@@ -297,11 +297,11 @@ func (p *Portal) stackCredentials(ctx context.Context, b *blocks, s session, f f
 	})
 	create := b.add("card", components.Card{
 		ID: "create-stack-credential", Title: msg.T("admin.keys.stack.new.label"), Text: msg.T("admin.keys.stack.new.text"),
-		Body: form(at+"/keys/stack", s.CSRF,
+		Body: stackedForm(at+"/keys/stack", s.CSRF, components.Join(
 			b.add("field", components.Field{ID: "target", Label: msg.T("admin.keys.stack.target.label"), Type: "select", Options: targets}),
 			b.add("field", components.Field{ID: "credential_name", Name: "display_name", Label: msg.T("admin.keys.display_name.label"), Required: true}),
 			b.add("button", components.Button{Text: msg.T("admin.keys.stack.create.label"), Type: "submit", Variant: "primary"}),
-		),
+		)),
 	})
 	block.Body = components.Join(faults, table, create)
 	return b.add("block", block), nil

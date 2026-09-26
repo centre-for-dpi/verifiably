@@ -382,14 +382,6 @@ func (p *Portal) holderForm(b *blocks, action string, in holderInput, current *o
 	})
 }
 
-// stackedForm wraps the fields in a POST form that puts one field under
-// the other, since the fields carry hints of different lengths.
-func stackedForm(action, csrf string, fields template.HTML) template.HTML {
-	open := `<form action="` + template.HTMLEscapeString(action) + `" method="post">` +
-		`<input type="hidden" name="` + oidcflow.CSRFField + `" value="` + template.HTMLEscapeString(csrf) + `">`
-	return components.Join(template.HTML(open), fields, template.HTML(`</form>`)) //nolint:gosec // both parts are escaped
-}
-
 // createHolder adds a holder provider at the adapter.
 func (p *Portal) createHolder(w http.ResponseWriter, r *http.Request, s session) error {
 	target, err := p.holderTarget(r)

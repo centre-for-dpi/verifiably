@@ -249,14 +249,14 @@ func (p *Portal) retentionBlock(ctx context.Context, b *blocks, s session) templ
 	}
 	return b.add("block", components.Block{
 		ID: "retention", Title: msg.T("admin.audit.retention.label"), Lead: msg.T("admin.audit.retention.lead"), Meta: current,
-		Body: form(p.opts.Prefix+"/audit/retention", s.CSRF,
+		Body: stackedForm(p.opts.Prefix+"/audit/retention", s.CSRF, components.Join(
 			b.add("field", components.Field{
 				ID: "days", Label: msg.T("admin.audit.retention.days.label"), Type: "number", Value: value, Required: true,
 				Hint:  msg.T("admin.audit.retention.days.hint"),
 				Attrs: map[string]string{"min": "0", "max": strconv.Itoa(auditlog.MaxRetentionDays), "step": "1", "inputmode": "numeric"},
 			}),
 			b.add("button", components.Button{Text: msg.T("admin.audit.retention.save.label"), Type: "submit"}),
-		),
+		)),
 	})
 }
 

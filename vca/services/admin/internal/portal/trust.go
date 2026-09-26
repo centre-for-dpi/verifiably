@@ -189,7 +189,7 @@ func (p *Portal) trustForm(b *blocks, csrf string) template.HTML {
 	)
 	return b.add("card", components.Card{
 		ID: "add-entry", Title: msg.T("admin.trust.new.label"), Text: msg.T("admin.trust.new.text"),
-		Body: form(p.opts.Prefix+"/trust", csrf, fields),
+		Body: stackedForm(p.opts.Prefix+"/trust", csrf, fields),
 	})
 }
 

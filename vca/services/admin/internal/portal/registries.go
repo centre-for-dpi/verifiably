@@ -219,7 +219,7 @@ func (p *Portal) registryForm(b *blocks, csrf string) template.HTML {
 	)
 	return b.add("card", components.Card{
 		ID: "add-registry", Title: msg.T("admin.registries.new.label"), Text: msg.T("admin.registries.new.text"),
-		Body: form(p.opts.Prefix+"/trust/registries", csrf, fields),
+		Body: stackedForm(p.opts.Prefix+"/trust/registries", csrf, fields),
 	})
 }
 

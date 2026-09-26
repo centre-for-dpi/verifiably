@@ -322,6 +322,7 @@ func (h *harness) page(t *testing.T, path string) string {
 		t.Fatalf("%s status = %d", path, status)
 	}
 	a11ytest.AssertPage(t, body)
+	assertNoOneRowPostForm(t, path, body)
 	return body
 }
 

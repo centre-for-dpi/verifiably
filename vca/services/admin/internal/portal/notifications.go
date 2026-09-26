@@ -125,12 +125,12 @@ func (p *Portal) webhookBlock(b *blocks, s session, hooks []*adminv1.StackWebhoo
 	})
 	set := b.add("card", components.Card{
 		ID: "set-webhook", Title: msg.T("admin.notifications.webhook.set.label"), Text: msg.T("admin.notifications.webhook.set.text"),
-		Body: form(at+"/notifications/webhook", s.CSRF,
+		Body: stackedForm(at+"/notifications/webhook", s.CSRF, components.Join(
 			b.add("field", components.Field{ID: "webhook_target", Name: "target", Label: msg.T("admin.keys.stack.target.label"), Type: "select", Options: targets}),
 			b.add("field", components.Field{ID: "url", Label: msg.T("admin.notifications.webhook.url.label"), Type: "url", Required: true,
 				Hint: msg.T("admin.notifications.webhook.url.hint")}),
 			b.add("button", components.Button{Text: msg.T("admin.notifications.webhook.save.label"), Type: "submit", Variant: "primary"}),
-		),
+		)),
 	})
 	block.Body = components.Join(table, set)
 	return b.add("block", block)

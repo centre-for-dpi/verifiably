@@ -392,7 +392,7 @@ func (p *Portal) providerForm(b *blocks, f frame, action string, in providerInpu
 	)
 	return b.add("card", components.Card{
 		ID: "provider-form", Title: msg.T("admin.providers.details.label"),
-		Body: form(action, csrf, fields),
+		Body: stackedForm(action, csrf, fields),
 	})
 }
 
