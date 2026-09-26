@@ -68,6 +68,9 @@ func ClaimsRow(key, configID string, names []string, subject map[string]any, for
 	for i, name := range names {
 		known[name] = true
 		values[i] = claimstore.Value(subject[name])
+		if err := claimstore.Check(values[i]); err != nil {
+			return claimstore.Row{}, fmt.Errorf("inji: the claim %s: %w", name, err)
+		}
 	}
 	var unknown []string
 	for name := range subject {

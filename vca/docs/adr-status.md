@@ -606,17 +606,17 @@ A row that is not `Done` carries a note.
 | ADR-056 | 1 A guard on `config_id` in every template | Done | `vca/services/dpg-adapter-inji/internal/inji/configs.go` | `TestARowOfOneConfigurationIssuesNoOtherConfiguration` shows that a farmer row gives no medical licence through the fake Certify. Publish every schema again after the upgrade. |
 | ADR-056 | 2 Binding only on vouched claims | Done | `vca/services/dpg-adapter-inji/internal/authz/bind.go`, `vca/services/issuance/internal/pages/issue.go`, `vca/internal/cli/dpgconfig.go` | `TestBindingNeedsAClaimTheProviderVouchesFor` pins the rule. The wizard offers `email`, `sub` and `phone_number` and warns about the rest. The Inji holder realm sets `verifyEmail`. The admin portal cannot edit `verified_claims` yet; `VCA_INJI_HOLDER_OIDC_VERIFIED_CLAIMS` sets it. |
 | ADR-056 | 3 The row lives as long as its token | Done | `vca/services/dpg-adapter-inji/internal/authz`, `deploy/vca/dpg/inji/certify/certify-vca-store.properties` | The row lives `RowTTL`, seven minutes. The query casts `expires_at` and compares it with `now()`. `TestCertifyPropertiesNameThePostgresProvider` pins it. |
-| ADR-056 | 4 Offer claims go at the token or at expiry | Partial | `vca/services/dpg-adapter-inji/internal/service/holderclaim.go`, `vca/services/dpg-adapter-inji/internal/app/app.go` | `Finish` drops the subject after the token. `SweepOffers` deletes expired offers. The reopen of an offer waits. |
+| ADR-056 | 4 Offer claims go at the token or at expiry | Done | `vca/services/dpg-adapter-inji/internal/service/holderclaim.go`, `vca/services/dpg-adapter-inji/internal/authz/token.go`, `vca/services/dpg-adapter-inji/internal/app/app.go` | `Finish` drops the subject after the token. `SweepOffers` deletes expired offers. A code that fails before any token reopens its offer and logs at Warn. |
 | ADR-056 | 5 Bounded parameters, a rate limit, no store walk | Done | `vca/services/dpg-adapter-inji/internal/authz/limit.go`, `vca/services/dpg-adapter-inji/internal/authz/authorize.go`, `vca/services/internal/store/store.go` | The limit sits in the handler, because the stock Caddy has no rate limit module. The file store walks only the folder of a prefix. |
 | ADR-056 | 6 A key ring and a rotation command | Not started | `vca/services/dpg-adapter-inji/internal/authz/keys.go`, `vca/internal/cli` | |
-| ADR-056 | 7 Claim values without control characters | Not started | `vca/services/dpg-adapter-inji/internal/claims` | |
+| ADR-056 | 7 Claim values without control characters | Done | `vca/services/dpg-adapter-inji/internal/claims/claims.go`, `vca/services/dpg-adapter-inji/internal/inji/claims.go` | `CreateOffer` refuses the value with the claim name. `Put` refuses any field. |
 
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 243 |
-| Partial | 30 |
+| Done | 245 |
+| Partial | 29 |
 | Deferred | 3 |
-| Not started | 38 |
+| Not started | 37 |
 | Total | 314 |

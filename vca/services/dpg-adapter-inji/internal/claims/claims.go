@@ -29,6 +29,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // MaxClaims is the number of claim columns, c1 to c64 (ADR-051
@@ -133,6 +135,44 @@ func Value(v any) string {
 	return strings.TrimSuffix(b.String(), "\n")
 }
 
+// ErrBadText reports a value that would break the foreign table.
+var ErrBadText = errors.New("the value holds a control character or invalid UTF-8")
+
+// Check reports whether a value can sit in the foreign table (ADR-056
+// decision 7). file_fdw reads every row file as one COPY stream, so one
+// NUL byte or one invalid UTF-8 sequence fails every query. A tab, a
+// line feed and a carriage return stay: the CSV quoting carries them.
+func Check(v string) error {
+	if !utf8.ValidString(v) {
+		return ErrBadText
+	}
+	for _, r := range v {
+		if unicode.IsControl(r) && r != '\t' && r != '\n' && r != '\r' {
+			return ErrBadText
+		}
+	}
+	return nil
+}
+
+// check reports the first field of the row that Check refuses.
+func (r Row) check() error {
+	named := map[string]string{
+		"subject": r.Subject, ConfigColumn: r.ConfigID, ValidFromColumn: r.ValidFrom, ValidUntilColumn: r.ValidUntil,
+		StatusURIColumn: r.StatusURI, StatusIndexColumn: r.StatusIndex,
+	}
+	for name, v := range named {
+		if err := Check(v); err != nil {
+			return fmt.Errorf("claims: the column %s: %w", name, err)
+		}
+	}
+	for i, v := range r.Claims {
+		if err := Check(v); err != nil {
+			return fmt.Errorf("claims: the column %s: %w", ColumnName(i), err)
+		}
+	}
+	return nil
+}
+
 // Writer writes and sweeps the rows of one directory.
 type Writer struct {
 	// Dir is the directory that file_fdw reads.
@@ -163,6 +203,9 @@ func fileName(subject string) string {
 func (w Writer) Put(r Row) error {
 	if len(r.Claims) > MaxClaims {
 		return fmt.Errorf("claims: %d claims, the store holds %d", len(r.Claims), MaxClaims)
+	}
+	if err := r.check(); err != nil {
+		return err
 	}
 	if _, err := w.Sweep(); err != nil {
 		return err

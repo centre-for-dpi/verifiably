@@ -3,10 +3,12 @@
 package authz
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"regexp"
 	"time"
 
@@ -38,16 +40,19 @@ type tokenError struct {
 	status      int
 	code        string
 	description string
+	// scheme is the HTTP authentication scheme the client tried, for
+	// the WWW-Authenticate challenge. Empty for a client of the body.
+	scheme string
 }
 
 func (e tokenError) Error() string { return e.code + ": " + e.description }
 
 func badClient(description string) tokenError {
-	return tokenError{http.StatusUnauthorized, "invalid_client", description}
+	return tokenError{status: http.StatusUnauthorized, code: "invalid_client", description: description}
 }
 
 func badGrant(description string) tokenError {
-	return tokenError{http.StatusBadRequest, "invalid_grant", description}
+	return tokenError{status: http.StatusBadRequest, code: "invalid_grant", description: description}
 }
 
 // token trades an authorization code for an access token (RFC 6749
@@ -58,14 +63,14 @@ func badGrant(description string) tokenError {
 func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxTokenBody)
 	if err := r.ParseForm(); err != nil {
-		s.tokenFail(w, tokenError{http.StatusBadRequest, "invalid_request", "The body is not a form."})
+		s.tokenFail(w, tokenError{status: http.StatusBadRequest, code: "invalid_request", description: "The body is not a form."})
 		return
 	}
 	answer, err := s.exchange(r)
 	if err != nil {
 		var te tokenError
 		if !errors.As(err, &te) {
-			te = tokenError{http.StatusInternalServerError, "server_error", "The token could not be made."}
+			te = tokenError{status: http.StatusInternalServerError, code: "server_error", description: "The token could not be made."}
 		}
 		s.tokenFail(w, te)
 		return
@@ -75,8 +80,10 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) tokenFail(w http.ResponseWriter, e tokenError) {
 	s.log.Info("the holder authorization server refused a token request", "error", e.Error())
-	if e.code == "invalid_client" {
-		w.Header().Set("WWW-Authenticate", `Bearer error="invalid_client"`)
+	// RFC 6749 section 5.2: the challenge names the scheme the client
+	// tried. A client that authenticates in the body gets none.
+	if e.scheme != "" {
+		w.Header().Set("WWW-Authenticate", e.scheme+` realm="`+s.issuer+`", error="`+e.code+`"`)
 	}
 	writeJSON(w, e.status, map[string]string{"error": e.code, "error_description": e.description})
 }
@@ -86,11 +93,11 @@ func (s *Server) exchange(r *http.Request) (map[string]any, error) {
 	form := r.PostForm
 	for _, name := range []string{"grant_type", "code", "redirect_uri", "client_id", "code_verifier", "client_assertion", "client_assertion_type"} {
 		if len(form[name]) > 1 {
-			return nil, tokenError{http.StatusBadRequest, "invalid_request", "The parameter " + name + " appears twice."}
+			return nil, tokenError{status: http.StatusBadRequest, code: "invalid_request", description: "The parameter " + name + " appears twice."}
 		}
 	}
 	if form.Get("grant_type") != "authorization_code" {
-		return nil, tokenError{http.StatusBadRequest, "unsupported_grant_type", "The server trades authorization codes only."}
+		return nil, tokenError{status: http.StatusBadRequest, code: "unsupported_grant_type", description: "The server trades authorization codes only."}
 	}
 	client, err := s.authenticate(r)
 	if err != nil {
@@ -111,21 +118,20 @@ func (s *Server) exchange(r *http.Request) (map[string]any, error) {
 	case used:
 		// RFC 6749 section 4.1.2: a code used twice revokes what the
 		// first use gave. The row goes, so Certify issues nothing more.
+		s.log.Warn("a used authorization code came back; its claims row goes",
+			"offer", c.OfferID, "client", c.ClientID)
 		if uerr := s.offers.Unstage(ctx, c.Subject); uerr != nil {
-			s.log.Warn("the row of a reused code stays", "error", uerr)
+			s.log.Warn("the row of a reused code stays", "offer", c.OfferID, "error", uerr)
 		}
 		return nil, badGrant("The code was already used.")
-	case !s.now().Before(c.ExpiresAt):
-		return nil, badGrant("The code has expired.")
-	case c.ClientID != client.ID:
-		return nil, badGrant("The code belongs to another client.")
-	case c.RedirectURI != form.Get("redirect_uri"):
-		return nil, badGrant("The redirect URI differs from the one of the request.")
-	case !verifierPattern.MatchString(form.Get("code_verifier")) || !oidc.VerifyChallenge(form.Get("code_verifier"), c.Challenge):
-		return nil, badGrant("The PKCE code verifier does not match.")
+	}
+	if failure := s.checkCode(c, client, form); failure != nil {
+		s.burn(ctx, c, failure.description)
+		return nil, *failure
 	}
 	answer, err := s.mint(client, c.Subject)
 	if err != nil {
+		s.burn(ctx, c, "the token could not be signed")
 		return nil, err
 	}
 	// The holder has the token, so the offer keeps nothing of its
@@ -138,12 +144,55 @@ func (s *Server) exchange(r *http.Request) (map[string]any, error) {
 	return answer, nil
 }
 
+// checkCode checks a code that this request used up against the
+// client, the redirect URI and the PKCE verifier.
+func (s *Server) checkCode(c code, client Client, form url.Values) *tokenError {
+	var failure tokenError
+	switch {
+	case !s.now().Before(c.ExpiresAt):
+		failure = badGrant("The code has expired.")
+	case c.ClientID != client.ID:
+		failure = badGrant("The code belongs to another client.")
+	case c.RedirectURI != form.Get("redirect_uri"):
+		failure = badGrant("The redirect URI differs from the one of the request.")
+	case !verifierPattern.MatchString(form.Get("code_verifier")) || !oidc.VerifyChallenge(form.Get("code_verifier"), c.Challenge):
+		failure = badGrant("The PKCE code verifier does not match.")
+	default:
+		return nil
+	}
+	return &failure
+}
+
+// burn handles a code that a request used up without a token: the row
+// goes, and the offer opens again, so the holder can claim once more
+// from the same offer (ADR-056 decision 4). The code works once, as
+// RFC 9700 asks, and the log names the offer, so the operator sees a
+// code that somebody else presented.
+func (s *Server) burn(ctx context.Context, c code, reason string) {
+	s.log.Warn("an authorization code failed before any token; its offer opens again",
+		"offer", c.OfferID, "client", c.ClientID, "reason", reason)
+	if err := s.offers.Unstage(ctx, c.Subject); err != nil {
+		s.log.Warn("the row of a failed code stays", "offer", c.OfferID, "error", err)
+	}
+	if c.OfferID == "" {
+		return
+	}
+	if err := s.offers.Reopen(ctx, c.OfferID); err != nil {
+		s.log.Warn("the offer of a failed code stays closed", "offer", c.OfferID, "error", err)
+	}
+}
+
 // authenticate finds the client of a token request and checks its
 // authentication. A client with a key must sign a client assertion. A
 // public client must send none. No client may send a secret.
 func (s *Server) authenticate(r *http.Request) (Client, error) {
 	form := r.PostForm
-	if _, _, basic := r.BasicAuth(); basic || form.Get("client_secret") != "" {
+	if _, _, basic := r.BasicAuth(); basic {
+		e := badClient("The server takes no client secret.")
+		e.scheme = "Basic"
+		return Client{}, e
+	}
+	if form.Get("client_secret") != "" {
 		return Client{}, badClient("The server takes no client secret.")
 	}
 	id := form.Get("client_id")
@@ -186,19 +235,27 @@ func (s *Server) checkAssertion(r *http.Request, client Client, assertion string
 		Aud any    `json:"aud"`
 		Jti string `json:"jti"`
 		Exp int64  `json:"exp"`
+		Iat *int64 `json:"iat"`
+		Nbf *int64 `json:"nbf"`
 	}
 	if uerr := json.Unmarshal(raw, &claims); uerr != nil {
-		return badClient("The client assertion is not a JSON object.")
+		return badClient("The client assertion is not a JSON object with numeric times.")
 	}
 	now := s.now()
 	exp := time.Unix(claims.Exp, 0)
+	ahead := func(t *int64) bool { return t != nil && time.Unix(*t, 0).After(now.Add(clockSkew)) }
 	switch {
-	case subtle.ConstantTimeCompare([]byte(claims.Iss), []byte(client.ID)) != 1 || claims.Sub != client.ID:
+	case subtle.ConstantTimeCompare([]byte(claims.Iss), []byte(client.ID)) != 1 ||
+		subtle.ConstantTimeCompare([]byte(claims.Sub), []byte(client.ID)) != 1:
 		return badClient("The client assertion names another client.")
 	case !s.audienceOK(claims.Aud):
 		return badClient("The client assertion names another audience.")
 	case claims.Exp == 0 || !now.Before(exp) || exp.After(now.Add(maxAssertionLife)):
 		return badClient("The client assertion has expired or lives too long.")
+	case ahead(claims.Iat) || ahead(claims.Nbf):
+		return badClient("The client assertion is not valid yet.")
+	case claims.Iat != nil && exp.Sub(time.Unix(*claims.Iat, 0)) > maxAssertionLife:
+		return badClient("The client assertion lives too long.")
 	case claims.Jti == "":
 		return badClient("The client assertion has no jti.")
 	}

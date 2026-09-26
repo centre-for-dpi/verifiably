@@ -147,6 +147,29 @@ func (s *Service) StageSubject(ctx context.Context, configID, subject, key strin
 	return nil
 }
 
+// Reopen opens a claimed offer again whose code failed before any
+// token (ADR-056 decision 4). An offer that dropped its subject, or
+// that the sweep removed, cannot open again.
+func (s *Service) Reopen(ctx context.Context, id string) error {
+	raw, err := s.store.Get(ctx, offerKey(id))
+	if err != nil {
+		return fmt.Errorf("read the offer: %w", err)
+	}
+	var offer hostedOffer
+	if uerr := json.Unmarshal(raw, &offer); uerr != nil {
+		return fmt.Errorf("read the offer: %w", uerr)
+	}
+	if offer.Spec == "" || offer.Binding == nil {
+		return errors.New("the offer holds no subject any more")
+	}
+	offer.Claimed = false
+	next, err := json.Marshal(offer)
+	if err != nil {
+		return err
+	}
+	return s.store.CompareAndSwap(ctx, offerKey(id), raw, next)
+}
+
 // Finish drops the subject and the binding rule of a claimed offer once
 // the holder has the token (ADR-056 decision 4). The claims row serves
 // the credential, so the offer keeps only its document until it

@@ -260,3 +260,60 @@ func TestTheSweepDeletesExpiredOffers(t *testing.T) {
 		}
 	}
 }
+
+// TestAFailedCodeReopensTheOffer: the authorization server reopens an
+// offer whose code failed before any token, so the holder claims it
+// again. An offer that gave its token, or that is gone, stays shut
+// (ADR-056 decision 4).
+func TestAFailedCodeReopensTheOffer(t *testing.T) {
+	svc, _ := newHolderService(t)
+	ctx := context.Background()
+	resp, err := svc.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
+		Spec: boundSpec(), Channel: backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE,
+	}))
+	if err != nil {
+		t.Fatalf("CreateOffer: %v", err)
+	}
+	id := resp.Msg.GetOfferId()
+	if serr := svc.StageOffer(ctx, id, "staging-1", fixedTime.Add(authz.RowTTL)); serr != nil {
+		t.Fatal(serr)
+	}
+	if rerr := svc.Reopen(ctx, id); rerr != nil {
+		t.Fatalf("Reopen: %v", rerr)
+	}
+	if _, ok := svc.Offer(ctx, id); !ok {
+		t.Fatal("the reopened offer is shut")
+	}
+	if serr := svc.StageOffer(ctx, id, "staging-2", fixedTime.Add(authz.RowTTL)); serr != nil {
+		t.Fatalf("the second claim: %v", serr)
+	}
+	if ferr := svc.Finish(ctx, id); ferr != nil {
+		t.Fatal(ferr)
+	}
+	for _, shut := range []string{id, "gone"} {
+		if rerr := svc.Reopen(ctx, shut); rerr == nil {
+			t.Errorf("Reopen(%s) worked", shut)
+		}
+	}
+}
+
+// TestCreateOfferRefusesAControlCharacter: a claim value with a NUL or
+// another control character fails at CreateOffer, before any row
+// reaches the claims store (ADR-056 decision 7).
+func TestCreateOfferRefusesAControlCharacter(t *testing.T) {
+	svc, _ := newService(t, both)
+	ctx := context.Background()
+	for _, value := range []string{`Ada\u0000`, `Ada\u001b[1m`, `Ada\u007f`} {
+		spec := farmerSpec()
+		spec.SubjectData = `{"fullName":"` + value + `","farmerID":"FM-0001","district":"Nakuru"}`
+		_, err := svc.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{Spec: spec}))
+		if connect.CodeOf(err) != connect.CodeInvalidArgument || !strings.Contains(err.Error(), "fullName") {
+			t.Errorf("%s: CreateOffer = %v", value, err)
+		}
+	}
+	spec := farmerSpec()
+	spec.SubjectData = `{"fullName":"Ada\tLovelace","farmerID":"FM-0001","district":"Nakuru"}`
+	if _, err := svc.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{Spec: spec})); err != nil {
+		t.Errorf("a tab: CreateOffer = %v", err)
+	}
+}

@@ -428,3 +428,40 @@ func TestDeleteRemovesTheRow(t *testing.T) {
 		t.Fatal("Delete removed a directory that holds a file")
 	}
 }
+
+// TestPutRefusesAValueThatBreaksTheTable is finding 8 of the review:
+// file_fdw reads every row file as one COPY stream, so one NUL byte or
+// one invalid UTF-8 sequence failed every query of the table. Put
+// refuses such a value in any field. A tab, a line feed and a carriage
+// return stay, because the CSV quoting carries them (ADR-056 decision 7).
+func TestPutRefusesAValueThatBreaksTheTable(t *testing.T) {
+	w := Writer{Dir: t.TempDir()}
+	good := Row{Subject: "s", ConfigID: "c", ExpiresAt: time.Now().Add(time.Hour), Claims: []string{"a\tb\nc\r"}}
+	if err := w.Put(good); err != nil {
+		t.Fatalf("a tab and line breaks: %v", err)
+	}
+	for name, change := range map[string]func(*Row){
+		"a NUL claim":          func(r *Row) { r.Claims = []string{"Amina\x00"} },
+		"an escape claim":      func(r *Row) { r.Claims = []string{"\x1b[31m"} },
+		"a DEL claim":          func(r *Row) { r.Claims = []string{"a\x7fb"} },
+		"invalid UTF-8":        func(r *Row) { r.Claims = []string{"\xff\xfe"} },
+		"a NUL subject":        func(r *Row) { r.Subject = "s\x00" },
+		"a broken status URI":  func(r *Row) { r.StatusURI = "https://x\x00" },
+		"a broken config id":   func(r *Row) { r.ConfigID = "c\xff" },
+		"a broken valid until": func(r *Row) { r.ValidUntil = "\x00" },
+	} {
+		row := good
+		row.Subject = "s-" + name
+		change(&row)
+		err := w.Put(row)
+		if err == nil || !strings.Contains(err.Error(), "control character or invalid UTF-8") {
+			t.Errorf("%s: Put = %v", name, err)
+		}
+		if _, found, ferr := w.Find(row.Subject); found || ferr != nil {
+			t.Errorf("%s: the row was written: %v", name, ferr)
+		}
+	}
+	if err := Check("fine\ttext"); err != nil {
+		t.Errorf("Check = %v", err)
+	}
+}

@@ -58,6 +58,9 @@ const (
 	// maxAssertionLife bounds the exp of a client assertion, so a stolen
 	// assertion works for minutes at most.
 	maxAssertionLife = 10 * time.Minute
+	// clockSkew is how far iat and nbf of a client assertion may lie
+	// ahead of the clock of the server.
+	clockSkew = time.Minute
 	// minKeySecret is the least length of the pair session key.
 	minKeySecret = 16
 )
@@ -106,6 +109,9 @@ type Offers interface {
 	// Finish deletes what a claimed offer still holds of its subject,
 	// once the holder has the token (ADR-056 decision 4).
 	Finish(ctx context.Context, id string) error
+	// Reopen opens a claimed offer again whose code failed before any
+	// token, so the holder can claim it once more (ADR-056 decision 4).
+	Reopen(ctx context.Context, id string) error
 	// Unstage removes the claims row under key.
 	Unstage(ctx context.Context, key string) error
 }

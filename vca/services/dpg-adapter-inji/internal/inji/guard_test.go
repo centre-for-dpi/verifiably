@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	claimstore "github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/claims"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/fake"
@@ -59,5 +60,14 @@ func TestConfigurationIdsFitTheGuard(t *testing.T) {
 		if _, err := BuildConfiguration(ConfigInput{ID: id, Format: "ldp_vc", Type: "X", JSONSchema: schema}, DefaultProfiles()); err != nil {
 			t.Errorf("the id %q did not register: %v", id, err)
 		}
+	}
+}
+
+// TestClaimsRowRefusesAControlCharacter: the row of a subject with a
+// NUL byte fails with the name of the claim (ADR-056 decision 7).
+func TestClaimsRowRefusesAControlCharacter(t *testing.T) {
+	_, err := ClaimsRow("k", "c", []string{"name"}, map[string]any{"name": "Ada\x00"}, "ldp_vc", StatusEntry{}, Validity{}, time.Now())
+	if err == nil || !strings.Contains(err.Error(), "name") {
+		t.Fatalf("ClaimsRow = %v", err)
 	}
 }

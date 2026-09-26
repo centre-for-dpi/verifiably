@@ -50,6 +50,7 @@ type fakeIssuer struct {
 	unstaged []string
 	claimed  map[string]bool
 	finished []string
+	reopened []string
 	lookups  int
 }
 
@@ -82,6 +83,14 @@ func (f *fakeIssuer) StageSubject(_ context.Context, configID, subject, key stri
 	if f.expires != nil {
 		f.expires[key] = expires
 	}
+	return nil
+}
+
+func (f *fakeIssuer) Reopen(_ context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.reopened = append(f.reopened, id)
+	delete(f.claimed, id)
 	return nil
 }
 
@@ -129,6 +138,25 @@ type harness struct {
 	browser   *http.Client
 	verified  []string
 	limits    authz.Limits
+	logs      lockedBuffer
+}
+
+// lockedBuffer collects the log of a server.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 func (h *harness) clock() time.Time {
@@ -233,7 +261,7 @@ func (h *harness) build(t *testing.T, kv store.KeyValue) *authz.Server {
 		Lookup:   h.lookup,
 		Limits:   h.limits,
 		Now:      h.clock,
-		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Log:      slog.New(slog.NewTextHandler(&h.logs, nil)),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1278,5 +1306,135 @@ func TestTheRowLivesAsLongAsItsCodeAndToken(t *testing.T) {
 	}
 	if strings.Join(h.issuer.finished, ",") != "offer-1" {
 		t.Fatalf("finished = %v, want the offer after the token", h.issuer.finished)
+	}
+}
+
+// TestABurntCodeReopensItsOffer is finding 6 of the review: a code that
+// leaked without its verifier let an attacker end the claim of the
+// holder. The code still works once, but a code that fails before any
+// token reopens its offer and removes its row, and the server logs the
+// attempt at Warn with the offer (ADR-056 decision 4).
+func TestABurntCodeReopensItsOffer(t *testing.T) {
+	h := newHarness(t)
+	h.addOffer("offer-1", "amina@example.org")
+	r := newRequest(publicClient, walletCallback)
+	r.issuerState = "offer-1"
+	back := h.signIn(r)
+	sub := ""
+	for key := range h.issuer.staged {
+		sub = key
+	}
+	stolen := codeForm(r, back.Query().Get("code"))
+	stolen.Set("code_verifier", oidc.NewVerifier())
+	if status, answer := h.token(stolen); status != http.StatusBadRequest || answer["error"] != "invalid_grant" {
+		t.Fatalf("the stolen code = %d %v", status, answer)
+	}
+	if strings.Join(h.issuer.reopened, ",") != "offer-1" || strings.Join(h.issuer.unstaged, ",") != sub {
+		t.Fatalf("reopened = %v, unstaged = %v; want the offer and the row %s", h.issuer.reopened, h.issuer.unstaged, sub)
+	}
+	if logs := h.logs.String(); !strings.Contains(logs, "level=WARN") || !strings.Contains(logs, "offer=offer-1") {
+		t.Fatalf("no warning names the offer:\n%s", logs)
+	}
+	// The holder's own trade now fails, but the offer is open again.
+	if status, answer := h.token(codeForm(r, back.Query().Get("code"))); status != http.StatusBadRequest || answer["error"] != "invalid_grant" {
+		t.Fatalf("the holder's trade = %d %v", status, answer)
+	}
+	if _, answer := h.claimToken("offer-1"); answer["access_token"] == "" {
+		t.Fatal("the reopened offer gave no token")
+	}
+	if len(h.issuer.reopened) != 1 {
+		t.Fatalf("reopened = %v", h.issuer.reopened)
+	}
+}
+
+// TestAReplayedCodeIsLogged: a code that comes back after its token
+// revokes the row and logs a warning that names the offer. The offer
+// stays closed, because a token went out.
+func TestAReplayedCodeIsLogged(t *testing.T) {
+	h := newHarness(t)
+	h.addOffer("offer-1", "amina@example.org")
+	r := newRequest(publicClient, walletCallback)
+	r.issuerState = "offer-1"
+	back := h.signIn(r)
+	form := codeForm(r, back.Query().Get("code"))
+	if status, _ := h.token(form); status != http.StatusOK {
+		t.Fatalf("first = %d", status)
+	}
+	h.token(form)
+	if len(h.issuer.reopened) != 0 {
+		t.Fatalf("a replay after a token reopened %v", h.issuer.reopened)
+	}
+	if logs := h.logs.String(); !strings.Contains(logs, "level=WARN") || !strings.Contains(logs, "offer=offer-1") {
+		t.Fatalf("no warning names the offer:\n%s", logs)
+	}
+}
+
+// TestClientAssertionTimesAreChecked: iat and nbf of a client assertion
+// may not lie in the future, and an assertion lives ten minutes at most
+// from iat to exp (RFC 7523 section 3, review finding 13).
+func TestClientAssertionTimesAreChecked(t *testing.T) {
+	h := newHarness(t)
+	now := h.clock()
+	for name, claims := range map[string]map[string]any{
+		"nbf ahead":      {"nbf": now.Add(5 * time.Minute).Unix()},
+		"iat ahead":      {"iat": now.Add(5 * time.Minute).Unix()},
+		"a long life":    {"iat": now.Add(-time.Hour).Unix()},
+		"iat not number": {"iat": "now"},
+	} {
+		id := "offer-" + strings.ReplaceAll(name, " ", "-")
+		h.addOffer(id, "amina@example.org")
+		r := newRequest(keyClient, keyRedirect)
+		r.issuerState = id
+		back := h.signIn(r)
+		form := withAssertion(codeForm(r, back.Query().Get("code")), h.assertion(h.walletKey, claims))
+		if status, answer := h.token(form); status != http.StatusUnauthorized || answer["error"] != "invalid_client" {
+			t.Errorf("%s: token = %d %v", name, status, answer)
+		}
+	}
+	// A skew of a few seconds and a missing iat pass.
+	for name, claims := range map[string]map[string]any{
+		"a small skew": {"iat": now.Add(20 * time.Second).Unix(), "nbf": now.Add(20 * time.Second).Unix()},
+		"no iat":       {"iat": nil},
+	} {
+		id := "offer-" + strings.ReplaceAll(name, " ", "-")
+		h.addOffer(id, "amina@example.org")
+		r := newRequest(keyClient, keyRedirect)
+		r.issuerState = id
+		back := h.signIn(r)
+		form := withAssertion(codeForm(r, back.Query().Get("code")), h.assertion(h.walletKey, claims))
+		if status, answer := h.token(form); status != http.StatusOK {
+			t.Errorf("%s: token = %d %v", name, status, answer)
+		}
+	}
+}
+
+// TestInvalidClientNamesTheSchemeUsed: RFC 6749 section 5.2 asks for
+// the scheme of the failed authentication. Basic gets a Basic
+// challenge, and a client of the form body gets none.
+func TestInvalidClientNamesTheSchemeUsed(t *testing.T) {
+	h := newHarness(t)
+	post := func(form url.Values, basic bool) reply {
+		t.Helper()
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, h.web.URL+"/authz/token", strings.NewReader(form.Encode()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if basic {
+			req.SetBasicAuth(publicClient, "secret")
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		anyval.Discard(res.Body.Close())
+		return reply{StatusCode: res.StatusCode, Header: res.Header}
+	}
+	form := url.Values{"grant_type": {"authorization_code"}, "code": {"x"}, "client_id": {"nobody"}}
+	if res := post(form, true); res.StatusCode != http.StatusUnauthorized || !strings.HasPrefix(res.Header.Get("WWW-Authenticate"), "Basic ") {
+		t.Errorf("basic = %d %q", res.StatusCode, res.Header.Get("WWW-Authenticate"))
+	}
+	if res := post(form, false); res.StatusCode != http.StatusUnauthorized || res.Header.Get("WWW-Authenticate") != "" {
+		t.Errorf("form = %d %q", res.StatusCode, res.Header.Get("WWW-Authenticate"))
 	}
 }

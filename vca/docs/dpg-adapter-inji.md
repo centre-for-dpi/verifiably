@@ -504,6 +504,12 @@ the person, and the ID token claim with the value. The adapter asks
 issuer." With more than one source, the request names its credential in
 `authorization_details`.
 
+The wallet initiated mode is pending. Nothing in this release sets a
+sign in source, and the data source service does not answer `Lookup`
+yet. So every claim without an offer ends in "Claim this credential
+from an offer of the issuer." When the mode lands, `Lookup` must check
+its caller, because it runs on the compose network with no guard.
+
 **The holder provider.** The adapter keeps a provider registry in its
 store. Setup seeds it with the holder realm of the stack Keycloak and
 the public client `vca-inji-authz`. The server takes the enabled
@@ -540,9 +546,11 @@ cannot open it, so the start fails. The key signs access tokens only.
 | A row serves after its token ended | The query of Certify reads only a row whose `expires_at` lies ahead. |
 | A code or an error goes to an address of an attacker | The redirect URI must equal a registered one, byte for byte. An unknown client or a wrong redirect URI gets an error page and no redirect. |
 | A stolen code works | PKCE S256 binds the code to the verifier of the wallet. The code works once, for one minute, for its client and its redirect URI. A code that comes back removes the claims row of its first token. |
+| A leaked code ends the claim of the holder | A code that fails before any token removes its row and opens its offer again. The holder then claims once more. The server logs it at Warn with the offer id (ADR-056 decision 4). |
 | The plain PKCE method weakens the check | The server takes S256 only. |
 | A forged callback or a login CSRF | The server keeps each sign in under its random state. A callback with another state, or a second callback, fails. The provider checks the nonce of its ID token. |
-| Somebody forges or replays a client assertion | Its signature must match the registered key. Its `iss` and `sub` name the client, its `aud` names the token endpoint or the issuer, and its `exp` falls within ten minutes. Each `jti` works once. |
+| Somebody forges or replays a client assertion | Its signature must match the registered key. Its `iss` and `sub` name the client, its `aud` names the token endpoint or the issuer, and its `exp` falls within ten minutes. Its `iat` and `nbf` lie no more than a minute ahead, and it lives ten minutes at most from `iat`. Each `jti` works once. |
+| One claim value stops the claims store for every holder | A value with invalid UTF-8 fails at `CreateOffer`. So does a control character other than a tab or a line break. The writer refuses such a row too (ADR-056 decision 7). |
 | Another person claims an offer | The binding rule compares a claim of the ID token with a claim of the credential. The claim must be one that the provider vouches for. An email without `email_verified` true never matches. |
 | A holder registers the user name or the attribute of another person | Such a claim never binds unless the provider record lists it as verified. The holder realm verifies every email. |
 | A look alike address matches | Only ASCII letters of an email compare without case, so the Kelvin sign is not `k`. |
