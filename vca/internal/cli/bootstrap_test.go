@@ -405,7 +405,7 @@ func injiRoleOptions(t *testing.T, role commonv1.Role, base string, out io.Write
 		Pair: pair,
 		Dir:  dir,
 		Values: map[string]string{"VCA_DPG_URL": base, "VCA_PUBLIC_URL": "https://issuer.example", EnvBootstrapSecret: "s3cret",
-			EnvBootstrapEsignetURL: esignet.URL},
+			EnvBootstrapEsignetURL: esignet.URL, EsignetAuthenticatorEnv: "mosip-ida"},
 		Out: out,
 	}
 }

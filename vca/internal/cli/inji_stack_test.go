@@ -591,79 +591,81 @@ func volumeMount(volumes []string, target string) string {
 	return ""
 }
 
-// TestInjiStackRunsEsignetWithItsLoginPage is P6-I7f. eSignet 1.5.1 runs
-// as the compose file of its release runs it: a Postgres that the init
-// script of the release prepares for eSignet and for the mock identity
-// system, a Redis, the mock plugin, and the local profile. Its login
-// page, oidc-ui 1.5.1, serves the authorize page of a browser and sends
-// /v1/esignet to eSignet. The mock identity names the identity by its
-// individual id. A credential scope maps onto the credential endpoint
-// of inji-certify-authcode.
-func TestInjiStackRunsEsignetWithItsLoginPage(t *testing.T) {
+// TestInjiStackRunsEsignetOnlyWithAnAuthenticator: eSignet 1.5.1 and
+// its login page run under the profile esignet-inji, which vca deploy
+// adds only when the operator names a real authenticator. The mock
+// identity system, the mock plugin, the mock key binder and the mock
+// database are gone, and the plugin has no default (ADR-053 decisions
+// 1 and 2).
+func TestInjiStackRunsEsignetOnlyWithAnAuthenticator(t *testing.T) {
 	stack := readCertifyServices(t)
-	both := func(name string) certifyService {
+	if _, ok := stack["inji-mock-identity"]; ok {
+		t.Fatal("the Inji stack still runs inji-mock-identity")
+	}
+	optional := func(name string) certifyService {
 		t.Helper()
 		svc, ok := stack[name]
 		if !ok {
 			t.Fatalf("the Inji stack has no %s service", name)
 		}
-		if strings.Join(svc.Profiles, ",") != "issuer-inji,holder-inji" {
-			t.Errorf("%s profiles = %v, want issuer-inji,holder-inji", name, svc.Profiles)
+		if strings.Join(svc.Profiles, ",") != EsignetProfile {
+			t.Errorf("%s profiles = %v, want only %s", name, svc.Profiles, EsignetProfile)
+		}
+		for key, value := range svc.Environment {
+			if strings.Contains(strings.ToLower(key+"="+value), "mock") {
+				t.Errorf("%s still sets %s=%s", name, key, value)
+			}
 		}
 		return svc
 	}
-	db := both("inji-esignet-postgres")
+	db := optional("inji-esignet-postgres")
 	if db.Image != "postgres:15.8" {
 		t.Errorf("the eSignet database image = %q; its init script names the locale en_US.UTF-8", db.Image)
 	}
-	sql := mountedFile(t, mountSource(db.Volumes, "/docker-entrypoint-initdb.d/init.sql"))
-	for _, want := range []string{"CREATE DATABASE mosip_esignet", "CREATE DATABASE mosip_mockidentitysystem", "CREATE TABLE mockidentitysystem.mock_identity("} {
-		if !strings.Contains(sql, want) {
-			t.Errorf("the eSignet init script lacks %q", want)
-		}
+	if got := strings.Join(db.Healthcheck.Test, " "); !strings.Contains(got, "-d mosip_esignet") {
+		t.Errorf("the eSignet database health check = %q, want the eSignet database", got)
 	}
-	if redis := both("inji-esignet-redis"); redis.Image != "redis:7.4.1-alpine" {
+	sql := mountedFile(t, mountSource(db.Volumes, "/docker-entrypoint-initdb.d/init.sql"))
+	if !strings.Contains(sql, "CREATE DATABASE mosip_esignet") || strings.Contains(strings.ToLower(sql), "mock") {
+		t.Error("the eSignet init script must prepare the eSignet database and nothing of a mock")
+	}
+	if redis := optional("inji-esignet-redis"); redis.Image != "redis:7.4.1-alpine" {
 		t.Errorf("the eSignet Redis image = %q", redis.Image)
 	}
-
-	certify := readProperties(t, filepath.Join(repoRoot(), "deploy", "vca", "dpg", "inji", "certify", "certify-authcode.properties"))
-	credentialEndpoint := strings.NewReplacer("${mosip.certify.domain.url}", certify["mosip.certify.domain.url"],
-		"${server.servlet.path}", "/v1/certify").Replace("${mosip.certify.domain.url}${server.servlet.path}/issuance/credential")
-	esignet := both("inji-esignet")
+	esignet := optional("inji-esignet")
 	for key, want := range map[string]string{
-		"active_profile_env":            "default,local",
-		"plugin_name_env":               "esignet-mock-plugin.jar",
-		"SPRING_DATASOURCE_URL":         "jdbc:postgresql://inji-esignet-postgres:5432/mosip_esignet?currentSchema=esignet",
-		"MOSIP_ESIGNET_MOCK_DOMAIN_URL": "http://inji-mock-identity:8082",
-		"SPRING_REDIS_HOST":             "inji-esignet-redis",
-		"MOSIP_ESIGNET_DOMAIN_URL":      "${INJI_ESIGNET_PUBLIC_URL:-http://localhost:17089}",
-		// The key set of the pair host belongs to its auth service, so
-		// eSignet names the path of its own service.
-		"MOSIP_ESIGNET_JWKS_URI":                          "${INJI_ESIGNET_PUBLIC_URL:-http://localhost:17089}/v1/esignet/oauth/.well-known/jwks.json",
-		"MOSIP_ESIGNET_SUPPORTED_CREDENTIAL_SCOPES":       "{'mock_identity_vc_ldp'}",
-		"MOSIP_ESIGNET_CREDENTIAL_SCOPE_RESOURCE_MAPPING": "{'mock_identity_vc_ldp': '" + credentialEndpoint + "'}",
+		"active_profile_env":       "default,local,integration",
+		"plugin_name_env":          "${INJI_ESIGNET_PLUGIN?set by vca setup}",
+		"SPRING_DATASOURCE_URL":    "jdbc:postgresql://inji-esignet-postgres:5432/mosip_esignet?currentSchema=esignet",
+		"SPRING_REDIS_HOST":        "inji-esignet-redis",
+		"MOSIP_ESIGNET_DOMAIN_URL": "${INJI_ESIGNET_PUBLIC_URL:-http://localhost:17089}",
+		"MOSIP_ESIGNET_JWKS_URI":   "${INJI_ESIGNET_PUBLIC_URL:-http://localhost:17089}/v1/esignet/oauth/.well-known/jwks.json",
 	} {
 		if esignet.Environment[key] != want {
 			t.Errorf("inji-esignet %s = %q, want %q", key, esignet.Environment[key], want)
 		}
 	}
-	for _, dep := range []string{"inji-esignet-postgres", "inji-esignet-redis", "inji-mock-identity"} {
+	for _, key := range []string{"MOSIP_ESIGNET_INTEGRATION_KEY_BINDER", "MOSIP_ESIGNET_SUPPORTED_CREDENTIAL_SCOPES"} {
+		if _, ok := esignet.Environment[key]; ok {
+			t.Errorf("inji-esignet still sets %s; the plugin properties of the operator set it", key)
+		}
+	}
+	if src := mountSource(esignet.Volumes, "/home/mosip/config/esignet-integration.properties"); src != "../"+EsignetDir+"/"+EsignetPropertiesFile {
+		t.Errorf("the properties of the operator mount from %q", src)
+	}
+	if src := mountSource(esignet.Volumes, "/home/mosip/plugins/"+EsignetCustomPluginDir); src != "../"+EsignetDir+"/"+EsignetCustomPluginDir {
+		t.Errorf("the custom plugin folder mounts from %q", src)
+	}
+	for _, dep := range []string{"inji-esignet-postgres", "inji-esignet-redis"} {
 		if _, ok := esignet.DependsOn[dep]; !ok {
 			t.Errorf("inji-esignet does not wait for %s", dep)
 		}
 	}
-	mock := both("inji-mock-identity")
-	for key, want := range map[string]string{
-		"active_profile_env":            "default,local",
-		"SPRING_DATASOURCE_URL":         "jdbc:postgresql://inji-esignet-postgres:5432/mosip_mockidentitysystem?currentSchema=mockidentitysystem",
-		"MOSIP_MOCK_IDA_KYC_PSUT_FIELD": "individualId",
-	} {
-		if mock.Environment[key] != want {
-			t.Errorf("inji-mock-identity %s = %q, want %q", key, mock.Environment[key], want)
-		}
+	if len(esignet.DependsOn) != 2 {
+		t.Errorf("inji-esignet waits for %v", esignet.DependsOn)
 	}
 
-	ui := both("inji-esignet-ui")
+	ui := optional("inji-esignet-ui")
 	if ui.Image != "mosipid/oidc-ui:1.5.1" {
 		t.Errorf("the login page image = %q", ui.Image)
 	}

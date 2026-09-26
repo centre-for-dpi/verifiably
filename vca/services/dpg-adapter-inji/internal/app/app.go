@@ -124,6 +124,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		IARIdentityClaims: cfg.IdentityClaims(),
 
 		PresentationDuringIssuance: cfg.PresentationDuringIssuance,
+		EsignetURL:                 cfg.EsignetURL,
 	})
 	if err != nil {
 		return nil, err

@@ -195,8 +195,16 @@ func TestInjiPairsPublishTheRfc8414Metadata(t *testing.T) {
 			t.Errorf("the route table has no row for %s", match)
 		}
 	}
-	// The eSignet metadata of the stack keeps its own exact paths.
-	if routed["/.well-known/oauth-authorization-server"] != EsignetUIContainer {
-		t.Errorf("the eSignet metadata goes to %q", routed["/.well-known/oauth-authorization-server"])
+	// The eSignet metadata of the stack keeps its own exact paths, when
+	// eSignet runs.
+	withEsignet := map[string]string{}
+	for _, sr := range PairRoutes(issuer, map[string]string{EsignetAuthenticatorEnv: "mosip-ida"}) {
+		withEsignet[sr.Route.Match] = sr.Service
+	}
+	if withEsignet["/.well-known/oauth-authorization-server"] != EsignetUIContainer {
+		t.Errorf("the eSignet metadata goes to %q", withEsignet["/.well-known/oauth-authorization-server"])
+	}
+	if _, ok := routed["/.well-known/oauth-authorization-server"]; ok {
+		t.Error("a pair without eSignet publishes the eSignet metadata")
 	}
 }

@@ -82,6 +82,9 @@ type Options struct {
 	// and its presentation definition are set. An offer can then ask the
 	// holder to present a credential first.
 	PresentationDuringIssuance bool
+	// EsignetURL is the eSignet of the stack. The feature answer lists
+	// eSignet only when it is set (ADR-053 decision 5).
+	EsignetURL string
 	// RenderingTemplateID names the SVG template of the Certify
 	// deployment. A registered ldp_vc configuration then names it as its
 	// render method. Empty names none.
@@ -131,6 +134,7 @@ type Service struct {
 	claims              *claims.Writer
 	iarIdentity         []string
 	signIn              SignIn
+	esignetURL          string
 	now                 func() time.Time
 	newID               func() string
 }
@@ -193,6 +197,7 @@ func New(opts Options) (*Service, error) {
 		presentation:        opts.PresentationDuringIssuance,
 		claims:              opts.Claims,
 		iarIdentity:         opts.IARIdentityClaims,
+		esignetURL:          opts.EsignetURL,
 		now:                 opts.Now,
 		newID:               opts.NewID,
 	}, nil

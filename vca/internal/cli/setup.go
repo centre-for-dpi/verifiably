@@ -68,6 +68,9 @@ type SetupRequest struct {
 	// registers the client with the holder authorization server of its
 	// adapter (ADR-052 decision 5). Empty registers no such client.
 	WalletJWK string
+	// ReadFile reads a file that a setting names, such as the plugin
+	// properties of eSignet. Nil means os.ReadFile.
+	ReadFile func(string) ([]byte, error)
 }
 
 // Plan is the result of a setup run before anything reaches the disk.
@@ -176,6 +179,15 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	for name, value := range inji {
 		extra[name] = value
 	}
+	// eSignet runs only with the authenticator of the operator. Setup
+	// copies its files under the eSignet directory (ADR-053).
+	esignet, esignetFiles, err := EsignetValues(req.Pair, values, req.ReadFile)
+	if err != nil {
+		return Plan{}, err
+	}
+	for name, value := range esignet {
+		extra[name] = value
+	}
 	if clients, ok := InjiWalletClients(req.Pair, values, req.Domain, req.Peers, req.WalletJWK); ok {
 		extra[InjiWalletClientsEnv] = clients
 	}
@@ -230,6 +242,7 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 		return Plan{}, err
 	}
 	shared = append(shared, stacks...)
+	shared = append(shared, esignetFiles...)
 	return Plan{Pair: req.Pair, Resolutions: list, Ports: plan, Files: files, Shared: shared}, nil
 }
 

@@ -542,8 +542,8 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-050 | 1 No mock artefact or sample data set ships | Partial | `vca/`, `deploy/` | `vca dpg bootstrap inji` adds no identity. The Inji stack still runs the mock identity system of eSignet. The pending list of `nomock_test.go` names each one. |
-| ADR-050 | 2 A configurable workflow replaces each artefact | Partial | `vca/services`, `vca/internal/cli` | Setup generates the stack secrets and asks for the certificate subject (ADR-055). Certify issues from the claims store (ADR-051), and the holder authorization server replaces eSignet for a claim (ADR-052). ADR-053 and ADR-054 wait. |
+| ADR-050 | 1 No mock artefact or sample data set ships | Partial | `vca/`, `deploy/` | `vca dpg bootstrap inji` adds no identity. The Inji stack runs no mock identity system. The pending list of `nomock_test.go` names each one. |
+| ADR-050 | 2 A configurable workflow replaces each artefact | Partial | `vca/services`, `vca/internal/cli` | Setup generates the stack secrets and asks for the certificate subject (ADR-055). Certify issues from the claims store (ADR-051), and the holder authorization server replaces eSignet for a claim (ADR-052). eSignet runs only with a real authenticator (ADR-053). ADR-054 waits. |
 | ADR-050 | 3 Test doubles stay in test paths | Done | `vca/internal/cli/nomock_test.go` | `TestNoDeploymentReachesTestdata` and `TestNoBinaryImportsAFakePackage` keep test doubles out of every deployment. |
 | ADR-050 | 4 A guard test scans the tree | Done | `vca/internal/cli/nomock_test.go` | The allowlist gives a reason per entry. The pending list shrinks with each unit and fails on an entry that matches nothing. |
 | ADR-050 | 5 A stack secret has no default | Done | `deploy/vca/dpg/*.yaml`, `vca/internal/cli/stackenv.go` | Every stack file requires its passwords with `${NAME:?set by vca setup}`. `TestStackFilesHaveNoSecretDefault` pins it. |
@@ -574,11 +574,11 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-053 | 1 eSignet under the profile `esignet-inji` | Not started | `deploy/vca/dpg/inji.yaml` | Every Inji pair runs eSignet today. |
-| ADR-053 | 2 The mock components leave the stack | Not started | `deploy/vca/dpg/inji.yaml` | The stack still runs `inji-mock-identity`. |
-| ADR-053 | 3 The operator supplies the plugin file | Not started | `vca/internal/cli/setup.go` | No setting exists yet. |
-| ADR-053 | 4 Bootstrap registers the client only when eSignet runs | Not started | `vca/internal/cli/bootstrap.go` | Bootstrap always registers it today. |
-| ADR-053 | 5 The feature answer lists eSignet only when it runs | Not started | `vca/services/dpg-adapter-inji/internal/service/dpginfo.go` | It lists eSignet and the mock identity system for every pair today. |
+| ADR-053 | 1 eSignet under the profile `esignet-inji` | Done | `deploy/vca/dpg/inji.yaml`, `vca/internal/cli/deploy.go`, `vca/internal/cli/esignet.go` | `vca deploy` adds the profile when the pair names an authenticator. `TestDeployAddsTheEsignetProfile` pins it. |
+| ADR-053 | 2 The mock components leave the stack | Done | `deploy/vca/dpg/inji.yaml`, `deploy/vca/dpg/inji/esignet/init.sql` | `TestInjiStackRunsEsignetOnlyWithAnAuthenticator` pins it. |
+| ADR-053 | 3 The operator supplies the plugin file | Done | `vca/internal/cli/esignet.go`, `proto/vca/config/v1/config.proto` | Setup copies the properties and a custom jar to `deploy/esignet-inji` with mode 0600. |
+| ADR-053 | 4 Bootstrap registers the client only when eSignet runs | Partial | `vca/internal/cli/bootstrap.go` | Bootstrap registers the client only then. Setup does not seed eSignet as a holder provider yet; the admin adds it in the admin portal. |
+| ADR-053 | 5 The feature answer lists eSignet only when it runs | Done | `vca/services/dpg-adapter-inji/internal/service/dpginfo.go` | `VCA_INJI_ESIGNET_URL` turns it on. `TestCapabilitiesListEsignetOnlyWhenConfigured` pins it. |
 
 ## ADR-054: VCA writes the walt.id catalogue and wallet configuration
 
@@ -626,8 +626,8 @@ A row that is not `Done` carries a note.
 
 | Status | Decisions |
 |---|---|
-| Done | 253 |
-| Partial | 28 |
+| Done | 257 |
+| Partial | 29 |
 | Deferred | 3 |
-| Not started | 36 |
+| Not started | 31 |
 | Total | 320 |

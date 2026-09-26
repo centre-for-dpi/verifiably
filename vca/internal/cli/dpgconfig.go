@@ -503,30 +503,41 @@ var dpgMemoryMiB = map[configv1.Dpg]int{
 // The Inji issuer profile runs Inji Verify 0.16.0 (512 MiB), its
 // Postgres (128 MiB), and the nginx of the presentation definition
 // (32 MiB), because Certify checks a presentation during issuance. It
-// also runs the second Certify 0.14.0 that takes eSignet tokens
-// (768 MiB), because Certify takes the tokens of one authorization
-// server only (ADR-049). Both profiles run the Postgres (128 MiB), the
-// Redis (64 MiB), and the login page (64 MiB) of eSignet.
+// also runs the second Certify 0.14.0 that takes the tokens of the
+// holder authorization server (768 MiB), because Certify takes the
+// tokens of one authorization server only (ADR-049). eSignet is not in
+// these figures: it runs only with an authenticator (ADR-053), and
+// EsignetFloorMiB adds it.
 var dpgRoleMemoryMiB = map[configv1.Dpg]map[commonv1.Role]int{
 	configv1.Dpg_DPG_INJI: {
-		commonv1.Role_ROLE_HOLDER: 1024 + esignetMemoryMiB,
-		commonv1.Role_ROLE_ISSUER: 1440 + esignetMemoryMiB,
+		commonv1.Role_ROLE_HOLDER: 1024,
+		commonv1.Role_ROLE_ISSUER: 1440,
 	},
 }
 
-// esignetMemoryMiB is the memory of the Postgres, the Redis, and the
-// login page of eSignet in the Inji stack (P6-I7f).
-const esignetMemoryMiB = 128 + 64 + 64
+// esignetMemoryMiB is the memory of eSignet 1.5.1 (768 MiB, a Spring
+// Boot service like Certify), its Postgres (128 MiB), its Redis
+// (64 MiB), and its login page (64 MiB).
+const esignetMemoryMiB = 768 + 128 + 64 + 64
+
+// EsignetFloorMiB returns the memory floor of a pair that runs eSignet
+// too, or zero for a pair that cannot run it (ADR-053 consequence 3).
+func EsignetFloorMiB(p Pair) int {
+	if !runsEsignet(p) {
+		return 0
+	}
+	return MemoryFloorMiB(p) + esignetMemoryMiB
+}
 
 // FloorTargetMiB is the memory target of one role with one DPG
 // (ADR-008 decision 7).
 const FloorTargetMiB = 4096
 
 // floorAboveTarget lists the pairs whose floor rises above the target.
-// ADR-049 names them: the Inji issuer runs Certify twice, and the Inji
-// holder runs Mimoto, Inji Web, and eSignet with their stores.
+// ADR-049 names them: the Inji issuer runs Certify twice. The Inji
+// holder stays under the target without eSignet (ADR-053).
 var floorAboveTarget = map[configv1.Dpg]map[commonv1.Role]bool{
-	configv1.Dpg_DPG_INJI: {commonv1.Role_ROLE_ISSUER: true, commonv1.Role_ROLE_HOLDER: true},
+	configv1.Dpg_DPG_INJI: {commonv1.Role_ROLE_ISSUER: true},
 }
 
 // AboveFloorTarget reports a pair whose floor ADR-049 lets rise above

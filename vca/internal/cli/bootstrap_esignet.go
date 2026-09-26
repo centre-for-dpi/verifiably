@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
-	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 )
 
 // The eSignet of the Inji stack is a login provider of the issuer and
@@ -71,10 +70,26 @@ type esignetAnswer struct {
 	} `json:"errors"`
 }
 
-// usesEsignet reports whether the pair logs in through the eSignet of
-// the stack file: the issuer and the holder pairs run it.
-func usesEsignet(p Pair) bool {
-	return p.Role == commonv1.Role_ROLE_ISSUER || p.Role == commonv1.Role_ROLE_HOLDER
+// usesEsignet reports whether the pair runs the eSignet of the stack
+// file: an issuer or a holder pair with a real authenticator.
+func usesEsignet(opts BootstrapOptions) bool {
+	return runsEsignet(opts.Pair) && esignetOn(opts.Values)
+}
+
+// writeWalletClientKey makes the key of the VCA wallet client, or reads
+// it, and writes it into the Mimoto key store. The holder authorization
+// server knows its public half (ADR-052 decision 5).
+func writeWalletClientKey(opts BootstrapOptions, result *BootstrapResult) error {
+	dir := filepath.Join(filepath.Dir(opts.Dir), EsignetDir)
+	keyPath := filepath.Join(dir, EsignetKeyFile)
+	key, made, err := esignetKey(dir, keyPath)
+	if err != nil {
+		return err
+	}
+	if made {
+		result.step(opts.Out, "Wallet client key written to %s with mode 0600", keyPath)
+	}
+	return writeMimotoKeystore(opts, key, result)
 }
 
 // registerEsignetClient creates the VCA client in eSignet, or adds the

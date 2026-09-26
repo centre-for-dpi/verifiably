@@ -387,7 +387,7 @@ A terminal run with no DPG name and no `--role` asks for both.
 | DPG | What the command does |
 |---|---|
 | `waltid` | Asks the walt.id adapter of the issuer pair for its identity. The adapter provisions a `did:web` of the host and a key, and keeps the key. |
-| `inji` | Creates or updates the realm of the role in Keycloak. An issuer or a holder pair then registers the VCA client in eSignet. The run adds no identity anywhere. |
+| `inji` | Creates or updates the realm of the role in Keycloak. An issuer or a holder pair with an eSignet authenticator then registers the VCA client in eSignet. The run adds no identity anywhere. |
 | `credebl` | Signs in and creates the organisation of the deployment. |
 
 Each run checks first, so a second run changes nothing.
@@ -405,7 +405,10 @@ A new run imports that file into the adapter and says the file can go.
 A pair of another role needs no issuer identity.
 
 The `inji` run of an issuer or a holder pair registers the VCA client
-`vca-inji` in the eSignet of the stack. eSignet 1.5.1 takes
+`vca-inji` in the eSignet of the stack. It does so only when the pair
+names an authenticator in `VCA_ESIGNET_AUTHENTICATOR` (ADR-053). Without one, the
+run asks no eSignet. The holder run still writes the key and the Mimoto
+key store. eSignet 1.5.1 takes
 `private_key_jwt` only, with an RS256 assertion from an RSA key. The
 first run makes a 2048 bit RSA key in `deploy/esignet-inji/vca-client.pem`
 with mode 0600. The directory holds a `.gitignore` that ignores all of

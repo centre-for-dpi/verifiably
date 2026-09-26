@@ -93,9 +93,10 @@ type Config struct {
 	VerifyVersion string `env:"VERIFY_VERSION" default:"0.16.0"`
 	// EsignetVersion names the eSignet release of the stack.
 	EsignetVersion string `env:"ESIGNET_VERSION" default:"1.5.1"`
-	// MockIdentityVersion names the mock identity system release of the
-	// stack.
-	MockIdentityVersion string `env:"MOCK_IDENTITY_VERSION" default:"0.10.1"`
+	// EsignetURL is the eSignet of the stack on the compose network.
+	// Setup sets it only when the operator names a real authenticator,
+	// and the feature answer lists eSignet only then (ADR-053).
+	EsignetURL string `env:"ESIGNET_URL"`
 	// KeycloakVersion names the Keycloak release of the stack.
 	KeycloakVersion string `env:"KEYCLOAK_VERSION" default:"25.0"`
 	// Timeout bounds one call to Inji.
@@ -231,7 +232,6 @@ func (c Config) Versions() map[string]string {
 	return map[string]string{
 		"certify":        c.DpgVersion,
 		"esignet":        c.EsignetVersion,
-		"mock-identity":  c.MockIdentityVersion,
 		"verify-service": c.VerifyVersion,
 		"verify-ui":      c.VerifyVersion,
 		"keycloak":       c.KeycloakVersion,

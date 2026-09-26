@@ -224,16 +224,25 @@ func readIssuerFile(path string) (string, string, bool) {
 // directory only when the realm is absent, so the CLI uses the admin API
 // instead (ADR-008 decision 4).
 //
-// An issuer or a holder pair then registers the VCA client in the
-// eSignet of the stack (registerEsignetClient). The run adds no
-// identity anywhere: the people who claim a credential come from the
-// systems of the operator (ADR-050 decision 1).
+// An issuer or a holder pair with a real authenticator then registers
+// the VCA client in the eSignet of the stack (registerEsignetClient,
+// ADR-053 decision 4). A holder pair without eSignet still writes the
+// Mimoto key store, because Inji Web signs its token requests at the
+// holder authorization server with that key. The run adds no identity
+// anywhere: the people who claim a credential come from the systems of
+// the operator (ADR-050 decision 1).
 func BootstrapInji(ctx context.Context, opts BootstrapOptions) (BootstrapResult, error) {
 	result, err := bootstrapRealm(ctx, opts, "Inji")
-	if err != nil || !usesEsignet(opts.Pair) {
+	if err != nil {
 		return result, err
 	}
-	return result, registerEsignetClient(ctx, opts, &result)
+	if usesEsignet(opts) {
+		return result, registerEsignetClient(ctx, opts, &result)
+	}
+	if isInjiHolder(opts.Pair) {
+		return result, writeWalletClientKey(opts, &result)
+	}
+	return result, nil
 }
 
 // realmPath returns the path of the realm of the pair role. The realm

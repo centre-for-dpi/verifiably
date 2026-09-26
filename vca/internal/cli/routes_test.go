@@ -427,14 +427,20 @@ func TestInjiIssuerRoutesTheEsignetLoginPage(t *testing.T) {
 		"/esignet-ui/*", "/theme/*", "/locales/*", "/images/*", "/v1/esignet/*",
 		"/.well-known/openid-configuration", "/.well-known/oauth-authorization-server",
 	}
-	got := Caddyfile(issuer, map[string]string{"VCA_PUBLIC_URL": "https://issuer-inji.labs.example", "INJI_ESIGNET_UI_HOST_PORT": "27089"})
+	got := Caddyfile(issuer, map[string]string{"VCA_PUBLIC_URL": "https://issuer-inji.labs.example", "INJI_ESIGNET_UI_HOST_PORT": "27089",
+		EsignetAuthenticatorEnv: "mosip-ida"})
+	// Without an authenticator no eSignet runs, so no path leads there
+	// (ADR-053 decision 1).
+	if off := Caddyfile(issuer, map[string]string{"VCA_PUBLIC_URL": "https://issuer-inji.labs.example"}); strings.Contains(off, EsignetUIContainer) {
+		t.Error("a pair without eSignet publishes the login page")
+	}
 	for _, match := range want {
 		block := "\t# " + EsignetUIContainer + "\n\thandle " + match + " {\n\t\treverse_proxy 127.0.0.1:27089\n\t}\n"
 		if strings.Count(got, block) != 1 {
 			t.Errorf("the issuer Caddyfile does not send %s to the login page:\n%s", match, got)
 		}
 	}
-	for _, sr := range PairRoutes(issuer, nil) {
+	for _, sr := range PairRoutes(issuer, map[string]string{EsignetAuthenticatorEnv: "custom"}) {
 		if sr.Service == EsignetUIContainer && (sr.Route.Match == "/.well-known/jwks.json" || sr.Route.Match == "/static/*") {
 			t.Errorf("the login page takes %s of the pair", sr.Route.Match)
 		}
@@ -449,7 +455,7 @@ func TestInjiIssuerRoutesTheEsignetLoginPage(t *testing.T) {
 	}
 	table := RouteTable()
 	for _, match := range want {
-		row := "| `" + match + "` | `" + EsignetUIContainer + "` | Only the `inji` stack. The eSignet login page. |"
+		row := "| `" + match + "` | `" + EsignetUIContainer + "` | Only the `inji` stack. The eSignet login page, when eSignet runs. |"
 		if !strings.Contains(table, row) {
 			t.Errorf("the route table has no row %q", row)
 		}

@@ -352,7 +352,7 @@ func TestCapabilitiesListHolderRole(t *testing.T) {
 		names[c.GetName()] = c
 	}
 	if names["mimoto"].GetVersion() != "0.21.0" || names["inji-web"].GetVersion() != "0.16.0" ||
-		names["inji-web"].GetUrl() != "https://inji-web.example" || names["esignet"] == nil || names["certify"] != nil {
+		names["inji-web"].GetUrl() != "https://inji-web.example" || names["esignet"] != nil || names["certify"] != nil {
 		t.Fatalf("components = %v", msg.GetDpgInfo().GetComponents())
 	}
 	issuer, _ := newService(t, both)

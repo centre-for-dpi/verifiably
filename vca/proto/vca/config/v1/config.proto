@@ -197,6 +197,15 @@ message Config {
     roles: ROLE_ISSUER
     dpgs: DPG_INJI
   }];
+  // The eSignet of the Inji stack (ADR-053). eSignet runs only with a
+  // real authenticator. An Inji issuer or holder pair names it.
+  Esignet esignet = 17 [(setting) = {
+    description: "The eSignet of the Inji stack."
+    env: "VCA_ESIGNET"
+    roles: ROLE_ISSUER
+    roles: ROLE_HOLDER
+    dpgs: DPG_INJI
+  }];
 
   // Oidc describes one OpenID Connect provider.
   message Oidc {
@@ -355,6 +364,33 @@ message Config {
       env: "VCA_ORGANISATION_UNIT"
       prompt: true
       validation: "Free text of 64 characters or fewer. Defaults to the role."
+    }];
+  }
+
+  // Esignet names the authenticator plugin that eSignet 1.5.1 signs a
+  // person in with. With none, the stack runs no eSignet.
+  message Esignet {
+    // The authenticator. mosip-ida needs MOSIP IDA, sunbird-rc needs a
+    // Sunbird RC registry, and custom takes a plugin of the operator.
+    string authenticator = 1 [(setting) = {
+      description: "The authenticator of eSignet. With none, the stack runs no eSignet."
+      env: "VCA_ESIGNET_AUTHENTICATOR"
+      default: "none"
+      prompt: true
+      validation: "One of none, mosip-ida, sunbird-rc, custom."
+    }];
+    // The plugin jar of the custom authenticator, on the host.
+    string plugin_file = 2 [(setting) = {
+      description: "The plugin jar of a custom authenticator, on the host."
+      env: "VCA_ESIGNET_PLUGIN_FILE"
+      validation: "An absolute path to a jar file. The custom authenticator needs it."
+    }];
+    // The properties of the plugin, on the host. Setup copies the file
+    // with mode 0600, and eSignet reads it as the profile integration.
+    string properties_file = 3 [(setting) = {
+      description: "The properties file of the authenticator plugin, on the host."
+      env: "VCA_ESIGNET_PROPERTIES_FILE"
+      validation: "An absolute path to a properties file. Every authenticator but none needs it."
     }];
   }
 

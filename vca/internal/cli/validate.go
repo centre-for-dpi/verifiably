@@ -18,7 +18,7 @@ import (
 // proto option. One sentence pattern maps to one check. No rule lives
 // twice, so the proto stays the only source (ADR-007 decision 6).
 var (
-	rxOneOf      = regexp.MustCompile(`one of ([a-z0-9_, ]+?)\s*\.`)
+	rxOneOf      = regexp.MustCompile(`one of ([a-z0-9_, -]+?)\s*\.`)
 	rxStartsWith = regexp.MustCompile(`starts with ([a-z0-9]+://(?: or [a-z0-9]+://)*)`)
 	rxCommaList  = regexp.MustCompile(`comma separated list of ([a-z0-9, ]+?(?: and [a-z0-9]+)?)\s*\.`)
 	rxBetween    = regexp.MustCompile(`between (\d+) and (\d+)`)

@@ -223,7 +223,7 @@ func TestDpgStackFilesExistAndArePinned(t *testing.T) {
 			"nginx:1.27.2-alpine",
 			// The login page of eSignet and the mock identity system
 			// (P6-I7f).
-			"mosipid/oidc-ui:1.5.1", "mosipid/mock-identity-system:0.10.1",
+			"mosipid/oidc-ui:1.5.1",
 		},
 		"dpg/credebl.yaml": {"quay.io/keycloak/keycloak:25.0"},
 	}
@@ -268,6 +268,11 @@ func TestDpgStackFilesExistAndArePinned(t *testing.T) {
 }
 
 func knownProfile(name string) bool {
+	if name == EsignetProfile {
+		// eSignet runs only when the pair names an authenticator
+		// (ADR-053 decision 1).
+		return true
+	}
 	for _, p := range AllPairs() {
 		if p.Name() == name {
 			return true

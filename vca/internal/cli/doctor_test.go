@@ -195,13 +195,13 @@ func TestMemoryFloorOfEveryPairMatchesTheDocument(t *testing.T) {
 	want := map[string]int{
 		// Inji Verify, its database, and the nginx of the presentation
 		// definition add 672 MiB to the Inji issuer (P6-I4b). The second
-		// Certify, which takes eSignet tokens, adds 768 MiB (P6-I0). The
-		// database, the Redis, and the login page of eSignet add 256 MiB
-		// to the Inji issuer and holder (P6-I7f).
-		"issuer-waltid": 2912, "issuer-inji": 5120, "holder-waltid": 2336,
+		// Certify, which takes the tokens of the holder authorization
+		// server, adds 768 MiB (P6-I0). eSignet is not in the floor: it
+		// runs only with an authenticator (ADR-053).
+		"issuer-waltid": 2912, "issuer-inji": 4864, "holder-waltid": 2336,
 		"verifier-waltid": 2720, "admin-waltid": 704, "admin-inji": 704,
 		// Mimoto, its database and Redis, and Inji Web add 1024 MiB (P6-I7d).
-		"holder-inji": 4128,
+		"holder-inji": 3872,
 	}
 	for _, p := range AllPairs() {
 		if got, ok := want[p.Name()]; ok && MemoryFloorMiB(p) != got {
@@ -775,7 +775,7 @@ func TestDoctorChecksTheInjiWebPort(t *testing.T) {
 	if !errors.Is(err, ErrDoctorFailed) {
 		t.Fatalf("err = %v", err)
 	}
-	for _, want := range []string{"port 17085", "inji-web: another program holds it", "INJI_WEB_HOST_PORT", "holder-inji", "4128 MiB"} {
+	for _, want := range []string{"port 17085", "inji-web: another program holds it", "INJI_WEB_HOST_PORT", "holder-inji", "3872 MiB"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("the report lacks %q:\n%s", want, out.String())
 		}
@@ -796,8 +796,30 @@ func TestDoctorNamesAFloorAboveTheTarget(t *testing.T) {
 		t.Errorf("the report marks a pair under the target:\n%s", report)
 	}
 	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI}
-	if !strings.Contains(FloorReport([]Pair{holder}), "above the 4096 MiB target") {
-		t.Error("the floor report does not name the rise of the Inji holder (P6-I7f)")
+	if strings.Contains(FloorReport([]Pair{holder}), "above the 4096 MiB target") {
+		t.Error("the Inji holder without eSignet stays under the target (ADR-053)")
+	}
+}
+
+// TestFloorReportShowsBothInjiFloors is ADR-053 consequence 3: an Inji
+// issuer or holder runs eSignet only with an authenticator, so the
+// report shows the floor without eSignet and the floor with it. Other
+// pairs show one floor.
+func TestFloorReportShowsBothInjiFloors(t *testing.T) {
+	issuer := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_INJI}
+	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI}
+	verifier := Pair{Role: commonv1.Role_ROLE_VERIFIER, Dpg: configv1.Dpg_DPG_INJI}
+	report := FloorReport([]Pair{issuer, holder, verifier, issuerPair()})
+	for _, want := range []string{"4864 MiB", "5888 MiB  with eSignet", "3872 MiB", "4896 MiB  with eSignet"} {
+		if !strings.Contains(report, want) {
+			t.Errorf("the report lacks %q:\n%s", want, report)
+		}
+	}
+	if strings.Count(report, "with eSignet") != 2 {
+		t.Errorf("the report gives eSignet to a pair that cannot run it:\n%s", report)
+	}
+	if EsignetFloorMiB(verifier) != 0 || EsignetFloorMiB(holder)-MemoryFloorMiB(holder) != esignetMemoryMiB {
+		t.Error("the eSignet floor of a pair")
 	}
 }
 

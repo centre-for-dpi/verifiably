@@ -70,7 +70,7 @@ func newServiceWith(t *testing.T, r roles, change func(*serviceOptions)) (*servi
 		Store:      store.Memory(),
 		DpgVersion: "0.14.0",
 		Versions: map[string]string{
-			"certify": "0.14.0", "esignet": "1.5.1", "mock-identity": "0.10.1",
+			"certify": "0.14.0", "esignet": "1.5.1",
 			"verify-service": "0.16.0", "verify-ui": "0.16.0", "keycloak": "25.0",
 			"mimoto": "0.21.0", "inji-web": "0.16.0",
 		},
@@ -613,8 +613,7 @@ func TestCapabilitiesCarryDpgInfo(t *testing.T) {
 		seen[c.GetName()] = c.GetVersion()
 	}
 	want := map[string]string{
-		"certify": "0.14.0", "esignet": "1.5.1", "mock-identity": "0.10.1",
-		"verify-service": "0.16.0", "verify-ui": "0.16.0", "keycloak": "25.0",
+		"certify": "0.14.0", "verify-service": "0.16.0", "verify-ui": "0.16.0", "keycloak": "25.0",
 	}
 	for name, version := range want {
 		if seen[name] != version {
@@ -641,7 +640,7 @@ func TestCapabilitiesOfAVerifierOnlyDeploymentNameNoIssuerComponent(t *testing.T
 	for _, c := range resp.Msg.GetDpgInfo().GetComponents() {
 		names[c.GetName()] = true
 	}
-	if names["certify"] || names["esignet"] || names["mock-identity"] {
+	if names["certify"] || names["esignet"] {
 		t.Errorf("a verifier only deployment lists issuer components: %v", names)
 	}
 	if !names["verify-service"] || !names["keycloak"] {
@@ -880,4 +879,41 @@ func TestAuthCodeOfferNamesEsignet(t *testing.T) {
 		Spec: farmerSpec(), Channel: backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE,
 	}))
 	wantCode(t, err, connect.CodeUnavailable)
+}
+
+// TestCapabilitiesListEsignetOnlyWhenConfigured is ADR-053 decision 5:
+// the answer lists eSignet only for an issuer or a holder pair that
+// runs it, and never a mock identity system.
+func TestCapabilitiesListEsignetOnlyWhenConfigured(t *testing.T) {
+	names := func(svc *service.Service) map[string]string {
+		resp, err := svc.GetCapabilities(context.Background(), connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]string{}
+		for _, c := range resp.Msg.GetDpgInfo().GetComponents() {
+			out[c.GetName()] = c.GetVersion()
+		}
+		return out
+	}
+	withEsignet := func(o *serviceOptions) { o.EsignetURL = "http://inji-esignet:8088" }
+	off, _ := newService(t, both)
+	on, _ := newServiceWith(t, both, withEsignet)
+	verifier, _ := newServiceWith(t, roles{verify: true}, withEsignet)
+	if _, ok := names(off)["esignet"]; ok {
+		t.Error("a pair without eSignet lists it")
+	}
+	if names(on)["esignet"] != "1.5.1" {
+		t.Errorf("a pair with eSignet lists %v", names(on))
+	}
+	if _, ok := names(verifier)["esignet"]; ok {
+		t.Error("a verifier lists eSignet")
+	}
+	for _, svc := range []*service.Service{off, on, verifier} {
+		for name := range names(svc) {
+			if strings.Contains(name, "mock") {
+				t.Errorf("the answer lists %s", name)
+			}
+		}
+	}
 }

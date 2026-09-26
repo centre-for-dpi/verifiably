@@ -2,8 +2,7 @@
 # MOSIP Inji stack and eSignet (ADR-008 decision 3).
 # The versions come from verifiably-go/docs/dpg-matrix.md:
 #   Inji Certify 0.14.0, Inji Web 0.16.0, Mimoto 0.21.0,
-#   Inji Verify 0.16.0, eSignet 1.5.1, mock identity 0.10.1,
-#   Keycloak 25.0.
+#   Inji Verify 0.16.0, eSignet 1.5.1, Keycloak 25.0.
 # The main compose file pulls this file in with include.
 # The database and key store passwords come from ../inji/.env, which
 # vca setup generates with mode 0600 and the include reads. The file
@@ -187,17 +186,19 @@ services:
     networks:
       - vca
 
-  # eSignet 1.5.1 with the mock identity system 0.10.1 and its login
-  # page (P6-I7f). The layout follows docker-compose/docker-compose.yml
-  # of mosip/esignet v1.5.1, and dpg/inji/esignet/SOURCE.md names every
-  # file. eSignet signs the holder in for a claim in Inji Web and for an
-  # authorization code offer, and it is a login provider of the issuer
-  # and holder portals.
+  # eSignet 1.5.1 and its login page (ADR-053). They run only under the
+  # profile esignet-inji, which vca deploy adds when the operator names
+  # a real authenticator: mosip-ida, sunbird-rc, or a custom plugin. The
+  # layout follows docker-compose/docker-compose.yml of mosip/esignet
+  # v1.5.1, and dpg/inji/esignet/SOURCE.md names every file. eSignet
+  # signs a person in at the identity system of the operator. The
+  # holder authorization server of the adapter can chain to it, and it
+  # is a login provider of the issuer and holder portals.
   inji-esignet-postgres:
     # The init script names the locale en_US.UTF-8, so the image is the
-    # Debian one. It prepares eSignet and the mock identity system.
+    # Debian one. It prepares the eSignet database only.
     image: postgres:15.8
-    profiles: [issuer-inji, holder-inji]
+    profiles: [esignet-inji]
     container_name: inji-esignet-postgres
     restart: unless-stopped
     environment:
@@ -209,14 +210,14 @@ services:
     networks:
       - vca
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d mosip_mockidentitysystem"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mosip_esignet"]
       interval: 10s
       timeout: 5s
       retries: 10
 
   inji-esignet-redis:
     image: redis:7.4.1-alpine
-    profiles: [issuer-inji, holder-inji]
+    profiles: [esignet-inji]
     container_name: inji-esignet-redis
     restart: unless-stopped
     networks:
@@ -224,7 +225,7 @@ services:
 
   inji-esignet:
     image: mosipid/esignet-with-plugins:1.5.1
-    profiles: [issuer-inji, holder-inji]
+    profiles: [esignet-inji]
     container_name: inji-esignet
     restart: unless-stopped
     user: root
@@ -233,19 +234,20 @@ services:
         condition: service_healthy
       inji-esignet-redis:
         condition: service_started
-      inji-mock-identity:
-        condition: service_started
     environment:
       container_user: mosip
       # The local profile of the release clears the scope rule of the
-      # client API, so vca dpg bootstrap registers the VCA client.
-      active_profile_env: default,local
-      plugin_name_env: esignet-mock-plugin.jar
+      # client API, so vca dpg bootstrap registers the VCA client. The
+      # integration profile is the properties file of the operator,
+      # which names the authenticator, its key binder, and its secrets.
+      active_profile_env: default,local,integration
+      # The jar of the authenticator: a plugin of the image or the
+      # custom plugin under plugins/vca. vca setup sets it; every Inji
+      # pair names it, empty without eSignet.
+      plugin_name_env: ${INJI_ESIGNET_PLUGIN?set by vca setup}
       SPRING_DATASOURCE_URL: jdbc:postgresql://inji-esignet-postgres:5432/mosip_esignet?currentSchema=esignet
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${INJI_ESIGNET_DB_PASSWORD:?set by vca setup}
-      MOSIP_ESIGNET_MOCK_DOMAIN_URL: http://inji-mock-identity:8082
-      MOSIP_ESIGNET_INTEGRATION_KEY_BINDER: MockKeyBindingWrapperService
       SPRING_CACHE_TYPE: redis
       SPRING_REDIS_HOST: inji-esignet-redis
       SPRING_REDIS_PASSWORD: ""
@@ -256,36 +258,13 @@ services:
       # The key set of a pair host belongs to its auth service, so eSignet
       # names the path of its own service.
       MOSIP_ESIGNET_JWKS_URI: ${INJI_ESIGNET_PUBLIC_URL:-http://localhost:17089}/v1/esignet/oauth/.well-known/jwks.json
-      # The credential scope eSignet signs for. Its token names the
-      # credential endpoint of inji-certify-authcode as the audience.
-      MOSIP_ESIGNET_SUPPORTED_CREDENTIAL_SCOPES: "{'mock_identity_vc_ldp'}"
-      MOSIP_ESIGNET_CREDENTIAL_SCOPE_RESOURCE_MAPPING: "{'mock_identity_vc_ldp': 'http://inji-certify-nginx:8091/v1/certify/issuance/credential'}"
+    volumes:
+      # vca setup copies the properties file of the operator here with
+      # mode 0600, and the jar of a custom authenticator into vca/.
+      - ../esignet-inji/esignet-integration.properties:/home/mosip/config/esignet-integration.properties:ro
+      - ../esignet-inji/vca:/home/mosip/plugins/vca:ro
     ports:
       - "${VCA_BIND:-0.0.0.0}:${INJI_ESIGNET_HOST_PORT:-17082}:8088"
-    networks:
-      - vca
-
-  inji-mock-identity:
-    image: mosipid/mock-identity-system:0.10.1
-    profiles: [issuer-inji, holder-inji]
-    container_name: inji-mock-identity
-    restart: unless-stopped
-    user: root
-    depends_on:
-      inji-esignet-postgres:
-        condition: service_healthy
-    environment:
-      container_user: mosip
-      active_profile_env: default,local
-      SPRING_DATASOURCE_URL: jdbc:postgresql://inji-esignet-postgres:5432/mosip_mockidentitysystem?currentSchema=mockidentitysystem
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: ${INJI_ESIGNET_DB_PASSWORD:?set by vca setup}
-      MOSIP_MOCK_IDA_KYC_TRANSACTION_TIMEOUT_SECS: "900"
-      # The token of eSignet names the identity by its individual id, so
-      # the CSV data provider of Certify finds the row of the identity.
-      MOSIP_MOCK_IDA_KYC_PSUT_FIELD: individualId
-    ports:
-      - "${VCA_BIND:-0.0.0.0}:${INJI_MOCK_IDENTITY_HOST_PORT:-17083}:8082"
     networks:
       - vca
 
@@ -293,7 +272,7 @@ services:
   # issuer pair publishes it on its public host (ADR-047 decision 4).
   inji-esignet-ui:
     image: mosipid/oidc-ui:1.5.1
-    profiles: [issuer-inji, holder-inji]
+    profiles: [esignet-inji]
     container_name: inji-esignet-ui
     restart: unless-stopped
     user: root

@@ -35,9 +35,9 @@ func hasIssuer(s *Service) bool   { return s.certify != nil }
 func hasVerifier(s *Service) bool { return s.verify != nil }
 func hasHolder(s *Service) bool   { return s.mimoto != nil }
 
-// hasLogin reports whether the pair runs eSignet and the mock identity
-// system: the issuer and the holder profiles of the stack file do.
-func hasLogin(s *Service) bool { return hasIssuer(s) || hasHolder(s) }
+// hasLogin reports whether the pair runs eSignet: an issuer or a holder
+// pair whose setup named a real authenticator (ADR-053 decision 5).
+func hasLogin(s *Service) bool { return s.esignetURL != "" && (hasIssuer(s) || hasHolder(s)) }
 
 // components lists the stack in the order of the stack file.
 var components = []component{
@@ -47,8 +47,6 @@ var components = []component{
 		repo: "https://github.com/mosip/inji-certify", docs: docsURL + "/inji-certify/overview", lic: mplLicence},
 	{name: "esignet", wired: hasLogin,
 		repo: "https://github.com/mosip/esignet", docs: "https://docs.esignet.io", lic: mplLicence},
-	{name: "mock-identity", wired: hasLogin,
-		repo: "https://github.com/mosip/esignet-mock-services", docs: "https://docs.esignet.io", lic: mplLicence},
 	{name: "mimoto", wired: hasHolder,
 		repo: "https://github.com/mosip/mimoto", docs: docsURL + "/inji-wallet/inji-web/technical-overview/backend-services/mimoto-bff", lic: mplLicence},
 	{name: "inji-web", wired: hasHolder,

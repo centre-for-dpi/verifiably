@@ -80,6 +80,11 @@ func ComposeArgsBuild(root string, p Pair, action []string, build bool) []string
 		"--env-file", EnvPath(root, p),
 		"--profile", p.Name(),
 	)
+	// eSignet runs only when the pair names a real authenticator
+	// (ADR-053 decision 1).
+	if esignetProfileOf(root, p) {
+		args = append(args, "--profile", EsignetProfile)
+	}
 	return append(args, action...)
 }
 

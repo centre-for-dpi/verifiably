@@ -72,12 +72,6 @@ var (
 // page on its host, as it owns the Keycloak site of the stack.
 var injiIssuer = Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_INJI}
 
-// runsEsignet reports an Inji pair whose profile runs eSignet and its
-// login page.
-func runsEsignet(p Pair) bool {
-	return p.Dpg == configv1.Dpg_DPG_INJI && (p.Role == commonv1.Role_ROLE_ISSUER || p.Role == commonv1.Role_ROLE_HOLDER)
-}
-
 // InjiPublicValues returns the compose variables and adapter settings
 // that carry the browser addresses of the Inji stack for one pair.
 // values are the settings of the run, domain the base domain, and peers
@@ -96,7 +90,7 @@ func InjiPublicValues(p Pair, values map[string]string, domain string, peers Pee
 			out[InjiAdapterURLEnv] = adapter
 		}
 	}
-	if runsEsignet(p) {
+	if runsEsignet(p) && esignetOn(values) {
 		out[EsignetPublicURLEnv] = esignetPublicURL(p, values, domain, peers)
 	}
 	if isInjiHolder(p) {

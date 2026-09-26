@@ -44,13 +44,13 @@ Set at least one Inji URL. Each URL turns on one role.
 | `VCA_INJI_HOLDER_OIDC_DISCOVERY_URL`, `VCA_INJI_HOLDER_OIDC_CLIENT_ID`, `VCA_INJI_HOLDER_OIDC_PUBLIC_URL`, `VCA_INJI_HOLDER_OIDC_INTERNAL_AUTHORITY` | The holder provider that the server seeds into its registry. |
 | `VCA_INJI_HOLDER_OIDC_VERIFIED_CLAIMS` | The claims beyond `email`, `phone_number` and `sub` that the holder provider verifies. A binding rule matches only verified claims. |
 | `VCA_INJI_DATA_SOURCE_URL` | The data source service that finds the subject of a claim without an offer. |
-| `VCA_INJI_OFFER_ISSUER` | The credential issuer of a hosted offer through the identity provider. The stack file sets the Certify that takes eSignet tokens. An offer with a presentation during issuance names the issuer of the Certify metadata. |
+| `VCA_INJI_OFFER_ISSUER` | The credential issuer of a hosted offer through the identity provider. The stack file sets the Certify that takes the tokens of the holder authorization server. An offer with a presentation during issuance names the issuer of the Certify metadata. |
 | `VCA_INJI_METADATA_PATH` | The path of the issuer metadata on Inji Certify. |
 | `VCA_INJI_VERIFY_CLIENT_ID` | The DID Inji Verify shows a wallet. |
 | `VCA_INJI_DPG_VERSION` | The Inji Certify release the answer of `GetCapabilities` reports. |
 | `VCA_INJI_VERIFY_VERSION` | The Inji Verify release of the stack. The default is `0.16.0`. |
 | `VCA_INJI_ESIGNET_VERSION` | The eSignet release of the stack. The default is `1.5.1`. |
-| `VCA_INJI_MOCK_IDENTITY_VERSION` | The mock identity system release of the stack. The default is `0.10.1`. |
+| `VCA_INJI_ESIGNET_URL` | eSignet on the compose network. `vca setup` sets it only for a pair with an authenticator, and the answer of `GetCapabilities` lists eSignet only then. |
 | `VCA_INJI_KEYCLOAK_VERSION` | The Keycloak release of the stack. The default is `25.0`. |
 | `VCA_INJI_MIMOTO_VERSION` | The Mimoto release of the stack. The default is `0.21.0`. |
 | `VCA_INJI_WEB_VERSION` | The Inji Web release of the stack. The default is `0.16.0`. |

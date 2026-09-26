@@ -235,6 +235,11 @@ func FloorReport(pairs []Pair) string {
 			note = fmt.Sprintf("  above the %d MiB target (ADR-049)", FloorTargetMiB)
 		}
 		fmt.Fprintf(&b, "  %-18s %5d MiB%s\n", p.Name(), MemoryFloorMiB(p), note)
+		if with := EsignetFloorMiB(p); with > 0 {
+			// eSignet runs only with an authenticator (ADR-053), so the
+			// pair has a second floor.
+			fmt.Fprintf(&b, "  %-18s %5d MiB  with eSignet\n", "", with)
+		}
 	}
 	fmt.Fprintf(&b, "  %-18s %5d MiB\n", "total", SelectionFloorMiB(pairs))
 	return b.String()

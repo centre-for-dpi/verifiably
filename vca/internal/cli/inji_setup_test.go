@@ -62,6 +62,12 @@ func TestInjiEsignetAddressFollowsTheDeployment(t *testing.T) {
 		{name: "holder alone on a public host", req: SetupRequest{Pair: holder,
 			Flags: withFlag(baseFlags(), "VCA_PUBLIC_URL", "https://wallet.gov.example")}, want: "http://wallet.gov.example:17089"},
 	} {
+		// eSignet runs only with an authenticator (ADR-053).
+		props, _ := esignetFiles(t)
+		if tc.req.Flags == nil {
+			tc.req.Flags = baseFlags()
+		}
+		tc.req.Flags = withFlag(withFlag(tc.req.Flags, EsignetAuthenticatorEnv, "mosip-ida"), EsignetPropertiesEnv, props)
 		env := planEnv(t, tc.req)
 		if env["INJI_ESIGNET_PUBLIC_URL"] != tc.want {
 			t.Errorf("%s: INJI_ESIGNET_PUBLIC_URL = %q, want %q", tc.name, env["INJI_ESIGNET_PUBLIC_URL"], tc.want)

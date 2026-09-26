@@ -209,6 +209,10 @@ func PairRoutes(p Pair, values map[string]string) []ServiceRoute {
 		}
 	}
 	for _, set := range dpgRouteSets(p) {
+		if set.Port.Container == EsignetUIContainer && !esignetOn(values) {
+			// No eSignet runs, so the proxy publishes no login page.
+			continue
+		}
 		host := portFrom(values, set.Port.Env, set.Port.Host)
 		for _, r := range set.Routes {
 			out = append(out, ServiceRoute{Service: set.Port.Container, Route: r, Host: host})
@@ -254,7 +258,7 @@ var esignetUIRoutes = []Route{
 // it owns the Keycloak site of the stack (ADR-047 decision 4, P6-I7f).
 func dpgRouteSets(p Pair) []dpgRouteSet {
 	if p.Dpg == configv1.Dpg_DPG_INJI && p.Role == commonv1.Role_ROLE_ISSUER {
-		return []dpgRouteSet{{Port: esignetUIPort, Note: "The eSignet login page.", Routes: esignetUIRoutes}}
+		return []dpgRouteSet{{Port: esignetUIPort, Note: "The eSignet login page, when eSignet runs.", Routes: esignetUIRoutes}}
 	}
 	return nil
 }
