@@ -417,3 +417,16 @@ func TestCardKeepsTypeAndTitleFallback(t *testing.T) {
 		t.Fatalf("title = %q", got)
 	}
 }
+
+// TestCardOfTheStackWallet names the type and the issuer of a credential
+// that a stack wallet lists by name only, and points at its document.
+func TestCardOfTheStackWallet(t *testing.T) {
+	b := cards.New(cards.Options{Now: now})
+	card := b.Card(context.Background(), &backendv1.WalletCredential{
+		Id: "c9d27f40", Type: "Farmer Credential", Issuer: "Ministry of Agriculture",
+	})
+	if card.GetTitle() != "Farmer Credential" || card.GetIssuerName() != "Ministry of Agriculture" ||
+		!strings.Contains(card.GetStatusText(), "document") {
+		t.Fatalf("card = %v", card)
+	}
+}

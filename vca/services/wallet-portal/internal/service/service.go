@@ -54,6 +54,11 @@ type Options struct {
 	// Holder is the holder backend of the DPG. A nil client selects the
 	// browser storage of ADR-021 decision 4.
 	Holder backendv1connect.HolderBackendServiceClient
+	// Hybrid reports true when the wallet of the stack claims an offer in
+	// its own pages (FEATURE_WALLET_CLAIM_IN_STACK). The wallet then uses
+	// the stack for what it holds and keeps the browser store beside it
+	// for what the holder loads here. Nil means false.
+	Hybrid func(ctx context.Context) bool
 	// Catalogue reads the published credential types from the verifier
 	// discovery service. Nil, or a catalogue that does not answer, hands
 	// the pages to Fallback.
@@ -156,6 +161,28 @@ func (s *Service) Ready() bool { return s != nil }
 // BrowserStorage reports whether the deployment keeps the credentials
 // in the browser (ADR-021 decision 4).
 func (s *Service) BrowserStorage() bool { return s.opts.Holder == nil }
+
+// KeepsBrowser reports whether the browser store keeps credentials for
+// this request: always without a holder backend, and beside the wallet
+// of the stack when the stack claims in its own pages.
+func (s *Service) KeepsBrowser(ctx context.Context) bool {
+	return s.BrowserStorage() || s.hybrid(ctx)
+}
+
+// hybrid reports whether the stack wallet sits beside the browser store.
+func (s *Service) hybrid(ctx context.Context) bool {
+	return s.opts.Holder != nil && s.opts.Hybrid != nil && s.opts.Hybrid(ctx)
+}
+
+// inBrowser reports whether the browser store keeps the credential id,
+// beside the wallet of the stack.
+func (s *Service) inBrowser(ctx context.Context, citizen session.Citizen, id string) bool {
+	if !s.hybrid(ctx) {
+		return false
+	}
+	_, err := s.get(ctx, KindHeld, citizen.WalletKey(), id)
+	return err == nil
+}
 
 // ListDiscoverable returns the schemas that issuers publish
 // (ADR-021 decision 1).
@@ -448,6 +475,10 @@ func (s *Service) accept(ctx context.Context, citizen session.Citizen, offerURI,
 		return nil, connect.NewError(connect.CodeUnimplemented,
 			errors.New("this deployment keeps the credentials in your browser"))
 	}
+	if s.hybrid(ctx) {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("claim this credential in the wallet page of the stack, and it then shows here"))
+	}
 	resp, err := s.opts.Holder.AcceptOffer(ctx, connect.NewRequest(&backendv1.AcceptOfferRequest{
 		WalletId: citizen.WalletID, OfferUri: offerURI, Pin: pin, AuthorizationGrant: grant,
 	}))
@@ -497,7 +528,7 @@ func (s *Service) Delete(ctx context.Context, req *connect.Request[walletportalv
 	if id == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("name the credential"))
 	}
-	if s.opts.Holder == nil {
+	if s.opts.Holder == nil || s.inBrowser(ctx, citizen, id) {
 		if serr := s.drop(ctx, KindHeld, citizen.WalletKey(), id); serr != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, serr)
 		}
@@ -537,18 +568,7 @@ func (s *Service) ListMine(ctx context.Context, req *connect.Request[walletporta
 func (s *Service) held(ctx context.Context, citizen session.Citizen, page *commonv1.Pagination,
 ) ([]*walletportalv1.Card, error) {
 	if s.opts.Holder == nil {
-		records, err := s.list(ctx, KindHeld, citizen.WalletKey())
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
-		}
-		out := make([]*walletportalv1.Card, 0, len(records))
-		for _, rec := range records {
-			out = append(out, s.opts.Cards.Card(ctx, &backendv1.WalletCredential{
-				Id:         rec.ID,
-				Credential: &commonv1.Credential{Format: rec.Format, Payload: rec.Payload},
-			}))
-		}
-		return out, nil
+		return s.browserCards(ctx, citizen)
 	}
 	size := page.GetPageSize()
 	if size <= 0 || int(size) > s.opts.PageSizeMax {
@@ -562,7 +582,62 @@ func (s *Service) held(ctx context.Context, citizen session.Citizen, page *commo
 		return nil, connect.NewError(connect.CodeUnavailable,
 			errors.New("the wallet is not available, try again later"))
 	}
-	return s.opts.Cards.Cards(ctx, resp.Msg.GetCredentials()), nil
+	out := s.opts.Cards.Cards(ctx, resp.Msg.GetCredentials())
+	if !s.hybrid(ctx) {
+		return out, nil
+	}
+	local, err := s.browserCards(ctx, citizen)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, local...), nil
+}
+
+// browserCards returns the cards of the credentials the citizen loaded
+// into the browser store in this session. The server cannot read the
+// ciphertext blobs, so it sees only these.
+func (s *Service) browserCards(ctx context.Context, citizen session.Citizen) ([]*walletportalv1.Card, error) {
+	records, err := s.list(ctx, KindHeld, citizen.WalletKey())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	out := make([]*walletportalv1.Card, 0, len(records))
+	for _, rec := range records {
+		card := s.opts.Cards.Card(ctx, &backendv1.WalletCredential{
+			Id:         rec.ID,
+			Credential: &commonv1.Credential{Format: rec.Format, Payload: rec.Payload},
+		})
+		card.InBrowser = true
+		out = append(out, card)
+	}
+	return out, nil
+}
+
+// Document returns the printable document of one credential of the
+// wallet of the stack, such as a PDF.
+func (s *Service) Document(ctx context.Context, req *connect.Request[walletportalv1.DocumentRequest],
+) (*connect.Response[walletportalv1.DocumentResponse], error) {
+	citizen, err := session.Require(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if s.opts.Holder == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented,
+			errors.New("this deployment keeps the credentials in your browser"))
+	}
+	if strings.TrimSpace(req.Msg.GetId()) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("name the credential"))
+	}
+	resp, err := s.opts.Holder.GetCredentialDocument(ctx, connect.NewRequest(&backendv1.GetCredentialDocumentRequest{
+		WalletId: citizen.WalletID, CredentialId: req.Msg.GetId(),
+	}))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable,
+			errors.New("the wallet did not give the document, try again later"))
+	}
+	return connect.NewResponse(&walletportalv1.DocumentResponse{
+		Content: resp.Msg.GetContent(), MediaType: resp.Msg.GetMediaType(),
+	}), nil
 }
 
 // PresentStart reads an OID4VP request and builds the consent screen
@@ -665,7 +740,7 @@ func (s *Service) PresentConfirm(ctx context.Context,
 	case rec.Interactive != "":
 		answer, err = s.presentForIssuance(ctx, citizen, rec, chosen[0], disclosed)
 		parsed.ClientID = rec.Issuer
-	case s.opts.Holder != nil:
+	case s.opts.Holder != nil && !s.inBrowser(ctx, citizen, chosen[0]):
 		answer, err = s.presentWithBackend(ctx, citizen, parsed, chosen, disclosed)
 	default:
 		answer, err = s.presentDirect(ctx, citizen, parsed, chosen, disclosed)

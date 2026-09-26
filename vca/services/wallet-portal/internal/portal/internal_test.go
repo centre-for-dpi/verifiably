@@ -32,8 +32,11 @@ func TestCardStatusWords(t *testing.T) {
 			t.Errorf("%s: got %s %s", want, status, word)
 		}
 	}
-	if got := cardMeta(&walletportalv1.Card{}); got != "This credential names no end date." {
+	if got := cardMeta(&walletportalv1.Card{Format: commonv1.Format_FORMAT_LDP_VC}); got != "This credential names no end date." {
 		t.Errorf("meta = %q", got)
+	}
+	if got := cardMeta(&walletportalv1.Card{}); got != "Its document shows the dates." {
+		t.Errorf("a card listed by name: meta = %q", got)
 	}
 	if got := cardMeta(&walletportalv1.Card{ReceivedAt: timestamppb.New(now)}); got != "Received 19 Sep 2026" {
 		t.Errorf("meta = %q", got)

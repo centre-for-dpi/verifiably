@@ -31,6 +31,7 @@ var fixedTime = time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
 type roles struct {
 	certify bool
 	verify  bool
+	mimoto  bool
 }
 
 // both wires the issuer and the verifier.
@@ -63,11 +64,14 @@ func newServiceWith(t *testing.T, r roles, change func(*serviceOptions)) (*servi
 	opts := service.Options{
 		Certify:    inji.NewCertify(client(r.certify), ""),
 		Verify:     inji.NewVerify(client(r.verify), "did:web:verify.example:v1:verify", f.URL()),
+		Mimoto:     inji.NewMimoto(client(r.mimoto)),
+		InjiWebURL: "https://inji-web.example",
 		Store:      store.Memory(),
 		DpgVersion: "0.14.0",
 		Versions: map[string]string{
 			"certify": "0.14.0", "esignet": "1.5.1", "mock-identity": "0.10.1",
 			"verify-service": "0.16.0", "verify-ui": "0.16.0", "keycloak": "25.0",
+			"mimoto": "0.21.0", "inji-web": "0.16.0",
 		},
 		PublicURL:           "https://adapter.example",
 		AuthorizationServer: "https://esignet.example/v1/esignet",

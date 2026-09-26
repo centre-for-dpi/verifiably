@@ -10,6 +10,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/cards"
@@ -32,7 +33,10 @@ func (p *Portal) mine(w http.ResponseWriter, r *http.Request) error {
 		parts = append(parts, p.cardList(b, resp.Msg.GetCards()))
 	}
 	parts = append(parts, p.recent(b, r))
-	if p.opts.Service.BrowserStorage() {
+	if p.hybrid(b) {
+		parts = append(parts, p.stackCard(b, msg.T("holder.stack.text")))
+	}
+	if p.opts.Service.BrowserStorage() || p.hybrid(b) {
 		parts = append(parts, p.browserCard(b))
 	}
 	lead := p.homeLead(b)
@@ -55,7 +59,9 @@ func (p *Portal) homeLead(b *pen) string {
 		return msg.T("holder.home.lead.browser")
 	}
 	if own, ok := b.frame.Own(); ok {
-		if name := own.Capabilities.GetDpgInfo().GetDisplayName(); name != "" {
+		if name := own.Capabilities.GetDpgInfo().GetDisplayName(); name != "" && p.hybrid(b) {
+			return msg.T("holder.home.lead.hybrid", name)
+		} else if name != "" {
 			return msg.T("holder.home.lead", name)
 		}
 	}
@@ -93,7 +99,15 @@ func (p *Portal) card(b *pen, card *walletportalv1.Card, index int) components.C
 		Status: cards.RevocationStatus(card.GetRevocation()),
 	})
 	text := b.raw("<p>" + template.HTMLEscapeString(card.GetStatusText()) + "</p>")
-	table := b.part("table", claimTable(id, card))
+	// A card the stack lists by name only has no claims and no dates to
+	// show. Its document shows them.
+	var table template.HTML
+	window := b.raw(validity(card))
+	if namedOnly(card) {
+		window = ""
+	} else {
+		table = b.part("table", claimTable(id, card))
+	}
 	remove := b.form(p.opts.Prefix+"/delete", map[string]string{"id": card.GetId()},
 		components.Button{Text: "Remove from my wallet", Type: "submit", Variant: "danger"})
 	title := card.GetTitle()
@@ -107,7 +121,7 @@ func (p *Portal) card(b *pen, card *walletportalv1.Card, index int) components.C
 	return components.CredentialCard{
 		ID: id, Issuer: issuer, Title: title, Status: status, StatusText: word,
 		Meta: cardMeta(card), Summary: msg.T("holder.card.more.label"),
-		Body: components.Join(trust, state, text, b.raw(validity(card)), table, remove),
+		Body: components.Join(trust, state, text, window, table, p.documentLink(b, card), remove),
 	}
 }
 
@@ -131,6 +145,12 @@ func cardStatus(card *walletportalv1.Card, now time.Time) (string, string) {
 	return "ok", msg.T("holder.card.valid.label")
 }
 
+// namedOnly reports a card that a stack wallet lists by name only, with
+// no credential bytes to read.
+func namedOnly(card *walletportalv1.Card) bool {
+	return !card.GetInBrowser() && card.GetFormat() == commonv1.Format_FORMAT_UNSPECIFIED && len(card.GetClaims()) == 0
+}
+
 // cardMeta returns the meta line of a card: the expiry, the day the
 // wallet got it, or a sentence that it names no end date.
 func cardMeta(card *walletportalv1.Card) string {
@@ -139,6 +159,9 @@ func cardMeta(card *walletportalv1.Card) string {
 	}
 	if got := card.GetReceivedAt(); got != nil {
 		return msg.T("holder.card.received.label", shortDay(got.AsTime()))
+	}
+	if namedOnly(card) {
+		return msg.T("holder.card.named")
 	}
 	return msg.T("holder.card.open")
 }

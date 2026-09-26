@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package service serves the vca.backend.v1 services against Inji
-// Certify and Inji Verify (ADR-002 decision 2). Inji ships no wallet, so
-// the holder service answers with the Connect code Unimplemented.
+// Certify, Inji Verify, and Mimoto (ADR-002 decision 2). The holder
+// service drives Mimoto, the backend of Inji Web, when the configuration
+// names it, and answers Unimplemented otherwise.
 package service
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -38,6 +40,16 @@ type Options struct {
 	// Verify calls the Inji Verify service. Nil turns the verifier role
 	// off.
 	Verify *inji.Verify
+	// Mimoto calls the Mimoto backend of Inji Web. Nil turns the holder
+	// role off.
+	Mimoto *inji.Mimoto
+	// MimotoProvider is the token login provider of Mimoto that trusts
+	// the identity provider of the holder realm. Empty means google, the
+	// one provider bean of Mimoto 0.21.0.
+	MimotoProvider string
+	// InjiWebURL is the public address of Inji Web, where the holder
+	// claims a credential.
+	InjiWebURL string
 	// Store keeps the hosted authorization code offers.
 	Store store.KeyValue
 	// ProofKey signs the holder proof of the pre-authorized flow.
@@ -85,6 +97,9 @@ type Options struct {
 type Service struct {
 	certify             *inji.Certify
 	verify              *inji.Verify
+	mimoto              *inji.Mimoto
+	mimotoProvider      string
+	injiWebURL          string
 	store               store.KeyValue
 	proofKey            *inji.ProofKey
 	dpgVersion          string
@@ -108,8 +123,11 @@ func New(opts Options) (*Service, error) {
 	if opts.Store == nil {
 		return nil, errors.New("service: no store")
 	}
-	if opts.Certify == nil && opts.Verify == nil {
-		return nil, errors.New("service: neither Inji Certify nor Inji Verify is configured")
+	if opts.Certify == nil && opts.Verify == nil && opts.Mimoto == nil {
+		return nil, errors.New("service: none of Inji Certify, Inji Verify, and Mimoto is configured")
+	}
+	if opts.MimotoProvider == "" {
+		opts.MimotoProvider = "google"
 	}
 	if opts.ProofKey == nil {
 		opts.ProofKey = inji.NewProofKey()
@@ -138,6 +156,9 @@ func New(opts Options) (*Service, error) {
 	return &Service{
 		certify:             opts.Certify,
 		verify:              opts.Verify,
+		mimoto:              opts.Mimoto,
+		mimotoProvider:      opts.MimotoProvider,
+		injiWebURL:          strings.TrimRight(opts.InjiWebURL, "/"),
 		store:               opts.Store,
 		proofKey:            opts.ProofKey,
 		dpgVersion:          opts.DpgVersion,
@@ -248,48 +269,20 @@ func (s *Service) GetCapabilities(
 		// VerifyCredential calls the credential check of Inji Verify.
 		out.Features = append(out.Features, backendv1.Feature_FEATURE_VERIFY_UPLOAD)
 	}
+	if s.mimoto != nil {
+		// The holder RPCs drive Mimoto with the session of its token
+		// login. Mimoto renders a PDF of a credential, and the holder
+		// claims a credential in Inji Web (P6-I7a decision).
+		out.Roles = append(out.Roles, commonv1.Role_ROLE_HOLDER)
+		if !slices.Contains(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VP) {
+			out.Protocols = append(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VP)
+		}
+		out.Features = append(out.Features, backendv1.Feature_FEATURE_WALLET_DOCUMENT,
+			backendv1.Feature_FEATURE_WALLET_CLAIM_IN_STACK)
+	}
 	out.DpgInfo = s.dpgInfo()
 	return connect.NewResponse(out), nil
 }
-
-// Register is not available. Inji ships no wallet for a citizen.
-func (s *Service) Register(
-	context.Context, *connect.Request[backendv1.RegisterRequest],
-) (*connect.Response[backendv1.RegisterResponse], error) {
-	return nil, unimplemented(holderMessage)
-}
-
-// ListCredentials is not available. Inji ships no wallet for a citizen.
-func (s *Service) ListCredentials(
-	context.Context, *connect.Request[backendv1.ListCredentialsRequest],
-) (*connect.Response[backendv1.ListCredentialsResponse], error) {
-	return nil, unimplemented(holderMessage)
-}
-
-// AcceptOffer is not available. Inji ships no wallet for a citizen.
-func (s *Service) AcceptOffer(
-	context.Context, *connect.Request[backendv1.AcceptOfferRequest],
-) (*connect.Response[backendv1.AcceptOfferResponse], error) {
-	return nil, unimplemented(holderMessage)
-}
-
-// Present is not available. Inji ships no wallet for a citizen.
-func (s *Service) Present(
-	context.Context, *connect.Request[backendv1.PresentRequest],
-) (*connect.Response[backendv1.PresentResponse], error) {
-	return nil, unimplemented(holderMessage)
-}
-
-// DeleteCredential is not available. Inji ships no wallet for a citizen.
-func (s *Service) DeleteCredential(
-	context.Context, *connect.Request[backendv1.DeleteCredentialRequest],
-) (*connect.Response[backendv1.DeleteCredentialResponse], error) {
-	return nil, unimplemented(holderMessage)
-}
-
-// holderMessage says what to use instead of the holder role.
-const holderMessage = "Inji ships no wallet for a citizen; " +
-	"use the wallet portal, an external OID4VCI wallet, or the document channel"
 
 // timestamp returns a protobuf time or nil for the zero time.
 func timestamp(t time.Time) *timestamppb.Timestamp {

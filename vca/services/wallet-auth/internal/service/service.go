@@ -321,7 +321,7 @@ func (s *Service) callback(ctx context.Context, state, code, providerError strin
 	}
 	key := oidcflow.HashSubject(s.cfg.Salt, oidcflow.PairwiseSubject(res.Issuer, res.Subject))
 	ev.Actor = key
-	w, created, err := s.d.Wallets.Ensure(ctx, key, s.d.Registrar)
+	w, created, err := s.d.Wallets.Ensure(ctx, key, res.IDToken, s.d.Registrar)
 	if err != nil {
 		return "", oidcflow.Claims{}, "", false, err
 	}

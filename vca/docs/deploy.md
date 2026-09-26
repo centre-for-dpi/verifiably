@@ -550,7 +550,7 @@ The value is the container URL of the DPG API on the `vca` network:
 | `issuer-inji` | `http://inji-certify:8090` |
 | `issuer-credebl` | `http://credebl-api-gateway:5000` |
 | `holder-waltid` | `http://waltid-wallet-api:7001` |
-| `holder-inji` | `http://inji-web:3000` |
+| `holder-inji` | `http://inji-mimoto:8099` |
 | `holder-credebl` | `http://credebl-api-gateway:5000` |
 | `verifier-waltid` | `http://waltid-verifier-api:7003` |
 | `verifier-inji` | `http://inji-verify-service:8000` |

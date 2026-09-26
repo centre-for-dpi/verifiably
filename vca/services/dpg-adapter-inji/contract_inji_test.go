@@ -466,3 +466,48 @@ func TestContractAuthCodeOfferNamesEsignet(t *testing.T) {
 		t.Fatalf("discovery = %+v", meta)
 	}
 }
+
+// TestContractHolderThroughMimoto opens the Mimoto wallet of a holder
+// with the ID token of a login that the Mimoto token login trusts. It
+// lists the held credentials, reads the PDF of the first, and checks
+// that the list carries names only. It needs the Mimoto URL and a fresh
+// ID token.
+func TestContractHolderThroughMimoto(t *testing.T) {
+	mimoto := os.Getenv("VCA_INJI_CONTRACT_MIMOTO_URL")
+	token := os.Getenv("VCA_INJI_CONTRACT_ID_TOKEN")
+	if mimoto == "" || token == "" {
+		t.Skip("set VCA_INJI_CONTRACT_MIMOTO_URL and _ID_TOKEN to run the holder case")
+	}
+	a, err := app.Build(config.Config{
+		MimotoURL: mimoto, MimotoProvider: envOr("VCA_INJI_CONTRACT_MIMOTO_PROVIDER", "google"),
+		Timeout: 30 * time.Second, Retries: 1, MaxBytes: 8 << 20, OfferTTL: 15 * time.Minute,
+	}, app.Deps{HTTP: &http.Client{Timeout: 30 * time.Second}})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	ctx := context.Background()
+	reg, err := a.Service.Register(ctx, connect.NewRequest(&backendv1.RegisterRequest{
+		PairwiseSubject: "contract-holder", IdToken: token,
+	}))
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	list, err := a.Service.ListCredentials(ctx, connect.NewRequest(&backendv1.ListCredentialsRequest{WalletId: reg.Msg.GetWalletId()}))
+	if err != nil {
+		t.Fatalf("ListCredentials: %v", err)
+	}
+	for _, c := range list.Msg.GetCredentials() {
+		if c.GetId() == "" || c.GetType() == "" || c.GetCredential() != nil {
+			t.Fatalf("a held credential = %v", c)
+		}
+	}
+	if len(list.Msg.GetCredentials()) == 0 {
+		return
+	}
+	doc, err := a.Service.GetCredentialDocument(ctx, connect.NewRequest(&backendv1.GetCredentialDocumentRequest{
+		WalletId: reg.Msg.GetWalletId(), CredentialId: list.Msg.GetCredentials()[0].GetId(),
+	}))
+	if err != nil || !strings.HasPrefix(string(doc.Msg.GetContent()), "%PDF") {
+		t.Fatalf("GetCredentialDocument: %v", err)
+	}
+}

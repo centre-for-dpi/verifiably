@@ -1,0 +1,8 @@
+{
+  "presentationId": "7e2a4c91-5d3b-4f8e-b0a6-9c1d2e3f4a5b",
+  "verifier": {
+    "id": "did:web:verify.inji.example",
+    "name": "Inji Verify",
+    "redirectUri": "https://verify.inji.example/redirect"
+  }
+}

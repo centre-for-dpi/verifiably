@@ -188,6 +188,8 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18101}:${VCA_PORTS_ADAPTER:-8090}"
+    volumes:
+      - issuer-inji-dpg-adapter-inji-data:/data
   issuer-inji-issuance:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-issuance:${VCA_VERSION:-latest}
@@ -467,6 +469,8 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18400}:${VCA_PORTS_ADAPTER:-8090}"
+    volumes:
+      - holder-inji-dpg-adapter-inji-data:/data
   holder-inji-wallet-auth:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-wallet-auth:${VCA_VERSION:-latest}
@@ -649,6 +653,8 @@ services:
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18700}:${VCA_PORTS_ADAPTER:-8090}"
+    volumes:
+      - verifier-inji-dpg-adapter-inji-data:/data
   verifier-inji-verifier-auth:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-verifier-auth:${VCA_VERSION:-latest}
@@ -946,6 +952,7 @@ volumes:
   admin-waltid-trust-registry-data:
   holder-credebl-wallet-auth-data:
   holder-credebl-wallet-portal-data:
+  holder-inji-dpg-adapter-inji-data:
   holder-inji-wallet-auth-data:
   holder-inji-wallet-portal-data:
   holder-waltid-dpg-adapter-waltid-data:
@@ -959,6 +966,7 @@ volumes:
   issuer-credebl-status-bitstring-data:
   issuer-credebl-status-token-data:
   issuer-inji-data-source-data:
+  issuer-inji-dpg-adapter-inji-data:
   issuer-inji-issuance-data:
   issuer-inji-issued-credentials-data:
   issuer-inji-issuer-auth-data:
@@ -979,6 +987,7 @@ volumes:
   verifier-credebl-verifier-ingest-data:
   verifier-credebl-verifier-policy-data:
   verifier-credebl-verifier-results-data:
+  verifier-inji-dpg-adapter-inji-data:
   verifier-inji-verifier-auth-data:
   verifier-inji-verifier-combined-data:
   verifier-inji-verifier-discovery-data:

@@ -50,3 +50,9 @@ func (s *Service) RejectOffer(context.Context, *connect.Request[backendv1.Reject
 func (s *Service) ListEvents(context.Context, *connect.Request[backendv1.ListEventsRequest]) (*connect.Response[backendv1.ListEventsResponse], error) {
 	return nil, unimplemented(walletKeysMessage)
 }
+
+// GetCredentialDocument answers Unimplemented. The adapter lists no
+// FEATURE_WALLET_DOCUMENT, so no holder page offers a document.
+func (s *Service) GetCredentialDocument(context.Context, *connect.Request[backendv1.GetCredentialDocumentRequest]) (*connect.Response[backendv1.GetCredentialDocumentResponse], error) {
+	return nil, unimplemented("this adapter renders no document of a held credential")
+}

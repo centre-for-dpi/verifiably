@@ -758,6 +758,10 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 			_, err := svc.RejectOffer(ctx, connect.NewRequest(&backendv1.RejectOfferRequest{WalletId: "probe"}))
 			return err
 		}, true},
+		{backendv1.Feature_FEATURE_WALLET_DOCUMENT, func() error {
+			_, err := svc.GetCredentialDocument(ctx, connect.NewRequest(&backendv1.GetCredentialDocumentRequest{WalletId: "probe"}))
+			return err
+		}, true},
 		{backendv1.Feature_FEATURE_DC_API_VERIFY, func() error {
 			_, err := svc.SubmitBrowserAnswer(ctx, connect.NewRequest(&backendv1.SubmitBrowserAnswerRequest{State: "v2:probe", Response: "{}"}))
 			return err

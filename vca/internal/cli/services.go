@@ -260,9 +260,17 @@ func Catalog() []Service {
 			Links: []Link{dpgURL("VCA_CREDEBL_API_URL")}},
 		{Name: "dpg-adapter-inji", ListenEnv: "VCA_INJI_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_INJI,
 			Links: []Link{
-				dpgURL("VCA_INJI_CERTIFY_URL", commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_HOLDER),
+				dpgURL("VCA_INJI_CERTIFY_URL", commonv1.Role_ROLE_ISSUER),
+				dpgURL("VCA_INJI_MIMOTO_URL", commonv1.Role_ROLE_HOLDER),
 				dpgURL("VCA_INJI_VERIFY_URL", commonv1.Role_ROLE_VERIFIER),
 				{Env: "VCA_INJI_PUBLIC_URL", Kind: LinkPublicURL},
+			},
+			// The data volume keeps the hosted offers and the Mimoto wallet
+			// PINs of the holder role. A holder claims in Inji Web, which
+			// the browser reaches on the host port of the stack file.
+			Stateful: true, Fixed: []FixedValue{
+				{Env: "VCA_INJI_STORE_FILE", Value: "/data/inji-state"},
+				{Env: "VCA_INJI_WEB_URL", Value: "http://localhost:17085", Roles: holder},
 			},
 			// The credential offer of the authorization code channel lives
 			// under the public URL of the adapter. The Connect services of

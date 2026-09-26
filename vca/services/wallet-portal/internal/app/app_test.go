@@ -141,7 +141,7 @@ func TestBuildServesThePagesAndTheRPCs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !a.Ready() || a.Blobs != nil {
+	if !a.Ready() || a.Service.KeepsBrowser(context.Background()) {
 		t.Fatalf("app = %+v", a)
 	}
 	srv := httptest.NewServer(a.Mux)
@@ -556,5 +556,37 @@ func TestBuildCrawlsLiveIssuersWithoutDiscovery(t *testing.T) {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("discover misses %s\n%s", want, raw)
 		}
+	}
+}
+
+// TestBuildGatesTheBrowserStoreOfAStackWallet serves no blob route
+// beside a stack wallet whose adapter does not list
+// FEATURE_WALLET_CLAIM_IN_STACK.
+func TestBuildGatesTheBrowserStoreOfAStackWallet(t *testing.T) {
+	k := newKeys(t)
+	cfg := load(t, map[string]string{
+		"VCA_WALLET_PORTAL_AUTH_JWKS_FILE": k.file(t),
+		"VCA_WALLET_PORTAL_STATE_DIR":      t.TempDir(),
+	})
+	a, err := app.Build(cfg, app.Deps{Holder: fakeHolder{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(a.Mux)
+	defer srv.Close()
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/wallet/blobs", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(&http.Cookie{Name: session.CookieName, Value: k.token(t)})
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cerr := resp.Body.Close(); cerr != nil {
+		t.Fatal(cerr)
+	}
+	if resp.StatusCode != http.StatusNotFound || a.Blobs == nil {
+		t.Fatalf("blobs = %d", resp.StatusCode)
 	}
 }

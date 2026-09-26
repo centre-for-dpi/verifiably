@@ -34,9 +34,19 @@ type Wallet struct {
 
 // Registrar creates the wallet at the holder backend.
 type Registrar interface {
-	// Register creates a wallet for the hashed pairwise subject and
-	// returns the wallet id and, when the backend made one, a holder DID.
-	Register(ctx context.Context, key, holderJWK string) (walletID, holderDID string, err error)
+	// Register creates or opens a wallet for the hashed pairwise subject
+	// and returns the wallet id and, when the backend made one, a holder
+	// DID. idToken is the ID token of the login, for a backend that opens
+	// its wallet with it (ADR-020 decision 3).
+	Register(ctx context.Context, key, holderJWK, idToken string) (walletID, holderDID string, err error)
+}
+
+// EveryLogin marks a registrar whose backend opens the wallet at each
+// login, such as a stack that keeps a session per holder.
+type EveryLogin interface {
+	// OpensEveryLogin reports true when Ensure calls Register at every
+	// login, not only at the first.
+	OpensEveryLogin() bool
 }
 
 // LocalRegistrar uses the hashed subject as the wallet id. It serves
@@ -44,7 +54,7 @@ type Registrar interface {
 type LocalRegistrar struct{}
 
 // Register implements Registrar.
-func (LocalRegistrar) Register(_ context.Context, key, _ string) (string, string, error) {
+func (LocalRegistrar) Register(_ context.Context, key, _, _ string) (string, string, error) {
 	return key, "", nil
 }
 
@@ -62,13 +72,32 @@ func NewConnectRegistrar(httpClient connect.HTTPClient, baseURL string) ConnectR
 }
 
 // Register implements Registrar. The backend receives the hashed
-// subject, never iss or sub.
-func (r ConnectRegistrar) Register(ctx context.Context, key, holderJWK string) (string, string, error) {
-	res, err := r.client.Register(ctx, connect.NewRequest(&backendv1.RegisterRequest{PairwiseSubject: key, HolderPublicJwk: holderJWK}))
+// subject, never iss or sub, and the ID token of the login.
+func (r ConnectRegistrar) Register(ctx context.Context, key, holderJWK, idToken string) (string, string, error) {
+	res, err := r.client.Register(ctx, connect.NewRequest(&backendv1.RegisterRequest{
+		PairwiseSubject: key, HolderPublicJwk: holderJWK, IdToken: idToken,
+	}))
 	if err != nil {
 		return "", "", fmt.Errorf("%w: holder backend: %w", oidcflow.ErrUpstream, err)
 	}
 	return res.Msg.GetWalletId(), res.Msg.GetHolderDid(), nil
+}
+
+// OpensEveryLogin implements EveryLogin. A holder backend may keep a
+// session per holder that ends, so every login opens the wallet again.
+func (ConnectRegistrar) OpensEveryLogin() bool { return true }
+
+// servesNoWallet reports an answer of a backend that serves no wallet
+// for this holder: it lacks the holder role, it needs a token the login
+// did not give, or its stack refused the token. The wallet then keeps
+// the browser store.
+func servesNoWallet(err error) bool {
+	switch connect.CodeOf(err) {
+	case connect.CodeUnimplemented, connect.CodeFailedPrecondition, connect.CodePermissionDenied:
+		return true
+	default:
+		return false
+	}
 }
 
 const doc = "wallets"
@@ -117,11 +146,17 @@ func (r *Registry) Count() int {
 
 // Ensure returns the wallet for key. On the first login it asks the
 // registrar for a wallet and stores the record. created is true then.
-func (r *Registry) Ensure(ctx context.Context, key string, reg Registrar) (Wallet, bool, error) {
+// A registrar that opens every login gets the ID token at each login. A
+// backend that serves no wallet for the holder leaves the local wallet
+// id, so the wallet keeps the browser store.
+func (r *Registry) Ensure(ctx context.Context, key, idToken string, reg Registrar) (Wallet, bool, error) {
 	if w, err := r.Get(key); err == nil {
-		return w, false, nil
+		return r.reopen(ctx, w, idToken, reg), false, nil
 	}
-	id, did, err := reg.Register(ctx, key, "")
+	id, did, err := reg.Register(ctx, key, "", idToken)
+	if servesNoWallet(err) {
+		id, did, err = LocalRegistrar{}.Register(ctx, key, "", "")
+	}
 	if err != nil {
 		return Wallet{}, false, err
 	}
@@ -130,6 +165,27 @@ func (r *Registry) Ensure(ctx context.Context, key string, reg Registrar) (Walle
 		return Wallet{}, false, err
 	}
 	return w, true, nil
+}
+
+// reopen opens the wallet of a known holder again at a registrar that
+// opens every login. A failure keeps the record: the login goes on, and
+// the wallet asks the holder to sign in again when the backend refuses.
+// A backend that now serves a wallet replaces a local wallet id.
+func (r *Registry) reopen(ctx context.Context, w Wallet, idToken string, reg Registrar) Wallet {
+	every, ok := reg.(EveryLogin)
+	if !ok || !every.OpensEveryLogin() {
+		return w
+	}
+	id, _, err := reg.Register(ctx, w.Key, "", idToken)
+	if err != nil || id == "" || id == w.WalletID {
+		return w
+	}
+	next := w
+	next.WalletID = id
+	if err := r.put(next); err != nil {
+		return w
+	}
+	return next
 }
 
 // BindKey records the holder key thumbprint and DID of a wallet.

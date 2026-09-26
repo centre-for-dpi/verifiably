@@ -42,11 +42,14 @@ func (p *Portal) claimPage(w http.ResponseWriter, r *http.Request) error {
 func (p *Portal) renderClaim(w http.ResponseWriter, r *http.Request, text, problem string) error {
 	b := p.pen(r)
 	cards := []template.HTML{p.codeCard(b, text, problem)}
-	if !p.opts.Service.BrowserStorage() {
+	switch {
+	case p.hybrid(b):
+		cards = append(cards, p.stackCard(b, msg.T("holder.stack.text")))
+	case !p.opts.Service.BrowserStorage():
 		cards = append(cards, p.signInCard(b, r))
 	}
 	parts := []template.HTML{b.raw(`<div class="split">`), components.Join(cards...), b.raw(`</div>`)}
-	if p.opts.Service.BrowserStorage() {
+	if p.opts.Service.BrowserStorage() || p.hybrid(b) {
 		parts = append(parts, p.browserCard(b))
 	}
 	return p.render(w, r, b, components.Page{
@@ -264,7 +267,7 @@ func (p *Portal) claimOffer(w http.ResponseWriter, r *http.Request) error {
 	switch found.GetKind() {
 	case walletportalv1.Detected_KIND_CREDENTIAL_OFFER:
 		offer := found.GetOffer()
-		if (offer.GetNeedsPin() && pin == "") || p.opts.Service.BrowserStorage() {
+		if (offer.GetNeedsPin() && pin == "") || p.opts.Service.KeepsBrowser(r.Context()) {
 			return p.offerPage(w, r, found.GetOfferId(), offer.GetNeedsPin(), offer.GetIssuerName())
 		}
 		resp, err := p.opts.Service.Accept(r.Context(), connect.NewRequest(&walletportalv1.AcceptRequest{
@@ -367,6 +370,10 @@ func (p *Portal) offerPage(w http.ResponseWriter, r *http.Request, offerID strin
 // the offer needs one, the accept button, and the decline button when
 // the stack can decline an offer.
 func (p *Portal) offerCard(b *pen, offerID string, needsPIN bool, issuer string) template.HTML {
+	if p.hybrid(b) {
+		name, _ := stackPage(b)
+		return p.stackCard(b, msg.T("holder.offer.stack", name))
+	}
 	var fields []template.HTML
 	if needsPIN {
 		fields = append(fields, b.part("field", components.Field{

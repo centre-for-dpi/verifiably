@@ -81,6 +81,9 @@ const (
 	// WalletPortalServiceListPresentationsProcedure is the fully-qualified name of the
 	// WalletPortalService's ListPresentations RPC.
 	WalletPortalServiceListPresentationsProcedure = "/vca.walletportal.v1.WalletPortalService/ListPresentations"
+	// WalletPortalServiceDocumentProcedure is the fully-qualified name of the WalletPortalService's
+	// Document RPC.
+	WalletPortalServiceDocumentProcedure = "/vca.walletportal.v1.WalletPortalService/Document"
 )
 
 // WalletPortalServiceClient is a client for the vca.walletportal.v1.WalletPortalService service.
@@ -121,6 +124,9 @@ type WalletPortalServiceClient interface {
 	// newest first. A record names the verifier, the shared claim names,
 	// and the result, and never a claim value.
 	ListPresentations(context.Context, *connect.Request[v1.ListPresentationsRequest]) (*connect.Response[v1.ListPresentationsResponse], error)
+	// Document returns a printable document of one credential of the DPG
+	// wallet, when the adapter lists FEATURE_WALLET_DOCUMENT.
+	Document(context.Context, *connect.Request[v1.DocumentRequest]) (*connect.Response[v1.DocumentResponse], error)
 }
 
 // NewWalletPortalServiceClient constructs a client for the vca.walletportal.v1.WalletPortalService
@@ -218,6 +224,12 @@ func NewWalletPortalServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(walletPortalServiceMethods.ByName("ListPresentations")),
 			connect.WithClientOptions(opts...),
 		),
+		document: connect.NewClient[v1.DocumentRequest, v1.DocumentResponse](
+			httpClient,
+			baseURL+WalletPortalServiceDocumentProcedure,
+			connect.WithSchema(walletPortalServiceMethods.ByName("Document")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -237,6 +249,7 @@ type walletPortalServiceClient struct {
 	presentConfirm    *connect.Client[v1.PresentConfirmRequest, v1.PresentConfirmResponse]
 	presentDecline    *connect.Client[v1.PresentDeclineRequest, v1.PresentDeclineResponse]
 	listPresentations *connect.Client[v1.ListPresentationsRequest, v1.ListPresentationsResponse]
+	document          *connect.Client[v1.DocumentRequest, v1.DocumentResponse]
 }
 
 // ListDiscoverable calls vca.walletportal.v1.WalletPortalService.ListDiscoverable.
@@ -309,6 +322,11 @@ func (c *walletPortalServiceClient) ListPresentations(ctx context.Context, req *
 	return c.listPresentations.CallUnary(ctx, req)
 }
 
+// Document calls vca.walletportal.v1.WalletPortalService.Document.
+func (c *walletPortalServiceClient) Document(ctx context.Context, req *connect.Request[v1.DocumentRequest]) (*connect.Response[v1.DocumentResponse], error) {
+	return c.document.CallUnary(ctx, req)
+}
+
 // WalletPortalServiceHandler is an implementation of the vca.walletportal.v1.WalletPortalService
 // service.
 type WalletPortalServiceHandler interface {
@@ -348,6 +366,9 @@ type WalletPortalServiceHandler interface {
 	// newest first. A record names the verifier, the shared claim names,
 	// and the result, and never a claim value.
 	ListPresentations(context.Context, *connect.Request[v1.ListPresentationsRequest]) (*connect.Response[v1.ListPresentationsResponse], error)
+	// Document returns a printable document of one credential of the DPG
+	// wallet, when the adapter lists FEATURE_WALLET_DOCUMENT.
+	Document(context.Context, *connect.Request[v1.DocumentRequest]) (*connect.Response[v1.DocumentResponse], error)
 }
 
 // NewWalletPortalServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -441,6 +462,12 @@ func NewWalletPortalServiceHandler(svc WalletPortalServiceHandler, opts ...conne
 		connect.WithSchema(walletPortalServiceMethods.ByName("ListPresentations")),
 		connect.WithHandlerOptions(opts...),
 	)
+	walletPortalServiceDocumentHandler := connect.NewUnaryHandler(
+		WalletPortalServiceDocumentProcedure,
+		svc.Document,
+		connect.WithSchema(walletPortalServiceMethods.ByName("Document")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.walletportal.v1.WalletPortalService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case WalletPortalServiceListDiscoverableProcedure:
@@ -471,6 +498,8 @@ func NewWalletPortalServiceHandler(svc WalletPortalServiceHandler, opts ...conne
 			walletPortalServicePresentDeclineHandler.ServeHTTP(w, r)
 		case WalletPortalServiceListPresentationsProcedure:
 			walletPortalServiceListPresentationsHandler.ServeHTTP(w, r)
+		case WalletPortalServiceDocumentProcedure:
+			walletPortalServiceDocumentHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -534,4 +563,8 @@ func (UnimplementedWalletPortalServiceHandler) PresentDecline(context.Context, *
 
 func (UnimplementedWalletPortalServiceHandler) ListPresentations(context.Context, *connect.Request[v1.ListPresentationsRequest]) (*connect.Response[v1.ListPresentationsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.walletportal.v1.WalletPortalService.ListPresentations is not implemented"))
+}
+
+func (UnimplementedWalletPortalServiceHandler) Document(context.Context, *connect.Request[v1.DocumentRequest]) (*connect.Response[v1.DocumentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.walletportal.v1.WalletPortalService.Document is not implemented"))
 }

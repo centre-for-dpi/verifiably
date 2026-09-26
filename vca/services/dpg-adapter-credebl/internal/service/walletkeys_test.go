@@ -45,6 +45,10 @@ func TestWalletKeyRpcsAreUnimplemented(t *testing.T) {
 			_, err := svc.ListEvents(ctx, connect.NewRequest(&backendv1.ListEventsRequest{}))
 			return err
 		},
+		"GetCredentialDocument": func() error {
+			_, err := svc.GetCredentialDocument(ctx, connect.NewRequest(&backendv1.GetCredentialDocumentRequest{}))
+			return err
+		},
 	}
 	for name, call := range calls {
 		if connect.CodeOf(call()) != connect.CodeUnimplemented {

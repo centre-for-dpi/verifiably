@@ -125,6 +125,9 @@ const (
 	// HolderBackendServiceListEventsProcedure is the fully-qualified name of the HolderBackendService's
 	// ListEvents RPC.
 	HolderBackendServiceListEventsProcedure = "/vca.backend.v1.HolderBackendService/ListEvents"
+	// HolderBackendServiceGetCredentialDocumentProcedure is the fully-qualified name of the
+	// HolderBackendService's GetCredentialDocument RPC.
+	HolderBackendServiceGetCredentialDocumentProcedure = "/vca.backend.v1.HolderBackendService/GetCredentialDocument"
 	// VerifierBackendServiceCreateRequestProcedure is the fully-qualified name of the
 	// VerifierBackendService's CreateRequest RPC.
 	VerifierBackendServiceCreateRequestProcedure = "/vca.backend.v1.VerifierBackendService/CreateRequest"
@@ -649,6 +652,10 @@ type HolderBackendServiceClient interface {
 	// ListEvents lists the event log of a wallet, newest first. An adapter
 	// serves it when it lists FEATURE_WALLET_EVENTS.
 	ListEvents(context.Context, *connect.Request[v1.ListEventsRequest]) (*connect.Response[v1.ListEventsResponse], error)
+	// GetCredentialDocument returns a printable document of one held
+	// credential, such as a PDF. An adapter serves it when it lists
+	// FEATURE_WALLET_DOCUMENT.
+	GetCredentialDocument(context.Context, *connect.Request[v1.GetCredentialDocumentRequest]) (*connect.Response[v1.GetCredentialDocumentResponse], error)
 }
 
 // NewHolderBackendServiceClient constructs a client for the vca.backend.v1.HolderBackendService
@@ -734,23 +741,30 @@ func NewHolderBackendServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(holderBackendServiceMethods.ByName("ListEvents")),
 			connect.WithClientOptions(opts...),
 		),
+		getCredentialDocument: connect.NewClient[v1.GetCredentialDocumentRequest, v1.GetCredentialDocumentResponse](
+			httpClient,
+			baseURL+HolderBackendServiceGetCredentialDocumentProcedure,
+			connect.WithSchema(holderBackendServiceMethods.ByName("GetCredentialDocument")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // holderBackendServiceClient implements HolderBackendServiceClient.
 type holderBackendServiceClient struct {
-	register         *connect.Client[v1.RegisterRequest, v1.RegisterResponse]
-	listCredentials  *connect.Client[v1.ListCredentialsRequest, v1.ListCredentialsResponse]
-	acceptOffer      *connect.Client[v1.AcceptOfferRequest, v1.AcceptOfferResponse]
-	present          *connect.Client[v1.PresentRequest, v1.PresentResponse]
-	deleteCredential *connect.Client[v1.DeleteCredentialRequest, v1.DeleteCredentialResponse]
-	listKeys         *connect.Client[v1.ListKeysRequest, v1.ListKeysResponse]
-	createKey        *connect.Client[v1.CreateKeyRequest, v1.CreateKeyResponse]
-	listDids         *connect.Client[v1.ListDidsRequest, v1.ListDidsResponse]
-	createDid        *connect.Client[v1.CreateDidRequest, v1.CreateDidResponse]
-	setDefaultDid    *connect.Client[v1.SetDefaultDidRequest, v1.SetDefaultDidResponse]
-	rejectOffer      *connect.Client[v1.RejectOfferRequest, v1.RejectOfferResponse]
-	listEvents       *connect.Client[v1.ListEventsRequest, v1.ListEventsResponse]
+	register              *connect.Client[v1.RegisterRequest, v1.RegisterResponse]
+	listCredentials       *connect.Client[v1.ListCredentialsRequest, v1.ListCredentialsResponse]
+	acceptOffer           *connect.Client[v1.AcceptOfferRequest, v1.AcceptOfferResponse]
+	present               *connect.Client[v1.PresentRequest, v1.PresentResponse]
+	deleteCredential      *connect.Client[v1.DeleteCredentialRequest, v1.DeleteCredentialResponse]
+	listKeys              *connect.Client[v1.ListKeysRequest, v1.ListKeysResponse]
+	createKey             *connect.Client[v1.CreateKeyRequest, v1.CreateKeyResponse]
+	listDids              *connect.Client[v1.ListDidsRequest, v1.ListDidsResponse]
+	createDid             *connect.Client[v1.CreateDidRequest, v1.CreateDidResponse]
+	setDefaultDid         *connect.Client[v1.SetDefaultDidRequest, v1.SetDefaultDidResponse]
+	rejectOffer           *connect.Client[v1.RejectOfferRequest, v1.RejectOfferResponse]
+	listEvents            *connect.Client[v1.ListEventsRequest, v1.ListEventsResponse]
+	getCredentialDocument *connect.Client[v1.GetCredentialDocumentRequest, v1.GetCredentialDocumentResponse]
 }
 
 // Register calls vca.backend.v1.HolderBackendService.Register.
@@ -813,6 +827,11 @@ func (c *holderBackendServiceClient) ListEvents(ctx context.Context, req *connec
 	return c.listEvents.CallUnary(ctx, req)
 }
 
+// GetCredentialDocument calls vca.backend.v1.HolderBackendService.GetCredentialDocument.
+func (c *holderBackendServiceClient) GetCredentialDocument(ctx context.Context, req *connect.Request[v1.GetCredentialDocumentRequest]) (*connect.Response[v1.GetCredentialDocumentResponse], error) {
+	return c.getCredentialDocument.CallUnary(ctx, req)
+}
+
 // HolderBackendServiceHandler is an implementation of the vca.backend.v1.HolderBackendService
 // service.
 type HolderBackendServiceHandler interface {
@@ -844,6 +863,10 @@ type HolderBackendServiceHandler interface {
 	// ListEvents lists the event log of a wallet, newest first. An adapter
 	// serves it when it lists FEATURE_WALLET_EVENTS.
 	ListEvents(context.Context, *connect.Request[v1.ListEventsRequest]) (*connect.Response[v1.ListEventsResponse], error)
+	// GetCredentialDocument returns a printable document of one held
+	// credential, such as a PDF. An adapter serves it when it lists
+	// FEATURE_WALLET_DOCUMENT.
+	GetCredentialDocument(context.Context, *connect.Request[v1.GetCredentialDocumentRequest]) (*connect.Response[v1.GetCredentialDocumentResponse], error)
 }
 
 // NewHolderBackendServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -925,6 +948,12 @@ func NewHolderBackendServiceHandler(svc HolderBackendServiceHandler, opts ...con
 		connect.WithSchema(holderBackendServiceMethods.ByName("ListEvents")),
 		connect.WithHandlerOptions(opts...),
 	)
+	holderBackendServiceGetCredentialDocumentHandler := connect.NewUnaryHandler(
+		HolderBackendServiceGetCredentialDocumentProcedure,
+		svc.GetCredentialDocument,
+		connect.WithSchema(holderBackendServiceMethods.ByName("GetCredentialDocument")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.backend.v1.HolderBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case HolderBackendServiceRegisterProcedure:
@@ -951,6 +980,8 @@ func NewHolderBackendServiceHandler(svc HolderBackendServiceHandler, opts ...con
 			holderBackendServiceRejectOfferHandler.ServeHTTP(w, r)
 		case HolderBackendServiceListEventsProcedure:
 			holderBackendServiceListEventsHandler.ServeHTTP(w, r)
+		case HolderBackendServiceGetCredentialDocumentProcedure:
+			holderBackendServiceGetCredentialDocumentHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1006,6 +1037,10 @@ func (UnimplementedHolderBackendServiceHandler) RejectOffer(context.Context, *co
 
 func (UnimplementedHolderBackendServiceHandler) ListEvents(context.Context, *connect.Request[v1.ListEventsRequest]) (*connect.Response[v1.ListEventsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.ListEvents is not implemented"))
+}
+
+func (UnimplementedHolderBackendServiceHandler) GetCredentialDocument(context.Context, *connect.Request[v1.GetCredentialDocumentRequest]) (*connect.Response[v1.GetCredentialDocumentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.GetCredentialDocument is not implemented"))
 }
 
 // VerifierBackendServiceClient is a client for the vca.backend.v1.VerifierBackendService service.

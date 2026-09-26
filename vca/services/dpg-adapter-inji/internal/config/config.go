@@ -24,6 +24,19 @@ type Config struct {
 	CertifyURL string `env:"CERTIFY_URL"`
 	// VerifyURL is the base URL of the Inji Verify service.
 	VerifyURL string `env:"VERIFY_URL"`
+	// MimotoURL is the base URL of Mimoto, the backend of Inji Web. It
+	// turns on the holder role.
+	MimotoURL string `env:"MIMOTO_URL"`
+	// MimotoProvider names the token login provider of Mimoto that
+	// trusts the ID tokens of the holder login.
+	MimotoProvider string `env:"MIMOTO_PROVIDER" default:"google"`
+	// WebURL is the public address of Inji Web, where a holder claims a
+	// credential into the Mimoto wallet.
+	WebURL string `env:"WEB_URL"`
+	// MimotoVersion names the Mimoto release of the stack.
+	MimotoVersion string `env:"MIMOTO_VERSION" default:"0.21.0"`
+	// WebVersion names the Inji Web release of the stack.
+	WebVersion string `env:"WEB_VERSION" default:"0.16.0"`
 	// PublicURL is the address a wallet reaches this adapter on. The
 	// authorization code offer lives under it.
 	PublicURL string `env:"PUBLIC_URL"`
@@ -117,8 +130,8 @@ func Load(getenv func(string) string) (Config, error) {
 	if err := shared.Load(Prefix, &c, getenv); err != nil {
 		return Config{}, err
 	}
-	if c.CertifyURL == "" && c.VerifyURL == "" {
-		return Config{}, fmt.Errorf("config: set %sCERTIFY_URL or %sVERIFY_URL", Prefix, Prefix)
+	if c.CertifyURL == "" && c.VerifyURL == "" && c.MimotoURL == "" {
+		return Config{}, fmt.Errorf("config: set %sCERTIFY_URL, %sVERIFY_URL or %sMIMOTO_URL", Prefix, Prefix, Prefix)
 	}
 	if c.Timeout <= 0 {
 		return Config{}, fmt.Errorf("config: %sTIMEOUT must be a positive duration", Prefix)
@@ -132,8 +145,9 @@ func Load(getenv func(string) string) (Config, error) {
 	return c, nil
 }
 
-// Versions maps every component of the stack, named as the stack file
-// names it without the prefix, onto its pinned version. The capability
+// Versions maps every component of the stack onto its pinned version.
+// A name is the stack file service without the inji- prefix, except
+// inji-web, which keeps its full name. The capability
 // answer reports them (ADR-034 decision 4).
 func (c Config) Versions() map[string]string {
 	return map[string]string{
@@ -143,6 +157,8 @@ func (c Config) Versions() map[string]string {
 		"verify-service": c.VerifyVersion,
 		"verify-ui":      c.VerifyVersion,
 		"keycloak":       c.KeycloakVersion,
+		"mimoto":         c.MimotoVersion,
+		"inji-web":       c.WebVersion,
 	}
 }
 

@@ -187,6 +187,20 @@ The spike P6-I7a read these sources.
 - The session store, the Google registration, and the PIN rule:
   https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/src/main/resources/application-default.properties
 
+The holder role of P6-I7b replays these answers.
+
+| File | Source |
+| --- | --- |
+| `mimoto-wallet.json` | The answer of `POST /wallets`, a `WalletResponseDto` with the `walletId`. `WalletsController.java` above. |
+| `mimoto-credentials.json` | The answer of `GET /wallets/{id}/credentials`, a list of `VerifiableCredentialResponseDTO` with names, logos, and ids. The names are those of the Farmer and National ID samples of the stack. `WalletCredentialsController.java` above. |
+| `mimoto-presentation.json` | The answer of `POST /wallets/{id}/presentations`, with the `presentationId` and the verifier of the request. `WalletPresentationsController.java` above. |
+| `mimoto-credential.pdf` | A one page PDF in place of the rendered credential, which Mimoto returns for `Accept: application/pdf`. Its content is a stand in. The wallet reads only the media type and the bytes. |
+
+The fake answers the token login with a `Set-Cookie` header, as the
+session filter of Mimoto does. It answers `401` for a refused token and
+for an ended session. The PATCH answer carries `redirectUri` when the
+verifier gave one.
+
 ## eSignet 1.5.1 as the authorization server and a login provider
 
 The eSignet facts steer `vca dpg bootstrap` and the authorization code

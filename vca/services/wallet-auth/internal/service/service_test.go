@@ -43,10 +43,12 @@ import (
 type fakeBackend struct {
 	backendv1connect.UnimplementedHolderBackendServiceHandler
 	calls int
+	token string
 }
 
 func (b *fakeBackend) Register(_ context.Context, req *connect.Request[backendv1.RegisterRequest]) (*connect.Response[backendv1.RegisterResponse], error) {
 	b.calls++
+	b.token = req.Msg.GetIdToken()
 	if strings.Contains(req.Msg.GetPairwiseSubject(), "|") {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("raw subject leaked"))
 	}
@@ -229,10 +231,11 @@ func TestBrowserFlow(t *testing.T) {
 			t.Fatalf("%s leaks personal data: %s", doc, enc)
 		}
 	}
-	// A second login reuses the wallet.
+	// A second login reuses the wallet. The backend opens it again with
+	// the ID token of the login (ADR-020 decision 3).
 	body2, _ := f.login(t)
-	if body2.Claims.WalletID != body.Claims.WalletID || f.backend.calls != 1 {
-		t.Fatal("wallet not reused")
+	if body2.Claims.WalletID != body.Claims.WalletID || f.backend.calls != 2 || strings.Count(f.backend.token, ".") != 2 {
+		t.Fatalf("wallet not reused: calls %d, token %q", f.backend.calls, f.backend.token)
 	}
 	// Logout goes to the provider with the post logout redirect.
 	req, verr := http.NewRequest(http.MethodPost, f.srv.URL+"/wallet/auth/logout", nil)

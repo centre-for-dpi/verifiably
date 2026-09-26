@@ -231,6 +231,27 @@ read a blob, because it never holds the content key.
 The browser page also offers a file upload and a paste box. A citizen
 with no camera still loads a credential that way.
 
+### A stack wallet beside the browser store
+
+Some stack wallets claim an offer only in their own pages. The adapter
+of such a stack lists `FEATURE_WALLET_CLAIM_IN_STACK`. The wallet then
+uses both places:
+
+| Action | Where it runs |
+| --- | --- |
+| List | The stack wallet first, then the credentials the holder loaded into the browser store. |
+| Claim an offer | The page of the stack. The offer page and the claim page link to the component of the adapter answer that has a public address. |
+| Load a file or a paste | The browser store, as without an adapter. |
+| Present | The stack for a stack credential. The wallet itself for a browser credential. |
+| Delete | Where the credential sits. |
+| Document | `GET /wallet/document?id=` returns the PDF of a stack credential through the `Document` RPC. The card shows the link when the adapter lists `FEATURE_WALLET_DOCUMENT`. |
+
+The service asks the live probe of the own pair on each request. The
+blob routes answer `404` while the wallet keeps no browser store. A card
+of the stack carries `in_browser` false. A stack can list a credential
+by name only. Its card then shows the type and the issuer name, and the
+document shows what the credential says.
+
 ## Presentation
 
 The presentation follows OpenID for Verifiable Presentations 1.0. The

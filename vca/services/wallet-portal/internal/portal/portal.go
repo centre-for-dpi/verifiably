@@ -50,6 +50,7 @@ import (
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/qrscan"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
@@ -171,6 +172,7 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+p.opts.Prefix+"/accept", p.handle(p.accept))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/reject", p.handle(p.reject))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/delete", p.handle(p.remove))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/document", p.handle(p.document))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/present", p.handle(p.presentPage))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/present", p.handle(p.submit))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/present/read", p.handle(p.presentRead))
@@ -271,6 +273,12 @@ func claimTable(id string, card *walletportalv1.Card) components.Table {
 // browserCard renders the file upload and the paste box of browser
 // storage (ADR-021 decision 4).
 func (p *Portal) browserCard(b *pen) template.HTML {
+	title := "This wallet keeps your credentials in your browser"
+	text := "This deployment has no wallet server. Your browser encrypts each credential " +
+		"with a key only it holds."
+	if p.hybrid(b) {
+		title, text = msg.T("holder.browser.hybrid.title"), msg.T("holder.browser.hybrid.text")
+	}
 	file := b.part("field", components.Field{
 		ID: "wallet-file", Label: "Load a credential from a file", Type: "file",
 		Hint: "Your browser encrypts the file before it leaves the page.",
@@ -286,10 +294,9 @@ func (p *Portal) browserCard(b *pen) template.HTML {
 		`<script src="` + template.HTMLEscapeString(p.opts.Prefix+static.Path) + `" defer></script>`)
 	return b.part("card", components.Card{
 		ID:    "browser-storage",
-		Title: "This wallet keeps your credentials in your browser",
-		Text: "This deployment has no wallet server. Your browser encrypts each credential " +
-			"with a key only it holds.",
-		Body: components.Join(file, paste, save, token, status),
+		Title: title,
+		Text:  text,
+		Body:  components.Join(file, paste, save, token, status),
 	})
 }
 

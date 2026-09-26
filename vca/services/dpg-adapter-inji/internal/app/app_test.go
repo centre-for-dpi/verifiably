@@ -177,3 +177,20 @@ func TestBuildReportsAServiceWithoutARole(t *testing.T) {
 		t.Fatal("Build accepted a service without a role")
 	}
 }
+
+// TestBuildWiresTheHolderRole wires Mimoto alone, as the holder pair
+// does. The capability answer then lists the holder role.
+func TestBuildWiresTheHolderRole(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	a, err := app.Build(config.Config{
+		MimotoURL: f.URL(), WebURL: "http://localhost:17085", OfferTTL: time.Minute, Timeout: time.Second, MaxBytes: 1 << 20,
+	}, app.Deps{HTTP: f.Client()})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	caps, err := a.Service.GetCapabilities(t.Context(), connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+	if err != nil || len(caps.Msg.GetRoles()) != 1 || caps.Msg.GetRoles()[0].String() != "ROLE_HOLDER" {
+		t.Fatalf("capabilities = %v %v", caps, err)
+	}
+}

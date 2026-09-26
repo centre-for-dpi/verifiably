@@ -86,6 +86,10 @@ service HolderBackendService {
   // ListEvents lists the event log of a wallet, newest first. An adapter
   // serves it when it lists FEATURE_WALLET_EVENTS.
   rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+  // GetCredentialDocument returns a printable document of one held
+  // credential, such as a PDF. An adapter serves it when it lists
+  // FEATURE_WALLET_DOCUMENT.
+  rpc GetCredentialDocument(GetCredentialDocumentRequest) returns (GetCredentialDocumentResponse);
 }
 
 // VerifierBackendService drives the verifier side of a DPG.
@@ -242,6 +246,12 @@ enum Feature {
   FEATURE_DC_API_VERIFY = 21;
   // The verifier asks for AnonCreds proofs with predicates.
   FEATURE_ANONCREDS_PROOF = 22;
+  // The wallet renders a held credential as a document, such as a PDF.
+  FEATURE_WALLET_DOCUMENT = 23;
+  // The wallet claims an offer in its own pages, not through
+  // AcceptOffer. The wallet portal links the holder there, and it keeps
+  // the browser store for a credential the holder pastes.
+  FEATURE_WALLET_CLAIM_IN_STACK = 24;
 }
 
 // GetCapabilitiesRequest has no fields.
@@ -305,6 +315,9 @@ message Component {
   string docs_url = 4;
   // The SPDX licence identifier.
   string license = 5;
+  // The public address of the component, when it serves pages to
+  // people, such as a wallet. Empty for a service with no pages.
+  string url = 6;
 }
 
 // CredentialConfiguration is one entry of credential_configurations_supported
@@ -690,6 +703,10 @@ message RegisterRequest {
   string pairwise_subject = 1;
   // The public key of the holder as a JWK string, when the browser holds the key.
   string holder_public_jwk = 2;
+  // The ID token of the holder login at the identity provider. A DPG
+  // wallet opens its own session with it (ADR-020 decision 3). The
+  // wallet authentication service sends it on every login.
+  string id_token = 3;
 }
 
 // RegisterResponse returns the wallet id.
@@ -888,6 +905,22 @@ message RejectOfferRequest {
 
 // RejectOfferResponse has no fields.
 message RejectOfferResponse {}
+
+// GetCredentialDocumentRequest selects one held credential.
+message GetCredentialDocumentRequest {
+  // The wallet id from Register.
+  string wallet_id = 1;
+  // The credential id from ListCredentials.
+  string credential_id = 2;
+}
+
+// GetCredentialDocumentResponse carries the document.
+message GetCredentialDocumentResponse {
+  // The document bytes.
+  bytes content = 1;
+  // The media type, such as application/pdf.
+  string media_type = 2;
+}
 
 // WalletEvent is one entry of the event log of a wallet.
 message WalletEvent {

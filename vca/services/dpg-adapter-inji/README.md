@@ -14,9 +14,11 @@ It serves these roles:
 - Verifier: it drives Inji Verify. It starts and reads OID4VP
   transactions.
 - Catalogue: it lists the credential configurations of the issuer.
-
-Inji ships no wallet for a citizen, so the holder service answers with
-the Connect code `unimplemented`.
+- Holder: it drives Mimoto, the backend of Inji Web. It opens the
+  Mimoto wallet of a holder with the ID token of the holder login. It
+  lists, presents, and deletes the held credentials and reads their PDF.
+  Mimoto downloads a credential only in the browser, so a holder claims
+  in Inji Web. `AcceptOffer` answers `unimplemented` and names Inji Web.
 
 The service reaches Inji over the HTTP API of Inji only. It never opens
 the Inji database and it never controls a container.
@@ -30,6 +32,9 @@ Set at least one Inji URL. Each URL turns on one role.
 | `VCA_INJI_LISTEN` | The address to bind. The default is `:8080`. |
 | `VCA_INJI_CERTIFY_URL` | The base URL of Inji Certify. |
 | `VCA_INJI_VERIFY_URL` | The base URL of Inji Verify. |
+| `VCA_INJI_MIMOTO_URL` | The base URL of Mimoto, the backend of Inji Web. It turns on the holder role. |
+| `VCA_INJI_MIMOTO_PROVIDER` | The token login provider of Mimoto that trusts the ID tokens of the holder login. The default is `google`. |
+| `VCA_INJI_WEB_URL` | The public address of Inji Web. A holder claims a credential there. |
 | `VCA_INJI_PUBLIC_URL` | The address a wallet reaches this adapter on. |
 | `VCA_INJI_AUTHORIZATION_SERVER` | The identity provider of the authorization code flow. Empty names the first authorization server of the Certify metadata, eSignet in the stack file. |
 | `VCA_INJI_OFFER_ISSUER` | The issuer identifier of a hosted offer. |
@@ -40,10 +45,12 @@ Set at least one Inji URL. Each URL turns on one role.
 | `VCA_INJI_ESIGNET_VERSION` | The eSignet release of the stack. The default is `1.5.1`. |
 | `VCA_INJI_MOCK_IDENTITY_VERSION` | The mock identity system release of the stack. The default is `0.10.1`. |
 | `VCA_INJI_KEYCLOAK_VERSION` | The Keycloak release of the stack. The default is `25.0`. |
+| `VCA_INJI_MIMOTO_VERSION` | The Mimoto release of the stack. The default is `0.21.0`. |
+| `VCA_INJI_WEB_VERSION` | The Inji Web release of the stack. The default is `0.16.0`. |
 | `VCA_INJI_TIMEOUT` | The bound of one call to Inji. The default is `30s`. |
 | `VCA_INJI_RETRIES` | The number of extra attempts. The default is `2`. |
 | `VCA_INJI_MAX_BYTES` | The bound of a response body. The default is 8 megabytes. |
-| `VCA_INJI_STORE_FILE` | The file that keeps the hosted offers. Empty uses memory. |
+| `VCA_INJI_STORE_FILE` | The file that keeps the hosted offers and the Mimoto wallet PINs. Empty uses memory. Set it for the holder role, or a restart locks every wallet. |
 | `VCA_INJI_OFFER_TTL` | The life of a hosted offer. The default is `15m`. |
 | `VCA_INJI_SIGNING_DID_URL` | The issuer DID URL of a configuration the adapter registers. Empty keeps the Certify default. |
 | `VCA_INJI_LDP_KEY_APP_ID` | The Certify key application of `ldp_vc` proofs. The default is `CERTIFY_VC_SIGN_ED25519`. |
@@ -105,6 +112,9 @@ VCA_INJI_CONTRACT_CERTIFY_URL=http://localhost:8090 \
 VCA_INJI_CONTRACT_VERIFY_URL=http://localhost:8082 \
 go test -tags contract_inji ./services/dpg-adapter-inji/...
 ```
+
+The holder case needs `VCA_INJI_CONTRACT_MIMOTO_URL` and a fresh
+`VCA_INJI_CONTRACT_ID_TOKEN` that the Mimoto token login trusts.
 
 The contract test skips itself when the variables are empty. The script
 `hack/contract-tests.sh` runs it in the nightly job. A case that changes

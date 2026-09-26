@@ -50,6 +50,9 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	svc, err := service.New(service.Options{
 		Certify:             certify,
 		Verify:              verify,
+		Mimoto:              inji.NewMimoto(dpgClient(cfg, deps, cfg.MimotoURL)),
+		MimotoProvider:      cfg.MimotoProvider,
+		InjiWebURL:          cfg.WebURL,
 		Store:               backend,
 		DpgVersion:          cfg.DpgVersion,
 		PublicURL:           cfg.PublicURL,
@@ -82,8 +85,12 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		deps.Log.Warn("no public URL, so the authorization code channel is off",
 			"setting", config.Prefix+"PUBLIC_URL")
 	}
+	if cfg.MimotoURL != "" && cfg.StoreFile == "" {
+		deps.Log.Warn("no store file, so a restart forgets the Mimoto wallet PINs",
+			"setting", config.Prefix+"STORE_FILE")
+	}
 	deps.Log.Info("Inji adapter ready",
-		"certify", cfg.CertifyURL != "", "verify", cfg.VerifyURL != "")
+		"certify", cfg.CertifyURL != "", "verify", cfg.VerifyURL != "", "mimoto", cfg.MimotoURL != "")
 	return &App{Mux: mux, Service: svc}, nil
 }
 

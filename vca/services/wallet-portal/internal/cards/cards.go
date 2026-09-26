@@ -94,6 +94,14 @@ func (b *Builder) Card(ctx context.Context, held *backendv1.WalletCredential) *w
 		Trust:      trustv1.TrustLookupResponse_OUTCOME_UNAVAILABLE,
 		Revocation: walletportalv1.Card_REVOCATION_STATE_UNKNOWN,
 	}
+	if len(payload) == 0 && held.GetType() != "" {
+		// Some stack wallets list names only. The card names the type
+		// and the issuer and points at the document.
+		card.Title = held.GetType()
+		card.IssuerName = held.GetIssuer()
+		card.StatusText = "The wallet of the stack keeps this credential. Open its document to read what it says."
+		return card
+	}
 	parsed, err := vc.Parse(payload)
 	if err != nil {
 		card.StatusText = "The wallet cannot read this credential. Ask the issuer for a new one."

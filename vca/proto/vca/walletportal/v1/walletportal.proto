@@ -50,6 +50,9 @@ service WalletPortalService {
   // newest first. A record names the verifier, the shared claim names,
   // and the result, and never a claim value.
   rpc ListPresentations(ListPresentationsRequest) returns (ListPresentationsResponse);
+  // Document returns a printable document of one credential of the DPG
+  // wallet, when the adapter lists FEATURE_WALLET_DOCUMENT.
+  rpc Document(DocumentRequest) returns (DocumentResponse);
 }
 
 // Card is one credential as the wallet shows it (ADR-021 decision 6).
@@ -80,6 +83,9 @@ message Card {
   google.protobuf.Timestamp received_at = 12;
   // The display metadata of the schema, when known.
   vca.schema.v1.Display display = 13;
+  // True when the browser store keeps the credential. A card of the
+  // wallet of the stack carries false.
+  bool in_browser = 14;
 
   // RevocationState names what the status list says.
   enum RevocationState {
@@ -301,6 +307,20 @@ message DeleteRequest {
 
 // DeleteResponse has no fields.
 message DeleteResponse {}
+
+// DocumentRequest selects one credential of the wallet.
+message DocumentRequest {
+  // The credential id in the wallet.
+  string id = 1;
+}
+
+// DocumentResponse carries the document.
+message DocumentResponse {
+  // The document bytes.
+  bytes content = 1;
+  // The media type, such as application/pdf.
+  string media_type = 2;
+}
 
 // ListMineRequest selects a page.
 message ListMineRequest {

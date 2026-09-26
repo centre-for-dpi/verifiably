@@ -1,7 +1,7 @@
 # Inji DPG adapter
 
 The Inji DPG adapter connects Verifiable Credentials Adapters to Inji
-Certify and Inji Verify. It is one of the three DPG adapters of ADR-002
+Certify, Inji Verify, and Mimoto, the backend of Inji Web. It is one of the three DPG adapters of ADR-002
 decision 1. The vendor name appears in this service and nowhere else.
 
 ## Why the service exists
@@ -19,7 +19,7 @@ Inji database, and it never restarts an Inji container.
 | --- | --- |
 | `CapabilityService` | Always served. |
 | `IssuerBackendService` | Served when the configuration names an Inji Certify URL. |
-| `HolderBackendService` | Never served. Inji ships no wallet for a citizen. |
+| `HolderBackendService` | Served when the configuration names a Mimoto URL. `AcceptOffer` points at Inji Web. |
 | `VerifierBackendService` | Served when the configuration names an Inji Verify URL. |
 | `CatalogBackendService` | Served when the configuration names an Inji Certify URL. |
 | `TenantBackendService` | Never served. Inji keeps no tenants. |
@@ -48,6 +48,13 @@ Inji database, and it never restarts an Inji container.
 | `POST /v1/verify/vp-request` | Starts an OID4VP transaction. |
 | `GET /v1/verify/vp-result/{id}` | Reads the answer of a transaction. |
 | `POST /v1/verify/vc-verification` | Checks one uploaded or scanned credential. |
+| `POST /v1/mimoto/auth/{provider}/token-login` | Opens a Mimoto session with the ID token of the holder login. |
+| `POST /v1/mimoto/wallets` | Makes the Mimoto wallet of a holder on the first login. |
+| `POST /v1/mimoto/wallets/{id}/unlock` | Puts the wallet key in the session. |
+| `GET /v1/mimoto/wallets/{id}/credentials` | Lists the held credentials by name. |
+| `GET /v1/mimoto/wallets/{id}/credentials/{credentialId}` | Reads the PDF of a held credential. |
+| `DELETE /v1/mimoto/wallets/{id}/credentials/{credentialId}` | Removes a held credential. |
+| `POST`, `PATCH /v1/mimoto/wallets/{id}/presentations` | Answers an OID4VP request with held credentials. |
 
 ## What the adapter can do
 
@@ -58,12 +65,12 @@ The answer of `GetCapabilities` reports what the deployment supports.
 | Formats | `ldp_vc`, `vc+sd-jwt`, `mso_mdoc` |
 | Channels | OID4VCI pre-authorized code, OID4VCI authorization code, document, and identity QR (Claim 169) with a Certify URL |
 | Protocols | OID4VCI, OID4VP, OID4VP with Presentation Exchange |
-| Roles | The roles whose URL the configuration sets |
-| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_REVOCATION`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ISSUER_IDENTITY_PROVISION`, and `FEATURE_ISSUER_IDENTITY_IMPORT_X509` with a Certify URL. `FEATURE_PRESENTATION_DURING_ISSUANCE` with a Certify URL and `VCA_INJI_PRESENTATION_DURING_ISSUANCE`. `FEATURE_VERIFY_UPLOAD` with an Inji Verify URL. |
+| Roles | The roles whose URL the configuration sets. `ROLE_HOLDER` with a Mimoto URL. |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_REVOCATION`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ISSUER_IDENTITY_PROVISION`, and `FEATURE_ISSUER_IDENTITY_IMPORT_X509` with a Certify URL. `FEATURE_PRESENTATION_DURING_ISSUANCE` with a Certify URL and `VCA_INJI_PRESENTATION_DURING_ISSUANCE`. `FEATURE_VERIFY_UPLOAD` with an Inji Verify URL. `FEATURE_WALLET_DOCUMENT` and `FEATURE_WALLET_CLAIM_IN_STACK` with a Mimoto URL. |
 | DID methods | `did:web`, the one DID of the Certify configuration |
 | Key types | `Ed25519`, `secp256r1`, `secp256k1`, `RSA` |
 | Status mechanisms | Bitstring status list and token status list, when the configuration names a Certify URL |
-| DPG information | The stack name, the Certify release, one component per wired role plus Keycloak, and the Certify plugins of `VCA_INJI_CERTIFY_PLUGINS` |
+| DPG information | The stack name, the Certify release, one component per wired role plus Keycloak, and the Certify plugins of `VCA_INJI_CERTIFY_PLUGINS`. The holder role adds Mimoto and Inji Web, and the Inji Web component carries the address of `VCA_INJI_WEB_URL`. |
 
 Each component carries its pinned version, its repository, its
 documentation, and its licence. The versions come from the
@@ -78,7 +85,11 @@ shows a feature on this stack only when the answer lists it (ADR-034).
 | `Revoke` of a VCA status entry | The status service that owns the list changes the bit. The adapter answers `failed_precondition` without a ledger id. |
 | `Revoke` with a suspension or a reinstatement | The Certify configuration of the stack allows the revocation purpose only. The answer lists no `FEATURE_SUSPENSION`. |
 | `ImportIssuerIdentity` of a DID | Certify reads its DID from its configuration. The adapter lists no `FEATURE_ISSUER_IDENTITY_IMPORT_DID`. |
-| Every holder RPC | Inji ships no wallet for a citizen. |
+| Every holder RPC without `VCA_INJI_MIMOTO_URL` | The adapter drives no wallet. |
+| `AcceptOffer` | Mimoto downloads a credential only in the browser, with its own client. The answer names Inji Web, where the holder claims. The answer lists `FEATURE_WALLET_CLAIM_IN_STACK`. |
+| The bytes of a held credential | Mimoto lists names and logos only. `ListCredentials` returns no `credential`, and the wallet shows the PDF of `GetCredentialDocument`. |
+| The wallet PIN for Inji Web | The adapter makes the Mimoto wallet with a random PIN and keeps it. Inji Web asks the holder for that PIN before a claim. The holder does not know it yet, so a claim in Inji Web cannot open that wallet. A later unit shares the PIN or lets the holder set it. |
+| `Register` without an ID token, or with a token Mimoto does not trust | Mimoto opens a session only from a trusted ID token. The adapter answers `failed_precondition` or `permission_denied`, and the wallet keeps the browser store. |
 | Every tenant RPC | Inji keeps no tenants. |
 | Every webhook RPC | Inji keeps no tenants to hold a webhook. |
 | `VerifyCredential` of a JWT VC, an mDoc, or a Claim 169 QR code | Inji Verify 0.16.0 checks JSON-LD and SD-JWT credentials only. The adapter answers `invalid_argument`. |
@@ -378,12 +389,25 @@ that P6-I7b builds.
    provider of the holder realm. Without that setting Mimoto refuses
    the token, `Register` fails, and the wallet keeps the browser store.
 
-### What P6-I7b tests
+### What P6-I7b built
 
-`TestRegisterCreatesMimotoWallet`, `TestListCredentials`,
-`TestAcceptOfferPointsAtInjiWeb`, `TestPresentThroughMimoto`,
-`TestDelete`, and `TestCapabilitiesListHolderRole`. The spike adds them
-as skipped tests.
+The adapter follows the decision. `TestRegisterCreatesMimotoWallet`,
+`TestListCredentials`, `TestAcceptOfferPointsAtInjiWeb`,
+`TestPresentThroughMimoto`, `TestDelete`, and
+`TestCapabilitiesListHolderRole` run against the fake Mimoto.
+`TestContractHolderThroughMimoto` runs against a real Mimoto with
+`VCA_INJI_CONTRACT_MIMOTO_URL` and `VCA_INJI_CONTRACT_ID_TOKEN`.
+
+The adapter keeps the PIN of each wallet in `VCA_INJI_STORE_FILE`. A
+store in memory forgets the PINs at a restart and locks every wallet,
+so the service warns at start.
+
+The wallet portal uses the stack for what Mimoto does. It lists the
+held credentials, presents them, deletes them, and serves their PDF.
+It keeps the browser store for what Mimoto does not do. A credential
+that the holder loads from a file or a paste stays in the browser store.
+For an offer, a link sends the holder to Inji Web to claim into the
+stack.
 
 ## The paper document channel
 

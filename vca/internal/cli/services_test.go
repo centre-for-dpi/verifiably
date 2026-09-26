@@ -473,10 +473,10 @@ func TestLinkValuesFeedEveryService(t *testing.T) {
 	}
 
 	holder := Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI}
-	values["VCA_DPG_URL"] = "http://inji-web:3000"
+	values["VCA_DPG_URL"] = "http://inji-mimoto:8099"
 	got = LinkValues(holder, values)
 	for name, value := range map[string]string{
-		"VCA_INJI_CERTIFY_URL":               "http://inji-web:3000",
+		"VCA_INJI_MIMOTO_URL":                "http://inji-mimoto:8099",
 		"VCA_INJI_PUBLIC_URL":                "https://issuer-waltid.labs.example",
 		"VCA_WALLET_AUTH_HOLDER_BACKEND_URL": "http://holder-inji-dpg-adapter-inji:8090",
 		"VCA_WALLET_AUTH_STATE_DIR":          "/data",
@@ -488,6 +488,9 @@ func TestLinkValuesFeedEveryService(t *testing.T) {
 	}
 	if _, ok := got["VCA_INJI_VERIFY_URL"]; ok {
 		t.Error("holder: the verify URL belongs to the verifier")
+	}
+	if _, ok := got["VCA_INJI_CERTIFY_URL"]; ok {
+		t.Error("holder: the Certify URL belongs to the issuer")
 	}
 
 	verifier := Pair{Role: commonv1.Role_ROLE_VERIFIER, Dpg: configv1.Dpg_DPG_CREDEBL}

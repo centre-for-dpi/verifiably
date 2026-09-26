@@ -177,3 +177,10 @@ func (s *Service) ListEvents(
 	}
 	return connect.NewResponse(out), nil
 }
+
+// GetCredentialDocument answers Unimplemented. The walt.id wallet API
+// renders no document of a credential, so the adapter lists no
+// FEATURE_WALLET_DOCUMENT.
+func (s *Service) GetCredentialDocument(context.Context, *connect.Request[backendv1.GetCredentialDocumentRequest]) (*connect.Response[backendv1.GetCredentialDocumentResponse], error) {
+	return nil, unimplemented("the walt.id wallet renders no document of a credential")
+}

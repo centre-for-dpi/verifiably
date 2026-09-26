@@ -30,6 +30,14 @@ backend to create a wallet. It stores the wallet id under the key. The
 backend receives the key, never `iss` or `sub`. Without a holder backend
 the key is the wallet id.
 
+The backend also receives the ID token of the login (ADR-020 decision
+3). A DPG wallet can open a session with that token, and the session
+can end. So the service asks the backend again at every login. A failure at a later login keeps the stored record, and the
+login goes on. A backend that serves no wallet for the holder answers
+`unimplemented`, `failed_precondition`, or `permission_denied`. The key
+is then the wallet id, and the wallet keeps the browser store. A later
+login that opens a backend wallet replaces the key with its id.
+
 ## Sign in chooser
 
 `GET /` draws the sign in page of the holder role with the renderer that

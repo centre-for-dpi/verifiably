@@ -22,6 +22,7 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
+	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
@@ -53,8 +54,8 @@ type App struct {
 	Service *service.Service
 	// Portal renders the citizen pages.
 	Portal *portal.Portal
-	// Blobs holds the ciphertext of browser storage. It is nil when the
-	// deployment uses a DPG wallet.
+	// Blobs holds the ciphertext of the browser store. Its routes answer
+	// only while the wallet keeps the browser store.
 	Blobs *blobs.Store
 }
 
@@ -117,8 +118,15 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The portal reads the live probe of the own pair. The service asks
+	// it per request whether the stack wallet claims in its own pages.
+	var pages *portal.Portal
+	hybrid := func(ctx context.Context) bool {
+		return pages != nil && pages.Has(ctx, backendv1.Feature_FEATURE_WALLET_CLAIM_IN_STACK)
+	}
 	svc, err := service.New(service.Options{
 		Holder:    holder,
+		Hybrid:    hybrid,
 		Catalogue: catalogue,
 		Fallback:  ports.Cached(crawl, cfg.CrawlTTL, deps.Now),
 		Methods:   crawl.Methods,
@@ -148,7 +156,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	pages, err := portal.New(portal.Options{
+	pages, err = portal.New(portal.Options{
 		Service: svc, Guard: guard, Prefix: cfg.PortalPrefix,
 		LoginPath: cfg.LoginURL, Now: deps.Now, Kit: kit, Topology: frame(cfg, deps, snapshot),
 	})
@@ -162,18 +170,29 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	app := &App{Mux: mux, Service: svc, Portal: pages}
 	guarded := http.NewServeMux()
 	pages.Register(guarded)
-	if svc.BrowserStorage() {
-		st, berr := blobs.NewStore(kv, cfg.MaxBlobBytes, deps.Now)
-		if berr != nil {
-			return nil, berr
-		}
-		api, berr := blobs.NewAPI(st, pages.Prefix(), guard)
-		if berr != nil {
-			return nil, berr
-		}
-		api.Register(guarded)
-		app.Blobs = st
+	// The browser store serves a wallet without a holder backend, and a
+	// stack wallet that claims in its own pages. The second case follows
+	// the live probe, so the blob routes check it per request.
+	st, err := blobs.NewStore(kv, cfg.MaxBlobBytes, deps.Now)
+	if err != nil {
+		return nil, err
 	}
+	api, err := blobs.NewAPI(st, pages.Prefix(), guard)
+	if err != nil {
+		return nil, err
+	}
+	blobMux := http.NewServeMux()
+	api.Register(blobMux)
+	gated := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !svc.KeepsBrowser(r.Context()) {
+			http.NotFound(w, r)
+			return
+		}
+		blobMux.ServeHTTP(w, r)
+	})
+	guarded.Handle(pages.Prefix()+"/blobs", gated)
+	guarded.Handle(pages.Prefix()+"/blobs/", gated)
+	app.Blobs = st
 	mux.Handle("GET "+pages.Prefix()+static.Path, pages.Script())
 	mux.Handle(pages.Prefix()+"/", session.Middleware(verify, cfg.LoginURL)(guarded))
 	warn(cfg, deps, svc)

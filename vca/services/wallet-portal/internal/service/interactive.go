@@ -22,8 +22,8 @@ import (
 )
 
 // Presentation during issuance follows the interactive authorization
-// endpoint of the OID4VCI 1.1 draft, as an issuer such as Inji Certify
-// 0.14.0 serves it:
+// endpoint of the OID4VCI 1.1 draft, as an issuer of a DPG stack serves
+// it:
 //
 //  1. The offer names an authorization server whose metadata has an
 //     interactive_authorization_endpoint.

@@ -110,9 +110,13 @@ func TestDefaultVersionsMatchTheStackFile(t *testing.T) {
 		t.Fatalf("versions = %v, want every component of the issuer and verifier profiles", versions)
 	}
 	for name, version := range versions {
-		tag, ok := tags["inji-"+name]
+		service := name
+		if !strings.HasPrefix(name, "inji-") {
+			service = "inji-" + name
+		}
+		tag, ok := tags[service]
 		if !ok {
-			t.Errorf("the stack file runs no service inji-%s", name)
+			t.Errorf("the stack file runs no service %s", service)
 			continue
 		}
 		if tag != version {
@@ -187,5 +191,20 @@ func TestPresentationDuringIssuanceIsOffByDefault(t *testing.T) {
 	cfg, err = config.Load(env(map[string]string{"VCA_INJI_CERTIFY_URL": "http://c", "VCA_INJI_PRESENTATION_DURING_ISSUANCE": "true"}))
 	if err != nil || !cfg.PresentationDuringIssuance {
 		t.Fatalf("set %v %v", cfg.PresentationDuringIssuance, err)
+	}
+}
+
+// TestLoadServesTheHolderRoleAlone loads a holder pair: Mimoto alone
+// suffices, and the Mimoto settings have the defaults of the stack.
+func TestLoadServesTheHolderRoleAlone(t *testing.T) {
+	cfg, err := config.Load(env(map[string]string{
+		"VCA_INJI_MIMOTO_URL": "http://inji-mimoto:8099", "VCA_INJI_WEB_URL": "http://localhost:17085",
+	}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MimotoProvider != "google" || cfg.WebURL != "http://localhost:17085" ||
+		cfg.Versions()["mimoto"] != "0.21.0" || cfg.Versions()["inji-web"] != "0.16.0" {
+		t.Fatalf("config = %+v", cfg)
 	}
 }

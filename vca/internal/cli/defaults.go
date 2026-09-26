@@ -26,7 +26,7 @@ var dpgAPIURL = map[configv1.Dpg]map[commonv1.Role]string{
 	},
 	configv1.Dpg_DPG_INJI: {
 		commonv1.Role_ROLE_ISSUER:   "http://inji-certify:8090",
-		commonv1.Role_ROLE_HOLDER:   "http://inji-web:3000",
+		commonv1.Role_ROLE_HOLDER:   "http://inji-mimoto:8099",
 		commonv1.Role_ROLE_VERIFIER: "http://inji-verify-service:8000",
 	},
 	configv1.Dpg_DPG_CREDEBL: {
