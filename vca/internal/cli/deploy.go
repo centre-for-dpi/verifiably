@@ -158,13 +158,26 @@ func printDryRun(opts DeployOptions, action []string) error {
 
 // checkEnvFile reports a pair that has no .env file yet.
 func checkEnvFile(root string, p Pair) error {
-	path := EnvPath(root, p)
-	if _, err := os.Stat(path); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("deploy %s: %s is missing; run vca setup --role %s --dpg %s first",
-				p.Name(), path, ShortName(p.Role.String()), ShortName(p.Dpg.String()))
+	paths := []string{EnvPath(root, p)}
+	// The main compose file reads the .env of every stack for its stack
+	// file. A deployment that an earlier setup wrote has none yet, and
+	// compose would stop on the first secret it needs (ADR-055
+	// consequence 2).
+	for _, d := range StackDpgs() {
+		paths = append(paths, filepath.Join(root, "deploy", StackEnvFile(d)))
+	}
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("deploy %s: %s is missing; run vca setup --role %s --dpg %s first",
+					p.Name(), path, ShortName(p.Role.String()), ShortName(p.Dpg.String()))
+			}
+			return fmt.Errorf("deploy %s: %w", p.Name(), err)
 		}
-		return fmt.Errorf("deploy %s: %w", p.Name(), err)
+		if info.IsDir() {
+			return fmt.Errorf("deploy %s: %s is a directory, not a file", p.Name(), path)
+		}
 	}
 	return nil
 }

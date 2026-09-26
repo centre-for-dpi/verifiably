@@ -11,7 +11,7 @@ COVERAGE_FLOOR ?= 90
 
 GOBIN ?= $(HOME)/go/bin
 
-.PHONY: bootstrap gen lint test cover tidy build install doctor
+.PHONY: bootstrap gen lint test hack-test cover tidy build install doctor
 
 bootstrap: ## install buf and its plugins (mirrors when the network is restricted)
 	./hack/bootstrap.sh
@@ -27,6 +27,10 @@ lint: ## proto and Go lint
 
 test: ## unit tests with race detector
 	$(GO) test -race -count=1 ./...
+
+hack-test: ## tests of the shell scripts under hack
+	./hack/check-commits_test.sh
+	./hack/secret-scan_test.sh
 
 cover: ## enforce per-package coverage floor
 	./hack/coverage.sh $(COVERAGE_FLOOR)

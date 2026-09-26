@@ -8,7 +8,7 @@ the MPL-2.0 licence, and so do the files derived from them.
 
 | File | Source | Change |
 | --- | --- | --- |
-| `certify-default.properties` | https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/certify-default.properties | The database, the key store password, Inji Verify, and the nginx of the stack, and the readiness probe of the health check. Each change carries a `VCA:` comment. |
+| `certify-default.properties` | https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/certify-default.properties | The database, the key store password, Inji Verify, and the nginx of the stack, and the readiness probe of the health check. No authorization server in the base, no Redis password, and a key certificate subject from `vca setup` (ADR-055). Each change carries a `VCA:` comment. |
 | `certify-csvdp-farmer.properties` | https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/certify-csvdp-farmer.properties | The address of `inji-certify-esignet`, eSignet of the stack as the authorization server, the audiences of the Mimoto and VCA client `vca-inji`, the mock identity of the stack, and the DID of the stack. Each change carries a `VCA:` comment. |
 | `certify-preauth.properties` | The block "Use below properties to use certify as authorization server" and the `PreAuthDataProviderPlugin` line of https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/resources/application-local.properties, with the plugin block of `certify-csvdp-farmer.properties` above | VCA wrote the file from those lines. |
 | `certify_init.sql` | https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/certify_init.sql | None |
@@ -74,3 +74,18 @@ the MPL-2.0 licence, and so do the files derived from them.
   https://raw.githubusercontent.com/mosip/inji-verify/v0.16.0/verify-service/Dockerfile,
   https://raw.githubusercontent.com/mosip/inji-verify/v0.16.0/verify-ui/nginx.conf, and
   https://raw.githubusercontent.com/mosip/inji-verify/v0.16.0/verify-service/src/main/resources/application.properties
+
+## Facts the key certificate subject relies on
+
+Read on 2026-09-26.
+
+- The key manager reads the subject from
+  `mosip.kernel.keymanager.certificate.default.*` with no default, so
+  every key must exist:
+  https://raw.githubusercontent.com/mosip/keymanager/release-1.3.x/kernel/kernel-keymanager-service/src/main/java/io/mosip/kernel/keymanagerservice/util/KeymanagerUtil.java
+  (lines 128 to 158).
+- The certificate builder leaves an empty part out of the subject:
+  https://raw.githubusercontent.com/mosip/keymanager/release-1.3.x/kernel/kernel-keymanager-service/src/main/java/io/mosip/kernel/keymanager/hsm/util/CertificateUtility.java
+  (lines 214 to 231).
+- Mimoto uses the same key manager, so the same facts apply to
+  `mimoto-default.properties`.

@@ -621,3 +621,123 @@ func TestInjiStackRunsEsignetWithItsLoginPage(t *testing.T) {
 		}
 	}
 }
+
+// TestStackFilesHaveNoSecretDefault: no stack file gives a password, a
+// secret or a key a default. vca setup generates every stack secret
+// into the .env of the stack directory, and compose fails with the name
+// of the variable when the file is absent (ADR-055 decision 1).
+func TestStackFilesHaveNoSecretDefault(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join(repoRoot(), "deploy", "vca", "dpg", "*.yaml"))
+	if err != nil || len(files) != 3 {
+		t.Fatalf("stack files = %v, %v", files, err)
+	}
+	for _, path := range files {
+		data, err := os.ReadFile(path) // #nosec G304 -- a fixed test path
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(data), "\n") {
+			if secretDefaultRe.MatchString(line) {
+				t.Errorf("%s:%d gives a secret a default: %s", filepath.Base(path), i+1, strings.TrimSpace(line))
+			}
+		}
+		for _, name := range stackSecretNames(dpgOfStackFile(path)) {
+			if !strings.Contains(string(data), "${"+name+":?") {
+				t.Errorf("%s does not require %s with ${%s:?...}", filepath.Base(path), name, name)
+			}
+		}
+	}
+}
+
+// dpgOfStackFile maps deploy/vca/dpg/<dpg>.yaml onto its DPG.
+func dpgOfStackFile(path string) configv1.Dpg {
+	name := strings.TrimSuffix(filepath.Base(path), ".yaml")
+	for _, d := range []configv1.Dpg{configv1.Dpg_DPG_WALTID, configv1.Dpg_DPG_INJI, configv1.Dpg_DPG_CREDEBL} {
+		if ShortName(d.String()) == name {
+			return d
+		}
+	}
+	return configv1.Dpg_DPG_UNSPECIFIED
+}
+
+// TestKeyCertificateSubjectComesFromSetup: the key manager of both
+// Certify containers and of Mimoto names the organisation that setup
+// collected, not an upstream example (ADR-055 decision 3). The stack
+// file passes the subject from the .env of the pair. A part of the
+// subject that setup does not collect stays empty, and the key manager
+// leaves an empty part out of the certificate (CertificateUtility of
+// mosip/keymanager release-1.3.x, lines 214 to 231).
+func TestKeyCertificateSubjectComesFromSetup(t *testing.T) {
+	want := map[string]string{
+		"common-name":         "${" + KeyCertCNEnv + "}",
+		"organizational-unit": "${" + KeyCertOUEnv + "}",
+		"organization":        "${" + KeyCertOEnv + "}",
+		"location":            "",
+		"state":               "",
+		"country":             "",
+	}
+	dir := filepath.Join(repoRoot(), "deploy", "vca", "dpg", "inji")
+	files := map[string][]string{
+		filepath.Join(dir, "certify", "certify-default.properties"): {"mosip.kernel.keymanager.certificate.default.", "mosip.kernel.keymanager.softhsm.certificate."},
+		filepath.Join(dir, "mimoto", "mimoto-default.properties"):   {"mosip.kernel.keymanager.certificate.default."},
+	}
+	for path, prefixes := range files {
+		props := readProperties(t, path)
+		for _, prefix := range prefixes {
+			for part, value := range want {
+				key := prefix + part
+				if prefix == "mosip.kernel.keymanager.softhsm.certificate." && (part == "location" || part == "state") {
+					continue
+				}
+				got, ok := props[key]
+				if !ok || got != value {
+					t.Errorf("%s: %s = %q (set %v), want %q", filepath.Base(path), key, got, ok, value)
+				}
+			}
+		}
+	}
+	stack := readInjiStack(t)
+	for _, name := range []string{"inji-certify", "inji-certify-esignet", "inji-mimoto"} {
+		env := stack[name].Environment
+		for _, v := range []string{KeyCertCNEnv, KeyCertOUEnv, KeyCertOEnv} {
+			if got := env[v]; got != "${"+v+":-}" {
+				t.Errorf("%s: %s = %q, want the value of the pair .env", name, v, got)
+			}
+		}
+	}
+}
+
+// TestMimotoRunsNoPlatformSecret: the Mimoto profile names MOSIP
+// platform services that the stack does not run. Their secrets and
+// addresses are empty, so no upstream literal ships (ADR-055 decision
+// 2). Mimoto still finds every key it reads at start.
+func TestMimotoRunsNoPlatformSecret(t *testing.T) {
+	props := readProperties(t, filepath.Join(repoRoot(), "deploy", "vca", "dpg", "inji", "mimoto", "mimoto-default.properties"))
+	for _, key := range []string{
+		"mosip.event.secret", "mosip.partner.crypto.p12.password", "mosip.partner.encryption.key",
+		"token.request.password", "token.request.secretKey", "mosip.iam.adapter.clientsecret",
+		"mosip.idp.partner.encryption.key", "wallet.binding.partner.api.key",
+		"mosip.inji.allowedAuthType", "mosip.inji.allowedEkycAuthType", "mosip.inji.faceSdkModelUrl",
+		"keycloak.external.url", "mosip.resident.base.url",
+	} {
+		got, ok := props[key]
+		if !ok {
+			t.Errorf("%s is gone; Mimoto reads it at start", key)
+		} else if got != "" {
+			t.Errorf("%s = %q, want empty", key, got)
+		}
+	}
+	certify := readProperties(t, filepath.Join(repoRoot(), "deploy", "vca", "dpg", "inji", "certify", "certify-default.properties"))
+	for key, want := range map[string]string{
+		"mosip.certify.authorization.url": "",
+		"mosip.certify.authn.jwk-set-uri": "",
+		"spring.data.redis.password":      "",
+		"spring.datasource.password":      "${INJI_DB_PASSWORD}",
+		// The key store password has no fallback in the file either.
+		"mosip.kernel.keymanager.hsm.keystore-pass": "${INJI_CERTIFY_KEYSTORE_PASSWORD}",
+	} {
+		if got, ok := certify[key]; !ok || got != want {
+			t.Errorf("certify-default.properties: %s = %q (set %v), want %q", key, got, ok, want)
+		}
+	}
+}

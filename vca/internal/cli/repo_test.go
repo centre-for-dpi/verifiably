@@ -98,6 +98,7 @@ func TestCliFindsTheRepositoryRootFromAnyDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(dir, EnvFileName), []byte("VCA_ROLE=issuer\n"))
+	writeStackEnvs(t, root)
 	deep := filepath.Join(root, "vca", "services")
 	if err := os.MkdirAll(deep, 0o750); err != nil {
 		t.Fatal(err)

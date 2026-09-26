@@ -413,6 +413,12 @@ func newSetupCommand(env *Environment) *cobra.Command {
 				if keycloakErr != nil {
 					return keycloakErr
 				}
+				// The secrets of every stack stay across the runs too
+				// (ADR-055 decision 1).
+				stacks, stacksErr := ReadStackEnvs(root)
+				if stacksErr != nil {
+					return stacksErr
+				}
 				plan, err := BuildPlan(SetupRequest{
 					Pair:        p,
 					Flags:       flags,
@@ -426,6 +432,7 @@ func newSetupCommand(env *Environment) *cobra.Command {
 					Domain:      base,
 					Peers:       peers,
 					Keycloak:    keycloak,
+					Stacks:      stacks,
 				})
 				if err != nil {
 					return err

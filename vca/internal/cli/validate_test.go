@@ -147,6 +147,22 @@ func TestValidateFreeText(t *testing.T) {
 	}
 }
 
+// TestValidateLength: a rule of "N characters or fewer" caps the length.
+// A key certificate holds at most 64 characters in the organisation.
+func TestValidateLength(t *testing.T) {
+	s := find(t, Settings(), "organisation.name")
+	if err := Validate(s, "Ministry of the Interior"); err != nil {
+		t.Errorf("a short name failed: %v", err)
+	}
+	if err := Validate(s, strings.Repeat("é", 64)); err != nil {
+		t.Errorf("64 characters failed: %v", err)
+	}
+	err := Validate(s, strings.Repeat("a", 65))
+	if err == nil || !strings.Contains(err.Error(), "64 characters or fewer") {
+		t.Errorf("65 characters = %v", err)
+	}
+}
+
 func TestValidateWholeNumberKind(t *testing.T) {
 	s := Setting{Env: "VCA_N", Kind: KindInt}
 	if Validate(s, "12") != nil {

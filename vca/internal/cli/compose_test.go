@@ -86,6 +86,12 @@ func TestRenderComposeIsValidYaml(t *testing.T) {
 		if doc.Include[i]["project_directory"] != "." {
 			t.Errorf("include %d does not resolve against the compose directory: %v", i, doc.Include[i])
 		}
+		// Compose fills the variables of an included file from its
+		// env_file. The .env of the stack directory holds the secrets
+		// that vca setup generates (ADR-055 decision 1).
+		if want := "../" + StackEnvFile(StackDpgs()[i]); doc.Include[i]["env_file"] != want {
+			t.Errorf("include %d reads %q, want %s", i, doc.Include[i]["env_file"], want)
+		}
 	}
 	if _, ok := doc.Networks["vca"]; !ok {
 		t.Error("the vca network is missing")

@@ -156,7 +156,11 @@ A terminal run asks three kinds of question, in this order:
    The run asks for it even though it has a default.
    The question shows the default in brackets.
    An empty answer keeps the default.
-   The public URL is the only such setting today:
+   The public URL is one such setting.
+   An Inji issuer or holder pair also answers the organisation name and
+   unit of its key certificates.
+   Their defaults are the public host and the role (ADR-055 decision 3).
+   The public URL question looks like this:
 
    ```text
    The public base URL of the deployment. Leave blank for localhost.
@@ -171,8 +175,9 @@ A terminal run asks three kinds of question, in this order:
    done.
 
 A verifier operator never sees an issuer question.
-A laptop deployment answers one question, because every other value has a
-default (ADR-008 decision 7).
+A laptop deployment answers one question per pair (ADR-008 decision 7).
+An Inji issuer or holder pair answers three.
+Every other value has a default.
 Each question shows the help text and the rule.
 A bad answer repeats the question with the reason.
 A value that a flag, the environment, or the env file supplied is not
@@ -258,6 +263,8 @@ deploy/<role>-<dpg>/Caddyfile                  mode 0644
 deploy/keycloak-<dpg>/                         mode 0755
 deploy/keycloak-<dpg>/vca-<role>-realm.json    mode 0644
 deploy/keycloak-<dpg>/.env                     mode 0600
+deploy/<dpg>/.env                              mode 0600
+deploy/<dpg>/.gitignore                        mode 0600
 ```
 
 Every DPG stack ships a Keycloak, and every role has its own realm
@@ -265,7 +272,16 @@ Every DPG stack ships a Keycloak, and every role has its own realm
 directory of the Keycloak of the stack. The `.env` of that directory holds
 the generated administrator password of the Keycloak. The first run
 of any role of the stack writes it, and every later run keeps it
-(ADR-035 decision 7). A pair also gets the extra file its DPG needs:
+(ADR-035 decision 7).
+
+Every run also writes `deploy/<dpg>/.env` for each of the three stacks.
+It holds the database and key store passwords of the stack file
+(ADR-055 decision 1). Each has 32 random letters and digits. A later run keeps
+every value it finds. The main compose file includes every stack file.
+Compose checks the values of each, so the run writes all three.
+The `.gitignore` beside it keeps the file out of git.
+
+A pair also gets the extra file its DPG needs:
 
 | DPG | Extra file |
 |---|---|

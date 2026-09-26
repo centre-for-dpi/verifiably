@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
 // recorder records the commands a lifecycle run makes.
@@ -23,10 +25,27 @@ func (r *recorder) run(_ context.Context, name string, args []string) error {
 	return r.fail
 }
 
-// deployRoot builds a root with a .env file for every named pair.
+// writeStackEnvs writes the .env of every stack under the root, as a
+// setup run does.
+func writeStackEnvs(t *testing.T, root string) {
+	t.Helper()
+	for _, d := range StackDpgs() {
+		path := filepath.Join(root, "deploy", StackEnvFile(d))
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("X=y\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// deployRoot builds a root with a .env file for every named pair and
+// the .env of every stack, as a setup run writes them.
 func deployRoot(t *testing.T, pairs ...Pair) string {
 	t.Helper()
 	root := t.TempDir()
+	writeStackEnvs(t, root)
 	for _, p := range pairs {
 		dir := filepath.Join(root, "deploy", p.Name())
 		if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -184,6 +203,34 @@ func TestDeployNeedsTheEnvFile(t *testing.T) {
 	}
 	if len(rec.calls) != 0 {
 		t.Error("the run started a container anyway")
+	}
+}
+
+// TestDeployNeedsEveryStackEnv: compose reads the .env of every stack
+// file it includes, so a deploy stops before compose when one is gone
+// and says to run setup again (ADR-055 consequence 2).
+func TestDeployNeedsEveryStackEnv(t *testing.T) {
+	root := deployRoot(t, issuerPair())
+	missing := filepath.Join(root, "deploy", StackEnvFile(configv1.Dpg_DPG_CREDEBL))
+	if err := os.Remove(missing); err != nil {
+		t.Fatal(err)
+	}
+	rec := &recorder{}
+	err := Deploy(context.Background(), DeployOptions{
+		Root: root, Pairs: []Pair{issuerPair()}, Out: &bytes.Buffer{}, Run: rec.run,
+	})
+	if err == nil || !strings.Contains(err.Error(), missing) || !strings.Contains(err.Error(), "vca setup --role issuer --dpg waltid") {
+		t.Fatalf("got %v", err)
+	}
+	if len(rec.calls) != 0 {
+		t.Error("the run started a container anyway")
+	}
+	// A directory in place of the file is an error too.
+	if err := os.Mkdir(missing, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkEnvFile(root, issuerPair()); err == nil {
+		t.Error("a directory in place of the stack .env passed")
 	}
 }
 

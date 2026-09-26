@@ -895,7 +895,9 @@ func TestSetupWritesTheLandingEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildPlan issuer: %v", err)
 	}
-	if len(plan.Shared) != 3 || plan.Shared[0].Name != filepath.Join(LandingDir, EnvFileName) || plan.Shared[0].Mode != 0o600 {
+	// The landing, the realm and the Keycloak .env, then the .env and
+	// the .gitignore of every stack (ADR-055 decision 1).
+	if len(plan.Shared) != 3+2*len(StackDpgs()) || plan.Shared[0].Name != filepath.Join(LandingDir, EnvFileName) || plan.Shared[0].Mode != 0o600 {
 		t.Fatalf("shared files = %v", sharedNames(plan))
 	}
 	if !strings.Contains(plan.Summary(), filepath.Join(LandingDir, EnvFileName)) {

@@ -8,7 +8,7 @@ from them.
 
 | File | Source | Change |
 | --- | --- | --- |
-| `mimoto-default.properties` | https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/docker-compose/config/mimoto-default.properties | Redis sessions, the token login provider `google` on the holder realm, the eSignet and Inji Web of the stack, and the key store of the key manager on a volume. Each change carries a `VCA:` comment or names a container of the stack. |
+| `mimoto-default.properties` | https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/docker-compose/config/mimoto-default.properties | Redis sessions, the token login provider `google` on the holder realm, the eSignet and Inji Web of the stack, the key store of the key manager on a volume, a key certificate subject from `vca setup`, and empty values for the MOSIP platform services that the stack does not run (ADR-055). Each change carries a `VCA:` comment or names a container of the stack. |
 | `mimoto-bootstrap.properties` | https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/docker-compose/config/mimoto-bootstrap.properties | The configuration server is `http://inji-web:3004/`, as in https://raw.githubusercontent.com/mosip/inji-web/v0.16.0/docker-compose/config/mimoto-bootstrap.properties |
 | `mimoto_init.sql` | https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/docker-compose/mimoto_init.sql | None |
 | `credential-template.html` | https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/docker-compose/config/credential-template.html | The three links to the Google Fonts CDN are gone, because no deployment file loads from a CDN. The PDF uses a local font. |

@@ -14,7 +14,8 @@
 #   keystore     a tracked .p12, .jks, .pfx, or .keystore file
 #   private-key  a PEM private key header with key material after it
 #   api-key      an apiKey value of 64 hex characters
-#   password     a password value that is not a placeholder
+#   password     a password, secret or key value that is not a placeholder,
+#                as key: value or as key=value
 #
 # Output is "rule: file:line: detail", one finding per line.
 # Exit status is 1 when it finds at least one secret, else 0.
@@ -76,6 +77,17 @@ while IFS= read -r file; do
   esac
   grep -nEIH '(^|[[:space:]"])password"?[[:space:]]*:[[:space:]]*[^[:space:]]+' "$file" 2>/dev/null \
     | grep -vEi 'password"?[[:space:]]*:[[:space:]]*"?(\$|\{\{|""|'"''"'|<|REPLACE_ME|CHANGE|placeholder|example|null|~)' \
+    | sed 's/^/password: /' >> "$findings" || true
+  # The key=value form of a .properties, .conf, .ini or .env file
+  # (ADR-055 decision 5). The key ends in password, secret, secretkey,
+  # clientsecret, pin, or a key of an API, a token or an encryption.
+  case "$file" in
+    *.properties|*.conf|*.ini|*.env) ;;
+    *) continue ;;
+  esac
+  grep -nEIH '^[^#]*([Pp]assword|[Ss]ecret|[Ss]ecret[_.-]?[Kk]ey|[Cc]lient[_.-]?[Ss]ecret|[Pp]in|(api|token|encryption)[_.-]?[Kk]ey)"?[[:space:]]*=[[:space:]]*[^[:space:]]+' "$file" 2>/dev/null \
+    | grep -vEi '=[[:space:]]*"?(\$|\{\{|""|'"''"'|<|REPLACE_ME|CHANGE|placeholder|example|null|~)' \
+    | grep -vEi '(uri|url|file|path|alias|name|type|id|size|length|enabled|expiry|interval|method|methods|algorithm|store|location)[[:space:]]*=' \
     | sed 's/^/password: /' >> "$findings" || true
 done < "$findings.files"
 

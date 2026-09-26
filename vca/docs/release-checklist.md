@@ -38,6 +38,7 @@ Treat every value below as compromised, whatever the purge does:
 | walt.id wallet token key | the `tokenKey` chart default and `deploy/k8s/config/wallet/auth.conf` | Generate a key per deployment with `scripts/gen-demo-pki.sh`. Every wallet token signed with the old key stays forgeable. |
 | WSO2 demo keystores | `verifiably-go/deploy/compose/stack/wso2-certs/` | Generate them per host with `scripts/gen-demo-pki.sh`. |
 | CREDEBL seed password | `verifiably-go/deploy/compose/credebl/config/credebl-master-table.json` | Rewrite the seed so that it reads the password from the environment. Then remove the entry from `vca/hack/secret-scan-allow.txt`. |
+| MOSIP release literals | `verifiably-go/deploy/compose/injiweb/config/*.properties` and `verifiably-go/deploy/compose/stack/inji/certify/certify-default.properties` | The `key=value` rule of the scan finds them (ADR-055 decision 5). Delete the legacy files or empty the values. Then remove the three entries from `vca/hack/secret-scan-allow.txt`. |
 
 ### 2. Announce the rewrite
 

@@ -5,6 +5,10 @@
 #   Inji Verify 0.16.0, eSignet 1.5.1, mock identity 0.10.1,
 #   Keycloak 25.0.
 # The main compose file pulls this file in with include.
+# The database and key store passwords come from ../inji/.env, which
+# vca setup generates with mode 0600 and the include reads. The file
+# requires each one, so no container starts on a default password
+# (ADR-055 decision 1).
 # Every host port binds to VCA_BIND, which vca setup sets to 127.0.0.1
 # on a public host.
 #
@@ -58,7 +62,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${INJI_DB_PASSWORD:-certify}
+      POSTGRES_PASSWORD: ${INJI_DB_PASSWORD:?set by vca setup}
       # vca_certify_did.sql names this DID in the sample configuration.
       INJI_CERTIFY_DID: ${INJI_CERTIFY_DID:-did:web:inji-certify-nginx}
     volumes:
@@ -97,8 +101,13 @@ services:
       download_hsm_client: "false"
       SPRING_DATASOURCE_URL: jdbc:postgresql://inji-certify-postgres:5432/inji_certify?currentSchema=certify
       SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: ${INJI_DB_PASSWORD:-certify}
-      INJI_CERTIFY_KEYSTORE_PASSWORD: ${INJI_CERTIFY_KEYSTORE_PASSWORD:-certify}
+      SPRING_DATASOURCE_PASSWORD: ${INJI_DB_PASSWORD:?set by vca setup}
+      INJI_CERTIFY_KEYSTORE_PASSWORD: ${INJI_CERTIFY_KEYSTORE_PASSWORD:?set by vca setup}
+      # The subject of the key certificates names the issuer. vca setup
+      # writes it to the .env of the issuer pair (ADR-055 decision 3).
+      INJI_KEY_CERT_CN: ${INJI_KEY_CERT_CN:-}
+      INJI_KEY_CERT_O: ${INJI_KEY_CERT_O:-}
+      INJI_KEY_CERT_OU: ${INJI_KEY_CERT_OU:-}
       INJI_CERTIFY_DID: ${INJI_CERTIFY_DID:-did:web:inji-certify-nginx}
       # The browser address of the stack eSignet. Its tokens carry it.
       INJI_ESIGNET_PUBLIC_URL: ${INJI_ESIGNET_PUBLIC_URL:-http://localhost:17089}
@@ -184,7 +193,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${INJI_ESIGNET_DB_PASSWORD:-esignet}
+      POSTGRES_PASSWORD: ${INJI_ESIGNET_DB_PASSWORD:?set by vca setup}
     volumes:
       - inji-esignet-db:/var/lib/postgresql/data
       - ./dpg/inji/esignet/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -225,7 +234,7 @@ services:
       plugin_name_env: esignet-mock-plugin.jar
       SPRING_DATASOURCE_URL: jdbc:postgresql://inji-esignet-postgres:5432/mosip_esignet?currentSchema=esignet
       SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: ${INJI_ESIGNET_DB_PASSWORD:-esignet}
+      SPRING_DATASOURCE_PASSWORD: ${INJI_ESIGNET_DB_PASSWORD:?set by vca setup}
       MOSIP_ESIGNET_MOCK_DOMAIN_URL: http://inji-mock-identity:8082
       MOSIP_ESIGNET_INTEGRATION_KEY_BINDER: MockKeyBindingWrapperService
       SPRING_CACHE_TYPE: redis
@@ -261,7 +270,7 @@ services:
       active_profile_env: default,local
       SPRING_DATASOURCE_URL: jdbc:postgresql://inji-esignet-postgres:5432/mosip_mockidentitysystem?currentSchema=mockidentitysystem
       SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: ${INJI_ESIGNET_DB_PASSWORD:-esignet}
+      SPRING_DATASOURCE_PASSWORD: ${INJI_ESIGNET_DB_PASSWORD:?set by vca setup}
       MOSIP_MOCK_IDA_KYC_TRANSACTION_TIMEOUT_SECS: "900"
       # The token of eSignet names the identity by its individual id, so
       # the CSV data provider of Certify finds the row of the identity.
@@ -317,7 +326,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${INJI_MIMOTO_DB_PASSWORD:-mimoto}
+      POSTGRES_PASSWORD: ${INJI_MIMOTO_DB_PASSWORD:?set by vca setup}
     volumes:
       - inji-mimoto-db:/var/lib/postgresql/data
       - ./dpg/inji/mimoto/mimoto_init.sql:/docker-entrypoint-initdb.d/mimoto_init.sql:ro
@@ -368,8 +377,14 @@ services:
       SPRING_CLOUD_BOOTSTRAP_LOCATION: /home/mosip/mimoto-bootstrap.properties
       SPRING_DATASOURCE_URL: jdbc:postgresql://inji-mimoto-postgres:5432/inji_mimoto
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${INJI_MIMOTO_DB_PASSWORD:-mimoto}
-      MIMOTO_KEYMANAGER_PASSWORD: ${INJI_MIMOTO_KEYSTORE_PASSWORD:-mimoto}
+      POSTGRES_PASSWORD: ${INJI_MIMOTO_DB_PASSWORD:?set by vca setup}
+      MIMOTO_KEYMANAGER_PASSWORD: ${INJI_MIMOTO_KEYSTORE_PASSWORD:?set by vca setup}
+      # The subject of the key certificates names the wallet operator.
+      # vca setup writes it to the .env of the holder pair (ADR-055
+      # decision 3).
+      INJI_KEY_CERT_CN: ${INJI_KEY_CERT_CN:-}
+      INJI_KEY_CERT_O: ${INJI_KEY_CERT_O:-}
+      INJI_KEY_CERT_OU: ${INJI_KEY_CERT_OU:-}
       # The browser reaches Mimoto through Inji Web, and the holder
       # realm through the host port of the stack Keycloak.
       INJI_WEB_PUBLIC_URL: ${INJI_WEB_PUBLIC_URL:-http://localhost:17085}
@@ -423,7 +438,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: injiverify
-      POSTGRES_PASSWORD: ${INJI_VERIFY_DB_PASSWORD:-injiverify}
+      POSTGRES_PASSWORD: ${INJI_VERIFY_DB_PASSWORD:?set by vca setup}
       POSTGRES_DB: injiverify
     volumes:
       - inji-verify-db:/var/lib/postgresql/data
@@ -451,7 +466,7 @@ services:
       DATABASE_NAME: injiverify
       DATABASE_SCHEMA: verify
       DATABASE_USERNAME: injiverify
-      DATABASE_PASSWORD: ${INJI_VERIFY_DB_PASSWORD:-injiverify}
+      DATABASE_PASSWORD: ${INJI_VERIFY_DB_PASSWORD:?set by vca setup}
       INJI_VP_REQUEST_LONG_POLLING_TIMEOUT: "55000"
       # A wallet posts its answer here, so the address is public.
       INJI_VP_SUBMISSION_BASE_URL: ${INJI_VERIFY_PUBLIC_URL:-http://localhost:17086}/v1/verify

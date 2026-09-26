@@ -263,7 +263,12 @@ type Config struct {
 	// (ADR-032 decision 1). Optional. Empty selects the embedded default
 	// look. Compose and the Helm charts point it at their mounted copy of
 	// deploy/vca/theme.yaml. The CLI asks no question for it.
-	ThemeFile     string `protobuf:"bytes,14,opt,name=theme_file,json=themeFile,proto3" json:"theme_file,omitempty"`
+	ThemeFile string `protobuf:"bytes,14,opt,name=theme_file,json=themeFile,proto3" json:"theme_file,omitempty"`
+	// The organisation that runs the key manager of the stack (ADR-055
+	// decision 3). The key manager puts it in the subject of every key
+	// certificate it makes. Only an issuer or a holder pair of a stack
+	// with a key manager needs it.
+	Organisation  *Config_Organisation `protobuf:"bytes,15,opt,name=organisation,proto3" json:"organisation,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -394,6 +399,13 @@ func (x *Config) GetThemeFile() string {
 		return x.ThemeFile
 	}
 	return ""
+}
+
+func (x *Config) GetOrganisation() *Config_Organisation {
+	if x != nil {
+		return x.Organisation
+	}
+	return nil
 }
 
 // Oidc describes one OpenID Connect provider.
@@ -659,6 +671,64 @@ func (x *Config_Ports) GetServices() map[string]int32 {
 	return nil
 }
 
+// Organisation names the organisation in the subject of a key
+// certificate. The common name is the public host of the pair.
+type Config_Organisation struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The organisation name. Optional. Defaults to the public host.
+	// An interactive run always asks for it.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The organisational unit. Optional. Defaults to the role, for
+	// example Issuer. An interactive run always asks for it.
+	Unit          string `protobuf:"bytes,2,opt,name=unit,proto3" json:"unit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Config_Organisation) Reset() {
+	*x = Config_Organisation{}
+	mi := &file_vca_config_v1_config_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Config_Organisation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Config_Organisation) ProtoMessage() {}
+
+func (x *Config_Organisation) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_config_v1_config_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Config_Organisation.ProtoReflect.Descriptor instead.
+func (*Config_Organisation) Descriptor() ([]byte, []int) {
+	return file_vca_config_v1_config_proto_rawDescGZIP(), []int{1, 3}
+}
+
+func (x *Config_Organisation) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Config_Organisation) GetUnit() string {
+	if x != nil {
+		return x.Unit
+	}
+	return ""
+}
+
 var file_vca_config_v1_config_proto_extTypes = []protoimpl.ExtensionInfo{
 	{
 		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
@@ -694,7 +764,7 @@ const file_vca_config_v1_config_proto_rawDesc = "" +
 	"\n" +
 	"validation\x18\b \x01(\tR\n" +
 	"validation\x12\x16\n" +
-	"\x06prompt\x18\t \x01(\bR\x06prompt\"\x8a'\n" +
+	"\x06prompt\x18\t \x01(\bR\x06prompt\"\xca+\n" +
 	"\x06Config\x12x\n" +
 	"\x04role\x18\x01 \x01(\x0e2\x13.vca.common.v1.RoleBO\xd2\xf3\x18K\n" +
 	"\x14The deployment role.\x12\bVCA_ROLE8\x01B'One of issuer, holder, verifier, admin.R\x04role\x12~\n" +
@@ -726,7 +796,9 @@ const file_vca_config_v1_config_proto_rawDesc = "" +
 	"uThe Redis URL for rate limits and one time codes. Empty selects the in-memory limiter, which is fine for one replica.\x12\rVCA_REDIS_URL \x01*\x01\x02B\"Starts with redis:// or rediss://.R\bredisUrl\x12\xe4\x01\n" +
 	"\n" +
 	"theme_file\x18\x0e \x01(\tB\xc4\x01\xd2\xf3\x18\xbf\x01\n" +
-	"MThe theme file inside the container. Empty selects the embedded default look.\x12\x0eVCA_THEME_FILEB^A file path inside the container. Compose mounts deploy/vca/theme.yaml at /etc/vca/theme.yaml.R\tthemeFile\x1a\xdc\b\n" +
+	"MThe theme file inside the container. Empty selects the embedded default look.\x12\x0eVCA_THEME_FILEB^A file path inside the container. Compose mounts deploy/vca/theme.yaml at /etc/vca/theme.yaml.R\tthemeFile\x12\xa4\x01\n" +
+	"\forganisation\x18\x0f \x01(\v2\".vca.config.v1.Config.OrganisationB\\\xd2\xf3\x18X\n" +
+	"=The organisation that the key certificates of the stack name.\x12\x10VCA_ORGANISATION*\x02\x01\x022\x01\x02R\forganisation\x1a\xdc\b\n" +
 	"\x04Oidc\x12\xd6\x01\n" +
 	"\rdiscovery_url\x18\x01 \x01(\tB\xb0\x01\xd2\xf3\x18\xab\x01\n" +
 	"NThe OIDC discovery URL of the provider. Defaults to the Keycloak of the stack.\x12\x16VCA_OIDC_DISCOVERY_URL8\x01B?An absolute http or https URL that serves a discovery document.R\fdiscoveryUrl\x12\xa7\x01\n" +
@@ -765,7 +837,12 @@ const file_vca_config_v1_config_proto_rawDesc = "" +
 	":The port of each remaining service, keyed by service name.\x12\x13VCA_PORTS_<SERVICE>B2The CLI assigns 8100 and up in service name order.R\bservices\x1a;\n" +
 	"\rServicesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01*I\n" +
+	"\x05value\x18\x02 \x01(\x05R\x05value:\x028\x01\x1a\x96\x03\n" +
+	"\fOrganisation\x12\xc7\x01\n" +
+	"\x04name\x18\x01 \x01(\tB\xb2\x01\xd2\xf3\x18\xad\x01\n" +
+	"OThe organisation name on the key certificates. Leave blank for the public host.\x12\x15VCA_ORGANISATION_NAMEBAFree text of 64 characters or fewer. Defaults to the public host.H\x01R\x04name\x12\xbb\x01\n" +
+	"\x04unit\x18\x02 \x01(\tB\xa6\x01\xd2\xf3\x18\xa1\x01\n" +
+	"JThe organisational unit on the key certificates. Leave blank for the role.\x12\x15VCA_ORGANISATION_UNITB:Free text of 64 characters or fewer. Defaults to the role.H\x01R\x04unit*I\n" +
 	"\x03Dpg\x12\x13\n" +
 	"\x0fDPG_UNSPECIFIED\x10\x00\x12\x0e\n" +
 	"\n" +
@@ -788,7 +865,7 @@ func file_vca_config_v1_config_proto_rawDescGZIP() []byte {
 }
 
 var file_vca_config_v1_config_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_vca_config_v1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_vca_config_v1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_vca_config_v1_config_proto_goTypes = []any{
 	(Dpg)(0),                          // 0: vca.config.v1.Dpg
 	(*Setting)(nil),                   // 1: vca.config.v1.Setting
@@ -796,32 +873,34 @@ var file_vca_config_v1_config_proto_goTypes = []any{
 	(*Config_Oidc)(nil),               // 3: vca.config.v1.Config.Oidc
 	(*Config_Secrets)(nil),            // 4: vca.config.v1.Config.Secrets
 	(*Config_Ports)(nil),              // 5: vca.config.v1.Config.Ports
-	nil,                               // 6: vca.config.v1.Config.Ports.ServicesEntry
-	(v1.Role)(0),                      // 7: vca.common.v1.Role
-	(*v1.SecretRef)(nil),              // 8: vca.common.v1.SecretRef
-	(*descriptorpb.FieldOptions)(nil), // 9: google.protobuf.FieldOptions
+	(*Config_Organisation)(nil),       // 6: vca.config.v1.Config.Organisation
+	nil,                               // 7: vca.config.v1.Config.Ports.ServicesEntry
+	(v1.Role)(0),                      // 8: vca.common.v1.Role
+	(*v1.SecretRef)(nil),              // 9: vca.common.v1.SecretRef
+	(*descriptorpb.FieldOptions)(nil), // 10: google.protobuf.FieldOptions
 }
 var file_vca_config_v1_config_proto_depIdxs = []int32{
-	7,  // 0: vca.config.v1.Setting.roles:type_name -> vca.common.v1.Role
+	8,  // 0: vca.config.v1.Setting.roles:type_name -> vca.common.v1.Role
 	0,  // 1: vca.config.v1.Setting.dpgs:type_name -> vca.config.v1.Dpg
-	7,  // 2: vca.config.v1.Config.role:type_name -> vca.common.v1.Role
+	8,  // 2: vca.config.v1.Config.role:type_name -> vca.common.v1.Role
 	0,  // 3: vca.config.v1.Config.dpg:type_name -> vca.config.v1.Dpg
 	3,  // 4: vca.config.v1.Config.oidc:type_name -> vca.config.v1.Config.Oidc
 	4,  // 5: vca.config.v1.Config.secrets:type_name -> vca.config.v1.Config.Secrets
 	5,  // 6: vca.config.v1.Config.ports:type_name -> vca.config.v1.Config.Ports
-	8,  // 7: vca.config.v1.Config.Oidc.client_secret:type_name -> vca.common.v1.SecretRef
-	8,  // 8: vca.config.v1.Config.Secrets.signing_key:type_name -> vca.common.v1.SecretRef
-	8,  // 9: vca.config.v1.Config.Secrets.session_key:type_name -> vca.common.v1.SecretRef
-	8,  // 10: vca.config.v1.Config.Secrets.bootstrap_token:type_name -> vca.common.v1.SecretRef
-	8,  // 11: vca.config.v1.Config.Secrets.dpg_api_key:type_name -> vca.common.v1.SecretRef
-	6,  // 12: vca.config.v1.Config.Ports.services:type_name -> vca.config.v1.Config.Ports.ServicesEntry
-	9,  // 13: vca.config.v1.setting:extendee -> google.protobuf.FieldOptions
-	1,  // 14: vca.config.v1.setting:type_name -> vca.config.v1.Setting
-	15, // [15:15] is the sub-list for method output_type
-	15, // [15:15] is the sub-list for method input_type
-	14, // [14:15] is the sub-list for extension type_name
-	13, // [13:14] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	6,  // 7: vca.config.v1.Config.organisation:type_name -> vca.config.v1.Config.Organisation
+	9,  // 8: vca.config.v1.Config.Oidc.client_secret:type_name -> vca.common.v1.SecretRef
+	9,  // 9: vca.config.v1.Config.Secrets.signing_key:type_name -> vca.common.v1.SecretRef
+	9,  // 10: vca.config.v1.Config.Secrets.session_key:type_name -> vca.common.v1.SecretRef
+	9,  // 11: vca.config.v1.Config.Secrets.bootstrap_token:type_name -> vca.common.v1.SecretRef
+	9,  // 12: vca.config.v1.Config.Secrets.dpg_api_key:type_name -> vca.common.v1.SecretRef
+	7,  // 13: vca.config.v1.Config.Ports.services:type_name -> vca.config.v1.Config.Ports.ServicesEntry
+	10, // 14: vca.config.v1.setting:extendee -> google.protobuf.FieldOptions
+	1,  // 15: vca.config.v1.setting:type_name -> vca.config.v1.Setting
+	16, // [16:16] is the sub-list for method output_type
+	16, // [16:16] is the sub-list for method input_type
+	15, // [15:16] is the sub-list for extension type_name
+	14, // [14:15] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_vca_config_v1_config_proto_init() }
@@ -835,7 +914,7 @@ func file_vca_config_v1_config_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_config_v1_config_proto_rawDesc), len(file_vca_config_v1_config_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   6,
+			NumMessages:   7,
 			NumExtensions: 1,
 			NumServices:   0,
 		},

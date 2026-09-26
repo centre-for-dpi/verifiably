@@ -178,6 +178,17 @@ message Config {
     env: "VCA_THEME_FILE"
     validation: "A file path inside the container. Compose mounts deploy/vca/theme.yaml at /etc/vca/theme.yaml."
   }];
+  // The organisation that runs the key manager of the stack (ADR-055
+  // decision 3). The key manager puts it in the subject of every key
+  // certificate it makes. Only an issuer or a holder pair of a stack
+  // with a key manager needs it.
+  Organisation organisation = 15 [(setting) = {
+    description: "The organisation that the key certificates of the stack name."
+    env: "VCA_ORGANISATION"
+    roles: ROLE_ISSUER
+    roles: ROLE_HOLDER
+    dpgs: DPG_INJI
+  }];
 
   // Oidc describes one OpenID Connect provider.
   message Oidc {
@@ -315,6 +326,27 @@ message Config {
       description: "The port of each remaining service, keyed by service name."
       env: "VCA_PORTS_<SERVICE>"
       validation: "The CLI assigns 8100 and up in service name order."
+    }];
+  }
+
+  // Organisation names the organisation in the subject of a key
+  // certificate. The common name is the public host of the pair.
+  message Organisation {
+    // The organisation name. Optional. Defaults to the public host.
+    // An interactive run always asks for it.
+    string name = 1 [(setting) = {
+      description: "The organisation name on the key certificates. Leave blank for the public host."
+      env: "VCA_ORGANISATION_NAME"
+      prompt: true
+      validation: "Free text of 64 characters or fewer. Defaults to the public host."
+    }];
+    // The organisational unit. Optional. Defaults to the role, for
+    // example Issuer. An interactive run always asks for it.
+    string unit = 2 [(setting) = {
+      description: "The organisational unit on the key certificates. Leave blank for the role."
+      env: "VCA_ORGANISATION_UNIT"
+      prompt: true
+      validation: "Free text of 64 characters or fewer. Defaults to the role."
     }];
   }
 }

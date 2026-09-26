@@ -70,10 +70,15 @@ func RenderCompose() string {
 	// stack files mount ../keycloak-<dpg>, which sits beside the pair
 	// directories like the ../<pair>/.env files of the service blocks,
 	// so every include resolves against the directory of this file.
+	// Compose fills the variables of each stack file from the .env of
+	// the stack directory, which vca setup writes with the generated
+	// secrets (ADR-055 decision 1). Compose checks the variables of every
+	// included file, so every setup run writes the file of every stack.
 	b.WriteString("include:\n")
-	for _, path := range DpgStackFiles() {
+	for i, path := range DpgStackFiles() {
 		fmt.Fprintf(&b, "  - path: %s\n", path)
 		b.WriteString("    project_directory: .\n")
+		fmt.Fprintf(&b, "    env_file: ../%s\n", StackEnvFile(StackDpgs()[i]))
 	}
 	b.WriteString("\n")
 

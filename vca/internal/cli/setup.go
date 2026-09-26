@@ -55,6 +55,10 @@ type SetupRequest struct {
 	// from an earlier run, from ReadKeycloakEnv. The run keeps the
 	// administrator password it finds there (ADR-035 decision 7).
 	Keycloak map[string]string
+	// Stacks holds the values of the .env of every stack from an earlier
+	// run, from ReadStackEnvs, keyed by DPG. The run keeps every stack
+	// secret it finds there (ADR-055 decision 1).
+	Stacks map[configv1.Dpg]map[string]string
 }
 
 // Plan is the result of a setup run before anything reaches the disk.
@@ -163,6 +167,11 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	for name, value := range inji {
 		extra[name] = value
 	}
+	// The key managers of the stack name the organisation in the subject
+	// of their certificates (ADR-055 decision 3).
+	for name, value := range KeyCertValues(req.Pair, values) {
+		extra[name] = value
+	}
 	for name, value := range Passthrough(settings, req.Flags, req.File) {
 		extra[name] = value
 	}
@@ -200,6 +209,11 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 		return Plan{}, err
 	}
 	shared = append(shared, mimoto...)
+	stacks, err := StackFiles(req.Stacks, req.Random)
+	if err != nil {
+		return Plan{}, err
+	}
+	shared = append(shared, stacks...)
 	return Plan{Pair: req.Pair, Resolutions: list, Ports: plan, Files: files, Shared: shared}, nil
 }
 
@@ -377,6 +391,12 @@ func applyDerivedDefaults(list []Resolution, p Pair, domain string) []Resolution
 			out[i].Value, out[i].Origin = public, OriginDefault
 		case "oidc.redirect_uri":
 			out[i].Value, out[i].Origin = public+"/auth/callback", OriginDefault
+		case "organisation.name":
+			// The key certificates name the public host until the
+			// operator names the organisation (ADR-055 decision 3).
+			out[i].Value, out[i].Origin = hostOf(public), OriginDefault
+		case "organisation.unit":
+			out[i].Value, out[i].Origin = roleTitle(p.Role), OriginDefault
 		}
 	}
 	return out

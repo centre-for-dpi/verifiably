@@ -6,6 +6,9 @@
 # digest in production, for example CREDEBL_VERSION=sha-1a2b3c4.
 # Keycloak and PostgreSQL are pinned.
 # The main compose file pulls this file in with include.
+# The database password comes from ../credebl/.env, which vca setup
+# generates with mode 0600 and the include reads. The file requires it,
+# so no container starts on a default password (ADR-055 decision 1).
 # Every host port binds to VCA_BIND, which vca setup sets to 127.0.0.1
 # on a public host.
 #
@@ -47,7 +50,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: credebl
-      POSTGRES_PASSWORD: ${CREDEBL_DB_PASSWORD:-credebl}
+      POSTGRES_PASSWORD: ${CREDEBL_DB_PASSWORD:?set by vca setup}
       POSTGRES_DB: credebl
     volumes:
       - credebl-db:/var/lib/postgresql/data
@@ -77,7 +80,7 @@ services:
       credebl-postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://credebl:${CREDEBL_DB_PASSWORD:-credebl}@credebl-postgres:5432/credebl
+      DATABASE_URL: postgresql://credebl:${CREDEBL_DB_PASSWORD:?set by vca setup}@credebl-postgres:5432/credebl
       NATS_URL: nats://credebl-nats:4222
       KEYCLOAK_DOMAIN: ${CREDEBL_KEYCLOAK_URL:-http://credebl-keycloak:8080}
     ports:

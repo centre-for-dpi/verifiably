@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
@@ -22,6 +23,7 @@ var (
 	rxCommaList  = regexp.MustCompile(`comma separated list of ([a-z0-9, ]+?(?: and [a-z0-9]+)?)\s*\.`)
 	rxBetween    = regexp.MustCompile(`between (\d+) and (\d+)`)
 	rxScheme     = regexp.MustCompile(`[a-z0-9]+://`)
+	rxAtMost     = regexp.MustCompile(`(\d+) characters or fewer`)
 )
 
 // ValidationError reports one value that breaks the rule of a setting.
@@ -81,6 +83,9 @@ func checksFor(s Setting) []check {
 		low := anyval.OrZero(strconv.Atoi(m[1]))
 		high := anyval.OrZero(strconv.Atoi(m[2]))
 		out = append(out, inRange(low, high))
+	}
+	if m := rxAtMost.FindStringSubmatch(rule); m != nil {
+		out = append(out, atMost(anyval.OrZero(strconv.Atoi(m[1]))))
 	}
 	switch {
 	case strings.Contains(rule, "absolute http or https url"):
@@ -149,6 +154,16 @@ func hasPrefix(prefixes []string) check {
 			}
 		}
 		return "the value must start with " + strings.Join(prefixes, " or ")
+	}
+}
+
+// atMost caps the length of a value in characters, not bytes.
+func atMost(limit int) check {
+	return func(value string) string {
+		if utf8.RuneCountInString(value) > limit {
+			return fmt.Sprintf("the value must have %d characters or fewer", limit)
+		}
+		return ""
 	}
 }
 

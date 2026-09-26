@@ -465,6 +465,7 @@ func TestDeployStatusAndDownRunCompose(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, EnvFileName), []byte("VCA_ROLE=issuer\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	writeStackEnvs(t, root)
 	for _, c := range []struct{ command, action string }{
 		{"deploy", "up -d"}, {"status", "ps"}, {"down", "down --remove-orphans"},
 	} {

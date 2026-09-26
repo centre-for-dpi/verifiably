@@ -114,6 +114,7 @@ func TestDeployPrintsTheEntryPoints(t *testing.T) {
 	root := t.TempDir()
 	p := issuerPair()
 	writePairEnv(t, root, p, "VCA_PUBLIC_URL=https://issuer-waltid.labs.example\n", "")
+	writeStackEnvs(t, root)
 	rec := &recorder{}
 	var out bytes.Buffer
 	err := Deploy(context.Background(), DeployOptions{Root: root, Pairs: []Pair{p}, Out: &out, Run: rec.run})
@@ -224,6 +225,7 @@ func TestEntryReportStartsWithTheLanding(t *testing.T) {
 		t.Error("an unreadable landing file passed")
 	}
 	// The deploy command prints it.
+	writeStackEnvs(t, root)
 	rec := &recorder{}
 	var out bytes.Buffer
 	if err := Deploy(context.Background(), DeployOptions{Root: root, Pairs: []Pair{p}, Out: &out, Run: rec.run}); err != nil {

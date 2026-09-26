@@ -88,6 +88,9 @@ jobs:
       - name: No tracked secret (ADR-029 decision 6)
         run: ./hack/secret-scan.sh
 
+      - name: The key=value rule of the scan (ADR-055 decision 5)
+        run: ./hack/secret-scan_test.sh
+
   lint:
     name: gofmt + go vet + golangci-lint
     runs-on: ubuntu-latest

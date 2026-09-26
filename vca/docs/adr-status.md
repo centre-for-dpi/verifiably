@@ -546,7 +546,7 @@ A row that is not `Done` carries a note.
 | ADR-050 | 2 A configurable workflow replaces each artefact | Not started | `vca/services`, `vca/internal/cli` | Follows the records ADR-051 to ADR-055. |
 | ADR-050 | 3 Test doubles stay in test paths | Not started | `vca/internal/cli/nomock_test.go` | The guard test checks that no deployment file names them. |
 | ADR-050 | 4 A guard test scans the tree | Not started | `vca/internal/cli/nomock_test.go` | The test does not exist yet. |
-| ADR-050 | 5 A stack secret has no default | Not started | `deploy/vca/dpg/*.yaml` | Compose files still carry default passwords. |
+| ADR-050 | 5 A stack secret has no default | Done | `deploy/vca/dpg/*.yaml`, `vca/internal/cli/stackenv.go` | Every stack file requires its passwords with `${NAME:?set by vca setup}`. `TestStackFilesHaveNoSecretDefault` pins it. |
 
 ## ADR-051: The VCA claims store is the data provider of Inji Certify
 
@@ -593,18 +593,18 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-055 | 1 Setup generates every stack secret | Not started | `vca/internal/cli/dpgconfig.go`, `deploy/vca/dpg/*.yaml` | Compose files carry default passwords today. |
-| ADR-055 | 2 Empty values for platform services the stack does not run | Not started | `deploy/vca/dpg/inji/mimoto/mimoto-default.properties` | The file holds upstream literals today. |
-| ADR-055 | 3 The certificate subject names the issuer | Not started | `deploy/vca/dpg/inji/certify/certify-default.properties` | The subject is an example host today. |
+| ADR-055 | 1 Setup generates every stack secret | Done | `vca/internal/cli/stackenv.go`, `deploy/vca/compose.yaml` | Every setup run writes `deploy/<dpg>/.env` for each stack with mode 0600 and keeps the values it finds. The include of each stack file reads it. |
+| ADR-055 | 2 Empty values for platform services the stack does not run | Done | `deploy/vca/dpg/inji/mimoto/mimoto-default.properties`, `deploy/vca/dpg/inji/certify/certify-default.properties` | `TestMimotoRunsNoPlatformSecret` pins the empty values. |
+| ADR-055 | 3 The certificate subject names the issuer | Done | `vca/internal/cli/stackenv.go`, `deploy/vca/dpg/inji` | Setup asks for the organisation and the unit of an Inji issuer or holder pair. The common name is the public host. |
 | ADR-055 | 4 The CREDEBL platform admin is a required setting | Not started | `vca/internal/cli/bootstrap.go` | Bootstrap signs in as a placeholder user today. |
-| ADR-055 | 5 The secret scan checks `key=value` files | Not started | `vca/hack/secret-scan.sh` | The scan checks `key: value` only today. |
+| ADR-055 | 5 The secret scan checks `key=value` files | Done | `vca/hack/secret-scan.sh`, `vca/hack/secret-scan_test.sh` | The rule covers `.properties`, `.conf`, `.ini` and `.env` files. `TestSecretScanScript` runs the cases. |
 
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 222 |
+| Done | 227 |
 | Partial | 25 |
 | Deferred | 3 |
-| Not started | 57 |
+| Not started | 52 |
 | Total | 307 |

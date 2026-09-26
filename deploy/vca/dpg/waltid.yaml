@@ -3,6 +3,9 @@
 # The versions come from verifiably-go/docs/dpg-matrix.md.
 # Keycloak 25.0 is the identity provider of the local path.
 # The main compose file pulls this file in with include.
+# The database password comes from ../waltid/.env, which vca setup
+# generates with mode 0600 and the include reads. The file requires it,
+# so no container starts on a default password (ADR-055 decision 1).
 # Every host port binds to VCA_BIND, which vca setup sets to 127.0.0.1
 # on a public host.
 # VCA services never rebuild a DPG image.
@@ -45,7 +48,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: waltid
-      POSTGRES_PASSWORD: ${WALTID_DB_PASSWORD:-waltid}
+      POSTGRES_PASSWORD: ${WALTID_DB_PASSWORD:?set by vca setup}
       POSTGRES_DB: waltid
     volumes:
       - waltid-db:/var/lib/postgresql/data
@@ -110,7 +113,7 @@ services:
     environment:
       WALTID_DATASOURCE_URL: jdbc:postgresql://waltid-postgres:5432/waltid
       WALTID_DATASOURCE_USER: waltid
-      WALTID_DATASOURCE_PASSWORD: ${WALTID_DB_PASSWORD:-waltid}
+      WALTID_DATASOURCE_PASSWORD: ${WALTID_DB_PASSWORD:?set by vca setup}
     ports:
       - "${VCA_BIND:-0.0.0.0}:${WALTID_WALLET_HOST_PORT:-17001}:7001"
     networks:

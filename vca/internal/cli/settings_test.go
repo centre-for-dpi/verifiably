@@ -157,8 +157,11 @@ func TestPromptSettings(t *testing.T) {
 			prompted = append(prompted, s.Path)
 		}
 	}
-	if len(prompted) != 1 || prompted[0] != "public_url" {
-		t.Errorf("the prompt settings are %v, want [public_url]", prompted)
+	// The organisation on the key certificates is a question as well,
+	// because only the operator knows it (ADR-055 decision 3).
+	want := []string{"public_url", "organisation.name", "organisation.unit"}
+	if strings.Join(prompted, ",") != strings.Join(want, ",") {
+		t.Errorf("the prompt settings are %v, want %v", prompted, want)
 	}
 }
 

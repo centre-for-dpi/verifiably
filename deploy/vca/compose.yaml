@@ -15,10 +15,13 @@ name: vca
 include:
   - path: dpg/waltid.yaml
     project_directory: .
+    env_file: ../waltid/.env
   - path: dpg/inji.yaml
     project_directory: .
+    env_file: ../inji/.env
   - path: dpg/credebl.yaml
     project_directory: .
+    env_file: ../credebl/.env
 
 x-vca-service: &vca-service
   restart: unless-stopped
