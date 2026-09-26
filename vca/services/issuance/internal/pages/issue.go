@@ -410,6 +410,13 @@ func (p *Pages) renderDelivery(pg page, w wizard) error {
 	parts := []template.HTML{
 		b.add("choice", components.Choice{ID: "channel", Legend: msg.T("issuer.issue.step.delivery.label"), Hint: msg.T("issuer.issue.hidden_note"), Options: options}),
 	}
+	if hasFeature(w.caps, backendv1.Feature_FEATURE_PRESENTATION_DURING_ISSUANCE) {
+		parts = append(parts, b.add("field", components.Field{ID: "presentation", Label: msg.T("issuer.issue.presentation.label"),
+			Type: "select", Hint: msg.T("issuer.issue.presentation.hint"), Options: []components.Option{
+				{Value: "", Text: msg.T("issuer.issue.presentation.none.label")},
+				{Value: presentationYes, Text: msg.T("issuer.issue.presentation.yes.label"), Selected: w.form.Get("presentation") == presentationYes},
+			}}))
+	}
 	if fs := formatsOn(w.schema, w.caps); len(fs) > 1 {
 		opts := make([]components.Option, 0, len(fs))
 		for _, f := range fs {
@@ -468,10 +475,42 @@ func (p *Pages) review(pg page) error {
 	if !ok {
 		return err
 	}
-	if _, ok := pickChannel(w.caps, w.form); !ok {
+	channel, ok := pickChannel(w.caps, w.form)
+	if !ok {
 		return p.badChannel(pg, w)
 	}
+	if askPresentation(w) && !oid4vci(channel) {
+		w.step = stepDelivery
+		w.toasts = []components.Toast{{Level: "bad", Text: msg.T("issuer.issue.error.presentation")}}
+		return p.renderDelivery(pg, w)
+	}
 	return p.renderReview(pg, w)
+}
+
+// presentationYes is the form value of the option "Ask the holder to
+// present a credential first".
+const presentationYes = "yes"
+
+// askPresentation reports whether the form asks for a presentation
+// first on a stack whose adapter lists the feature.
+func askPresentation(w wizard) bool {
+	return w.form.Get("presentation") == presentationYes &&
+		hasFeature(w.caps, backendv1.Feature_FEATURE_PRESENTATION_DURING_ISSUANCE)
+}
+
+// oid4vci reports whether a channel carries an OID4VCI offer.
+func oid4vci(c backendv1.Channel) bool {
+	return c == backendv1.Channel_CHANNEL_OID4VCI_PREAUTH || c == backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE
+}
+
+// hasFeature reports whether the adapter lists a feature.
+func hasFeature(caps *backendv1.GetCapabilitiesResponse, f backendv1.Feature) bool {
+	for _, got := range caps.GetFeatures() {
+		if got == f {
+			return true
+		}
+	}
+	return false
 }
 
 // badChannel sends a form with a channel the pair lacks back to the
@@ -497,8 +536,12 @@ func (p *Pages) renderReview(pg page, w wizard) error {
 		{{Text: msg.T("issuer.issue.review.stack.label")}, {Text: stackName(w.caps)}},
 		{{Text: msg.T("issuer.issue.step.delivery.label")}, {Text: msg.T(channelKey(channel) + ".label")}},
 	}
+	if askPresentation(w) {
+		rows = append(rows, components.Row{{Text: msg.T("issuer.issue.presentation.label")}, {Text: msg.T("issuer.issue.presentation.yes.label")}})
+	}
 	rows = append(rows, w.claims.rows(w.values.claims)...)
-	hidden := template.HTML(hiddenInput("channel", w.form.Get("channel")) + hiddenInput("format", w.form.Get("format"))) //nolint:gosec // the inputs are escaped
+	hidden := template.HTML(hiddenInput("channel", w.form.Get("channel")) + hiddenInput("format", w.form.Get("format")) + //nolint:gosec // the inputs are escaped
+		hiddenInput("presentation", w.form.Get("presentation")))
 	body := p.postForm(pg, IssueOffersPath, w, components.Join(
 		hidden,
 		b.add("block", components.Block{ID: "review", Title: msg.T("issuer.issue.review.title.label"), Lead: msg.T("issuer.issue.review.lead"),
@@ -536,6 +579,7 @@ func (p *Pages) create(pg page) error {
 	res, err := p.opts.Issuance.Issue(ctx, staffshell.AsActor(ctx, &issuancev1.IssueRequest{
 		SchemaId: w.schema.GetId(), SchemaVersion: w.schema.GetVersion(), SubjectData: string(data),
 		Format: pickFormat(w), Delivery: &issuancev1.Delivery{Channel: channel, Locale: "en"},
+		RequirePresentation: askPresentation(w) && oid4vci(channel),
 	}))
 	if err != nil {
 		text := msg.T("issuer.issue.error.stack")

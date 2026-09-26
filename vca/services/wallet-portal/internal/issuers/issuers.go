@@ -393,6 +393,7 @@ type authServer struct {
 	AnonymousPreAuth bool     `json:"pre-authorized_grant_anonymous_access_supported"`
 	Authorization    string   `json:"authorization_endpoint"`
 	Token            string   `json:"token_endpoint"`
+	Interactive      string   `json:"interactive_authorization_endpoint"`
 }
 
 // Endpoints are the two addresses of the authorization code flow.
@@ -401,6 +402,10 @@ type Endpoints struct {
 	Authorization string
 	// Token is where the wallet trades the code for an access token.
 	Token string
+	// Interactive is the interactive authorization endpoint of OID4VCI,
+	// where an issuer asks for a presentation before it gives a code.
+	// Empty when the server has none.
+	Interactive string
 }
 
 // ErrNoEndpoints reports an issuer whose authorization server names no
@@ -428,7 +433,26 @@ func (c *Crawler) Endpoints(ctx context.Context, issuer string) (Endpoints, erro
 		if json.Unmarshal(doc.Body, &as) != nil || as.Authorization == "" || as.Token == "" {
 			continue
 		}
-		return Endpoints{Authorization: as.Authorization, Token: as.Token}, nil
+		return Endpoints{Authorization: as.Authorization, Token: as.Token, Interactive: as.Interactive}, nil
+	}
+	return Endpoints{}, ErrNoEndpoints
+}
+
+// Server returns the endpoints of one authorization server, as a
+// credential offer names it. It reads the metadata under the address
+// rules of the public fetcher. A server with a token endpoint and an
+// interactive endpoint needs no authorization endpoint.
+func (c *Crawler) Server(ctx context.Context, server string) (Endpoints, error) {
+	for _, path := range []string{OAuthPath, OpenIDPath} {
+		doc, err := get(ctx, c.opts.Public, strings.TrimRight(server, "/")+path)
+		if err != nil {
+			continue
+		}
+		var as authServer
+		if json.Unmarshal(doc.Body, &as) != nil || as.Token == "" || (as.Authorization == "" && as.Interactive == "") {
+			continue
+		}
+		return Endpoints{Authorization: as.Authorization, Token: as.Token, Interactive: as.Interactive}, nil
 	}
 	return Endpoints{}, ErrNoEndpoints
 }

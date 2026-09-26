@@ -57,6 +57,16 @@ type record struct {
 	Token string `json:"token,omitempty"`
 	// Redirect is the redirect URI of a sign in.
 	Redirect string `json:"redirect,omitempty"`
+	// Interactive is the interactive authorization endpoint of an issuer
+	// that asks for a presentation before it issues.
+	Interactive string `json:"interactive,omitempty"`
+	// AuthSession is the session id of that endpoint.
+	AuthSession string `json:"auth_session,omitempty"`
+	// Request is the OpenID4VP request of that endpoint, as JSON.
+	Request string `json:"request,omitempty"`
+	// Offer is the credential offer the wallet claims after the
+	// presentation.
+	Offer string `json:"offer,omitempty"`
 	// ExpiresAt is the time the record stops working.
 	ExpiresAt time.Time `json:"expires_at"`
 }

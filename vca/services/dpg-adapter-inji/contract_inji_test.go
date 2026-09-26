@@ -9,7 +9,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -333,5 +335,79 @@ func TestContractIdentityQR(t *testing.T) {
 	}
 	if cwt.Data["4"] != "Wanjiku Njeri" {
 		t.Fatalf("claim 169 = %v", cwt.Data)
+	}
+}
+
+// TestContractPresentationDuringIssuance builds an offer that asks for a
+// presentation first and sends the first interactive authorization
+// request of a wallet. Certify answers with the presentation request of
+// the deployment. It needs VCA_INJI_CONTRACT_PRESENTATION and a public
+// URL.
+func TestContractPresentationDuringIssuance(t *testing.T) {
+	cfg := contractEnv(t)
+	configurationID := os.Getenv("VCA_INJI_CONTRACT_CONFIGURATION_ID")
+	if cfg.CertifyURL == "" || cfg.PublicURL == "" || configurationID == "" || os.Getenv("VCA_INJI_CONTRACT_PRESENTATION") == "" {
+		t.Skip("set VCA_INJI_CONTRACT_PRESENTATION, _PUBLIC_URL, and _CONFIGURATION_ID to run the presentation case")
+	}
+	cfg.PresentationDuringIssuance = true
+	a, err := app.Build(cfg, app.Deps{HTTP: &http.Client{Timeout: 30 * time.Second}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	offer, err := a.Service.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
+		Spec: &backendv1.IssueSpec{ConfigurationId: configurationID}, RequirePresentation: true,
+	}))
+	if err != nil {
+		t.Fatalf("CreateOffer: %v", err)
+	}
+	document, ok := a.Service.HostedOffer(ctx, offer.Msg.GetOfferId())
+	if !ok {
+		t.Fatal("the adapter does not host the offer")
+	}
+	var doc struct {
+		Grants struct {
+			Code struct {
+				Server string `json:"authorization_server"`
+			} `json:"authorization_code"`
+		} `json:"grants"`
+	}
+	if jerr := json.Unmarshal([]byte(document), &doc); jerr != nil {
+		t.Fatal(jerr)
+	}
+	client := &http.Client{Timeout: 30 * time.Second}
+	meta, err := client.Get(strings.TrimRight(doc.Grants.Code.Server, "/") + "/.well-known/oauth-authorization-server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var as struct {
+		Interactive string `json:"interactive_authorization_endpoint"`
+	}
+	err = json.NewDecoder(meta.Body).Decode(&as)
+	if cerr := meta.Body.Close(); cerr != nil {
+		t.Error(cerr)
+	}
+	if err != nil || as.Interactive == "" {
+		t.Fatalf("the authorization server names no interactive endpoint: %v", err)
+	}
+	resp, err := client.PostForm(as.Interactive, url.Values{
+		"response_type": {"code"}, "client_id": {"vca-contract"}, "code_challenge_method": {"S256"},
+		"code_challenge": {"E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"}, "interaction_types_supported": {"openid4vp_presentation"},
+		"authorization_details": {`[{"type":"openid_credential","credential_configuration_id":"` + configurationID + `"}]`},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Error(cerr)
+		}
+	}()
+	var answer map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&answer); err != nil {
+		t.Fatal(err)
+	}
+	if answer["status"] != "require_interaction" || answer["openid4vp_request"] == nil {
+		t.Fatalf("answer = %v", answer)
 	}
 }

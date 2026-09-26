@@ -176,3 +176,16 @@ func TestPluginsSplitTheList(t *testing.T) {
 		t.Fatalf("plugins %v, domain %q", got, cfg.CADomain)
 	}
 }
+
+// TestPresentationDuringIssuanceIsOffByDefault keeps the option off until
+// the operator points Certify at Inji Verify.
+func TestPresentationDuringIssuanceIsOffByDefault(t *testing.T) {
+	cfg, err := config.Load(env(map[string]string{"VCA_INJI_CERTIFY_URL": "http://c"}))
+	if err != nil || cfg.PresentationDuringIssuance {
+		t.Fatalf("default %v %v", cfg.PresentationDuringIssuance, err)
+	}
+	cfg, err = config.Load(env(map[string]string{"VCA_INJI_CERTIFY_URL": "http://c", "VCA_INJI_PRESENTATION_DURING_ISSUANCE": "true"}))
+	if err != nil || !cfg.PresentationDuringIssuance {
+		t.Fatalf("set %v %v", cfg.PresentationDuringIssuance, err)
+	}
+}

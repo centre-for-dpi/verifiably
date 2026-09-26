@@ -127,9 +127,13 @@ func (p *Portal) requestCard(b *pen, start *walletportalv1.PresentStartResponse)
 		b.hidden(session.Field, b.guard.Token(b.who)) + b.hidden("id", start.GetPresentationId()) +
 		b.raw(`<div class="split"><div>`) + components.Join(left...) + b.raw(`</div><div>`) + components.Join(right...) +
 		b.raw(`</div></div><div class="form-actions">`) + components.Join(actions...) + b.raw(`</div></form>`)
+	text := present.Summary(start.GetRequested())
+	if start.GetDuringIssuance() {
+		text = msg.T("holder.present.issuer.text") + " " + text
+	}
 	return b.part("card", components.Card{
 		ID: "request", Title: msg.T("holder.present.from.label", verifierName(start)),
-		Text: present.Summary(start.GetRequested()), Body: body,
+		Text: text, Body: body,
 	})
 }
 
@@ -323,13 +327,16 @@ func (p *Portal) outcome(w http.ResponseWriter, r *http.Request, answer *walletp
 		badge = components.Badge{Text: msg.T("holder.present.result.accepted.label"), Status: "ok"}
 	}
 	back := b.part("button", components.Button{Text: msg.T("holder.present.back.label"), Href: p.opts.Prefix + "/"})
+	title, lead := msg.T("holder.present.outcome.label"), msg.T("holder.present.outcome.lead")
+	if answer.GetCard() != nil {
+		title, lead = msg.T("holder.present.issued.label"), msg.T("holder.present.issued.lead")
+	}
 	card := b.part("card", components.Card{
-		ID: "outcome", Title: msg.T("holder.present.outcome.label"), Text: answer.GetMessage(),
+		ID: "outcome", Title: title, Text: answer.GetMessage(),
 		Body: components.Join(b.part("badge", badge), back),
 	})
 	return p.render(w, r, b, components.Page{
-		Title: msg.T("holder.present.outcome.label"), Lead: msg.T("holder.present.outcome.lead"),
-		Description: msg.T("holder.present.outcome.lead"), Content: card,
+		Title: title, Lead: lead, Description: lead, Content: card,
 	})
 }
 

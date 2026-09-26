@@ -190,8 +190,12 @@ type IssueRequest struct {
 	StatusPurpose string `protobuf:"bytes,8,opt,name=status_purpose,json=statusPurpose,proto3" json:"status_purpose,omitempty"`
 	// The holder proof JWT from an authorization code request, when present.
 	HolderKeyProof string `protobuf:"bytes,9,opt,name=holder_key_proof,json=holderKeyProof,proto3" json:"holder_key_proof,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Ask the holder to present a credential before the stack issues. The
+	// service accepts it only for an OID4VCI channel on a stack whose
+	// adapter lists FEATURE_PRESENTATION_DURING_ISSUANCE.
+	RequirePresentation bool `protobuf:"varint,10,opt,name=require_presentation,json=requirePresentation,proto3" json:"require_presentation,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *IssueRequest) Reset() {
@@ -285,6 +289,13 @@ func (x *IssueRequest) GetHolderKeyProof() string {
 		return x.HolderKeyProof
 	}
 	return ""
+}
+
+func (x *IssueRequest) GetRequirePresentation() bool {
+	if x != nil {
+		return x.RequirePresentation
+	}
+	return false
 }
 
 // Offer is the state of one issuance.
@@ -1168,7 +1179,7 @@ const file_vca_issuance_v1_issuance_proto_rawDesc = "" +
 	"\achannel\x18\x01 \x01(\x0e2\x17.vca.backend.v1.ChannelR\achannel\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12\x14\n" +
 	"\x05phone\x18\x03 \x01(\tR\x05phone\x12\x16\n" +
-	"\x06locale\x18\x04 \x01(\tR\x06locale\"\x99\x03\n" +
+	"\x06locale\x18\x04 \x01(\tR\x06locale\"\xcc\x03\n" +
 	"\fIssueRequest\x12\x1b\n" +
 	"\tschema_id\x18\x01 \x01(\tR\bschemaId\x12%\n" +
 	"\x0eschema_version\x18\x02 \x01(\x05R\rschemaVersion\x12!\n" +
@@ -1178,7 +1189,9 @@ const file_vca_issuance_v1_issuance_proto_rawDesc = "" +
 	"\bdelivery\x18\x06 \x01(\v2\x19.vca.issuance.v1.DeliveryR\bdelivery\x129\n" +
 	"\bvalidity\x18\a \x01(\v2\x1d.vca.common.v1.ValidityWindowR\bvalidity\x12%\n" +
 	"\x0estatus_purpose\x18\b \x01(\tR\rstatusPurpose\x12(\n" +
-	"\x10holder_key_proof\x18\t \x01(\tR\x0eholderKeyProof\"\xf0\x05\n" +
+	"\x10holder_key_proof\x18\t \x01(\tR\x0eholderKeyProof\x121\n" +
+	"\x14require_presentation\x18\n" +
+	" \x01(\bR\x13requirePresentation\"\xf0\x05\n" +
 	"\x05Offer\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x121\n" +
 	"\achannel\x18\x02 \x01(\x0e2\x17.vca.backend.v1.ChannelR\achannel\x122\n" +

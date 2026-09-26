@@ -64,6 +64,9 @@ func (s *Service) CreateOffer(
 	if channel == backendv1.Channel_CHANNEL_UNSPECIFIED {
 		channel = backendv1.Channel_CHANNEL_OID4VCI_PREAUTH
 	}
+	if req.Msg.GetRequirePresentation() {
+		return s.presentationOffer(ctx, spec, channel)
+	}
 	switch channel {
 	case backendv1.Channel_CHANNEL_OID4VCI_PREAUTH:
 		return s.preAuthorizedOffer(ctx, spec)
@@ -96,8 +99,41 @@ func (s *Service) preAuthorizedOffer(ctx context.Context, spec *backendv1.IssueS
 	}), nil
 }
 
+// presentationOffer builds an authorization code offer whose
+// authorization server is the interactive server of Certify. The wallet
+// presents the credential the deployment asks for there, and Certify
+// gives the code only after Inji Verify accepts the presentation
+// (Certify 0.14.0, presentation during issuance). The claims then come
+// from the data provider of Certify for the presented identity.
+func (s *Service) presentationOffer(ctx context.Context, spec *backendv1.IssueSpec, channel backendv1.Channel) (
+	*connect.Response[backendv1.CreateOfferResponse], error,
+) {
+	if !s.presentation {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(
+			"this Inji deployment checks no presentation during issuance; set VCA_INJI_PRESENTATION_DURING_ISSUANCE once Certify reaches Inji Verify"))
+	}
+	if channel != backendv1.Channel_CHANNEL_OID4VCI_PREAUTH && channel != backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("a presentation during issuance needs an OID4VCI channel, not %s", channel))
+	}
+	server, err := s.certify.InteractiveServer(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("read the interactive authorization server of Inji Certify: %w", err))
+	}
+	return s.hostOffer(ctx, spec, server.Issuer)
+}
+
 // authorizationCodeOffer builds and stores the offer document.
 func (s *Service) authorizationCodeOffer(ctx context.Context, spec *backendv1.IssueSpec) (
+	*connect.Response[backendv1.CreateOfferResponse], error,
+) {
+	return s.hostOffer(ctx, spec, s.authorizationServer)
+}
+
+// hostOffer builds and stores the authorization code offer document of
+// the authorization server.
+func (s *Service) hostOffer(ctx context.Context, spec *backendv1.IssueSpec, authorizationServer string) (
 	*connect.Response[backendv1.CreateOfferResponse], error,
 ) {
 	if s.publicURL == "" {
@@ -109,7 +145,7 @@ func (s *Service) authorizationCodeOffer(ctx context.Context, spec *backendv1.Is
 		issuer = s.certify.BaseURL()
 	}
 	document := inji.AuthorizationCodeOffer(issuer, spec.GetConfigurationId(),
-		s.newID(), s.authorizationServer)
+		s.newID(), authorizationServer)
 	raw, err := json.Marshal(document)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)

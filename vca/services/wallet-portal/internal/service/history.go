@@ -100,11 +100,15 @@ func (s *Service) PresentDecline(ctx context.Context, req *connect.Request[walle
 	if err != nil {
 		return nil, err
 	}
-	id, parsed, err := s.request(ctx, citizen, req.Msg.GetPresentationId())
+	id, parsed, rec, err := s.request(ctx, citizen, req.Msg.GetPresentationId())
 	if err != nil {
 		return nil, err
 	}
-	if parsed.ResponseURI != "" && s.opts.Post != nil {
+	if rec.Interactive != "" {
+		// The interactive session of the issuer ends on its own; the
+		// endpoint takes no refusal.
+		parsed.ClientID = rec.Issuer
+	} else if parsed.ResponseURI != "" && s.opts.Post != nil {
 		form := url.Values{"error": {"access_denied"}}
 		if parsed.State != "" {
 			form.Set("state", parsed.State)

@@ -60,6 +60,11 @@ type Options struct {
 	Plugins []string
 	// CADomain is the partner domain of an uploaded CA certificate.
 	CADomain string
+	// PresentationDuringIssuance says that Certify checks a presentation
+	// through its interactive authorization endpoint: its verify service
+	// and its presentation definition are set. An offer can then ask the
+	// holder to present a credential first.
+	PresentationDuringIssuance bool
 	// RenderingTemplateID names the SVG template of the Certify
 	// deployment. A registered ldp_vc configuration then names it as its
 	// render method. Empty names none.
@@ -93,6 +98,7 @@ type Service struct {
 	renderingTemplateID string
 	plugins             []string
 	caDomain            string
+	presentation        bool
 	now                 func() time.Time
 	newID               func() string
 }
@@ -145,6 +151,7 @@ func New(opts Options) (*Service, error) {
 		renderingTemplateID: opts.RenderingTemplateID,
 		plugins:             opts.Plugins,
 		caDomain:            opts.CADomain,
+		presentation:        opts.PresentationDuringIssuance,
 		now:                 opts.Now,
 		newID:               opts.NewID,
 	}, nil
@@ -215,6 +222,12 @@ func (s *Service) GetCapabilities(
 			// key manager. Certify reads its DID from its configuration,
 			// so a DID import is not listed.
 			backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION, backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_X509)
+		if s.presentation {
+			// CreateOffer points the wallet at the interactive
+			// authorization endpoint of Certify, which asks for a
+			// presentation before it gives a code.
+			out.Features = append(out.Features, backendv1.Feature_FEATURE_PRESENTATION_DURING_ISSUANCE)
+		}
 		out.DidMethods = []string{didWeb}
 		for _, k := range inji.KeyTypes {
 			out.KeyTypes = append(out.KeyTypes, k.Type)

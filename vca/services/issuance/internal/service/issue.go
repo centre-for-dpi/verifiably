@@ -46,6 +46,9 @@ type request struct {
 	validity      *commonv1.ValidityWindow
 	statusPurpose string
 	holderProof   string
+	// presentation asks the holder to present a credential before the
+	// stack issues.
+	presentation bool
 }
 
 // Issue issues one credential to one subject.
@@ -70,6 +73,7 @@ func (s *Service) Issue(
 		validity:      msg.GetValidity(),
 		statusPurpose: msg.GetStatusPurpose(),
 		holderProof:   msg.GetHolderKeyProof(),
+		presentation:  msg.GetRequirePresentation(),
 	})
 	if err != nil {
 		return nil, err
@@ -161,6 +165,9 @@ func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 		channel = backendv1.Channel_CHANNEL_OID4VCI_PREAUTH
 	}
 	if serr := s.checkChannel(caps, channel); serr != nil {
+		return offers.Offer{}, serr
+	}
+	if serr := checkPresentation(caps, channel, r.presentation); serr != nil {
 		return offers.Offer{}, serr
 	}
 	binding, err := s.allocateStatus(ctx, r.statusPurpose, format)
@@ -258,6 +265,22 @@ func (s *Service) checkChannel(caps clients.Capabilities, channel backendv1.Chan
 	return nil
 }
 
+// checkPresentation reports whether the stack can ask the holder for a
+// presentation before it issues: only over an OID4VCI channel of an
+// adapter that lists the feature.
+func checkPresentation(caps clients.Capabilities, channel backendv1.Channel, asked bool) error {
+	if !asked {
+		return nil
+	}
+	if !caps.Has(backendv1.Feature_FEATURE_PRESENTATION_DURING_ISSUANCE) {
+		return badRequest("the stack cannot ask for a presentation during issuance")
+	}
+	if channel != backendv1.Channel_CHANNEL_OID4VCI_PREAUTH && channel != backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE {
+		return badRequest("a presentation during issuance needs an OID4VCI channel")
+	}
+	return nil
+}
+
 // issueOffer asks the adapter for an OID4VCI offer and delivers it.
 func (s *Service) issueOffer(ctx context.Context, offer *offers.Offer,
 	spec *backendv1.IssueSpec, channel backendv1.Channel, r request,
@@ -269,12 +292,17 @@ func (s *Service) issueOffer(ctx context.Context, offer *offers.Offer,
 		adapterChannel = backendv1.Channel_CHANNEL_OID4VCI_PREAUTH
 	}
 	resp, err := s.opts.Issuer.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
-		Spec: spec, Channel: adapterChannel,
+		Spec: spec, Channel: adapterChannel, RequirePresentation: r.presentation,
 	}))
 	if err != nil {
 		offer.State = offers.StateFailed
 		offer.Error = err.Error()
 		return connect.NewError(connect.CodeOf(err), fmt.Errorf("create the offer: %w", err))
+	}
+	if r.presentation && resp.Msg.GetChannel() != backendv1.Channel_CHANNEL_UNSPECIFIED {
+		// A presentation needs the authorization code flow, so the
+		// adapter can switch the flow.
+		offer.Channel = resp.Msg.GetChannel().String()
 	}
 	offer.OfferURI = resp.Msg.GetOfferUri()
 	offer.Pin = resp.Msg.GetPin()

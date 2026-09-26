@@ -862,3 +862,35 @@ func TestIssueOverTheIdentityQrChannel(t *testing.T) {
 	}))
 	wantCode(t, err, connect.CodeUnavailable)
 }
+
+// TestIssueAsksForAPresentationFirst passes the option to the adapter on
+// an OID4VCI channel of a stack that lists the feature, and refuses it
+// anywhere else.
+func TestIssueAsksForAPresentationFirst(t *testing.T) {
+	withFeature := func(o *service.Options, h *harness) {
+		h.adapter.capabilities.Features = []backendv1.Feature{backendv1.Feature_FEATURE_PRESENTATION_DURING_ISSUANCE}
+	}
+	h := newHarness(t, withFeature)
+	h.adapter.offer.Channel = backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE
+	offer := h.issue(t, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, func(r *issuancev1.IssueRequest) { r.RequirePresentation = true })
+	if !h.adapter.presentation[0] {
+		t.Fatal("the adapter did not get the option")
+	}
+	if offer.GetChannel() != backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE {
+		t.Fatalf("the offer keeps the flow the adapter used, got %v", offer.GetChannel())
+	}
+	ask := func(h *harness, channel backendv1.Channel) error {
+		_, err := h.service.Issue(context.Background(), connect.NewRequest(&issuancev1.IssueRequest{
+			SchemaId: "farmer", SubjectData: `{"fullName":"Ada","farmerID":"FM-1"}`, RequirePresentation: true,
+			Delivery: &issuancev1.Delivery{Channel: channel},
+		}))
+		return err
+	}
+	wantCode(t, ask(h, backendv1.Channel_CHANNEL_PDF), connect.CodeInvalidArgument)
+	wantCode(t, ask(newHarness(t, nil), backendv1.Channel_CHANNEL_OID4VCI_PREAUTH), connect.CodeInvalidArgument)
+	plain := newHarness(t, withFeature)
+	plain.issue(t, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, nil)
+	if plain.adapter.presentation[0] {
+		t.Fatal("the option reached the adapter without a request")
+	}
+}

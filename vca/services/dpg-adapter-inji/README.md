@@ -59,6 +59,7 @@ Set at least one Inji URL. Each URL turns on one role.
 | `VCA_INJI_CERTIFY_PLUGINS` | The plugins of the Certify deployment, comma separated. The DPG information lists them. The default is `MockCSVDataProviderPlugin,LoggerAuditService`. |
 | `VCA_INJI_CA_DOMAIN` | The partner domain of an uploaded CA certificate. The default is `DEVICE`. |
 | `VCA_INJI_RENDERING_TEMPLATE_ID` | The SVG template id of the Certify deployment. A registered `ldp_vc` configuration names it as its render method. |
+| `VCA_INJI_PRESENTATION_DURING_ISSUANCE` | Set `true` once Certify reaches Inji Verify and holds a presentation definition. An offer can then ask the holder to present a credential first. The default is `false`. |
 
 Run the binary:
 

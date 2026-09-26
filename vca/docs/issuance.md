@@ -137,6 +137,21 @@ the outcome into the toast region of the page. The QR code and the link
 stay on the page for every other browser. The draft changes often, so
 the script tests for each part of the API before it uses it.
 
+### Presentation first
+
+The delivery step offers "Before the stack issues" only when the
+adapter of the pair lists `FEATURE_PRESENTATION_DURING_ISSUANCE`. The
+choice "Presentation first" asks the holder to present a credential
+that the stack names before the stack issues. It needs an OID4VCI
+channel. The review step lists it, and `IssueRequest` carries it as
+`require_presentation`. The service refuses it on another channel and
+on a stack without the feature.
+
+The adapter then builds an authorization code offer. Its authorization
+server asks the wallet for the presentation, so the offer keeps the
+channel the adapter used. The stack reads the claims from its own data
+provider for the holder the presentation names.
+
 ### The identity QR channel
 
 The channel prints the identity QR code that a stack signs (ADR-043

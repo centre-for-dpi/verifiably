@@ -136,6 +136,38 @@ Facts the adapter relies on:
   `LoggerAuditService` in the `DataProvider` plugin mode:
   https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/certify-csvdp-farmer.properties
 
+## Presentation during issuance (Certify 0.14.0)
+
+| File | Source |
+| --- | --- |
+| `oauth-authorization-server.json` | `OAuthAuthorizationServerMetadataDTO` of `GET /.well-known/oauth-authorization-server`: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/controller/OAuthController.java and https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-core/src/main/java/io/mosip/certify/core/dto/OAuthAuthorizationServerMetadataDTO.java |
+| `iar-require-interaction.json` | `IarPresentationResponse` of the first `POST /oauth/iar`: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-core/src/main/java/io/mosip/certify/core/dto/IarPresentationResponse.java, with the request of `IarVpRequestService.convertToOpenId4VpRequest` and the definition of https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/vp_request_config.json |
+| `iar-ok.json` | `IarAuthorizationResponse` of the second call: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-core/src/main/java/io/mosip/certify/core/dto/IarAuthorizationResponse.java |
+| `iar-error.json` | The status `error` of `IarStatus` with the code `invalid_vp` of `IarPresentationService`: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/IarPresentationService.java |
+| `token-iar.json` | `OAuthTokenResponse` of the authorization code grant of `IarServiceImpl.processTokenRequest`: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/IarServiceImpl.java |
+
+Facts the adapter relies on:
+
+- `POST /oauth/iar` takes a form. The first call needs `response_type`
+  `code`, `client_id`, `code_challenge`, `code_challenge_method` `S256`,
+  `interaction_types_supported` with `openid4vp_presentation`, and
+  `authorization_details` of type `openid_credential` with a
+  `credential_configuration_id`. The second call carries `auth_session`
+  and `openid4vp_response`, a JSON object with `vp_token` and
+  `presentation_submission`.
+- Certify posts the presentation to the `response_uri` of Inji Verify
+  with the `state`, then reads `vp-result`. The response mode
+  `direct_post` of Inji Verify becomes `iar-post` for the wallet.
+- The token endpoint takes `grant_type` `authorization_code`, a code
+  that starts with `iar_auth_`, and the PKCE `code_verifier`.
+- The stack properties name the endpoint in
+  `mosip.certify.oauth.interactive-authorization-endpoint` and the
+  definition file in `mosip.certify.vp-request.config-file-url`:
+  https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/certify-default.properties
+- The error body of a refused presentation is not in the DTOs. The
+  fixture uses the OAuth fields `error` and `error_description`. The
+  nightly contract run confirms it.
+
 ## Identity QR code (Certify 0.14.0, QR code specification 1.1.0)
 
 | File | Source |

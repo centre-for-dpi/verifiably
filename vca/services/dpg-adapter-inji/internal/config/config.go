@@ -94,6 +94,10 @@ type Config struct {
 	CertifyPlugins string `env:"CERTIFY_PLUGINS" default:"MockCSVDataProviderPlugin,LoggerAuditService"`
 	// CADomain is the partner domain of an uploaded CA certificate.
 	CADomain string `env:"CA_DOMAIN" default:"DEVICE"`
+	// PresentationDuringIssuance says that Certify reaches Inji Verify
+	// and holds a presentation definition, so its interactive
+	// authorization endpoint checks a presentation before it issues.
+	PresentationDuringIssuance bool `env:"PRESENTATION_DURING_ISSUANCE" default:"false"`
 }
 
 // Plugins returns the plugin names of CertifyPlugins.

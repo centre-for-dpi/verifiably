@@ -123,6 +123,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Fallback:  ports.Cached(crawl, cfg.CrawlTTL, deps.Now),
 		Methods:   crawl.Methods,
 		Endpoints: crawl.Endpoints,
+		Servers:   crawl.Server,
 		ClientID:  cfg.ClientID,
 		Eligible:  eligible,
 		Salt:      cfg.EligibilitySalt,

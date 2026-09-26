@@ -1,0 +1,24 @@
+{
+  "status": "require_interaction",
+  "type": "openid4vp_presentation",
+  "auth_session": "3f6b2c1e-8d4a-4f0b-9e7c-5a2d1b0c9e8f",
+  "openid4vp_request": {
+    "response_type": "vp_token",
+    "response_mode": "iar-post",
+    "client_id": "did:web:verify.inji.example",
+    "nonce": "c2f8b1a4e7d94d1f",
+    "response_uri": "http://certify.inji.example/v1/certify/oauth/iar",
+    "presentation_definition": {
+      "id": "MOSIPVerifiableCredential",
+      "name": "MOSIP ID",
+      "purpose": "Relying party is requesting your digital ID for the purpose of Self-Authentication",
+      "input_descriptors": [
+        {
+          "id": "id card credential",
+          "format": {"ldp_vc": {"proof_type": ["RsaSignature2018"]}},
+          "constraints": {"fields": [{"path": ["$.type"], "filter": {"type": "string", "pattern": "MOSIPVerifiableCredential"}}]}
+        }
+      ]
+    }
+  }
+}

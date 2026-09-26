@@ -109,10 +109,14 @@ func (s *Service) token(ctx context.Context, rec record, code string) (string, e
 	if s.opts.Post == nil {
 		return "", unavailable
 	}
-	raw, err := s.opts.Post(ctx, rec.Token, url.Values{
-		"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {rec.Redirect},
+	form := url.Values{
+		"grant_type": {"authorization_code"}, "code": {code},
 		"client_id": {s.opts.ClientID}, "code_verifier": {rec.Verifier},
-	})
+	}
+	if rec.Redirect != "" {
+		form.Set("redirect_uri", rec.Redirect)
+	}
+	raw, err := s.opts.Post(ctx, rec.Token, form)
 	if err != nil {
 		return "", unavailable
 	}

@@ -46,6 +46,8 @@ type fakeAdapter struct {
 	specs []*backendv1.IssueSpec
 	// channels records every channel the service asked for.
 	channels []backendv1.Channel
+	// presentation records the option of every offer.
+	presentation []bool
 	// batches records every native batch the service sent.
 	batches []*backendv1.IssueBatchRequest
 	// batch is the answer of IssueBatch. Nil answers one credential per
@@ -70,6 +72,7 @@ func (f *fakeAdapter) CreateOffer(
 	f.mu.Lock()
 	f.specs = append(f.specs, req.Msg.GetSpec())
 	f.channels = append(f.channels, req.Msg.GetChannel())
+	f.presentation = append(f.presentation, req.Msg.GetRequirePresentation())
 	f.mu.Unlock()
 	if f.offerErr != nil {
 		return nil, f.offerErr

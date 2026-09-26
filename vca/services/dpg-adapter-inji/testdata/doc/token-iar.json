@@ -1,0 +1,7 @@
+{
+  "access_token": "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJpYXIifQ.c2ln",
+  "token_type": "Bearer",
+  "expires_in": 600,
+  "c_nonce": "5b3e0d7f1a2c",
+  "c_nonce_expires_in": 300
+}

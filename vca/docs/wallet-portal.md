@@ -159,6 +159,33 @@ pair lists `FEATURE_WALLET_REJECT_OFFER`. Without the feature the
 decline address answers 404. A decline reaches the wallet of the stack
 through `RejectOffer`, so its event log holds the decline.
 
+### Presentation during issuance
+
+An issuer can ask for a presentation before it issues. The offer then
+names an authorization server whose metadata has an
+`interactive_authorization_endpoint` (OID4VCI 1.1 draft). The wallet
+reads an offer by reference only from a host of `REQUEST_HOSTS`.
+
+With a DPG wallet, Accept runs these steps:
+
+1. It posts the authorization request with PKCE and the interaction
+   type `openid4vp_presentation`.
+2. The issuer answers with an OpenID4VP request in the response mode
+   `iar-post`. Accept keeps it and returns its presentation id.
+3. The page opens the consent screen. The card says that the issuer
+   asks for a credential before it gives the new one.
+4. Share selected posts the `auth_session` and the
+   `openid4vp_response` to the same endpoint. The response holds the
+   `vp_token` and a `presentation_submission` for the first input
+   descriptor.
+5. The issuer answers with a code. The wallet trades it with the PKCE
+   verifier for an access token. The DPG wallet claims the offer with
+   that token.
+
+The outcome page says "Credential received". A refused presentation
+claims nothing. Decline ends the step and posts nothing. The browser
+store claims no offer, so it runs no such step.
+
 A scan or a paste goes through the `detect` package first. The package
 reads three kinds of text:
 

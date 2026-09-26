@@ -1428,9 +1428,15 @@ type CreateOfferRequest struct {
 	// What to issue.
 	Spec *IssueSpec `protobuf:"bytes,1,opt,name=spec,proto3" json:"spec,omitempty"`
 	// The OID4VCI flow. Only the two OID4VCI channels are valid here.
-	Channel       Channel `protobuf:"varint,2,opt,name=channel,proto3,enum=vca.backend.v1.Channel" json:"channel,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Channel Channel `protobuf:"varint,2,opt,name=channel,proto3,enum=vca.backend.v1.Channel" json:"channel,omitempty"`
+	// Ask the holder to present a credential before the DPG issues. The
+	// caller sets it only for an adapter that lists
+	// FEATURE_PRESENTATION_DURING_ISSUANCE. The offer then uses the
+	// authorization code flow of a server with an interactive
+	// authorization endpoint. The DPG names the credential it asks for.
+	RequirePresentation bool `protobuf:"varint,3,opt,name=require_presentation,json=requirePresentation,proto3" json:"require_presentation,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *CreateOfferRequest) Reset() {
@@ -1475,6 +1481,13 @@ func (x *CreateOfferRequest) GetChannel() Channel {
 		return x.Channel
 	}
 	return Channel_CHANNEL_UNSPECIFIED
+}
+
+func (x *CreateOfferRequest) GetRequirePresentation() bool {
+	if x != nil {
+		return x.RequirePresentation
+	}
+	return false
 }
 
 // CreateOfferResponse describes the credential offer.
@@ -6428,10 +6441,11 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\bvalidity\x18\x05 \x01(\v2\x1d.vca.common.v1.ValidityWindowR\bvalidity\x129\n" +
 	"\x06status\x18\x06 \x01(\v2!.vca.backend.v1.StatusListBindingR\x06status\x12(\n" +
 	"\x10holder_key_proof\x18\a \x01(\tR\x0eholderKeyProof\x12'\n" +
-	"\x0fcredential_data\x18\b \x01(\tR\x0ecredentialData\"v\n" +
+	"\x0fcredential_data\x18\b \x01(\tR\x0ecredentialData\"\xa9\x01\n" +
 	"\x12CreateOfferRequest\x12-\n" +
 	"\x04spec\x18\x01 \x01(\v2\x19.vca.backend.v1.IssueSpecR\x04spec\x121\n" +
-	"\achannel\x18\x02 \x01(\x0e2\x17.vca.backend.v1.ChannelR\achannel\"\xcd\x01\n" +
+	"\achannel\x18\x02 \x01(\x0e2\x17.vca.backend.v1.ChannelR\achannel\x121\n" +
+	"\x14require_presentation\x18\x03 \x01(\bR\x13requirePresentation\"\xcd\x01\n" +
 	"\x13CreateOfferResponse\x12\x1b\n" +
 	"\toffer_uri\x18\x01 \x01(\tR\bofferUri\x12\x19\n" +
 	"\boffer_id\x18\x02 \x01(\tR\aofferId\x121\n" +

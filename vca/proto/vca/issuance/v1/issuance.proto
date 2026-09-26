@@ -69,6 +69,10 @@ message IssueRequest {
   string status_purpose = 8;
   // The holder proof JWT from an authorization code request, when present.
   string holder_key_proof = 9;
+  // Ask the holder to present a credential before the stack issues. The
+  // service accepts it only for an OID4VCI channel on a stack whose
+  // adapter lists FEATURE_PRESENTATION_DURING_ISSUANCE.
+  bool require_presentation = 10;
 }
 
 // Offer is the state of one issuance.

@@ -86,6 +86,11 @@ type Options struct {
 	// issuer. Nil, or an issuer with none, leaves the sign in to the DPG
 	// wallet.
 	Endpoints func(ctx context.Context, issuer string) (issuers.Endpoints, error)
+	// Servers returns the endpoints of the authorization server an offer
+	// names. With an interactive endpoint there, the wallet answers the
+	// presentation the issuer asks for before it issues. Nil leaves every
+	// offer to the DPG wallet.
+	Servers func(ctx context.Context, server string) (issuers.Endpoints, error)
 	// ClientID is the client id of the wallet at an issuer authorization
 	// server. Empty means DefaultClientID.
 	ClientID string
@@ -418,6 +423,14 @@ func (s *Service) Accept(ctx context.Context, req *connect.Request[walletportalv
 	if err != nil {
 		return nil, recordError(err)
 	}
+	if id, asked, ierr := s.interactive(ctx, citizen, rec); ierr != nil || asked {
+		if ierr != nil {
+			return nil, ierr
+		}
+		ignored := s.drop(ctx, KindOffer, citizen.WalletKey(), rec.ID)
+		_ = ignored
+		return connect.NewResponse(&walletportalv1.AcceptResponse{PresentationId: id}), nil
+	}
 	card, err := s.accept(ctx, citizen, rec.URI, req.Msg.GetPin(), "")
 	if err != nil {
 		return nil, err
@@ -561,7 +574,7 @@ func (s *Service) PresentStart(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	id, parsed, err := s.request(ctx, citizen, req.Msg.GetPresentationId())
+	id, parsed, rec, err := s.request(ctx, citizen, req.Msg.GetPresentationId())
 	if err != nil {
 		return nil, err
 	}
@@ -569,50 +582,65 @@ func (s *Service) PresentStart(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	trust := present.TrustOf(ctx, s.opts.Trust, parsed.ClientID)
+	party := parsed.ClientID
+	if rec.Interactive != "" {
+		// The issuer asks, so the page names the issuer.
+		party = rec.Issuer
+	}
+	trust := present.TrustOf(ctx, s.opts.Trust, party)
 	return connect.NewResponse(&walletportalv1.PresentStartResponse{
 		PresentationId: id,
-		Verifier:       parsed.ClientID,
+		Verifier:       party,
 		VerifierName:   trust.Name,
 		Trust:          trust.Outcome,
 		Requested:      present.Consent(parsed, held),
 		Purpose:        parsed.Purpose,
+		DuringIssuance: rec.Interactive != "",
 	}), nil
 }
 
 // request reads the presentation request of an id or a URI. It stores
-// the request under an id, so PresentConfirm finds it again.
+// the request under an id, so PresentConfirm finds it again. The record
+// comes back too: an issuer that asks for a presentation during
+// issuance keeps its interactive session there.
 func (s *Service) request(ctx context.Context, citizen session.Citizen, idOrURI string,
-) (string, present.Request, error) {
+) (string, present.Request, record, error) {
 	if strings.TrimSpace(idOrURI) == "" {
-		return "", present.Request{}, connect.NewError(connect.CodeInvalidArgument,
+		return "", present.Request{}, record{}, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("name the presentation request"))
 	}
 	id := idOrURI
 	uri := idOrURI
 	rec, err := s.get(ctx, KindPresentation, citizen.WalletKey(), idOrURI)
 	switch {
+	case err == nil && rec.Interactive != "":
+		parsed, perr := present.ParseInteractive([]byte(rec.Request))
+		if perr != nil {
+			return "", present.Request{}, record{}, connect.NewError(connect.CodeInvalidArgument, perr)
+		}
+		return id, parsed, rec, nil
 	case err == nil:
 		uri = rec.URI
 	case errors.Is(err, ErrExpired):
-		return "", present.Request{}, recordError(err)
+		return "", present.Request{}, record{}, recordError(err)
 	default:
 		id = s.opts.NewID()
 	}
 	parsed, err := present.Parse(uri)
 	if err != nil {
-		return "", present.Request{}, connect.NewError(connect.CodeInvalidArgument, err)
+		return "", present.Request{}, record{}, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	full, err := present.Fetch(ctx, parsed, s.opts.RequestHosts, s.opts.Fetch)
 	if err != nil {
-		return "", present.Request{}, connect.NewError(connect.CodeInvalidArgument, err)
+		return "", present.Request{}, record{}, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	if rec.ID == "" {
-		if err := s.put(ctx, KindPresentation, citizen.WalletKey(), record{ID: id, URI: uri}); err != nil {
-			return "", present.Request{}, connect.NewError(connect.CodeInternal, err)
+		rec = record{ID: id, URI: uri}
+		if err := s.put(ctx, KindPresentation, citizen.WalletKey(), rec); err != nil {
+			return "", present.Request{}, record{}, connect.NewError(connect.CodeInternal, err)
 		}
 	}
-	return id, full, nil
+	return id, full, rec, nil
 }
 
 // PresentConfirm sends the presentation after the citizen consented.
@@ -623,7 +651,7 @@ func (s *Service) PresentConfirm(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	id, parsed, err := s.request(ctx, citizen, req.Msg.GetPresentationId())
+	id, parsed, rec, err := s.request(ctx, citizen, req.Msg.GetPresentationId())
 	if err != nil {
 		return nil, err
 	}
@@ -633,9 +661,13 @@ func (s *Service) PresentConfirm(ctx context.Context,
 			errors.New("choose one credential first"))
 	}
 	var answer *walletportalv1.PresentConfirmResponse
-	if s.opts.Holder != nil {
+	switch {
+	case rec.Interactive != "":
+		answer, err = s.presentForIssuance(ctx, citizen, rec, chosen[0], disclosed)
+		parsed.ClientID = rec.Issuer
+	case s.opts.Holder != nil:
 		answer, err = s.presentWithBackend(ctx, citizen, parsed, chosen, disclosed)
-	} else {
+	default:
 		answer, err = s.presentDirect(ctx, citizen, parsed, chosen, disclosed)
 	}
 	result := walletportalv1.PresentationRecord_RESULT_FAILED

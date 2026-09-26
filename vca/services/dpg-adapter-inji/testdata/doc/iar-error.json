@@ -1,0 +1,5 @@
+{
+  "status": "error",
+  "error": "invalid_vp",
+  "error_description": "The presentation does not match the presentation definition."
+}

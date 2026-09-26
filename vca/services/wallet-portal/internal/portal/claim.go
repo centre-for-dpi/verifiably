@@ -267,12 +267,13 @@ func (p *Portal) claimOffer(w http.ResponseWriter, r *http.Request) error {
 		if (offer.GetNeedsPin() && pin == "") || p.opts.Service.BrowserStorage() {
 			return p.offerPage(w, r, found.GetOfferId(), offer.GetNeedsPin(), offer.GetIssuerName())
 		}
-		if _, err := p.opts.Service.Accept(r.Context(), connect.NewRequest(&walletportalv1.AcceptRequest{
+		resp, err := p.opts.Service.Accept(r.Context(), connect.NewRequest(&walletportalv1.AcceptRequest{
 			OfferId: found.GetOfferId(), Pin: pin,
-		})); err != nil {
+		}))
+		if err != nil {
 			return p.problem(w, r, msg.T("holder.home.claim.label"), msg.T("holder.claim.problem.title"), message(err))
 		}
-		http.Redirect(w, r, p.opts.Prefix+"/", http.StatusSeeOther)
+		p.afterAccept(w, r, resp.Msg)
 		return nil
 	case walletportalv1.Detected_KIND_PRESENTATION_REQUEST:
 		http.Redirect(w, r, p.opts.Prefix+"/present?id="+url.QueryEscape(found.GetPresentationId()), http.StatusSeeOther)
@@ -393,14 +394,24 @@ func (p *Portal) accept(w http.ResponseWriter, r *http.Request) error {
 	if _, ok := p.writer(w, r); !ok {
 		return nil
 	}
-	_, err := p.opts.Service.Accept(r.Context(), connect.NewRequest(&walletportalv1.AcceptRequest{
+	resp, err := p.opts.Service.Accept(r.Context(), connect.NewRequest(&walletportalv1.AcceptRequest{
 		OfferId: r.PostFormValue("offer_id"), Pin: r.PostFormValue("pin"),
 	}))
 	if err != nil {
 		return p.problem(w, r, msg.T("holder.offer.title.label"), msg.T("holder.claim.problem.title"), message(err))
 	}
-	http.Redirect(w, r, p.opts.Prefix+"/", http.StatusSeeOther)
+	p.afterAccept(w, r, resp.Msg)
 	return nil
+}
+
+// afterAccept sends the browser home, or to the consent screen when the
+// issuer asks for a presentation before it issues.
+func (p *Portal) afterAccept(w http.ResponseWriter, r *http.Request, resp *walletportalv1.AcceptResponse) {
+	if id := resp.GetPresentationId(); id != "" {
+		http.Redirect(w, r, p.opts.Prefix+"/present?id="+url.QueryEscape(id)+"#request", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, p.opts.Prefix+"/", http.StatusSeeOther)
 }
 
 // reject declines a pending offer. It exists only when the adapter of

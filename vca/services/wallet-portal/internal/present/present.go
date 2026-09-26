@@ -36,8 +36,14 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/cards"
 )
 
-// ResponseModeDirectPost is the only response mode the wallet supports.
+// ResponseModeDirectPost is the only response mode the wallet supports
+// for a verifier.
 const ResponseModeDirectPost = "direct_post"
+
+// ResponseModeIARPost is the response mode of a presentation an issuer
+// asks for during issuance: the wallet sends the answer back to the
+// interactive authorization endpoint (OID4VCI 1.1 draft).
+const ResponseModeIARPost = "iar-post"
 
 // Errors the package returns.
 var (
@@ -190,6 +196,13 @@ func ParseObject(raw []byte) (Request, error) {
 	return fromObject(encoded)
 }
 
+// ParseInteractive reads the OpenID4VP request of an interactive
+// authorization answer. It takes the response mode iar-post, which a
+// verifier request never carries.
+func ParseInteractive(raw []byte) (Request, error) {
+	return readObject(raw, ResponseModeIARPost)
+}
+
 // requestObject is the shape of an OID4VP request object.
 type requestObject struct {
 	ClientID               string          `json:"client_id"`
@@ -201,8 +214,14 @@ type requestObject struct {
 	PresentationDefinition json.RawMessage `json:"presentation_definition"`
 }
 
-// fromObject reads a request object document.
+// fromObject reads a request object document of a verifier.
 func fromObject(raw []byte) (Request, error) {
+	return readObject(raw, ResponseModeDirectPost)
+}
+
+// readObject reads a request object document with the one response
+// mode the caller answers with.
+func readObject(raw []byte, mode string) (Request, error) {
 	var doc requestObject
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return Request{}, fmt.Errorf("%w: %w", ErrBadRequest, err)
@@ -212,7 +231,7 @@ func fromObject(raw []byte) (Request, error) {
 		ResponseMode: doc.ResponseMode, State: doc.State,
 	}
 	if out.ResponseMode == "" {
-		out.ResponseMode = ResponseModeDirectPost
+		out.ResponseMode = mode
 	}
 	switch {
 	case len(doc.DCQL) > 0:
@@ -233,9 +252,9 @@ func fromObject(raw []byte) (Request, error) {
 	if out.ResponseURI == "" || out.Nonce == "" {
 		return Request{}, fmt.Errorf("%w: the request has no nonce or no response address", ErrBadRequest)
 	}
-	if out.ResponseMode != ResponseModeDirectPost {
-		return Request{}, fmt.Errorf("%w: the response mode %q is not direct_post",
-			ErrNotSupported, out.ResponseMode)
+	if out.ResponseMode != mode {
+		return Request{}, fmt.Errorf("%w: the response mode %q is not %s",
+			ErrNotSupported, out.ResponseMode, mode)
 	}
 	return out, nil
 }

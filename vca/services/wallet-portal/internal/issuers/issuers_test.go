@@ -285,3 +285,32 @@ func TestEndpointsOfTheAuthorizationServer(t *testing.T) {
 		}
 	}
 }
+
+// TestServerReadsTheInteractiveEndpoint reads the authorization server
+// an offer names: a server with a token endpoint and an interactive
+// endpoint needs no authorization endpoint.
+func TestServerReadsTheInteractiveEndpoint(t *testing.T) {
+	d := &docs{body: map[string]string{
+		"https://certify.example/v1/certify/.well-known/oauth-authorization-server": `{"token_endpoint":"https://certify.example/t",` +
+			`"interactive_authorization_endpoint":"https://certify.example/iar"}`,
+		"https://idp.example/.well-known/openid-configuration":          `{"authorization_endpoint":"https://idp.example/a","token_endpoint":"https://idp.example/t"}`,
+		"https://broken.example/.well-known/oauth-authorization-server": `{"token_endpoint":"https://broken.example/t"}`,
+	}}
+	c, err := issuers.New(issuers.Options{Public: d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.Server(context.Background(), "https://certify.example/v1/certify/")
+	if err != nil || got.Interactive != "https://certify.example/iar" || got.Token != "https://certify.example/t" || got.Authorization != "" {
+		t.Fatalf("certify = %+v %v", got, err)
+	}
+	got, err = c.Server(context.Background(), "https://idp.example")
+	if err != nil || got.Interactive != "" || got.Authorization != "https://idp.example/a" {
+		t.Fatalf("idp = %+v %v", got, err)
+	}
+	for _, server := range []string{"https://broken.example", "https://gone.example"} {
+		if _, err := c.Server(context.Background(), server); !errors.Is(err, issuers.ErrNoEndpoints) {
+			t.Errorf("%s: %v", server, err)
+		}
+	}
+}

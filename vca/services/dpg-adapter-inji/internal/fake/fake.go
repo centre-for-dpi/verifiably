@@ -81,6 +81,9 @@ type Server struct {
 	types map[string]string
 	// queries records the query of every call by path.
 	queries map[string]url.Values
+	// challenge is the PKCE challenge of the last interactive
+	// authorization.
+	challenge string
 }
 
 // New starts a fake Inji deployment.
@@ -180,7 +183,7 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(forced)
 		return
 	}
-	if f.serveConfigs(w, r, body) || f.serveLedger(w, r, body) || f.serveKeys(w, r, body) {
+	if f.serveConfigs(w, r, body) || f.serveLedger(w, r, body) || f.serveKeys(w, r, body) || f.serveIAR(w, r, body) {
 		return
 	}
 	path := r.URL.Path

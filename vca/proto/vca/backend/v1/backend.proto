@@ -403,6 +403,12 @@ message CreateOfferRequest {
   IssueSpec spec = 1;
   // The OID4VCI flow. Only the two OID4VCI channels are valid here.
   Channel channel = 2;
+  // Ask the holder to present a credential before the DPG issues. The
+  // caller sets it only for an adapter that lists
+  // FEATURE_PRESENTATION_DURING_ISSUANCE. The offer then uses the
+  // authorization code flow of a server with an interactive
+  // authorization endpoint. The DPG names the credential it asks for.
+  bool require_presentation = 3;
 }
 
 // CreateOfferResponse describes the credential offer.

@@ -40,6 +40,7 @@ Inji database, and it never restarts an Inji container.
 | `POST /v1/certify/v2/ledger-search` | Finds issued credentials in the ledger of Certify. |
 | `POST /v1/certify/credentials/status` | Sets the revocation bit of a credential of the ledger. |
 | `GET /v1/certify/.well-known/did.json` | Reads the issuer DID, which the ledger search needs. |
+| `GET /v1/certify/.well-known/oauth-authorization-server` | Reads the interactive authorization endpoint for a presentation during issuance. |
 | `GET /v1/certify/rendering-template/{id}` | Reads the SVG card template a credential template names. |
 | `GET /v1/certify/system-info/certificate` | Reads the certificate of a signing key. The key manager makes the key when it has none. |
 | `POST /v1/certify/system-info/upload-ca-certificate` | Adds a CA certificate to the trust store of the stack. |
@@ -58,7 +59,7 @@ The answer of `GetCapabilities` reports what the deployment supports.
 | Channels | OID4VCI pre-authorized code, document, and identity QR (Claim 169). An identity provider adds the authorization code flow. |
 | Protocols | OID4VCI, OID4VP, OID4VP with Presentation Exchange |
 | Roles | The roles whose URL the configuration sets |
-| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_REVOCATION`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ISSUER_IDENTITY_PROVISION`, and `FEATURE_ISSUER_IDENTITY_IMPORT_X509` with a Certify URL. `FEATURE_VERIFY_UPLOAD` with an Inji Verify URL. |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_REVOCATION`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ISSUER_IDENTITY_PROVISION`, and `FEATURE_ISSUER_IDENTITY_IMPORT_X509` with a Certify URL. `FEATURE_PRESENTATION_DURING_ISSUANCE` with a Certify URL and `VCA_INJI_PRESENTATION_DURING_ISSUANCE`. `FEATURE_VERIFY_UPLOAD` with an Inji Verify URL. |
 | DID methods | `did:web`, the one DID of the Certify configuration |
 | Key types | `Ed25519`, `secp256r1`, `secp256k1`, `RSA` |
 | Status mechanisms | Bitstring status list and token status list, when the configuration names a Certify URL |
@@ -81,6 +82,8 @@ shows a feature on this stack only when the answer lists it (ADR-034).
 | Every tenant RPC | Inji keeps no tenants. |
 | Every webhook RPC | Inji keeps no tenants to hold a webhook. |
 | `VerifyCredential` of a JWT VC, an mDoc, or a Claim 169 QR code | Inji Verify 0.16.0 checks JSON-LD and SD-JWT credentials only. The adapter answers `invalid_argument`. |
+| A presentation during issuance without `VCA_INJI_PRESENTATION_DURING_ISSUANCE` | Certify checks the presentation with Inji Verify, and the stack file does not point it there. The adapter answers `failed_precondition` and lists no `FEATURE_PRESENTATION_DURING_ISSUANCE`. |
+| A presentation definition per offer | Certify 0.14.0 reads one definition for the deployment from `vp_request_config.json`. The offer cannot name another. |
 | An identity QR code beside an mDoc | The adapter asks for the code in `ldp_vc` and `vc+sd-jwt` entries only. An mDoc element needs a digest of its own. |
 | An identity QR code of a schema without identity claims | Claim 169 names identity attributes only. The adapter asks for no code, and `Issue` returns none. |
 
@@ -260,6 +263,40 @@ reports a success for a presentation that answers with another
 credential. The adapter records the claim names of the request. When the answer arrives, it checks that at
 least one presented credential carries one of those names. It lowers the
 verdict when nothing matches, and it adds a failed check that says so.
+
+## Presentation during issuance
+
+Inji Certify 0.14.0 can ask the holder to present a credential before
+it issues. It runs an authorization server of its own with an
+interactive authorization endpoint, `POST /v1/certify/oauth/iar`. The
+wallet flow has four calls:
+
+1. The wallet posts the authorization request with PKCE and the
+   interaction type `openid4vp_presentation`.
+2. Certify asks Inji Verify for a request and answers
+   `require_interaction` with an `auth_session` and an OpenID4VP
+   request. Its response mode is `iar-post`.
+3. The wallet posts the `auth_session` and the `openid4vp_response`.
+   Certify hands the presentation to Inji Verify and answers `ok` with
+   a code that starts with `iar_auth_`.
+4. The wallet trades the code and the PKCE verifier at
+   `/v1/certify/oauth/token` and asks for the credential.
+
+`CreateOffer` with `require_presentation` reads the metadata of that
+server. It builds an authorization code offer that names the server as
+its `authorization_server`, and the adapter hosts the offer. The answer
+names the authorization code channel, also when the caller asked for
+the pre-authorized one.
+
+Certify reads the presentation definition from the deployment, not
+from the offer. It then reads the claims from its data provider for
+the identity of the presented credential. The claims of the staging
+call do not reach such a credential.
+
+The setting `VCA_INJI_PRESENTATION_DURING_ISSUANCE` turns the feature
+on. Set it once Certify reaches Inji Verify through
+`mosip.certify.verify.service.base-url` and holds a
+`vp_request_config.json`.
 
 ## The identity QR channel
 

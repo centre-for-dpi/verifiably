@@ -278,6 +278,10 @@ message AcceptRequest {
 message AcceptResponse {
   // The card.
   Card card = 1;
+  // The presentation the issuer asks for before it issues, when the
+  // offer needs one. The card is then empty. PresentStart and
+  // PresentConfirm take the id, and PresentConfirm returns the card.
+  string presentation_id = 2;
 }
 
 // RejectRequest discards a pending offer.
@@ -332,6 +336,9 @@ message PresentStartResponse {
   repeated RequestedCredential requested = 5;
   // The purpose text the verifier gave, when any.
   string purpose = 6;
+  // True when an issuer asks for the presentation before it issues a
+  // credential (interactive authorization of OID4VCI).
+  bool during_issuance = 7;
 
   // RequestedCredential is one credential the verifier asks for.
   message RequestedCredential {
@@ -384,6 +391,9 @@ message PresentConfirmResponse {
   string message = 3;
   // The record the wallet keeps of this presentation.
   PresentationRecord record = 4;
+  // The credential the issuer gave after the presentation, when the
+  // request came from an issuer during issuance.
+  Card card = 5;
 }
 
 // PresentationRecord is what the wallet keeps of one answer to a
