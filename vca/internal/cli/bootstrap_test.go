@@ -276,6 +276,10 @@ type keycloakState struct {
 	createdRealm string
 	// putBody is the body of the last PUT.
 	putBody []byte
+	// clients maps the clientId of each client of the realm onto its id.
+	clients map[string]string
+	// clientPosts and clientPuts list the clientId of each client write.
+	clientPosts, clientPuts []string
 }
 
 func fakeKeycloak(t *testing.T, state *keycloakState) *httptest.Server {
@@ -317,6 +321,35 @@ func fakeKeycloak(t *testing.T, state *keycloakState) *httptest.Server {
 				t.Errorf("read the PUT body: %v", readErr)
 			}
 			state.putBody = body
+			w.WriteHeader(http.StatusNoContent)
+		case r.URL.Path == "/admin/realms/"+state.realm+"/clients" && r.Method == http.MethodGet:
+			var list []map[string]string
+			if id, ok := state.clients[r.URL.Query().Get("clientId")]; ok {
+				list = append(list, map[string]string{"id": id, "clientId": r.URL.Query().Get("clientId")})
+			}
+			if err := json.NewEncoder(w).Encode(list); err != nil {
+				t.Errorf("encode the clients: %v", err)
+			}
+		case r.URL.Path == "/admin/realms/"+state.realm+"/clients" && r.Method == http.MethodPost:
+			var body struct {
+				ClientID string `json:"clientId"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			state.clientPosts = append(state.clientPosts, body.ClientID)
+			w.WriteHeader(http.StatusCreated)
+		case strings.HasPrefix(r.URL.Path, "/admin/realms/"+state.realm+"/clients/") && r.Method == http.MethodPut:
+			var body struct {
+				ID       string `json:"id"`
+				ClientID string `json:"clientId"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || "/admin/realms/"+state.realm+"/clients/"+body.ID != r.URL.Path {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			state.clientPuts = append(state.clientPuts, body.ClientID)
 			w.WriteHeader(http.StatusNoContent)
 		case r.URL.Path == "/admin/realms" && r.Method == http.MethodPost:
 			if r.Header.Get("Authorization") != "Bearer a-token" {
@@ -412,6 +445,51 @@ func TestBootstrapCreatesTheRoleRealm(t *testing.T) {
 	delete(opts.Values, EnvBootstrapSecret)
 	if _, err := Bootstrap(context.Background(), opts); err == nil || !strings.Contains(err.Error(), EnvBootstrapSecret) {
 		t.Errorf("a run with no administrator password passed: %v", err)
+	}
+}
+
+// TestBootstrapUpdatesTheClientsOfAnExistingRealm: Keycloak ignores the
+// clients of a realm update, so a realm that an earlier run made would
+// never get a new client, such as the client of the holder
+// authorization server (ADR-052 decision 2). The run writes each client
+// of the realm file through the client API: an update for a client the
+// realm has, a create for one it lacks. A new realm gets its clients
+// with the create.
+func TestBootstrapUpdatesTheClientsOfAnExistingRealm(t *testing.T) {
+	state := &keycloakState{realm: RealmName(commonv1.Role_ROLE_HOLDER), realmExists: true,
+		clients: map[string]string{"vca-holder": "0b7e1c52-uuid"}}
+	server := fakeKeycloak(t, state)
+	defer server.Close()
+	var out bytes.Buffer
+	opts := injiRoleOptions(t, commonv1.Role_ROLE_HOLDER, server.URL, &out)
+	body, err := KeycloakRealm(opts.Pair, map[string]string{"VCA_PUBLIC_URL": "https://wallet.example",
+		injiAuthzIssuerHolderEnv: "https://issuer.example/authz"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if werr := os.WriteFile(opts.realmPath(), body, 0o600); werr != nil {
+		t.Fatal(werr)
+	}
+	got, err := Bootstrap(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Bootstrap: %v", err)
+	}
+	if strings.Join(state.clientPuts, ",") != "vca-holder" || strings.Join(state.clientPosts, ",") != InjiAuthzClientID {
+		t.Fatalf("puts %v, posts %v", state.clientPuts, state.clientPosts)
+	}
+	if !strings.Contains(strings.Join(got.Steps, "\n"), InjiAuthzClientID+" added") {
+		t.Errorf("steps = %v", got.Steps)
+	}
+	// A new realm takes its clients with the create call.
+	fresh := &keycloakState{realm: RealmName(commonv1.Role_ROLE_HOLDER)}
+	server2 := fakeKeycloak(t, fresh)
+	defer server2.Close()
+	opts.Values["VCA_DPG_URL"] = server2.URL
+	if _, err := Bootstrap(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if len(fresh.clientPosts)+len(fresh.clientPuts) != 0 || fresh.created != 1 {
+		t.Fatalf("a new realm: posts %v, puts %v", fresh.clientPosts, fresh.clientPuts)
 	}
 }
 

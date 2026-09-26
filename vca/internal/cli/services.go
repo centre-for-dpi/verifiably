@@ -75,6 +75,18 @@ func (s Service) MountsFor(p Pair) []Mount {
 	return out
 }
 
+// The holder authorization server of the Inji adapter (ADR-052).
+const (
+	// InjiAuthzPath is its path under the public URL of the issuer pair.
+	InjiAuthzPath = "/authz"
+	// InjiAuthzIssuerEnv is its issuer. Certify trusts the tokens of this
+	// issuer, and an authorization code offer names it.
+	InjiAuthzIssuerEnv = "VCA_INJI_AUTHZ_ISSUER"
+	// InjiAuthzClientID is its client in the holder realm of the stack
+	// Keycloak.
+	InjiAuthzClientID = "vca-inji-authz"
+)
+
 // The VCA claims store of the Inji stack (ADR-051). The stack file
 // declares the volume. The Inji adapter of the issuer pair writes it, and
 // the Postgres of Certify reads it.
@@ -301,6 +313,15 @@ func Catalog() []Service {
 				dpgURL("VCA_INJI_MIMOTO_URL", commonv1.Role_ROLE_HOLDER),
 				dpgURL("VCA_INJI_VERIFY_URL", commonv1.Role_ROLE_VERIFIER),
 				{Env: "VCA_INJI_PUBLIC_URL", Kind: LinkPublicURL},
+				// The holder authorization server of the adapter (ADR-052).
+				// Its issuer sits under the public URL of the pair, the pair
+				// session key seals its token key, the stack Keycloak signs
+				// the holder in, and the data source service finds the
+				// subject of a claim without an offer.
+				{Env: InjiAuthzIssuerEnv, Kind: LinkPublicURL, Path: InjiAuthzPath, Roles: issuer},
+				{Env: "VCA_INJI_AUTHZ_KEY_SECRET", Target: "VCA_SECRETS_SESSION_KEY", Kind: LinkCopy, Roles: issuer},
+				{Env: "VCA_INJI_HOLDER_OIDC_PUBLIC_URL", Target: "VCA_OIDC_PUBLIC_URL", Kind: LinkCopy, Roles: issuer},
+				{Env: "VCA_INJI_DATA_SOURCE_URL", Target: "data-source", Kind: LinkURL, Roles: issuer},
 			},
 			// The data volume keeps the hosted offers and the Mimoto wallet
 			// PINs of the holder role. A holder claims in Inji Web, which
@@ -321,12 +342,18 @@ func Catalog() []Service {
 				// The VCA claims store that both Certify containers read
 				// (ADR-051 decision 2).
 				{Env: "VCA_INJI_CLAIMS_DIR", Value: InjiClaimsPath, Roles: issuer},
+				// The holder realm of the stack Keycloak and its client of
+				// the holder authorization server (ADR-052 decision 2).
+				{Env: "VCA_INJI_HOLDER_OIDC_DISCOVERY_URL", Value: discoveryURLOfRealm(configv1.Dpg_DPG_INJI, RealmName(commonv1.Role_ROLE_HOLDER)), Roles: issuer},
+				{Env: "VCA_INJI_HOLDER_OIDC_CLIENT_ID", Value: InjiAuthzClientID, Roles: issuer},
 			},
 			Mounts: []Mount{{Volume: InjiClaimsVolume, Path: InjiClaimsPath, Roles: issuer}},
-			// The credential offer of the authorization code channel lives
-			// under the public URL of the adapter. The Connect services of
-			// every adapter stay on the compose network (ADR-047).
-			Routes: []Route{{Match: "/offers/*"}}},
+			// The credential offer of the authorization code channel and
+			// the holder authorization server live under the public URL of
+			// the adapter. Both are plain HTTP, not Connect. The Connect
+			// services of every adapter stay on the compose network
+			// (ADR-047, ADR-052 decision 1).
+			Routes: []Route{{Match: "/offers/*"}, {Match: InjiAuthzPath + "/*"}}},
 		// The walt.id adapter keeps the issuer identity in its data volume
 		// (ADR-046 decision 4).
 		// The verifier pair also reaches verifier-api2 of the stack file,

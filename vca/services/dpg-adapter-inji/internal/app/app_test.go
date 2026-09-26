@@ -337,3 +337,67 @@ func TestSweepRemovesExpiredRows(t *testing.T) {
 	none := build(t, f, nil)
 	none.Sweep(t.Context(), slog.Default())
 }
+
+// TestBuildServesTheHolderAuthorizationServer: with an issuer and a key
+// secret, the adapter serves the metadata of the holder authorization
+// server under the path of the issuer (ADR-052 decision 1), and an
+// authorization code offer names it.
+func TestBuildServesTheHolderAuthorizationServer(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	a := build(t, f, func(c *config.Config) {
+		c.AuthzIssuer = "https://adapter.example/authz/"
+		c.AuthzKeySecret = "0123456789abcdef0123456789abcdef"
+		c.OfferIssuer = "http://inji-certify-nginx:8091"
+		c.WalletClients = `[{"client_id":"wallet","redirect_uris":["https://wallet.example.org/cb"]}]`
+		c.HolderOIDCDiscoveryURL = "http://keycloak-inji:8080/realms/vca-holder-realm/.well-known/openid-configuration"
+		c.HolderOIDCClientID = "vca-inji-authz"
+		c.DataSourceURL = "http://data-source:8100"
+	})
+	if a.Authz == nil || a.Authz.Issuer() != "https://adapter.example/authz" {
+		t.Fatalf("Authz = %v", a.Authz)
+	}
+	srv := httptest.NewServer(a.Mux)
+	defer srv.Close()
+	resp, err := srv.Client().Get(srv.URL + "/authz/.well-known/oauth-authorization-server")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Error(cerr)
+		}
+	}()
+	var meta map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
+		t.Fatal(err)
+	}
+	if meta["token_endpoint"] != "https://adapter.example/authz/token" {
+		t.Fatalf("metadata = %v", meta)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	a.ClaimsSweep = time.Millisecond
+	a.Sweep(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+// TestBuildRefusesAHolderServerWithoutItsSettings: the server needs the
+// pair session key and a path, and a broken client list stops the start.
+func TestBuildRefusesAHolderServerWithoutItsSettings(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	for name, change := range map[string]func(*config.Config){
+		"no key secret": func(c *config.Config) { c.AuthzKeySecret = "" },
+		"no path":       func(c *config.Config) { c.AuthzIssuer = "https://adapter.example" },
+		"bad clients":   func(c *config.Config) { c.WalletClients = "[" },
+	} {
+		cfg := config.Config{
+			CertifyURL: f.URL(), PublicURL: "https://adapter.example", OfferTTL: time.Minute, Timeout: time.Second, MaxBytes: 1 << 20,
+			AuthzIssuer: "https://adapter.example/authz", AuthzKeySecret: "0123456789abcdef0123456789abcdef",
+		}
+		change(&cfg)
+		if _, err := app.Build(cfg, app.Deps{HTTP: f.Client(), Log: slog.New(slog.NewTextHandler(io.Discard, nil))}); err == nil {
+			t.Errorf("%s: Build accepted it", name)
+		}
+	}
+}

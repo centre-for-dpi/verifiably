@@ -26,9 +26,14 @@ const (
 	// eSignet login page. eSignet puts it in its tokens and its
 	// metadata, and Certify checks the issuer of a token against it.
 	EsignetPublicURLEnv = "INJI_ESIGNET_PUBLIC_URL"
-	// injiAuthorizationServerEnv names eSignet in an authorization code
-	// offer of the Inji adapter.
-	injiAuthorizationServerEnv = "VCA_INJI_AUTHORIZATION_SERVER"
+	// injiAuthzIssuerHolderEnv carries the issuer of the holder
+	// authorization server of the Inji issuer pair into the setup run of
+	// the holder pair. The holder realm and the issuer list of Mimoto
+	// name it (ADR-052).
+	injiAuthzIssuerHolderEnv = "INJI_AUTHZ_ISSUER"
+	// InjiWalletClientsEnv lists the wallet clients of the holder
+	// authorization server.
+	InjiWalletClientsEnv = "VCA_INJI_WALLET_CLIENTS"
 	// InjiWebPublicURLEnv is the compose variable of the address of Inji
 	// Web. Mimoto builds its redirects from it.
 	InjiWebPublicURLEnv = "INJI_WEB_PUBLIC_URL"
@@ -92,13 +97,10 @@ func InjiPublicValues(p Pair, values map[string]string, domain string, peers Pee
 		}
 	}
 	if runsEsignet(p) {
-		esignet := esignetPublicURL(p, values, domain, peers)
-		out[EsignetPublicURLEnv] = esignet
-		if p.Role == commonv1.Role_ROLE_ISSUER {
-			out[injiAuthorizationServerEnv] = esignet
-		}
+		out[EsignetPublicURLEnv] = esignetPublicURL(p, values, domain, peers)
 	}
 	if isInjiHolder(p) {
+		out[injiAuthzIssuerHolderEnv] = injiAuthzIssuer(domain, peers)
 		web := containerPublicURL(injiWebPort, domain, public)
 		out[InjiWebPublicURLEnv] = web
 		out[injiWebURLEnv] = web
@@ -116,6 +118,57 @@ func InjiPublicValues(p Pair, values map[string]string, domain string, peers Pee
 	}
 	return out
 }
+
+// injiAuthzIssuer returns the issuer of the holder authorization server
+// of the Inji issuer pair, as a pair of another role sees it: the value
+// of the issuer pair directory, its public URL, the host of the pair
+// under a base domain, or its local address.
+func injiAuthzIssuer(domain string, peers PeerOverrides) string {
+	issuer := peers[injiIssuer.Name()]
+	switch {
+	case issuer[InjiAuthzIssuerEnv] != "":
+		return strings.TrimRight(issuer[InjiAuthzIssuerEnv], "/")
+	case issuer["VCA_PUBLIC_URL"] != "":
+		return strings.TrimRight(issuer["VCA_PUBLIC_URL"], "/") + InjiAuthzPath
+	case domain != "":
+		return PairPublicURL(injiIssuer, domain) + InjiAuthzPath
+	}
+	return LocalPublicURL(injiIssuer) + InjiAuthzPath
+}
+
+// injiWalletClient is one wallet client of the holder authorization
+// server in VCA_INJI_WALLET_CLIENTS.
+type injiWalletClient struct {
+	ClientID     string          `json:"client_id"`
+	RedirectURIs []string        `json:"redirect_uris"`
+	JWK          json.RawMessage `json:"jwk,omitempty"`
+}
+
+// InjiWalletClients returns the wallet clients of the holder
+// authorization server of the Inji issuer pair: the client of Inji Web
+// with the redirect page of Inji Web and the public key that Mimoto
+// signs its client assertion with (ADR-052 decision 5). It reports
+// false for another pair, and when the holder bootstrap has not yet
+// written the key.
+func InjiWalletClients(p Pair, values map[string]string, domain string, peers PeerOverrides, jwk string) (string, bool) {
+	if p != injiIssuer || strings.TrimSpace(jwk) == "" || !json.Valid([]byte(jwk)) {
+		return "", false
+	}
+	web := strings.TrimRight(peers[injiHolder.Name()][InjiWebPublicURLEnv], "/")
+	if web == "" {
+		web = containerPublicURL(injiWebPort, domain, values["VCA_PUBLIC_URL"])
+	}
+	raw, err := json.Marshal([]injiWalletClient{{
+		ClientID: EsignetClientID, RedirectURIs: []string{web + "/redirect"}, JWK: json.RawMessage(jwk),
+	}})
+	if err != nil {
+		return "", false
+	}
+	return string(raw), true
+}
+
+// injiHolder is the Inji holder pair. It runs Mimoto and Inji Web.
+var injiHolder = Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: configv1.Dpg_DPG_INJI}
 
 // injiVerifier is the Inji verifier pair. It publishes Inji Verify and
 // its page under a base domain.
@@ -203,8 +256,6 @@ const (
 	// injiCertifyAuthcodeURL is the root of inji-certify-authcode on the
 	// compose network, where Mimoto reads the issuer metadata.
 	injiCertifyAuthcodeURL = "http://inji-certify-nginx:8091"
-	// esignetInternalURL is eSignet on the compose network.
-	esignetInternalURL = "http://inji-esignet:8088"
 	// mimotoIssuerID names the Certify of the stack in Inji Web.
 	mimotoIssuerID = "InjiCertify"
 )
@@ -255,9 +306,15 @@ type mimotoVerifier struct {
 // the settings of the run with the values of InjiPublicValues.
 func mimotoFiles(values map[string]string, domain string, peers PeerOverrides) ([]File, error) {
 	web := injiWebURL(values)
-	esignet := strings.TrimRight(values[EsignetPublicURLEnv], "/")
-	if esignet == "" {
-		esignet = hostPortURL("", esignetUIPort.Host)
+	authz := strings.TrimRight(values[injiAuthzIssuerHolderEnv], "/")
+	if authz == "" {
+		authz = injiAuthzIssuer(domain, peers)
+	}
+	// Mimoto trades the code on the compose network, at the adapter of
+	// the issuer pair.
+	adapter, ok := serviceURL(injiIssuer, "dpg-adapter-inji")
+	if !ok {
+		return nil, fmt.Errorf("render %s: the Inji issuer pair runs no adapter", MimotoIssuersFile)
 	}
 	display := mimotoDisplay{
 		Name: "Inji Certify", Language: "en", Title: "Inji Certify of this stack",
@@ -270,9 +327,9 @@ func mimotoFiles(values map[string]string, domain string, peers PeerOverrides) (
 		Protocol: "OpenId4VCI", ClientID: EsignetClientID, ClientAlias: EsignetClientID,
 		WellknownEndpoint:     injiCertifyAuthcodeURL + "/.well-known/openid-credential-issuer",
 		RedirectURI:           web + "/redirect",
-		AuthorizationAudience: esignet + esignetPath + "/oauth/v2/token",
+		AuthorizationAudience: authz + "/token",
 		TokenEndpoint:         web + "/v1/mimoto/get-token/" + mimotoIssuerID,
-		ProxyTokenEndpoint:    esignetInternalURL + esignetPath + "/oauth/v2/token",
+		ProxyTokenEndpoint:    adapter + InjiAuthzPath + "/token",
 		QRCodeType:            "EmbeddedVC", CredentialIssuerHost: injiCertifyAuthcodeURL, Enabled: "true",
 	}}}
 	public := values["VCA_PUBLIC_URL"]

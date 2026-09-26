@@ -417,6 +417,7 @@ Each one checks its caller or serves public data only.
 | `/catalog`, `/catalog/*` | `verifier-discovery` | The read only catalogue that a wallet reads. |
 | `/oid4vp/*` | `verifier-ingest` | The OID4VP request object and the direct post endpoint. The transaction id and the `state` guard the post. |
 | `/offers/*` | `dpg-adapter-inji` | A hosted credential offer. A random id names it, and it expires. |
+| `/authz/*` | `dpg-adapter-inji` | The holder authorization server (ADR-052): its metadata, key set, authorize, callback, and token endpoints. PKCE, the registered redirect URIs, one time codes, and the client check guard it. |
 | `/iar/presentation-definition.json` | `dpg-adapter-inji` | The proxy does not publish it. Certify reads it on the compose network. It is the presentation definition that a wallet sees anyway. `GET` only. |
 | `/authorize`, `/login`, `/consent`, `/claim-details`, `/something-went-wrong`, `/page-not-found`, `/esignet-ui/*`, `/theme/*`, `/locales/*`, `/images/*`, `/v1/esignet/*`, `/.well-known/openid-configuration`, `/.well-known/oauth-authorization-server` | `inji-esignet-ui` of the `issuer-inji` pair | The eSignet login page is a browser page, not an RPC. A holder signs in there for a claim in Inji Web or an authorization code offer. eSignet checks the client, the PKCE code, and the transaction at each step. The rest is its metadata and the files of the page. |
 
@@ -634,9 +635,8 @@ The page keeps its files under `/esignet-ui`, so `/static` stays with
 VCA.
 eSignet names its key set under `/v1/esignet`, so the key set of the
 pair host stays with the auth service.
-The issuer pair also names the address in
-`VCA_INJI_AUTHORIZATION_SERVER`, the authorization server of an
-authorization code offer.
+An authorization code offer names the holder authorization server of
+the adapter, not eSignet (ADR-052).
 
 `vca dpg bootstrap inji` registers the VCA client in eSignet.
 It adds no identity anywhere (ADR-050).
@@ -692,7 +692,7 @@ It also writes the issuer list and the trusted verifiers of Mimoto into
 
 | File | What it names |
 |---|---|
-| `mimoto-issuers-config.json` | `inji-certify-authcode` on the compose network. The redirect page and the token proxy of Inji Web. The token endpoint of the eSignet login page as the audience. |
+| `mimoto-issuers-config.json` | `inji-certify-authcode` on the compose network. The redirect page and the token proxy of Inji Web. The audience is the token endpoint of the holder authorization server of the issuer pair. The proxy is that endpoint on the compose network. |
 | `mimoto-trusted-verifiers.json` | The page of Inji Verify as the client. The answer endpoint and the key set of the Inji Verify service. |
 
 The addresses follow the deployment:

@@ -420,6 +420,12 @@ func newSetupCommand(env *Environment) *cobra.Command {
 				if stacksErr != nil {
 					return stacksErr
 				}
+				// The key of the Inji Web client that the holder
+				// bootstrap wrote (ADR-052 decision 5).
+				walletJWK, jwkErr := ReadWalletJWK(root)
+				if jwkErr != nil {
+					return jwkErr
+				}
 				plan, err := BuildPlan(SetupRequest{
 					Pair:        p,
 					Flags:       flags,
@@ -434,6 +440,7 @@ func newSetupCommand(env *Environment) *cobra.Command {
 					Peers:       peers,
 					Keycloak:    keycloak,
 					Stacks:      stacks,
+					WalletJWK:   walletJWK,
 				})
 				if err != nil {
 					return err

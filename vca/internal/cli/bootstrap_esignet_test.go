@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 )
 
@@ -295,6 +296,19 @@ func TestBootstrapInjiHolderWritesTheMimotoKeystore(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(got.Steps, "\n"), filepath.Join(dir, MimotoKeystoreFile)) {
 		t.Errorf("steps = %v", got.Steps)
+	}
+	// The public half waits for the setup run of the issuer pair
+	// (ADR-052 decision 5).
+	jwk, err := ReadWalletJWK(filepath.Dir(holder.Dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, err := jose.ParseJWK([]byte(jwk))
+	if err != nil || !pub.IsPublic() || !want.PublicKey.Equal(pub.Key) {
+		t.Fatalf("the public key file = %q, %v", jwk, err)
+	}
+	if strings.Contains(jwk, `"d"`) {
+		t.Fatal("the public key file holds the private part")
 	}
 	ignore, gerr := os.ReadFile(filepath.Join(dir, ".gitignore")) // #nosec G304 -- a test path
 	if gerr != nil || string(ignore) != "*\n" {

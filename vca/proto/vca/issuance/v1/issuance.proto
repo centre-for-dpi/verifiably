@@ -78,6 +78,10 @@ message IssueRequest {
   // subject_data only to the holder who presents that value (ADR-051
   // decision 5).
   vca.backend.v1.PresentationSubject presentation_subject = 11;
+  // Who can claim an offer of the authorization code channel. It names
+  // a sign in claim and the claim of subject_data with the same value
+  // (ADR-052 decision 3).
+  vca.backend.v1.BindingRule binding_rule = 12;
 }
 
 // Offer is the state of one issuance.

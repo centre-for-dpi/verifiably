@@ -6,12 +6,14 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
@@ -37,7 +39,30 @@ const (
 	// DefaultInjiWebURL is the address of Inji Web on the host port of
 	// the stack file. VCA_INJI_WEB_URL changes it.
 	DefaultInjiWebURL = "http://localhost:17085"
+	// MimotoWalletJWKFile is the public key of the key store, as a JWK.
+	// The setup run of the Inji issuer pair registers it as the key of
+	// the client of Inji Web at the holder authorization server of its
+	// adapter (ADR-052 decision 5).
+	MimotoWalletJWKFile = "vca-inji.jwk.json"
 )
+
+// ReadWalletJWK reads the public key of the client of Inji Web that the
+// holder bootstrap wrote under the deploy root. A missing file gives an
+// empty key and no error.
+func ReadWalletJWK(root string) (string, error) {
+	path := filepath.Join(root, MimotoDir, MimotoWalletJWKFile)
+	raw, err := os.ReadFile(path) // #nosec G304 -- the path comes from the deploy root
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", path, err)
+	}
+	if _, err := jose.ParseJWK(raw); err != nil {
+		return "", fmt.Errorf("read %s: %w", path, err)
+	}
+	return strings.TrimSpace(string(raw)), nil
+}
 
 // isInjiHolder reports the holder pair of the Inji stack, which runs
 // Mimoto and Inji Web.
@@ -91,9 +116,25 @@ func writeMimotoKeystore(opts BootstrapOptions, key *rsa.PrivateKey, result *Boo
 		return err
 	}
 	storePath := filepath.Join(dir, MimotoKeystoreFile)
-	if err := os.WriteFile(storePath, store, 0o600); err != nil {
-		return fmt.Errorf("write the Mimoto key store: %w", err)
+	if werr := os.WriteFile(storePath, store, 0o600); werr != nil {
+		return fmt.Errorf("write the Mimoto key store: %w", werr)
 	}
+	// The public half goes beside it, for the holder authorization server
+	// of the issuer pair. It holds no secret.
+	pub, err := jose.PublicJWK(key, "")
+	if err != nil {
+		return fmt.Errorf("the public key of the Mimoto key store: %w", err)
+	}
+	raw, err := json.Marshal(pub)
+	if err != nil {
+		return fmt.Errorf("the public key of the Mimoto key store: %w", err)
+	}
+	jwkPath := filepath.Join(dir, MimotoWalletJWKFile)
+	if err := os.WriteFile(jwkPath, append(raw, '\n'), 0o644); err != nil { //nolint:gosec // G306: a public key
+		return fmt.Errorf("write the public key of the Mimoto key store: %w", err)
+	}
+	result.step(opts.Out, "The public key of Inji Web written to %s. Run vca setup and vca deploy for the Inji issuer pair, "+
+		"so its holder authorization server accepts Inji Web", jwkPath)
 	result.step(opts.Out, "Mimoto key store written to %s with the key of %s. Run vca deploy again so Mimoto reads it",
 		storePath, EsignetClientID)
 	return nil

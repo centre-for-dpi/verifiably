@@ -111,3 +111,28 @@ func TestRenderThenParseRoundTrip(t *testing.T) {
 		t.Errorf("round trip = %v", got)
 	}
 }
+
+// TestDotenvRoundTripsEveryValue: a value that quoteValue escapes comes
+// back the same from ParseDotenv, as compose reads it. A JSON list of
+// wallet clients holds quotes, so a second setup run must not escape it
+// twice.
+func TestDotenvRoundTripsEveryValue(t *testing.T) {
+	for _, v := range []string{
+		`[{"client_id":"vca-inji","jwk":{"kty":"RSA"}}]`, `a\b`, "back`tick", `cost $5`, "plain", "with space", `"`, `\`,
+		"it's", "# not a comment",
+	} {
+		text := ApplyEnvLine("", "X", v)
+		got, err := ParseDotenv(strings.NewReader(text))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got["X"] != v {
+			t.Errorf("%q came back as %q from %q", v, got["X"], text)
+		}
+	}
+	// A single quoted value keeps its backslashes.
+	got, err := ParseDotenv(strings.NewReader(`X='a\"b'` + "\n"))
+	if err != nil || got["X"] != `a\"b` {
+		t.Fatalf("single quotes = %q, %v", got["X"], err)
+	}
+}

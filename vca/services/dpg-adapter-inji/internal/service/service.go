@@ -62,8 +62,12 @@ type Options struct {
 	// OfferIssuer is the credential_issuer of a hosted offer.
 	OfferIssuer string
 	// AuthorizationServer is the identity provider of the authorization
-	// code flow.
+	// code flow when the holder authorization server is off.
 	AuthorizationServer string
+	// AuthzIssuer is the issuer of the holder authorization server of
+	// the adapter (ADR-052). An authorization code offer names it. Empty
+	// turns the server off.
+	AuthzIssuer string
 	// OfferTTL is the life of a hosted offer.
 	OfferTTL time.Duration
 	// PageSizeMax caps a list page.
@@ -115,6 +119,7 @@ type Service struct {
 	publicURL           string
 	offerIssuer         string
 	authorizationServer string
+	authzIssuer         string
 	offerTTL            time.Duration
 	pageSizeMax         int
 	versions            map[string]string
@@ -176,6 +181,7 @@ func New(opts Options) (*Service, error) {
 		publicURL:           strings.TrimRight(opts.PublicURL, "/"),
 		offerIssuer:         opts.OfferIssuer,
 		authorizationServer: opts.AuthorizationServer,
+		authzIssuer:         strings.TrimRight(opts.AuthzIssuer, "/"),
 		offerTTL:            opts.OfferTTL,
 		pageSizeMax:         opts.PageSizeMax,
 		versions:            opts.Versions,

@@ -5,16 +5,22 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1/datasourcev1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/authz"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/claims"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/inji"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/dpgclient"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
@@ -29,6 +35,9 @@ type App struct {
 	Claims *claims.Writer
 	// ClaimsSweep is the interval of Sweep.
 	ClaimsSweep time.Duration
+	// Authz is the holder authorization server. Nil when the
+	// configuration names no issuer for it.
+	Authz *authz.Server
 }
 
 // Sweep deletes the expired rows of the claims store every interval
@@ -47,6 +56,11 @@ func (a *App) Sweep(ctx context.Context, log *slog.Logger) {
 		case <-ticker.C:
 			if _, err := a.Claims.Sweep(); err != nil {
 				log.Warn("the sweep of the claims store failed", "error", err)
+			}
+			if a.Authz != nil {
+				if _, err := a.Authz.Sweep(ctx); err != nil {
+					log.Warn("the sweep of the holder authorization server failed", "error", err)
+				}
 			}
 		}
 	}
@@ -91,6 +105,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		PublicURL:           cfg.PublicURL,
 		OfferIssuer:         cfg.OfferIssuer,
 		AuthorizationServer: cfg.AuthorizationServer,
+		AuthzIssuer:         authzIssuer(cfg),
 		OfferTTL:            cfg.OfferTTL,
 		Versions:            cfg.Versions(),
 		Profiles:            cfg.Profiles(),
@@ -121,6 +136,17 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	// issuance over HTTP on the compose network (ADR-051 decision 6).
 	// The proxy does not publish it.
 	mux.HandleFunc("GET /iar/presentation-definition.json", definitionHandler(svc))
+	var holder *authz.Server
+	if issuer := authzIssuer(cfg); issuer != "" {
+		if holder, err = buildAuthz(cfg, deps, backend, svc); err != nil {
+			return nil, err
+		}
+		// A wallet and Inji Web reach the server under the public URL of
+		// the adapter. The proxy of the pair publishes the path (ADR-052
+		// decision 1).
+		prefix := pathOf(issuer)
+		mux.Handle(prefix+"/", http.StripPrefix(prefix, holder.Handler()))
+	}
 	if cfg.CertifyURL != "" && cfg.PublicURL == "" {
 		deps.Log.Warn("no public URL, so the authorization code channel is off",
 			"setting", config.Prefix+"PUBLIC_URL")
@@ -135,7 +161,72 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	}
 	deps.Log.Info("Inji adapter ready",
 		"certify", cfg.CertifyURL != "", "verify", cfg.VerifyURL != "", "mimoto", cfg.MimotoURL != "")
-	return &App{Mux: mux, Service: svc, Claims: writer, ClaimsSweep: cfg.ClaimsSweep}, nil
+	return &App{Mux: mux, Service: svc, Claims: writer, ClaimsSweep: cfg.ClaimsSweep, Authz: holder}, nil
+}
+
+// authzIssuer returns the issuer of the holder authorization server, or
+// empty when the adapter serves no issuer role or names no issuer.
+func authzIssuer(cfg config.Config) string {
+	if cfg.CertifyURL == "" {
+		return ""
+	}
+	return strings.TrimRight(strings.TrimSpace(cfg.AuthzIssuer), "/")
+}
+
+// pathOf returns the path of an issuer URL, where the handler mounts.
+func pathOf(issuer string) string {
+	u, err := url.Parse(issuer)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimRight(u.Path, "/")
+}
+
+// buildAuthz wires the holder authorization server (ADR-052): the
+// provider registry in the store of the adapter, seeded with the holder
+// provider that setup names, the login flow, the wallet clients, and
+// the data source of a claim without an offer.
+func buildAuthz(cfg config.Config, deps Deps, backend store.KeyValue, svc *service.Service) (*authz.Server, error) {
+	issuer := authzIssuer(cfg)
+	if pathOf(issuer) == "" {
+		return nil, fmt.Errorf("app: %sAUTHZ_ISSUER needs a path such as /authz, so the server does not take the root", config.Prefix)
+	}
+	if cfg.AuthzKeySecret == "" {
+		return nil, fmt.Errorf("app: %sAUTHZ_KEY_SECRET is empty; it seals the token key of the holder authorization server", config.Prefix)
+	}
+	clients, err := authz.ParseClients(cfg.WalletClients)
+	if err != nil {
+		return nil, err
+	}
+	registry, err := oidcflow.NewRegistry(store.NewJSON(backend), nil)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.HolderOIDCDiscoveryURL != "" && cfg.HolderOIDCClientID != "" {
+		if err := registry.Seed(oidcflow.SeedProvider(oidcflow.Seed{
+			DiscoveryURL: cfg.HolderOIDCDiscoveryURL, ClientID: cfg.HolderOIDCClientID,
+			PublicURL: cfg.HolderOIDCPublicURL, InternalAuthority: cfg.HolderOIDCInternalAuthority,
+			Roles: []string{"holder"}, Scopes: []string{"openid", "email", "profile"},
+		})); err != nil {
+			return nil, fmt.Errorf("app: seed the holder provider: %w", err)
+		}
+	} else {
+		deps.Log.Warn("no holder provider is seeded, so a holder signs in only at a provider an admin adds",
+			"setting", config.Prefix+"HOLDER_OIDC_DISCOVERY_URL")
+	}
+	client := deps.HTTP
+	if client == nil {
+		client = &http.Client{Timeout: cfg.Timeout}
+	}
+	var lookup authz.Lookup
+	if cfg.DataSourceURL != "" {
+		lookup = authz.DataSource{Client: datasourcev1connect.NewDataSourceServiceClient(client, cfg.DataSourceURL)}
+	}
+	return authz.New(context.Background(), authz.Options{
+		Issuer: issuer, Audience: cfg.Audience(), Store: backend, KeySecret: []byte(cfg.AuthzKeySecret),
+		Clients: clients, Registry: registry, Flow: &oidcflow.Flow{Cache: oidcflow.NewCache(client, 0), Client: client},
+		Offers: svc, Lookup: lookup, Log: deps.Log,
+	})
 }
 
 // definitionHandler serves the presentation definition that the issuer

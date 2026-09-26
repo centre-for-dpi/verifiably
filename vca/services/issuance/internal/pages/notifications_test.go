@@ -89,7 +89,7 @@ func TestIssuerHelpListsTheRPCs(t *testing.T) {
 		`href="https://github.com/centre-for-dpi/verifiably/tree/main/vca/docs/issued-credentials.md"`,
 		`href="https://github.com/centre-for-dpi/verifiably/tree/main/vca/docs/data-source.md"`,
 		"IssueBatch", "Publish", "Revoke", "PreviewRows", "VerifyChain",
-		msg.T("issuer.help.caption.label", msg.T("issuer.nav.sources.label"), "10"),
+		msg.T("issuer.help.caption.label", msg.T("issuer.nav.sources.label"), "11"),
 	} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("help lacks %q", want)

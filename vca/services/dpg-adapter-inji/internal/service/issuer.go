@@ -20,6 +20,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/authz"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/claims"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/inji"
 )
@@ -43,6 +44,14 @@ type hostedOffer struct {
 	Document string `json:"document"`
 	// ExpiresAt is the end of the offer.
 	ExpiresAt time.Time `json:"expires_at"`
+	// Spec is what the offer issues, as protojson, for a claim through
+	// the holder authorization server (ADR-052).
+	Spec string `json:"spec,omitempty"`
+	// Binding says who may claim it.
+	Binding *authz.Binding `json:"binding,omitempty"`
+	// Claimed marks an offer whose claims row was written. It opens no
+	// second time.
+	Claimed bool `json:"claimed,omitempty"`
 }
 
 // CreateOffer builds an OID4VCI credential offer for one subject.
@@ -152,17 +161,25 @@ func (s *Service) presentationOffer(ctx context.Context, spec *backendv1.IssueSp
 	if issuer == "" {
 		issuer = s.certify.BaseURL()
 	}
-	return s.hostOffer(ctx, spec, issuer, server.Issuer)
+	return s.hostOffer(ctx, spec, issuer, server.Issuer, hostedOffer{})
 }
 
-// authorizationCodeOffer builds and stores the offer document. The offer
-// names the configured identity provider, else the first authorization
-// server of the Certify metadata, which is eSignet in the stack file.
-// A wallet then signs the holder in at eSignet, and Certify takes the
-// eSignet token at its credential endpoint.
+// authorizationCodeOffer builds and stores the offer document. With the
+// holder authorization server of the adapter on, the offer names it,
+// keeps the claims and the binding rule, and the claims row waits for
+// the sign in of the holder (ADR-052). Otherwise the offer names the
+// configured identity provider, else the first authorization server of
+// the Certify metadata.
 func (s *Service) authorizationCodeOffer(ctx context.Context, spec *backendv1.IssueSpec) (
 	*connect.Response[backendv1.CreateOfferResponse], error,
 ) {
+	issuer := s.offerIssuer
+	if issuer == "" {
+		issuer = s.certify.BaseURL()
+	}
+	if s.authzIssuer != "" {
+		return s.holderOffer(ctx, spec, issuer)
+	}
 	server := s.authorizationServer
 	if server == "" {
 		meta, err := s.certify.Metadata(ctx)
@@ -171,35 +188,34 @@ func (s *Service) authorizationCodeOffer(ctx context.Context, spec *backendv1.Is
 		}
 		if len(meta.AuthorizationServers) == 0 {
 			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(
-				"the Certify metadata names no authorization server; set VCA_INJI_AUTHORIZATION_SERVER to the eSignet issuer"))
+				"the Certify metadata names no authorization server; set VCA_INJI_AUTHZ_ISSUER to turn on the holder authorization server"))
 		}
 		server = meta.AuthorizationServers[0]
 	}
-	issuer := s.offerIssuer
-	if issuer == "" {
-		issuer = s.certify.BaseURL()
-	}
-	return s.hostOffer(ctx, spec, issuer, server)
+	return s.hostOffer(ctx, spec, issuer, server, hostedOffer{})
 }
 
 // hostOffer builds and stores the authorization code offer document of
-// the credential issuer and its authorization server.
-func (s *Service) hostOffer(ctx context.Context, spec *backendv1.IssueSpec, issuer, authorizationServer string) (
+// the credential issuer and its authorization server. The offer id is
+// the issuer_state of the document, so the authorization server finds
+// the offer when the wallet names it. extra carries what the holder
+// authorization server needs.
+func (s *Service) hostOffer(ctx context.Context, spec *backendv1.IssueSpec, issuer, authorizationServer string, extra hostedOffer) (
 	*connect.Response[backendv1.CreateOfferResponse], error,
 ) {
 	if s.publicURL == "" {
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("the authorization code channel needs a public URL for the offer document"))
 	}
-	document := inji.AuthorizationCodeOffer(issuer, spec.GetConfigurationId(),
-		s.newID(), authorizationServer)
+	id := s.newID()
+	document := inji.AuthorizationCodeOffer(issuer, spec.GetConfigurationId(), id, authorizationServer)
 	raw, err := json.Marshal(document)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	id := s.newID()
 	expires := s.now().UTC().Add(s.offerTTL)
-	stored, err := json.Marshal(hostedOffer{Document: string(raw), ExpiresAt: expires})
+	extra.Document, extra.ExpiresAt = string(raw), expires
+	stored, err := json.Marshal(extra)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -249,17 +265,30 @@ func offerIDOf(offerURI string) string {
 // its subject into the claims store under the key (ADR-051 decision 2).
 // The row lives as long as the offer.
 func (s *Service) stageRow(ctx context.Context, spec *backendv1.IssueSpec, key string) (inji.Configuration, error) {
+	row, cfg, err := s.buildRow(ctx, spec, key)
+	if err != nil {
+		return inji.Configuration{}, err
+	}
+	if err := s.claims.Put(row); err != nil {
+		return inji.Configuration{}, connect.NewError(connect.CodeUnavailable, fmt.Errorf("write the claims row: %w", err))
+	}
+	return cfg, nil
+}
+
+// buildRow checks the spec and returns the claims row of its subject
+// under key, without writing it.
+func (s *Service) buildRow(ctx context.Context, spec *backendv1.IssueSpec, key string) (claims.Row, inji.Configuration, error) {
 	if s.claims == nil {
-		return inji.Configuration{}, connect.NewError(connect.CodeFailedPrecondition, errors.New(
+		return claims.Row{}, inji.Configuration{}, connect.NewError(connect.CodeFailedPrecondition, errors.New(
 			"this adapter has no claims store; set VCA_INJI_CLAIMS_DIR to the directory that Certify reads"))
 	}
 	meta, err := s.certify.Metadata(ctx)
 	if err != nil {
-		return inji.Configuration{}, failed("read the issuer metadata", err)
+		return claims.Row{}, inji.Configuration{}, failed("read the issuer metadata", err)
 	}
 	cfg, ok := meta.Configurations[spec.GetConfigurationId()]
 	if !ok {
-		return inji.Configuration{}, connect.NewError(connect.CodeNotFound, fmt.Errorf(
+		return claims.Row{}, inji.Configuration{}, connect.NewError(connect.CodeNotFound, fmt.Errorf(
 			"the configuration %q is not advertised by Inji Certify", spec.GetConfigurationId()))
 	}
 	subject := map[string]any{}
@@ -267,27 +296,24 @@ func (s *Service) stageRow(ctx context.Context, spec *backendv1.IssueSpec, key s
 		dec := json.NewDecoder(strings.NewReader(raw))
 		dec.UseNumber()
 		if errErr := dec.Decode(&subject); errErr != nil {
-			return inji.Configuration{}, connect.NewError(connect.CodeInvalidArgument,
+			return claims.Row{}, inji.Configuration{}, connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("subject_data is not a JSON object: %w", errErr))
 		}
 	}
 	if len(subject) == 0 {
-		return inji.Configuration{}, connect.NewError(connect.CodeInvalidArgument,
+		return claims.Row{}, inji.Configuration{}, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("the claim set is empty, and Inji Certify rejects it"))
 	}
 	names, err := s.columns(ctx, spec.GetConfigurationId())
 	if err != nil {
-		return inji.Configuration{}, err
+		return claims.Row{}, inji.Configuration{}, err
 	}
 	row, err := inji.ClaimsRow(key, spec.GetConfigurationId(), names, subject, cfg.Format,
 		statusOf(spec), validityOf(spec), s.now().UTC().Add(s.offerTTL))
 	if err != nil {
-		return inji.Configuration{}, connect.NewError(connect.CodeInvalidArgument, err)
+		return claims.Row{}, inji.Configuration{}, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if err := s.claims.Put(row); err != nil {
-		return inji.Configuration{}, connect.NewError(connect.CodeUnavailable, fmt.Errorf("write the claims row: %w", err))
-	}
-	return cfg, nil
+	return row, cfg, nil
 }
 
 // statusOf returns the status entry of a spec.

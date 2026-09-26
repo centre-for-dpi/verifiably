@@ -224,3 +224,23 @@ func TestLoadServesTheHolderRoleAlone(t *testing.T) {
 		t.Fatalf("config = %+v", cfg)
 	}
 }
+
+// TestAudienceFollowsTheCertifyOfTheOffers: the tokens of the holder
+// authorization server name the credential endpoint of the Certify that
+// an authorization code offer names, unless the setting says otherwise.
+func TestAudienceFollowsTheCertifyOfTheOffers(t *testing.T) {
+	cases := []struct {
+		cfg  config.Config
+		want string
+	}{
+		{config.Config{OfferIssuer: "http://inji-certify-nginx:8091/", CertifyURL: "http://inji-certify:8090"}, "http://inji-certify-nginx:8091/v1/certify/issuance/credential"},
+		{config.Config{CertifyURL: "http://inji-certify:8090"}, "http://inji-certify:8090/v1/certify/issuance/credential"},
+		{config.Config{AuthzAudience: "https://certify.example.org/credential", OfferIssuer: "http://x"}, "https://certify.example.org/credential"},
+		{config.Config{}, ""},
+	}
+	for _, c := range cases {
+		if got := c.cfg.Audience(); got != c.want {
+			t.Errorf("Audience() = %q, want %q", got, c.want)
+		}
+	}
+}

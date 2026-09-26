@@ -52,6 +52,36 @@ service DataSourceService {
   rpc RunBulk(RunBulkRequest) returns (stream RunBulkResponse) {
     option (vca.common.v1.description) = "Checks the issue rule of a source. The data source pages start a bulk run.";
   }
+  // Lookup returns the one row of a source whose field holds a value.
+  // The field map of a schema turns it into claims (ADR-052 decision 3).
+  // The holder
+  // authorization server of the Inji adapter calls it for a claim that
+  // no offer names.
+  rpc Lookup(LookupRequest) returns (LookupResponse) {
+    option (vca.common.v1.description) = "Returns the one row of a source whose field holds a value, as schema claims.";
+  }
+}
+
+// LookupRequest names one row by the value of one field.
+message LookupRequest {
+  // The source id.
+  string source_id = 1;
+  // The source field that identifies the person.
+  string field = 2;
+  // The value the field must hold.
+  string value = 3;
+  // The schema whose field map turns the row into claims.
+  string schema_id = 4;
+  // The version of that schema.
+  int32 schema_version = 5;
+}
+
+// LookupResponse carries the claims of the row.
+message LookupResponse {
+  // Whether exactly one row holds the value.
+  bool found = 1;
+  // The claims of the row after the field map, as a JSON object string.
+  string subject_data = 2;
 }
 
 // Source is one data source.

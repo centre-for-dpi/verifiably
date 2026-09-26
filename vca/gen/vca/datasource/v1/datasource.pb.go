@@ -96,6 +96,143 @@ func (Transform) EnumDescriptor() ([]byte, []int) {
 	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{0}
 }
 
+// LookupRequest names one row by the value of one field.
+type LookupRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The source id.
+	SourceId string `protobuf:"bytes,1,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
+	// The source field that identifies the person.
+	Field string `protobuf:"bytes,2,opt,name=field,proto3" json:"field,omitempty"`
+	// The value the field must hold.
+	Value string `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
+	// The schema whose field map turns the row into claims.
+	SchemaId string `protobuf:"bytes,4,opt,name=schema_id,json=schemaId,proto3" json:"schema_id,omitempty"`
+	// The version of that schema.
+	SchemaVersion int32 `protobuf:"varint,5,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LookupRequest) Reset() {
+	*x = LookupRequest{}
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LookupRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LookupRequest) ProtoMessage() {}
+
+func (x *LookupRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LookupRequest.ProtoReflect.Descriptor instead.
+func (*LookupRequest) Descriptor() ([]byte, []int) {
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *LookupRequest) GetSourceId() string {
+	if x != nil {
+		return x.SourceId
+	}
+	return ""
+}
+
+func (x *LookupRequest) GetField() string {
+	if x != nil {
+		return x.Field
+	}
+	return ""
+}
+
+func (x *LookupRequest) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+func (x *LookupRequest) GetSchemaId() string {
+	if x != nil {
+		return x.SchemaId
+	}
+	return ""
+}
+
+func (x *LookupRequest) GetSchemaVersion() int32 {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return 0
+}
+
+// LookupResponse carries the claims of the row.
+type LookupResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether exactly one row holds the value.
+	Found bool `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"`
+	// The claims of the row after the field map, as a JSON object string.
+	SubjectData   string `protobuf:"bytes,2,opt,name=subject_data,json=subjectData,proto3" json:"subject_data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LookupResponse) Reset() {
+	*x = LookupResponse{}
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LookupResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LookupResponse) ProtoMessage() {}
+
+func (x *LookupResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LookupResponse.ProtoReflect.Descriptor instead.
+func (*LookupResponse) Descriptor() ([]byte, []int) {
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *LookupResponse) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+func (x *LookupResponse) GetSubjectData() string {
+	if x != nil {
+		return x.SubjectData
+	}
+	return ""
+}
+
 // Source is one data source.
 type Source struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -125,7 +262,7 @@ type Source struct {
 
 func (x *Source) Reset() {
 	*x = Source{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[0]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -137,7 +274,7 @@ func (x *Source) String() string {
 func (*Source) ProtoMessage() {}
 
 func (x *Source) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[0]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -150,7 +287,7 @@ func (x *Source) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Source.ProtoReflect.Descriptor instead.
 func (*Source) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{0}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Source) GetId() string {
@@ -271,7 +408,7 @@ type CsvSource struct {
 
 func (x *CsvSource) Reset() {
 	*x = CsvSource{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[1]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -283,7 +420,7 @@ func (x *CsvSource) String() string {
 func (*CsvSource) ProtoMessage() {}
 
 func (x *CsvSource) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[1]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -296,7 +433,7 @@ func (x *CsvSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CsvSource.ProtoReflect.Descriptor instead.
 func (*CsvSource) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{1}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *CsvSource) GetFileRef() string {
@@ -355,7 +492,7 @@ type HttpSource struct {
 
 func (x *HttpSource) Reset() {
 	*x = HttpSource{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[2]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -367,7 +504,7 @@ func (x *HttpSource) String() string {
 func (*HttpSource) ProtoMessage() {}
 
 func (x *HttpSource) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[2]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -380,7 +517,7 @@ func (x *HttpSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpSource.ProtoReflect.Descriptor instead.
 func (*HttpSource) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{2}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *HttpSource) GetUrl() string {
@@ -494,7 +631,7 @@ type SqlSource struct {
 
 func (x *SqlSource) Reset() {
 	*x = SqlSource{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[3]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -506,7 +643,7 @@ func (x *SqlSource) String() string {
 func (*SqlSource) ProtoMessage() {}
 
 func (x *SqlSource) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[3]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -519,7 +656,7 @@ func (x *SqlSource) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SqlSource.ProtoReflect.Descriptor instead.
 func (*SqlSource) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{3}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *SqlSource) GetDriver() string {
@@ -565,7 +702,7 @@ type Field struct {
 
 func (x *Field) Reset() {
 	*x = Field{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[4]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -577,7 +714,7 @@ func (x *Field) String() string {
 func (*Field) ProtoMessage() {}
 
 func (x *Field) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[4]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -590,7 +727,7 @@ func (x *Field) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Field.ProtoReflect.Descriptor instead.
 func (*Field) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{4}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Field) GetName() string {
@@ -631,7 +768,7 @@ type FieldMap struct {
 
 func (x *FieldMap) Reset() {
 	*x = FieldMap{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[5]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -643,7 +780,7 @@ func (x *FieldMap) String() string {
 func (*FieldMap) ProtoMessage() {}
 
 func (x *FieldMap) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[5]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -656,7 +793,7 @@ func (x *FieldMap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FieldMap.ProtoReflect.Descriptor instead.
 func (*FieldMap) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{5}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *FieldMap) GetSourceId() string {
@@ -698,7 +835,7 @@ type CreateRequest struct {
 
 func (x *CreateRequest) Reset() {
 	*x = CreateRequest{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[6]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -710,7 +847,7 @@ func (x *CreateRequest) String() string {
 func (*CreateRequest) ProtoMessage() {}
 
 func (x *CreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[6]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -723,7 +860,7 @@ func (x *CreateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateRequest.ProtoReflect.Descriptor instead.
 func (*CreateRequest) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{6}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CreateRequest) GetSource() *Source {
@@ -744,7 +881,7 @@ type CreateResponse struct {
 
 func (x *CreateResponse) Reset() {
 	*x = CreateResponse{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[7]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -756,7 +893,7 @@ func (x *CreateResponse) String() string {
 func (*CreateResponse) ProtoMessage() {}
 
 func (x *CreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[7]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -769,7 +906,7 @@ func (x *CreateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateResponse.ProtoReflect.Descriptor instead.
 func (*CreateResponse) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{7}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *CreateResponse) GetSource() *Source {
@@ -790,7 +927,7 @@ type UpdateRequest struct {
 
 func (x *UpdateRequest) Reset() {
 	*x = UpdateRequest{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[8]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -802,7 +939,7 @@ func (x *UpdateRequest) String() string {
 func (*UpdateRequest) ProtoMessage() {}
 
 func (x *UpdateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[8]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -815,7 +952,7 @@ func (x *UpdateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateRequest.ProtoReflect.Descriptor instead.
 func (*UpdateRequest) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{8}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *UpdateRequest) GetSource() *Source {
@@ -836,7 +973,7 @@ type UpdateResponse struct {
 
 func (x *UpdateResponse) Reset() {
 	*x = UpdateResponse{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[9]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -848,7 +985,7 @@ func (x *UpdateResponse) String() string {
 func (*UpdateResponse) ProtoMessage() {}
 
 func (x *UpdateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[9]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -861,7 +998,7 @@ func (x *UpdateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateResponse.ProtoReflect.Descriptor instead.
 func (*UpdateResponse) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{9}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *UpdateResponse) GetSource() *Source {
@@ -884,7 +1021,7 @@ type ListRequest struct {
 
 func (x *ListRequest) Reset() {
 	*x = ListRequest{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[10]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -896,7 +1033,7 @@ func (x *ListRequest) String() string {
 func (*ListRequest) ProtoMessage() {}
 
 func (x *ListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[10]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -909,7 +1046,7 @@ func (x *ListRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRequest.ProtoReflect.Descriptor instead.
 func (*ListRequest) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{10}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListRequest) GetPage() *v1.Pagination {
@@ -939,7 +1076,7 @@ type ListResponse struct {
 
 func (x *ListResponse) Reset() {
 	*x = ListResponse{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[11]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -951,7 +1088,7 @@ func (x *ListResponse) String() string {
 func (*ListResponse) ProtoMessage() {}
 
 func (x *ListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[11]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -964,7 +1101,7 @@ func (x *ListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListResponse.ProtoReflect.Descriptor instead.
 func (*ListResponse) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{11}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ListResponse) GetSources() []*Source {
@@ -992,7 +1129,7 @@ type GetRequest struct {
 
 func (x *GetRequest) Reset() {
 	*x = GetRequest{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[12]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1004,7 +1141,7 @@ func (x *GetRequest) String() string {
 func (*GetRequest) ProtoMessage() {}
 
 func (x *GetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[12]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1017,7 +1154,7 @@ func (x *GetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRequest.ProtoReflect.Descriptor instead.
 func (*GetRequest) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{12}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetRequest) GetId() string {
@@ -1038,7 +1175,7 @@ type GetResponse struct {
 
 func (x *GetResponse) Reset() {
 	*x = GetResponse{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[13]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1050,7 +1187,7 @@ func (x *GetResponse) String() string {
 func (*GetResponse) ProtoMessage() {}
 
 func (x *GetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[13]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1063,7 +1200,7 @@ func (x *GetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetResponse.ProtoReflect.Descriptor instead.
 func (*GetResponse) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{13}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetResponse) GetSource() *Source {
@@ -1084,7 +1221,7 @@ type DeleteRequest struct {
 
 func (x *DeleteRequest) Reset() {
 	*x = DeleteRequest{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[14]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1096,7 +1233,7 @@ func (x *DeleteRequest) String() string {
 func (*DeleteRequest) ProtoMessage() {}
 
 func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[14]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1109,7 +1246,7 @@ func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRequest.ProtoReflect.Descriptor instead.
 func (*DeleteRequest) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{14}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *DeleteRequest) GetId() string {
@@ -1128,7 +1265,7 @@ type DeleteResponse struct {
 
 func (x *DeleteResponse) Reset() {
 	*x = DeleteResponse{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[15]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1140,7 +1277,7 @@ func (x *DeleteResponse) String() string {
 func (*DeleteResponse) ProtoMessage() {}
 
 func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[15]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1153,7 +1290,7 @@ func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteResponse.ProtoReflect.Descriptor instead.
 func (*DeleteResponse) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{15}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{17}
 }
 
 // PreviewFieldsRequest selects a source.
@@ -1167,7 +1304,7 @@ type PreviewFieldsRequest struct {
 
 func (x *PreviewFieldsRequest) Reset() {
 	*x = PreviewFieldsRequest{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[16]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1179,7 +1316,7 @@ func (x *PreviewFieldsRequest) String() string {
 func (*PreviewFieldsRequest) ProtoMessage() {}
 
 func (x *PreviewFieldsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[16]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1192,7 +1329,7 @@ func (x *PreviewFieldsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewFieldsRequest.ProtoReflect.Descriptor instead.
 func (*PreviewFieldsRequest) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{16}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *PreviewFieldsRequest) GetSourceId() string {
@@ -1213,7 +1350,7 @@ type PreviewFieldsResponse struct {
 
 func (x *PreviewFieldsResponse) Reset() {
 	*x = PreviewFieldsResponse{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[17]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1225,7 +1362,7 @@ func (x *PreviewFieldsResponse) String() string {
 func (*PreviewFieldsResponse) ProtoMessage() {}
 
 func (x *PreviewFieldsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[17]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1238,7 +1375,7 @@ func (x *PreviewFieldsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewFieldsResponse.ProtoReflect.Descriptor instead.
 func (*PreviewFieldsResponse) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{17}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *PreviewFieldsResponse) GetFields() []*Field {
@@ -1261,7 +1398,7 @@ type PreviewRowsRequest struct {
 
 func (x *PreviewRowsRequest) Reset() {
 	*x = PreviewRowsRequest{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[18]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1273,7 +1410,7 @@ func (x *PreviewRowsRequest) String() string {
 func (*PreviewRowsRequest) ProtoMessage() {}
 
 func (x *PreviewRowsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[18]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1286,7 +1423,7 @@ func (x *PreviewRowsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewRowsRequest.ProtoReflect.Descriptor instead.
 func (*PreviewRowsRequest) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{18}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *PreviewRowsRequest) GetSourceId() string {
@@ -1316,7 +1453,7 @@ type PreviewRowsResponse struct {
 
 func (x *PreviewRowsResponse) Reset() {
 	*x = PreviewRowsResponse{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[19]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1328,7 +1465,7 @@ func (x *PreviewRowsResponse) String() string {
 func (*PreviewRowsResponse) ProtoMessage() {}
 
 func (x *PreviewRowsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[19]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1341,7 +1478,7 @@ func (x *PreviewRowsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewRowsResponse.ProtoReflect.Descriptor instead.
 func (*PreviewRowsResponse) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{19}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *PreviewRowsResponse) GetRows() []*PreviewRowsResponse_Row {
@@ -1369,7 +1506,7 @@ type SetFieldMapRequest struct {
 
 func (x *SetFieldMapRequest) Reset() {
 	*x = SetFieldMapRequest{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[20]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1381,7 +1518,7 @@ func (x *SetFieldMapRequest) String() string {
 func (*SetFieldMapRequest) ProtoMessage() {}
 
 func (x *SetFieldMapRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[20]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1394,7 +1531,7 @@ func (x *SetFieldMapRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetFieldMapRequest.ProtoReflect.Descriptor instead.
 func (*SetFieldMapRequest) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{20}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *SetFieldMapRequest) GetFieldMap() *FieldMap {
@@ -1417,7 +1554,7 @@ type SetFieldMapResponse struct {
 
 func (x *SetFieldMapResponse) Reset() {
 	*x = SetFieldMapResponse{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[21]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1429,7 +1566,7 @@ func (x *SetFieldMapResponse) String() string {
 func (*SetFieldMapResponse) ProtoMessage() {}
 
 func (x *SetFieldMapResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[21]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1442,7 +1579,7 @@ func (x *SetFieldMapResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetFieldMapResponse.ProtoReflect.Descriptor instead.
 func (*SetFieldMapResponse) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{21}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *SetFieldMapResponse) GetFieldMap() *FieldMap {
@@ -1472,7 +1609,7 @@ type GetFieldMapRequest struct {
 
 func (x *GetFieldMapRequest) Reset() {
 	*x = GetFieldMapRequest{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[22]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1484,7 +1621,7 @@ func (x *GetFieldMapRequest) String() string {
 func (*GetFieldMapRequest) ProtoMessage() {}
 
 func (x *GetFieldMapRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[22]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1497,7 +1634,7 @@ func (x *GetFieldMapRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFieldMapRequest.ProtoReflect.Descriptor instead.
 func (*GetFieldMapRequest) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{22}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GetFieldMapRequest) GetSourceId() string {
@@ -1525,7 +1662,7 @@ type GetFieldMapResponse struct {
 
 func (x *GetFieldMapResponse) Reset() {
 	*x = GetFieldMapResponse{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[23]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1537,7 +1674,7 @@ func (x *GetFieldMapResponse) String() string {
 func (*GetFieldMapResponse) ProtoMessage() {}
 
 func (x *GetFieldMapResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[23]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1550,7 +1687,7 @@ func (x *GetFieldMapResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFieldMapResponse.ProtoReflect.Descriptor instead.
 func (*GetFieldMapResponse) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{23}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetFieldMapResponse) GetFieldMap() *FieldMap {
@@ -1579,7 +1716,7 @@ type RunBulkRequest struct {
 
 func (x *RunBulkRequest) Reset() {
 	*x = RunBulkRequest{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[24]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1591,7 +1728,7 @@ func (x *RunBulkRequest) String() string {
 func (*RunBulkRequest) ProtoMessage() {}
 
 func (x *RunBulkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[24]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1604,7 +1741,7 @@ func (x *RunBulkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunBulkRequest.ProtoReflect.Descriptor instead.
 func (*RunBulkRequest) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{24}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *RunBulkRequest) GetSourceId() string {
@@ -1665,7 +1802,7 @@ type RunBulkResponse struct {
 
 func (x *RunBulkResponse) Reset() {
 	*x = RunBulkResponse{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[25]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1677,7 +1814,7 @@ func (x *RunBulkResponse) String() string {
 func (*RunBulkResponse) ProtoMessage() {}
 
 func (x *RunBulkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[25]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1690,7 +1827,7 @@ func (x *RunBulkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunBulkResponse.ProtoReflect.Descriptor instead.
 func (*RunBulkResponse) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{25}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *RunBulkResponse) GetJobId() string {
@@ -1758,7 +1895,7 @@ type Source_Access struct {
 
 func (x *Source_Access) Reset() {
 	*x = Source_Access{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[26]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1770,7 +1907,7 @@ func (x *Source_Access) String() string {
 func (*Source_Access) ProtoMessage() {}
 
 func (x *Source_Access) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[26]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1783,7 +1920,7 @@ func (x *Source_Access) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Source_Access.ProtoReflect.Descriptor instead.
 func (*Source_Access) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{0, 0}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{2, 0}
 }
 
 func (x *Source_Access) GetViewFields() []string {
@@ -1820,7 +1957,7 @@ type HttpSource_BasicAuth struct {
 
 func (x *HttpSource_BasicAuth) Reset() {
 	*x = HttpSource_BasicAuth{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[28]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1832,7 +1969,7 @@ func (x *HttpSource_BasicAuth) String() string {
 func (*HttpSource_BasicAuth) ProtoMessage() {}
 
 func (x *HttpSource_BasicAuth) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[28]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1845,7 +1982,7 @@ func (x *HttpSource_BasicAuth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpSource_BasicAuth.ProtoReflect.Descriptor instead.
 func (*HttpSource_BasicAuth) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{2, 1}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{4, 1}
 }
 
 func (x *HttpSource_BasicAuth) GetUsername() string {
@@ -1875,7 +2012,7 @@ type HttpSource_MtlsAuth struct {
 
 func (x *HttpSource_MtlsAuth) Reset() {
 	*x = HttpSource_MtlsAuth{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[29]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1887,7 +2024,7 @@ func (x *HttpSource_MtlsAuth) String() string {
 func (*HttpSource_MtlsAuth) ProtoMessage() {}
 
 func (x *HttpSource_MtlsAuth) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[29]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1900,7 +2037,7 @@ func (x *HttpSource_MtlsAuth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpSource_MtlsAuth.ProtoReflect.Descriptor instead.
 func (*HttpSource_MtlsAuth) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{2, 2}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{4, 2}
 }
 
 func (x *HttpSource_MtlsAuth) GetCertificate() *v1.SecretRef {
@@ -1935,7 +2072,7 @@ type FieldMap_Rule struct {
 
 func (x *FieldMap_Rule) Reset() {
 	*x = FieldMap_Rule{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[30]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1947,7 +2084,7 @@ func (x *FieldMap_Rule) String() string {
 func (*FieldMap_Rule) ProtoMessage() {}
 
 func (x *FieldMap_Rule) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[30]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1960,7 +2097,7 @@ func (x *FieldMap_Rule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FieldMap_Rule.ProtoReflect.Descriptor instead.
 func (*FieldMap_Rule) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{5, 0}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{7, 0}
 }
 
 func (x *FieldMap_Rule) GetProperty() string {
@@ -2002,7 +2139,7 @@ type PreviewRowsResponse_Row struct {
 
 func (x *PreviewRowsResponse_Row) Reset() {
 	*x = PreviewRowsResponse_Row{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[32]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2014,7 +2151,7 @@ func (x *PreviewRowsResponse_Row) String() string {
 func (*PreviewRowsResponse_Row) ProtoMessage() {}
 
 func (x *PreviewRowsResponse_Row) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[32]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2027,7 +2164,7 @@ func (x *PreviewRowsResponse_Row) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewRowsResponse_Row.ProtoReflect.Descriptor instead.
 func (*PreviewRowsResponse_Row) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{19, 0}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{21, 0}
 }
 
 func (x *PreviewRowsResponse_Row) GetValues() map[string]string {
@@ -2050,7 +2187,7 @@ type RunBulkResponse_RowError struct {
 
 func (x *RunBulkResponse_RowError) Reset() {
 	*x = RunBulkResponse_RowError{}
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[34]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2062,7 +2199,7 @@ func (x *RunBulkResponse_RowError) String() string {
 func (*RunBulkResponse_RowError) ProtoMessage() {}
 
 func (x *RunBulkResponse_RowError) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[34]
+	mi := &file_vca_datasource_v1_datasource_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2075,7 +2212,7 @@ func (x *RunBulkResponse_RowError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunBulkResponse_RowError.ProtoReflect.Descriptor instead.
 func (*RunBulkResponse_RowError) Descriptor() ([]byte, []int) {
-	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{25, 0}
+	return file_vca_datasource_v1_datasource_proto_rawDescGZIP(), []int{27, 0}
 }
 
 func (x *RunBulkResponse_RowError) GetRow() int64 {
@@ -2096,7 +2233,16 @@ var File_vca_datasource_v1_datasource_proto protoreflect.FileDescriptor
 
 const file_vca_datasource_v1_datasource_proto_rawDesc = "" +
 	"\n" +
-	"\"vca/datasource/v1/datasource.proto\x12\x11vca.datasource.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\"\x8d\x04\n" +
+	"\"vca/datasource/v1/datasource.proto\x12\x11vca.datasource.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\"\x9c\x01\n" +
+	"\rLookupRequest\x12\x1b\n" +
+	"\tsource_id\x18\x01 \x01(\tR\bsourceId\x12\x14\n" +
+	"\x05field\x18\x02 \x01(\tR\x05field\x12\x14\n" +
+	"\x05value\x18\x03 \x01(\tR\x05value\x12\x1b\n" +
+	"\tschema_id\x18\x04 \x01(\tR\bschemaId\x12%\n" +
+	"\x0eschema_version\x18\x05 \x01(\x05R\rschemaVersion\"I\n" +
+	"\x0eLookupResponse\x12\x14\n" +
+	"\x05found\x18\x01 \x01(\bR\x05found\x12!\n" +
+	"\fsubject_data\x18\x02 \x01(\tR\vsubjectData\"\x8d\x04\n" +
 	"\x06Source\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x1b\n" +
@@ -2236,8 +2382,7 @@ const file_vca_datasource_v1_datasource_proto_rawDesc = "" +
 	"\x12TRANSFORM_CONSTANT\x10\x03\x12\x14\n" +
 	"\x10TRANSFORM_CONCAT\x10\x04\x12\x13\n" +
 	"\x0fTRANSFORM_UPPER\x10\x05\x12\x13\n" +
-	"\x0fTRANSFORM_LOWER\x10\x062\xc7\n" +
-	"\n" +
+	"\x0fTRANSFORM_LOWER\x10\x062\xe9\v\n" +
 	"\x11DataSourceService\x12j\n" +
 	"\x06Create\x12 .vca.datasource.v1.CreateRequest\x1a!.vca.datasource.v1.CreateResponse\"\x1b\xca\xf3\x18\x17Stores one data source.\x12l\n" +
 	"\x06Update\x12 .vca.datasource.v1.UpdateRequest\x1a!.vca.datasource.v1.UpdateResponse\"\x1d\xca\xf3\x18\x19Replaces one data source.\x12k\n" +
@@ -2248,7 +2393,8 @@ const file_vca_datasource_v1_datasource_proto_rawDesc = "" +
 	"\vPreviewRows\x12%.vca.datasource.v1.PreviewRowsRequest\x1a&.vca.datasource.v1.PreviewRowsResponse\"6\xca\xf3\x182Returns a few rows of a source with masked values.\x12\x99\x01\n" +
 	"\vSetFieldMap\x12%.vca.datasource.v1.SetFieldMapRequest\x1a&.vca.datasource.v1.SetFieldMapResponse\";\xca\xf3\x187Stores the map from source fields to schema properties.\x12\x95\x01\n" +
 	"\vGetFieldMap\x12%.vca.datasource.v1.GetFieldMapRequest\x1a&.vca.datasource.v1.GetFieldMapResponse\"7\xca\xf3\x183Returns the field map of one source and one schema.\x12\xa2\x01\n" +
-	"\aRunBulk\x12!.vca.datasource.v1.RunBulkRequest\x1a\".vca.datasource.v1.RunBulkResponse\"N\xca\xf3\x18JChecks the issue rule of a source. The data source pages start a bulk run.0\x01B\xd8\x01\n" +
+	"\aRunBulk\x12!.vca.datasource.v1.RunBulkRequest\x1a\".vca.datasource.v1.RunBulkResponse\"N\xca\xf3\x18JChecks the issue rule of a source. The data source pages start a bulk run.0\x01\x12\x9f\x01\n" +
+	"\x06Lookup\x12 .vca.datasource.v1.LookupRequest\x1a!.vca.datasource.v1.LookupResponse\"P\xca\xf3\x18LReturns the one row of a source whose field holds a value, as schema claims.B\xd8\x01\n" +
 	"\x15com.vca.datasource.v1B\x0fDatasourceProtoP\x01ZHgithub.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1;datasourcev1\xa2\x02\x03VDX\xaa\x02\x11Vca.Datasource.V1\xca\x02\x11Vca\\Datasource\\V1\xe2\x02\x1dVca\\Datasource\\V1\\GPBMetadata\xea\x02\x13Vca::Datasource::V1b\x06proto3"
 
 var (
@@ -2264,108 +2410,112 @@ func file_vca_datasource_v1_datasource_proto_rawDescGZIP() []byte {
 }
 
 var file_vca_datasource_v1_datasource_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_vca_datasource_v1_datasource_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
+var file_vca_datasource_v1_datasource_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
 var file_vca_datasource_v1_datasource_proto_goTypes = []any{
 	(Transform)(0),                   // 0: vca.datasource.v1.Transform
-	(*Source)(nil),                   // 1: vca.datasource.v1.Source
-	(*CsvSource)(nil),                // 2: vca.datasource.v1.CsvSource
-	(*HttpSource)(nil),               // 3: vca.datasource.v1.HttpSource
-	(*SqlSource)(nil),                // 4: vca.datasource.v1.SqlSource
-	(*Field)(nil),                    // 5: vca.datasource.v1.Field
-	(*FieldMap)(nil),                 // 6: vca.datasource.v1.FieldMap
-	(*CreateRequest)(nil),            // 7: vca.datasource.v1.CreateRequest
-	(*CreateResponse)(nil),           // 8: vca.datasource.v1.CreateResponse
-	(*UpdateRequest)(nil),            // 9: vca.datasource.v1.UpdateRequest
-	(*UpdateResponse)(nil),           // 10: vca.datasource.v1.UpdateResponse
-	(*ListRequest)(nil),              // 11: vca.datasource.v1.ListRequest
-	(*ListResponse)(nil),             // 12: vca.datasource.v1.ListResponse
-	(*GetRequest)(nil),               // 13: vca.datasource.v1.GetRequest
-	(*GetResponse)(nil),              // 14: vca.datasource.v1.GetResponse
-	(*DeleteRequest)(nil),            // 15: vca.datasource.v1.DeleteRequest
-	(*DeleteResponse)(nil),           // 16: vca.datasource.v1.DeleteResponse
-	(*PreviewFieldsRequest)(nil),     // 17: vca.datasource.v1.PreviewFieldsRequest
-	(*PreviewFieldsResponse)(nil),    // 18: vca.datasource.v1.PreviewFieldsResponse
-	(*PreviewRowsRequest)(nil),       // 19: vca.datasource.v1.PreviewRowsRequest
-	(*PreviewRowsResponse)(nil),      // 20: vca.datasource.v1.PreviewRowsResponse
-	(*SetFieldMapRequest)(nil),       // 21: vca.datasource.v1.SetFieldMapRequest
-	(*SetFieldMapResponse)(nil),      // 22: vca.datasource.v1.SetFieldMapResponse
-	(*GetFieldMapRequest)(nil),       // 23: vca.datasource.v1.GetFieldMapRequest
-	(*GetFieldMapResponse)(nil),      // 24: vca.datasource.v1.GetFieldMapResponse
-	(*RunBulkRequest)(nil),           // 25: vca.datasource.v1.RunBulkRequest
-	(*RunBulkResponse)(nil),          // 26: vca.datasource.v1.RunBulkResponse
-	(*Source_Access)(nil),            // 27: vca.datasource.v1.Source.Access
-	nil,                              // 28: vca.datasource.v1.HttpSource.HeadersEntry
-	(*HttpSource_BasicAuth)(nil),     // 29: vca.datasource.v1.HttpSource.BasicAuth
-	(*HttpSource_MtlsAuth)(nil),      // 30: vca.datasource.v1.HttpSource.MtlsAuth
-	(*FieldMap_Rule)(nil),            // 31: vca.datasource.v1.FieldMap.Rule
-	nil,                              // 32: vca.datasource.v1.FieldMap.Rule.ParamsEntry
-	(*PreviewRowsResponse_Row)(nil),  // 33: vca.datasource.v1.PreviewRowsResponse.Row
-	nil,                              // 34: vca.datasource.v1.PreviewRowsResponse.Row.ValuesEntry
-	(*RunBulkResponse_RowError)(nil), // 35: vca.datasource.v1.RunBulkResponse.RowError
-	(*timestamppb.Timestamp)(nil),    // 36: google.protobuf.Timestamp
-	(*v1.SecretRef)(nil),             // 37: vca.common.v1.SecretRef
-	(*v1.Pagination)(nil),            // 38: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),            // 39: vca.common.v1.PageResult
-	(v1.Format)(0),                   // 40: vca.common.v1.Format
-	(*v1.Error)(nil),                 // 41: vca.common.v1.Error
+	(*LookupRequest)(nil),            // 1: vca.datasource.v1.LookupRequest
+	(*LookupResponse)(nil),           // 2: vca.datasource.v1.LookupResponse
+	(*Source)(nil),                   // 3: vca.datasource.v1.Source
+	(*CsvSource)(nil),                // 4: vca.datasource.v1.CsvSource
+	(*HttpSource)(nil),               // 5: vca.datasource.v1.HttpSource
+	(*SqlSource)(nil),                // 6: vca.datasource.v1.SqlSource
+	(*Field)(nil),                    // 7: vca.datasource.v1.Field
+	(*FieldMap)(nil),                 // 8: vca.datasource.v1.FieldMap
+	(*CreateRequest)(nil),            // 9: vca.datasource.v1.CreateRequest
+	(*CreateResponse)(nil),           // 10: vca.datasource.v1.CreateResponse
+	(*UpdateRequest)(nil),            // 11: vca.datasource.v1.UpdateRequest
+	(*UpdateResponse)(nil),           // 12: vca.datasource.v1.UpdateResponse
+	(*ListRequest)(nil),              // 13: vca.datasource.v1.ListRequest
+	(*ListResponse)(nil),             // 14: vca.datasource.v1.ListResponse
+	(*GetRequest)(nil),               // 15: vca.datasource.v1.GetRequest
+	(*GetResponse)(nil),              // 16: vca.datasource.v1.GetResponse
+	(*DeleteRequest)(nil),            // 17: vca.datasource.v1.DeleteRequest
+	(*DeleteResponse)(nil),           // 18: vca.datasource.v1.DeleteResponse
+	(*PreviewFieldsRequest)(nil),     // 19: vca.datasource.v1.PreviewFieldsRequest
+	(*PreviewFieldsResponse)(nil),    // 20: vca.datasource.v1.PreviewFieldsResponse
+	(*PreviewRowsRequest)(nil),       // 21: vca.datasource.v1.PreviewRowsRequest
+	(*PreviewRowsResponse)(nil),      // 22: vca.datasource.v1.PreviewRowsResponse
+	(*SetFieldMapRequest)(nil),       // 23: vca.datasource.v1.SetFieldMapRequest
+	(*SetFieldMapResponse)(nil),      // 24: vca.datasource.v1.SetFieldMapResponse
+	(*GetFieldMapRequest)(nil),       // 25: vca.datasource.v1.GetFieldMapRequest
+	(*GetFieldMapResponse)(nil),      // 26: vca.datasource.v1.GetFieldMapResponse
+	(*RunBulkRequest)(nil),           // 27: vca.datasource.v1.RunBulkRequest
+	(*RunBulkResponse)(nil),          // 28: vca.datasource.v1.RunBulkResponse
+	(*Source_Access)(nil),            // 29: vca.datasource.v1.Source.Access
+	nil,                              // 30: vca.datasource.v1.HttpSource.HeadersEntry
+	(*HttpSource_BasicAuth)(nil),     // 31: vca.datasource.v1.HttpSource.BasicAuth
+	(*HttpSource_MtlsAuth)(nil),      // 32: vca.datasource.v1.HttpSource.MtlsAuth
+	(*FieldMap_Rule)(nil),            // 33: vca.datasource.v1.FieldMap.Rule
+	nil,                              // 34: vca.datasource.v1.FieldMap.Rule.ParamsEntry
+	(*PreviewRowsResponse_Row)(nil),  // 35: vca.datasource.v1.PreviewRowsResponse.Row
+	nil,                              // 36: vca.datasource.v1.PreviewRowsResponse.Row.ValuesEntry
+	(*RunBulkResponse_RowError)(nil), // 37: vca.datasource.v1.RunBulkResponse.RowError
+	(*timestamppb.Timestamp)(nil),    // 38: google.protobuf.Timestamp
+	(*v1.SecretRef)(nil),             // 39: vca.common.v1.SecretRef
+	(*v1.Pagination)(nil),            // 40: vca.common.v1.Pagination
+	(*v1.PageResult)(nil),            // 41: vca.common.v1.PageResult
+	(v1.Format)(0),                   // 42: vca.common.v1.Format
+	(*v1.Error)(nil),                 // 43: vca.common.v1.Error
 }
 var file_vca_datasource_v1_datasource_proto_depIdxs = []int32{
-	2,  // 0: vca.datasource.v1.Source.csv:type_name -> vca.datasource.v1.CsvSource
-	3,  // 1: vca.datasource.v1.Source.http:type_name -> vca.datasource.v1.HttpSource
-	4,  // 2: vca.datasource.v1.Source.sql:type_name -> vca.datasource.v1.SqlSource
-	27, // 3: vca.datasource.v1.Source.access:type_name -> vca.datasource.v1.Source.Access
-	36, // 4: vca.datasource.v1.Source.created_at:type_name -> google.protobuf.Timestamp
-	36, // 5: vca.datasource.v1.Source.updated_at:type_name -> google.protobuf.Timestamp
-	28, // 6: vca.datasource.v1.HttpSource.headers:type_name -> vca.datasource.v1.HttpSource.HeadersEntry
-	37, // 7: vca.datasource.v1.HttpSource.bearer_token:type_name -> vca.common.v1.SecretRef
-	29, // 8: vca.datasource.v1.HttpSource.basic:type_name -> vca.datasource.v1.HttpSource.BasicAuth
-	30, // 9: vca.datasource.v1.HttpSource.mtls:type_name -> vca.datasource.v1.HttpSource.MtlsAuth
-	37, // 10: vca.datasource.v1.SqlSource.dsn:type_name -> vca.common.v1.SecretRef
-	31, // 11: vca.datasource.v1.FieldMap.rules:type_name -> vca.datasource.v1.FieldMap.Rule
-	1,  // 12: vca.datasource.v1.CreateRequest.source:type_name -> vca.datasource.v1.Source
-	1,  // 13: vca.datasource.v1.CreateResponse.source:type_name -> vca.datasource.v1.Source
-	1,  // 14: vca.datasource.v1.UpdateRequest.source:type_name -> vca.datasource.v1.Source
-	1,  // 15: vca.datasource.v1.UpdateResponse.source:type_name -> vca.datasource.v1.Source
-	38, // 16: vca.datasource.v1.ListRequest.page:type_name -> vca.common.v1.Pagination
-	1,  // 17: vca.datasource.v1.ListResponse.sources:type_name -> vca.datasource.v1.Source
-	39, // 18: vca.datasource.v1.ListResponse.page:type_name -> vca.common.v1.PageResult
-	1,  // 19: vca.datasource.v1.GetResponse.source:type_name -> vca.datasource.v1.Source
-	5,  // 20: vca.datasource.v1.PreviewFieldsResponse.fields:type_name -> vca.datasource.v1.Field
-	33, // 21: vca.datasource.v1.PreviewRowsResponse.rows:type_name -> vca.datasource.v1.PreviewRowsResponse.Row
-	6,  // 22: vca.datasource.v1.SetFieldMapRequest.field_map:type_name -> vca.datasource.v1.FieldMap
-	6,  // 23: vca.datasource.v1.SetFieldMapResponse.field_map:type_name -> vca.datasource.v1.FieldMap
-	6,  // 24: vca.datasource.v1.GetFieldMapResponse.field_map:type_name -> vca.datasource.v1.FieldMap
-	40, // 25: vca.datasource.v1.RunBulkRequest.format:type_name -> vca.common.v1.Format
-	35, // 26: vca.datasource.v1.RunBulkResponse.errors:type_name -> vca.datasource.v1.RunBulkResponse.RowError
-	37, // 27: vca.datasource.v1.HttpSource.BasicAuth.password:type_name -> vca.common.v1.SecretRef
-	37, // 28: vca.datasource.v1.HttpSource.MtlsAuth.certificate:type_name -> vca.common.v1.SecretRef
-	37, // 29: vca.datasource.v1.HttpSource.MtlsAuth.private_key:type_name -> vca.common.v1.SecretRef
+	4,  // 0: vca.datasource.v1.Source.csv:type_name -> vca.datasource.v1.CsvSource
+	5,  // 1: vca.datasource.v1.Source.http:type_name -> vca.datasource.v1.HttpSource
+	6,  // 2: vca.datasource.v1.Source.sql:type_name -> vca.datasource.v1.SqlSource
+	29, // 3: vca.datasource.v1.Source.access:type_name -> vca.datasource.v1.Source.Access
+	38, // 4: vca.datasource.v1.Source.created_at:type_name -> google.protobuf.Timestamp
+	38, // 5: vca.datasource.v1.Source.updated_at:type_name -> google.protobuf.Timestamp
+	30, // 6: vca.datasource.v1.HttpSource.headers:type_name -> vca.datasource.v1.HttpSource.HeadersEntry
+	39, // 7: vca.datasource.v1.HttpSource.bearer_token:type_name -> vca.common.v1.SecretRef
+	31, // 8: vca.datasource.v1.HttpSource.basic:type_name -> vca.datasource.v1.HttpSource.BasicAuth
+	32, // 9: vca.datasource.v1.HttpSource.mtls:type_name -> vca.datasource.v1.HttpSource.MtlsAuth
+	39, // 10: vca.datasource.v1.SqlSource.dsn:type_name -> vca.common.v1.SecretRef
+	33, // 11: vca.datasource.v1.FieldMap.rules:type_name -> vca.datasource.v1.FieldMap.Rule
+	3,  // 12: vca.datasource.v1.CreateRequest.source:type_name -> vca.datasource.v1.Source
+	3,  // 13: vca.datasource.v1.CreateResponse.source:type_name -> vca.datasource.v1.Source
+	3,  // 14: vca.datasource.v1.UpdateRequest.source:type_name -> vca.datasource.v1.Source
+	3,  // 15: vca.datasource.v1.UpdateResponse.source:type_name -> vca.datasource.v1.Source
+	40, // 16: vca.datasource.v1.ListRequest.page:type_name -> vca.common.v1.Pagination
+	3,  // 17: vca.datasource.v1.ListResponse.sources:type_name -> vca.datasource.v1.Source
+	41, // 18: vca.datasource.v1.ListResponse.page:type_name -> vca.common.v1.PageResult
+	3,  // 19: vca.datasource.v1.GetResponse.source:type_name -> vca.datasource.v1.Source
+	7,  // 20: vca.datasource.v1.PreviewFieldsResponse.fields:type_name -> vca.datasource.v1.Field
+	35, // 21: vca.datasource.v1.PreviewRowsResponse.rows:type_name -> vca.datasource.v1.PreviewRowsResponse.Row
+	8,  // 22: vca.datasource.v1.SetFieldMapRequest.field_map:type_name -> vca.datasource.v1.FieldMap
+	8,  // 23: vca.datasource.v1.SetFieldMapResponse.field_map:type_name -> vca.datasource.v1.FieldMap
+	8,  // 24: vca.datasource.v1.GetFieldMapResponse.field_map:type_name -> vca.datasource.v1.FieldMap
+	42, // 25: vca.datasource.v1.RunBulkRequest.format:type_name -> vca.common.v1.Format
+	37, // 26: vca.datasource.v1.RunBulkResponse.errors:type_name -> vca.datasource.v1.RunBulkResponse.RowError
+	39, // 27: vca.datasource.v1.HttpSource.BasicAuth.password:type_name -> vca.common.v1.SecretRef
+	39, // 28: vca.datasource.v1.HttpSource.MtlsAuth.certificate:type_name -> vca.common.v1.SecretRef
+	39, // 29: vca.datasource.v1.HttpSource.MtlsAuth.private_key:type_name -> vca.common.v1.SecretRef
 	0,  // 30: vca.datasource.v1.FieldMap.Rule.transform:type_name -> vca.datasource.v1.Transform
-	32, // 31: vca.datasource.v1.FieldMap.Rule.params:type_name -> vca.datasource.v1.FieldMap.Rule.ParamsEntry
-	34, // 32: vca.datasource.v1.PreviewRowsResponse.Row.values:type_name -> vca.datasource.v1.PreviewRowsResponse.Row.ValuesEntry
-	41, // 33: vca.datasource.v1.RunBulkResponse.RowError.error:type_name -> vca.common.v1.Error
-	7,  // 34: vca.datasource.v1.DataSourceService.Create:input_type -> vca.datasource.v1.CreateRequest
-	9,  // 35: vca.datasource.v1.DataSourceService.Update:input_type -> vca.datasource.v1.UpdateRequest
-	11, // 36: vca.datasource.v1.DataSourceService.List:input_type -> vca.datasource.v1.ListRequest
-	13, // 37: vca.datasource.v1.DataSourceService.Get:input_type -> vca.datasource.v1.GetRequest
-	15, // 38: vca.datasource.v1.DataSourceService.Delete:input_type -> vca.datasource.v1.DeleteRequest
-	17, // 39: vca.datasource.v1.DataSourceService.PreviewFields:input_type -> vca.datasource.v1.PreviewFieldsRequest
-	19, // 40: vca.datasource.v1.DataSourceService.PreviewRows:input_type -> vca.datasource.v1.PreviewRowsRequest
-	21, // 41: vca.datasource.v1.DataSourceService.SetFieldMap:input_type -> vca.datasource.v1.SetFieldMapRequest
-	23, // 42: vca.datasource.v1.DataSourceService.GetFieldMap:input_type -> vca.datasource.v1.GetFieldMapRequest
-	25, // 43: vca.datasource.v1.DataSourceService.RunBulk:input_type -> vca.datasource.v1.RunBulkRequest
-	8,  // 44: vca.datasource.v1.DataSourceService.Create:output_type -> vca.datasource.v1.CreateResponse
-	10, // 45: vca.datasource.v1.DataSourceService.Update:output_type -> vca.datasource.v1.UpdateResponse
-	12, // 46: vca.datasource.v1.DataSourceService.List:output_type -> vca.datasource.v1.ListResponse
-	14, // 47: vca.datasource.v1.DataSourceService.Get:output_type -> vca.datasource.v1.GetResponse
-	16, // 48: vca.datasource.v1.DataSourceService.Delete:output_type -> vca.datasource.v1.DeleteResponse
-	18, // 49: vca.datasource.v1.DataSourceService.PreviewFields:output_type -> vca.datasource.v1.PreviewFieldsResponse
-	20, // 50: vca.datasource.v1.DataSourceService.PreviewRows:output_type -> vca.datasource.v1.PreviewRowsResponse
-	22, // 51: vca.datasource.v1.DataSourceService.SetFieldMap:output_type -> vca.datasource.v1.SetFieldMapResponse
-	24, // 52: vca.datasource.v1.DataSourceService.GetFieldMap:output_type -> vca.datasource.v1.GetFieldMapResponse
-	26, // 53: vca.datasource.v1.DataSourceService.RunBulk:output_type -> vca.datasource.v1.RunBulkResponse
-	44, // [44:54] is the sub-list for method output_type
-	34, // [34:44] is the sub-list for method input_type
+	34, // 31: vca.datasource.v1.FieldMap.Rule.params:type_name -> vca.datasource.v1.FieldMap.Rule.ParamsEntry
+	36, // 32: vca.datasource.v1.PreviewRowsResponse.Row.values:type_name -> vca.datasource.v1.PreviewRowsResponse.Row.ValuesEntry
+	43, // 33: vca.datasource.v1.RunBulkResponse.RowError.error:type_name -> vca.common.v1.Error
+	9,  // 34: vca.datasource.v1.DataSourceService.Create:input_type -> vca.datasource.v1.CreateRequest
+	11, // 35: vca.datasource.v1.DataSourceService.Update:input_type -> vca.datasource.v1.UpdateRequest
+	13, // 36: vca.datasource.v1.DataSourceService.List:input_type -> vca.datasource.v1.ListRequest
+	15, // 37: vca.datasource.v1.DataSourceService.Get:input_type -> vca.datasource.v1.GetRequest
+	17, // 38: vca.datasource.v1.DataSourceService.Delete:input_type -> vca.datasource.v1.DeleteRequest
+	19, // 39: vca.datasource.v1.DataSourceService.PreviewFields:input_type -> vca.datasource.v1.PreviewFieldsRequest
+	21, // 40: vca.datasource.v1.DataSourceService.PreviewRows:input_type -> vca.datasource.v1.PreviewRowsRequest
+	23, // 41: vca.datasource.v1.DataSourceService.SetFieldMap:input_type -> vca.datasource.v1.SetFieldMapRequest
+	25, // 42: vca.datasource.v1.DataSourceService.GetFieldMap:input_type -> vca.datasource.v1.GetFieldMapRequest
+	27, // 43: vca.datasource.v1.DataSourceService.RunBulk:input_type -> vca.datasource.v1.RunBulkRequest
+	1,  // 44: vca.datasource.v1.DataSourceService.Lookup:input_type -> vca.datasource.v1.LookupRequest
+	10, // 45: vca.datasource.v1.DataSourceService.Create:output_type -> vca.datasource.v1.CreateResponse
+	12, // 46: vca.datasource.v1.DataSourceService.Update:output_type -> vca.datasource.v1.UpdateResponse
+	14, // 47: vca.datasource.v1.DataSourceService.List:output_type -> vca.datasource.v1.ListResponse
+	16, // 48: vca.datasource.v1.DataSourceService.Get:output_type -> vca.datasource.v1.GetResponse
+	18, // 49: vca.datasource.v1.DataSourceService.Delete:output_type -> vca.datasource.v1.DeleteResponse
+	20, // 50: vca.datasource.v1.DataSourceService.PreviewFields:output_type -> vca.datasource.v1.PreviewFieldsResponse
+	22, // 51: vca.datasource.v1.DataSourceService.PreviewRows:output_type -> vca.datasource.v1.PreviewRowsResponse
+	24, // 52: vca.datasource.v1.DataSourceService.SetFieldMap:output_type -> vca.datasource.v1.SetFieldMapResponse
+	26, // 53: vca.datasource.v1.DataSourceService.GetFieldMap:output_type -> vca.datasource.v1.GetFieldMapResponse
+	28, // 54: vca.datasource.v1.DataSourceService.RunBulk:output_type -> vca.datasource.v1.RunBulkResponse
+	2,  // 55: vca.datasource.v1.DataSourceService.Lookup:output_type -> vca.datasource.v1.LookupResponse
+	45, // [45:56] is the sub-list for method output_type
+	34, // [34:45] is the sub-list for method input_type
 	34, // [34:34] is the sub-list for extension type_name
 	34, // [34:34] is the sub-list for extension extendee
 	0,  // [0:34] is the sub-list for field type_name
@@ -2376,12 +2526,12 @@ func file_vca_datasource_v1_datasource_proto_init() {
 	if File_vca_datasource_v1_datasource_proto != nil {
 		return
 	}
-	file_vca_datasource_v1_datasource_proto_msgTypes[0].OneofWrappers = []any{
+	file_vca_datasource_v1_datasource_proto_msgTypes[2].OneofWrappers = []any{
 		(*Source_Csv)(nil),
 		(*Source_Http)(nil),
 		(*Source_Sql)(nil),
 	}
-	file_vca_datasource_v1_datasource_proto_msgTypes[2].OneofWrappers = []any{
+	file_vca_datasource_v1_datasource_proto_msgTypes[4].OneofWrappers = []any{
 		(*HttpSource_BearerToken)(nil),
 		(*HttpSource_Basic)(nil),
 		(*HttpSource_Mtls)(nil),
@@ -2392,7 +2542,7 @@ func file_vca_datasource_v1_datasource_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_datasource_v1_datasource_proto_rawDesc), len(file_vca_datasource_v1_datasource_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   35,
+			NumMessages:   37,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

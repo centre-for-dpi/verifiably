@@ -36,7 +36,13 @@ Set at least one Inji URL. Each URL turns on one role.
 | `VCA_INJI_MIMOTO_PROVIDER` | The token login provider of Mimoto that trusts the ID tokens of the holder login. The default is `google`. |
 | `VCA_INJI_WEB_URL` | The public address of Inji Web. A holder claims a credential there. |
 | `VCA_INJI_PUBLIC_URL` | The address a wallet reaches this adapter on. |
-| `VCA_INJI_AUTHORIZATION_SERVER` | The identity provider of the authorization code flow. Empty names the first authorization server of the Certify metadata, eSignet in the stack file. |
+| `VCA_INJI_AUTHORIZATION_SERVER` | The identity provider of the authorization code flow. It counts only when `VCA_INJI_AUTHZ_ISSUER` is empty. Empty names the first authorization server of the Certify metadata. |
+| `VCA_INJI_AUTHZ_ISSUER` | The issuer of the holder authorization server of the adapter, under its public URL with `/authz` (ADR-052). Empty turns it off. |
+| `VCA_INJI_AUTHZ_KEY_SECRET` | The pair session key that seals the token key of the server. At least 16 bytes. |
+| `VCA_INJI_AUTHZ_AUDIENCE` | The credential endpoint the tokens name. The default follows `VCA_INJI_OFFER_ISSUER`. |
+| `VCA_INJI_WALLET_CLIENTS` | The wallet clients of the server, as a JSON array with `client_id`, `redirect_uris`, and an optional public `jwk`. |
+| `VCA_INJI_HOLDER_OIDC_DISCOVERY_URL`, `VCA_INJI_HOLDER_OIDC_CLIENT_ID`, `VCA_INJI_HOLDER_OIDC_PUBLIC_URL`, `VCA_INJI_HOLDER_OIDC_INTERNAL_AUTHORITY` | The holder provider that the server seeds into its registry. |
+| `VCA_INJI_DATA_SOURCE_URL` | The data source service that finds the subject of a claim without an offer. |
 | `VCA_INJI_OFFER_ISSUER` | The credential issuer of a hosted offer through the identity provider. The stack file sets the Certify that takes eSignet tokens. An offer with a presentation during issuance names the issuer of the Certify metadata. |
 | `VCA_INJI_METADATA_PATH` | The path of the issuer metadata on Inji Certify. |
 | `VCA_INJI_VERIFY_CLIENT_ID` | The DID Inji Verify shows a wallet. |

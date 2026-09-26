@@ -270,13 +270,14 @@ public name and an internal name then needs no rewrite rule.
 no such offer. The adapter builds the document, serves it at
 `/offers/{id}`, and points the wallet at it.
 
-**The offer names eSignet.** The authorization code offer names
-`VCA_INJI_AUTHORIZATION_SERVER`. Without it, the offer names the first
-authorization server of the Certify metadata. Its credential issuer is
-`VCA_INJI_OFFER_ISSUER`, the Certify that takes eSignet tokens. See
-"The two Certify containers" below.
-eSignet is also a login provider of the issuer and holder portals.
-`vca dpg bootstrap` registers the VCA client there with an RSA key.
+**The offer names the holder authorization server.** With
+`VCA_INJI_AUTHZ_ISSUER` set, the authorization code offer names the
+holder authorization server of the adapter. Its credential issuer is
+`VCA_INJI_OFFER_ISSUER`, the Certify that takes the tokens of that
+server. See "The holder authorization server" below. A deployment
+outside the stack file can leave the server off. The offer then names
+`VCA_INJI_AUTHORIZATION_SERVER`, else the first authorization server of
+the Certify metadata.
 
 **The wrong credential can pass the DPG check.** Inji Verify sometimes
 reports a success for a presentation that answers with another
@@ -408,6 +409,89 @@ The key of a row follows the flow:
 
 A configuration that an earlier release registered has no claim order.
 Publish the schema again, and the adapter registers it anew.
+
+## The holder authorization server
+
+Certify 0.14.0 trusts the tokens of one authorization server per
+container. `inji-certify-authcode` trusts the holder authorization
+server of the adapter (ADR-052). The server lives under
+`VCA_INJI_AUTHZ_ISSUER`, the public URL of the issuer pair with
+`/authz`. The proxy of the pair publishes it. It is plain HTTP, not
+Connect.
+
+| Path | What it does |
+| --- | --- |
+| `GET /authz/.well-known/oauth-authorization-server` | RFC 8414 metadata: the code grant, PKCE S256, the client methods `none` and `private_key_jwt`, and the scope `vca_credential` |
+| `GET /authz/.well-known/jwks.json` | The public token key. Its `kid` is the RFC 7638 thumbprint. |
+| `GET /authz/authorize` | Checks the client, the redirect URI, the state, and the PKCE challenge. Then it sends the browser to the holder provider. |
+| `GET /authz/callback` | Finishes the sign in, finds the claims, writes the claims row, and sends the wallet a one time code |
+| `POST /authz/token` | Checks the client, the code, the redirect URI, and the PKCE verifier. Then it returns an RS256 access token. |
+
+The token names the staging id of the claims row in `sub`. Its `aud`
+is the credential endpoint of `inji-certify-authcode`. It also carries
+the scope `vca_credential`, the client, and a `c_nonce`. It lives five minutes.
+Certify reads the key set on the compose network, at
+`INJI_ADAPTER_URL`.
+
+**Which claims.** A request that names an offer in `issuer_state`
+issues the claims of that offer. The issuer set a binding rule in the
+wizard: a claim of the ID token must equal a claim of the credential.
+The default rule compares the email of both. An email that the ID token
+calls unverified never matches. A mismatch answers `access_denied` with
+"This offer is for another person." An offer opens once.
+A request without an offer uses the holder sign in source of the
+credential. The source names a data source, the field that identifies
+the person, and the ID token claim with the value. The adapter asks
+`DataSourceService.Lookup` for the row. No source answers
+`access_denied` with "Claim this credential from an offer of the
+issuer." With more than one source, the request names its credential in
+`authorization_details`.
+
+**The holder provider.** The adapter keeps a provider registry in its
+store. Setup seeds it with the holder realm of the stack Keycloak and
+the public client `vca-inji-authz`. The server takes the enabled
+provider of the holder role for the Inji stack, the seeded one first.
+
+**Wallet clients.** `VCA_INJI_WALLET_CLIENTS` lists them as JSON:
+`client_id`, `redirect_uris`, and an optional public `jwk`. A client
+with a key signs a client assertion. A client without one is public and
+relies on PKCE. Setup registers `vca-inji` for Inji Web once the holder
+bootstrap wrote its public key. Run `vca setup` and `vca deploy` for the
+issuer pair after `vca dpg bootstrap inji --role holder`.
+
+**The token key.** The adapter makes a 2048 bit RSA key at the first
+start. It keeps the key in its store under AES-256-GCM. The sealing key
+comes from the pair session key through HKDF-SHA256. Another session key
+cannot open it, so the start fails. The key signs access tokens only.
+
+| Setting | What it sets |
+| --- | --- |
+| `VCA_INJI_AUTHZ_ISSUER` | The issuer. Empty turns the server off. It needs a path. |
+| `VCA_INJI_AUTHZ_KEY_SECRET` | The pair session key. Setup copies `VCA_SECRETS_SESSION_KEY`. |
+| `VCA_INJI_AUTHZ_AUDIENCE` | The credential endpoint in `aud`. The default follows `VCA_INJI_OFFER_ISSUER`. |
+| `VCA_INJI_WALLET_CLIENTS` | The wallet clients |
+| `VCA_INJI_HOLDER_OIDC_DISCOVERY_URL`, `VCA_INJI_HOLDER_OIDC_CLIENT_ID`, `VCA_INJI_HOLDER_OIDC_PUBLIC_URL`, `VCA_INJI_HOLDER_OIDC_INTERNAL_AUTHORITY` | The seeded holder provider |
+| `VCA_INJI_DATA_SOURCE_URL` | The data source service of a claim without an offer |
+
+### Threat model
+
+| Threat | Guard |
+| --- | --- |
+| A code or an error goes to an address of an attacker | The redirect URI must equal a registered one, byte for byte. An unknown client or a wrong redirect URI gets an error page and no redirect. |
+| A stolen code works | PKCE S256 binds the code to the verifier of the wallet. The code works once, for one minute, for its client and its redirect URI. A code that comes back removes the claims row of its first token. |
+| The plain PKCE method weakens the check | The server takes S256 only. |
+| A forged callback or a login CSRF | The server keeps each sign in under its random state. A callback with another state, or a second callback, fails. The provider checks the nonce of its ID token. |
+| Somebody forges or replays a client assertion | Its signature must match the registered key. Its `iss` and `sub` name the client, its `aud` names the token endpoint or the issuer, and its `exp` falls within ten minutes. Each `jti` works once. |
+| Another person claims an offer | The binding rule compares a claim of the ID token with a claim of the credential. An unverified email never matches. |
+| A copy of the store gives codes or keys | The store keeps the SHA-256 of each code, state, and `jti`. The token key sits under AES-256-GCM with the pair session key. |
+| A token reaches another service | `aud` names the credential endpoint of one Certify. The token lives five minutes and carries the scope `vca_credential` only. |
+| A mix up of servers | The redirect carries `iss` (RFC 9207). |
+
+What stays open: the tokens are bearer tokens, so the server offers no
+DPoP. A credential without an offer depends on the sign in source that
+the issuer configures. `vca dpg bootstrap` writes the realm clients
+through the client API of Keycloak, because a realm update ignores
+clients.
 
 ## The identity QR channel
 
@@ -542,7 +626,7 @@ files.
 | Sessions | A Redis, as `application-default.properties` of the release sets it |
 | Token login | The provider `google` trusts `vca-holder-realm` of the stack Keycloak, the client `vca-holder`, and the key set of that realm |
 | Browser login | Inji Web signs the holder in through the same realm and client |
-| eSignet | `mosip.esignet.host` and the issuer list name the eSignet of the stack. The client assertion names the token endpoint of the login page, `INJI_ESIGNET_PUBLIC_URL`. `vca dpg bootstrap` writes the key of `vca-inji` into the client key store. |
+| Claim in Inji Web | The issuer list names the holder authorization server of the issuer pair. Mimoto trades the code at the adapter on the compose network. Its client assertion names the public token endpoint. `vca dpg bootstrap` writes the key of `vca-inji` into the client key store, and its public half into `vca-inji.jwk.json` beside it. |
 | Inji Web | Port 3004. It serves the issuer list to Mimoto and sends `/v1/mimoto/` to it. |
 
 ## The paper document channel

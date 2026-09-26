@@ -41,8 +41,35 @@ type Config struct {
 	// authorization code offer lives under it.
 	PublicURL string `env:"PUBLIC_URL"`
 	// AuthorizationServer is the issuer URL of the identity provider of
-	// the authorization code flow.
+	// the authorization code flow when the holder authorization server
+	// is off: a deployment outside the stack file names its own.
 	AuthorizationServer string `env:"AUTHORIZATION_SERVER"`
+	// AuthzIssuer is the issuer of the holder authorization server of
+	// the adapter: its public URL with /authz (ADR-052). Empty turns the
+	// server off.
+	AuthzIssuer string `env:"AUTHZ_ISSUER"`
+	// AuthzAudience is the credential endpoint of the Certify that
+	// trusts the server. Empty derives it from OfferIssuer.
+	AuthzAudience string `env:"AUTHZ_AUDIENCE"`
+	// AuthzKeySecret is the pair session key. It seals the token key of
+	// the server in the store.
+	AuthzKeySecret string `env:"AUTHZ_KEY_SECRET" secret:"true"`
+	// WalletClients lists the wallet clients of the server as a JSON
+	// array of objects with client_id, redirect_uris, and an optional
+	// public jwk.
+	WalletClients string `env:"WALLET_CLIENTS"`
+	// HolderOIDCDiscoveryURL, HolderOIDCClientID, HolderOIDCPublicURL and
+	// HolderOIDCInternalAuthority seed the holder provider the server
+	// signs a holder in at. vca setup names the holder realm of the stack
+	// Keycloak. An admin can put another provider in the registry.
+	HolderOIDCDiscoveryURL      string `env:"HOLDER_OIDC_DISCOVERY_URL"`
+	HolderOIDCClientID          string `env:"HOLDER_OIDC_CLIENT_ID"`
+	HolderOIDCPublicURL         string `env:"HOLDER_OIDC_PUBLIC_URL"`
+	HolderOIDCInternalAuthority string `env:"HOLDER_OIDC_INTERNAL_AUTHORITY"`
+	// DataSourceURL is the data source service of the pair. A claim that
+	// no offer names finds its subject there. Empty turns such claims
+	// off.
+	DataSourceURL string `env:"DATA_SOURCE_URL"`
 	// OfferIssuer is the credential_issuer value of an authorization
 	// code offer through the identity provider: the Certify that takes
 	// its tokens. Empty uses CertifyURL. An offer with a presentation
@@ -127,6 +154,22 @@ type Config struct {
 	// and holds a presentation definition, so its interactive
 	// authorization endpoint checks a presentation before it issues.
 	PresentationDuringIssuance bool `env:"PRESENTATION_DURING_ISSUANCE" default:"false"`
+}
+
+// Audience returns the credential endpoint that the tokens of the
+// holder authorization server name.
+func (c Config) Audience() string {
+	if c.AuthzAudience != "" {
+		return c.AuthzAudience
+	}
+	issuer := c.OfferIssuer
+	if issuer == "" {
+		issuer = c.CertifyURL
+	}
+	if issuer == "" {
+		return ""
+	}
+	return strings.TrimRight(issuer, "/") + "/v1/certify/issuance/credential"
 }
 
 // Plugins returns the plugin names of CertifyPlugins.

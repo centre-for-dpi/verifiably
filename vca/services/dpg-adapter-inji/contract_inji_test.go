@@ -464,57 +464,64 @@ func TestContractPresentationDuringIssuance(t *testing.T) {
 	}
 }
 
-// TestContractAuthCodeOfferNamesEsignet builds an authorization code
-// offer with no configured identity provider. The offer names the
-// authorization server of the Certify metadata, and that server serves
-// OpenID Connect discovery with private_key_jwt, as eSignet does. It
-// needs a public URL.
-func TestContractAuthCodeOfferNamesEsignet(t *testing.T) {
-	cfg := contractEnv(t)
-	configurationID := os.Getenv("VCA_INJI_CONTRACT_CONFIGURATION_ID")
-	if cfg.CertifyURL == "" || cfg.PublicURL == "" || configurationID == "" {
-		t.Skip("set VCA_INJI_CONTRACT_PUBLIC_URL and _CONFIGURATION_ID to run the eSignet case")
+// TestContractClaimThroughTheHolderAuthorizationServer checks the
+// holder authorization server of a deployed issuer pair (ADR-052): its
+// RFC 8414 metadata, its key set, and the metadata of
+// inji-certify-authcode, which must name it as the authorization server.
+// The walk of a holder through Inji Web and the stack Keycloak stays a
+// manual step of the nightly environment. It needs
+// VCA_INJI_CONTRACT_AUTHZ_ISSUER and VCA_INJI_CONTRACT_AUTHCODE_URL.
+func TestContractClaimThroughTheHolderAuthorizationServer(t *testing.T) {
+	issuer := strings.TrimRight(os.Getenv("VCA_INJI_CONTRACT_AUTHZ_ISSUER"), "/")
+	authcode := strings.TrimRight(os.Getenv("VCA_INJI_CONTRACT_AUTHCODE_URL"), "/")
+	if issuer == "" || authcode == "" {
+		t.Skip("set VCA_INJI_CONTRACT_AUTHZ_ISSUER and _AUTHCODE_URL to run the holder authorization server case")
 	}
-	a := newContractApp(t)
-	ctx := context.Background()
-	offer, err := a.Service.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
-		Spec: &backendv1.IssueSpec{ConfigurationId: configurationID}, Channel: backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE,
-	}))
-	if err != nil {
-		t.Fatalf("CreateOffer: %v", err)
-	}
-	document, ok := a.Service.HostedOffer(ctx, offer.Msg.GetOfferId())
-	if !ok {
-		t.Fatal("the adapter does not host the offer")
-	}
-	var doc struct {
-		Grants struct {
-			Code struct {
-				Server string `json:"authorization_server"`
-			} `json:"authorization_code"`
-		} `json:"grants"`
-	}
-	if jerr := json.Unmarshal([]byte(document), &doc); jerr != nil || doc.Grants.Code.Server == "" {
-		t.Fatalf("offer = %s", document)
-	}
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Get(strings.TrimRight(doc.Grants.Code.Server, "/") + "/.well-known/openid-configuration")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if cerr := resp.Body.Close(); cerr != nil {
-			t.Error(cerr)
+	client := &http.Client{Timeout: 30 * time.Second}
+	get := func(u string, v any) {
+		t.Helper()
+		resp, err := client.Get(u)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}()
+		defer func() {
+			if cerr := resp.Body.Close(); cerr != nil {
+				t.Error(cerr)
+			}
+		}()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s answered %d", u, resp.StatusCode)
+		}
+		if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
+			t.Fatalf("%s: %v", u, err)
+		}
+	}
 	var meta struct {
-		Issuer  string   `json:"issuer"`
-		Methods []string `json:"token_endpoint_auth_methods_supported"`
+		Issuer   string   `json:"issuer"`
+		Token    string   `json:"token_endpoint"`
+		JWKS     string   `json:"jwks_uri"`
+		Grants   []string `json:"grant_types_supported"`
+		Methods  []string `json:"code_challenge_methods_supported"`
+		AuthMeth []string `json:"token_endpoint_auth_methods_supported"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
-		t.Fatal(err)
+	get(issuer+"/.well-known/oauth-authorization-server", &meta)
+	if meta.Issuer != issuer || meta.Token != issuer+"/token" || !slices.Equal(meta.Grants, []string{"authorization_code"}) ||
+		!slices.Equal(meta.Methods, []string{"S256"}) || !slices.Contains(meta.AuthMeth, "private_key_jwt") {
+		t.Fatalf("metadata = %+v", meta)
 	}
-	if strings.TrimRight(meta.Issuer, "/") != strings.TrimRight(doc.Grants.Code.Server, "/") || !slices.Contains(meta.Methods, "private_key_jwt") {
-		t.Fatalf("discovery = %+v", meta)
+	var keys struct {
+		Keys []map[string]any `json:"keys"`
+	}
+	get(meta.JWKS, &keys)
+	if len(keys.Keys) != 1 || keys.Keys[0]["alg"] != "RS256" || keys.Keys[0]["d"] != nil {
+		t.Fatalf("key set = %v", keys)
+	}
+	var certify struct {
+		Servers []string `json:"authorization_servers"`
+	}
+	get(authcode+"/.well-known/openid-credential-issuer", &certify)
+	if !slices.Contains(certify.Servers, issuer) {
+		t.Fatalf("inji-certify-authcode names %v, not %s", certify.Servers, issuer)
 	}
 }
 

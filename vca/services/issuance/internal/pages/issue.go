@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -429,6 +430,9 @@ func (p *Pages) renderDelivery(pg page, w wizard) error {
 			b.add("field", components.Field{ID: "presentation_source", Label: msg.T("issuer.issue.presentation_subject.source.label"),
 				Type: "select", Hint: msg.T("issuer.issue.presentation_subject.source.hint"), Options: w.claims.sourceOptions(w.form.Get("presentation_source"))}))
 	}
+	if offers(w.caps, backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE) {
+		parts = append(parts, p.bindingFields(b, w)...)
+	}
 	if fs := formatsOn(w.schema, w.caps); len(fs) > 1 {
 		opts := make([]components.Option, 0, len(fs))
 		for _, f := range fs {
@@ -499,7 +503,73 @@ func (p *Pages) review(pg page) error {
 	if askPresentation(w) && presentationSubject(w) == nil {
 		return p.badSubject(pg, w)
 	}
+	if needsBinding(w, channel) && bindingRule(w) == nil {
+		return p.badBinding(pg, w)
+	}
 	return p.renderReview(pg, w)
+}
+
+// The claims of an ID token that the rule of an authorization code
+// offer offers first (OpenID Connect Core 1.0 section 5.1).
+var bindingTokenClaims = []string{"email", "preferred_username", "sub", "phone_number"}
+
+// claimName is a claim name an issuer may type.
+var claimName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.:-]{0,63}$`)
+
+// bindingFields draws the rule of an authorization code offer: the
+// claim of the sign in of the holder and the claim of this credential
+// that must hold the same value (ADR-052 decision 3).
+func (p *Pages) bindingFields(b *blocks, w wizard) []template.HTML {
+	token := w.form.Get("binding_token")
+	if token == "" {
+		token = bindingTokenClaims[0]
+	}
+	tokens := make([]components.Option, 0, len(bindingTokenClaims))
+	for _, c := range bindingTokenClaims {
+		tokens = append(tokens, components.Option{Value: c, Text: c, Selected: c == token})
+	}
+	subject := w.form.Get("binding_subject")
+	if _, posted := w.form["binding_subject"]; !posted {
+		subject = "email"
+	}
+	return []template.HTML{
+		b.add("field", components.Field{ID: "binding_token", Label: msg.T("issuer.issue.binding.token.label"), Type: "select",
+			Hint: msg.T("issuer.issue.binding.hint"), Options: tokens}),
+		b.add("field", components.Field{ID: "binding_token_other", Label: msg.T("issuer.issue.binding.other.label"),
+			Value: w.form.Get("binding_token_other"), Hint: msg.T("issuer.issue.binding.other.hint")}),
+		b.add("field", components.Field{ID: "binding_subject", Label: msg.T("issuer.issue.binding.subject.label"), Type: "select",
+			Hint: msg.T("issuer.issue.binding.subject.hint"), Options: w.claims.sourceOptions(subject)}),
+	}
+}
+
+// needsBinding reports whether an offer needs the rule: an offer of the
+// authorization code channel without a presentation first, whose
+// Certify checks the holder itself.
+func needsBinding(w wizard, channel backendv1.Channel) bool {
+	return channel == backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE && !askPresentation(w)
+}
+
+// bindingRule returns the rule of the form: a claim name of the sign in
+// and a claim of this credential that holds text. It returns nil when
+// either is missing.
+func bindingRule(w wizard) *backendv1.BindingRule {
+	token := strings.TrimSpace(w.form.Get("binding_token_other"))
+	if token == "" {
+		token = strings.TrimSpace(w.form.Get("binding_token"))
+	}
+	subject := w.form.Get("binding_subject")
+	value, ok := w.values.claims[subject].(string)
+	if !claimName.MatchString(token) || !ok || strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return &backendv1.BindingRule{TokenClaim: token, SubjectClaim: subject}
+}
+
+// badBinding sends a form without a rule back to the delivery step.
+func (p *Pages) badBinding(pg page, w wizard) error {
+	w.step = stepDelivery
+	w.toasts = []components.Toast{{Level: "bad", Text: msg.T("issuer.issue.error.binding")}}
+	return p.renderDelivery(pg, w)
 }
 
 // defaultIdentityClaim is the identity claim of the stack default
@@ -581,10 +651,17 @@ func (p *Pages) renderReview(pg page, w wizard) error {
 				{Text: msg.T("issuer.issue.presentation_subject.review.text", holder.GetClaim(), holder.GetValue())}})
 		}
 	}
+	if channel, _ := pickChannel(w.caps, w.form); needsBinding(w, channel) {
+		if rule := bindingRule(w); rule != nil {
+			rows = append(rows, components.Row{{Text: msg.T("issuer.issue.binding.review.label")},
+				{Text: msg.T("issuer.issue.binding.review.text", rule.GetTokenClaim(), rule.GetSubjectClaim())}})
+		}
+	}
 	rows = append(rows, w.claims.rows(w.values.claims)...)
 	hidden := template.HTML(hiddenInput("channel", w.form.Get("channel")) + hiddenInput("format", w.form.Get("format")) + //nolint:gosec // the inputs are escaped
 		hiddenInput("presentation", w.form.Get("presentation")) + hiddenInput("presentation_claim", w.form.Get("presentation_claim")) +
-		hiddenInput("presentation_source", w.form.Get("presentation_source")))
+		hiddenInput("presentation_source", w.form.Get("presentation_source")) + hiddenInput("binding_token", w.form.Get("binding_token")) +
+		hiddenInput("binding_token_other", w.form.Get("binding_token_other")) + hiddenInput("binding_subject", w.form.Get("binding_subject")))
 	body := p.postForm(pg, IssueOffersPath, w, components.Join(
 		hidden,
 		b.add("block", components.Block{ID: "review", Title: msg.T("issuer.issue.review.title.label"), Lead: msg.T("issuer.issue.review.lead"),
@@ -621,6 +698,12 @@ func (p *Pages) create(pg page) error {
 			return p.badSubject(pg, w)
 		}
 	}
+	var rule *backendv1.BindingRule
+	if needsBinding(w, channel) {
+		if rule = bindingRule(w); rule == nil {
+			return p.badBinding(pg, w)
+		}
+	}
 	data, err := json.Marshal(w.values.claims)
 	if err != nil {
 		return err
@@ -629,7 +712,7 @@ func (p *Pages) create(pg page) error {
 	res, err := p.opts.Issuance.Issue(ctx, staffshell.AsActor(ctx, &issuancev1.IssueRequest{
 		SchemaId: w.schema.GetId(), SchemaVersion: w.schema.GetVersion(), SubjectData: string(data),
 		Format: pickFormat(w), Delivery: &issuancev1.Delivery{Channel: channel, Locale: "en"},
-		RequirePresentation: ask, PresentationSubject: holder,
+		RequirePresentation: ask, PresentationSubject: holder, BindingRule: rule,
 	}))
 	if err != nil {
 		text := msg.T("issuer.issue.error.stack")

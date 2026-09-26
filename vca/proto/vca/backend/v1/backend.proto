@@ -428,6 +428,19 @@ message IssueSpec {
   // issues subject_data to the holder who presents that value
   // (ADR-051 decision 5).
   PresentationSubject presentation_subject = 9;
+  // Who can claim an authorization code offer. A claim of the ID token
+  // of the holder sign in must equal a claim of subject_data (ADR-052
+  // decision 3). Empty selects email for both when subject_data has an
+  // email.
+  BindingRule binding_rule = 10;
+}
+
+// BindingRule ties an authorization code offer to one person.
+message BindingRule {
+  // The claim of the ID token of the holder sign in, such as email.
+  string token_claim = 1;
+  // The claim of subject_data that must hold the same value.
+  string subject_claim = 2;
 }
 
 // PresentationSubject names the holder of a presentation during issuance.

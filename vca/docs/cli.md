@@ -420,10 +420,19 @@ The holder run also adds the redirect page of Inji Web,
 `http://localhost:17085/redirect` or `VCA_INJI_WEB_URL` with
 `/redirect`. It writes the same key into
 `deploy/mimoto-inji/oidckeystore.p12` under the alias `vca-inji`.
-Mimoto signs its eSignet token call with that key when a holder claims
-in Inji Web. The password sits in `deploy/mimoto-inji/.env`. Both files
-have mode 0600, and a later run keeps the password. Run `vca deploy`
-again afterwards, so Mimoto reads the password.
+Mimoto signs its token call with that key when a holder claims in Inji
+Web. The password sits in `deploy/mimoto-inji/.env`. Both files have
+mode 0600, and a later run keeps the password. The public half goes to
+`deploy/mimoto-inji/vca-inji.jwk.json`. The setup run of the Inji issuer
+pair reads it. It registers `vca-inji` with the holder authorization
+server of its adapter (ADR-052). Run `vca setup` and `vca deploy` for
+the issuer pair afterwards, and `vca deploy` for the holder pair, so
+Mimoto reads the password.
+
+Keycloak ignores the clients of a realm update. So a run on a realm
+that already exists writes each client of the realm file through the
+client API. It updates a client the realm has and adds one it lacks,
+such as `vca-inji-authz` of the holder realm.
 
 The run reaches eSignet at `http://127.0.0.1` and
 `INJI_ESIGNET_HOST_PORT`, or 17082. An eSignet whose client API needs a

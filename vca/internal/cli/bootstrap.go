@@ -271,6 +271,9 @@ func bootstrapRealm(ctx context.Context, opts BootstrapOptions, stack string) (B
 			return result, fmt.Errorf("update the realm: %w", err)
 		}
 		result.step(opts.Out, "%s realm %s present and updated", stack, realm)
+		if err := syncRealmClients(ctx, opts, base, realm, token, realmBody, &result); err != nil {
+			return result, err
+		}
 		return result, nil
 	}
 	if status != http.StatusNotFound {
@@ -281,6 +284,58 @@ func bootstrapRealm(ctx context.Context, opts BootstrapOptions, stack string) (B
 	}
 	result.step(opts.Out, "%s realm %s created", stack, realm)
 	return result, nil
+}
+
+// syncRealmClients writes each client of the realm file through the
+// client API of an existing realm. Keycloak ignores the clients of a
+// realm update, so a client that a later release adds, such as the
+// client of the holder authorization server (ADR-052 decision 2), would
+// never reach a realm that an earlier run made.
+func syncRealmClients(ctx context.Context, opts BootstrapOptions, base, realm, token string, realmBody []byte, result *BootstrapResult) error {
+	var doc struct {
+		Clients []map[string]any `json:"clients"`
+	}
+	if err := json.Unmarshal(realmBody, &doc); err != nil {
+		return fmt.Errorf("read the clients of the generated realm: %w", err)
+	}
+	clientsURL := base + "/admin/realms/" + realm + "/clients"
+	for _, c := range doc.Clients {
+		clientID, ok := c["clientId"].(string)
+		if !ok || clientID == "" {
+			continue
+		}
+		answer, err := doJSON(ctx, opts.client(), http.MethodGet, clientsURL+"?clientId="+url.QueryEscape(clientID), token, nil)
+		if err != nil {
+			return fmt.Errorf("read the client %s: %w", clientID, err)
+		}
+		var found []struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(answer, &found); err != nil {
+			return fmt.Errorf("read the client %s: %w", clientID, err)
+		}
+		if len(found) == 0 || found[0].ID == "" {
+			body, merr := json.Marshal(c)
+			if merr != nil {
+				return merr
+			}
+			if _, err := doJSON(ctx, opts.client(), http.MethodPost, clientsURL, token, body); err != nil {
+				return fmt.Errorf("add the client %s: %w", clientID, err)
+			}
+			result.step(opts.Out, "Client %s added to the realm %s", clientID, realm)
+			continue
+		}
+		c["id"] = found[0].ID
+		body, merr := json.Marshal(c)
+		if merr != nil {
+			return merr
+		}
+		if _, err := doJSON(ctx, opts.client(), http.MethodPut, clientsURL+"/"+url.PathEscape(found[0].ID), token, body); err != nil {
+			return fmt.Errorf("update the client %s: %w", clientID, err)
+		}
+		result.step(opts.Out, "Client %s of the realm %s updated", clientID, realm)
+	}
+	return nil
 }
 
 // keycloakToken gets an administrator token from the master realm. The

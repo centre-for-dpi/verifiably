@@ -66,6 +66,9 @@ const (
 	// DataSourceServiceRunBulkProcedure is the fully-qualified name of the DataSourceService's RunBulk
 	// RPC.
 	DataSourceServiceRunBulkProcedure = "/vca.datasource.v1.DataSourceService/RunBulk"
+	// DataSourceServiceLookupProcedure is the fully-qualified name of the DataSourceService's Lookup
+	// RPC.
+	DataSourceServiceLookupProcedure = "/vca.datasource.v1.DataSourceService/Lookup"
 )
 
 // DataSourceServiceClient is a client for the vca.datasource.v1.DataSourceService service.
@@ -91,6 +94,12 @@ type DataSourceServiceClient interface {
 	// RunBulk starts a bulk issuance job and streams its progress
 	// (ADR-015 decision 7). The stream ends with a message whose done is true.
 	RunBulk(context.Context, *connect.Request[v1.RunBulkRequest]) (*connect.ServerStreamForClient[v1.RunBulkResponse], error)
+	// Lookup returns the one row of a source whose field holds a value.
+	// The field map of a schema turns it into claims (ADR-052 decision 3).
+	// The holder
+	// authorization server of the Inji adapter calls it for a claim that
+	// no offer names.
+	Lookup(context.Context, *connect.Request[v1.LookupRequest]) (*connect.Response[v1.LookupResponse], error)
 }
 
 // NewDataSourceServiceClient constructs a client for the vca.datasource.v1.DataSourceService
@@ -164,6 +173,12 @@ func NewDataSourceServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(dataSourceServiceMethods.ByName("RunBulk")),
 			connect.WithClientOptions(opts...),
 		),
+		lookup: connect.NewClient[v1.LookupRequest, v1.LookupResponse](
+			httpClient,
+			baseURL+DataSourceServiceLookupProcedure,
+			connect.WithSchema(dataSourceServiceMethods.ByName("Lookup")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -179,6 +194,7 @@ type dataSourceServiceClient struct {
 	setFieldMap   *connect.Client[v1.SetFieldMapRequest, v1.SetFieldMapResponse]
 	getFieldMap   *connect.Client[v1.GetFieldMapRequest, v1.GetFieldMapResponse]
 	runBulk       *connect.Client[v1.RunBulkRequest, v1.RunBulkResponse]
+	lookup        *connect.Client[v1.LookupRequest, v1.LookupResponse]
 }
 
 // Create calls vca.datasource.v1.DataSourceService.Create.
@@ -231,6 +247,11 @@ func (c *dataSourceServiceClient) RunBulk(ctx context.Context, req *connect.Requ
 	return c.runBulk.CallServerStream(ctx, req)
 }
 
+// Lookup calls vca.datasource.v1.DataSourceService.Lookup.
+func (c *dataSourceServiceClient) Lookup(ctx context.Context, req *connect.Request[v1.LookupRequest]) (*connect.Response[v1.LookupResponse], error) {
+	return c.lookup.CallUnary(ctx, req)
+}
+
 // DataSourceServiceHandler is an implementation of the vca.datasource.v1.DataSourceService service.
 type DataSourceServiceHandler interface {
 	// Create stores one source.
@@ -254,6 +275,12 @@ type DataSourceServiceHandler interface {
 	// RunBulk starts a bulk issuance job and streams its progress
 	// (ADR-015 decision 7). The stream ends with a message whose done is true.
 	RunBulk(context.Context, *connect.Request[v1.RunBulkRequest], *connect.ServerStream[v1.RunBulkResponse]) error
+	// Lookup returns the one row of a source whose field holds a value.
+	// The field map of a schema turns it into claims (ADR-052 decision 3).
+	// The holder
+	// authorization server of the Inji adapter calls it for a claim that
+	// no offer names.
+	Lookup(context.Context, *connect.Request[v1.LookupRequest]) (*connect.Response[v1.LookupResponse], error)
 }
 
 // NewDataSourceServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -323,6 +350,12 @@ func NewDataSourceServiceHandler(svc DataSourceServiceHandler, opts ...connect.H
 		connect.WithSchema(dataSourceServiceMethods.ByName("RunBulk")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataSourceServiceLookupHandler := connect.NewUnaryHandler(
+		DataSourceServiceLookupProcedure,
+		svc.Lookup,
+		connect.WithSchema(dataSourceServiceMethods.ByName("Lookup")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.datasource.v1.DataSourceService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DataSourceServiceCreateProcedure:
@@ -345,6 +378,8 @@ func NewDataSourceServiceHandler(svc DataSourceServiceHandler, opts ...connect.H
 			dataSourceServiceGetFieldMapHandler.ServeHTTP(w, r)
 		case DataSourceServiceRunBulkProcedure:
 			dataSourceServiceRunBulkHandler.ServeHTTP(w, r)
+		case DataSourceServiceLookupProcedure:
+			dataSourceServiceLookupHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -392,4 +427,8 @@ func (UnimplementedDataSourceServiceHandler) GetFieldMap(context.Context, *conne
 
 func (UnimplementedDataSourceServiceHandler) RunBulk(context.Context, *connect.Request[v1.RunBulkRequest], *connect.ServerStream[v1.RunBulkResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("vca.datasource.v1.DataSourceService.RunBulk is not implemented"))
+}
+
+func (UnimplementedDataSourceServiceHandler) Lookup(context.Context, *connect.Request[v1.LookupRequest]) (*connect.Response[v1.LookupResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.datasource.v1.DataSourceService.Lookup is not implemented"))
 }

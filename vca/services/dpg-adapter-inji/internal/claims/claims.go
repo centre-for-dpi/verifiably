@@ -184,6 +184,18 @@ func (w Writer) Put(r Row) error {
 	return nil
 }
 
+// Delete removes the row of one subject. A missing row is not an
+// error. The holder authorization server calls it when a code comes
+// back a second time, so a stolen code issues nothing (RFC 6749
+// section 4.1.2).
+func (w Writer) Delete(subject string) error {
+	err := os.Remove(filepath.Join(w.Dir, fileName(subject)))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("claims: delete the row: %w", err)
+	}
+	return nil
+}
+
 // Find returns the row of one subject.
 func (w Writer) Find(subject string) (Row, bool, error) {
 	raw, err := os.ReadFile(filepath.Join(w.Dir, fileName(subject))) //nolint:gosec // G304: the name is a hash

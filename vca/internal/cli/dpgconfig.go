@@ -323,6 +323,19 @@ func KeycloakRealm(p Pair, values map[string]string) ([]byte, error) {
 		client.WebOrigins = append(client.WebOrigins, web)
 	}
 	client.Attributes.PkceCodeChallengeMethod = "S256"
+	clients := []realmClient{client}
+	if authz := strings.TrimRight(values[injiAuthzIssuerHolderEnv], "/"); isInjiHolder(p) && authz != "" {
+		// The holder authorization server of the Inji issuer pair signs
+		// the holder in here: a public client with PKCE S256 and its one
+		// callback (ADR-052 decision 2).
+		c := realmClient{
+			ClientID: InjiAuthzClientID, Name: "Holder authorization server of the Inji issuer", Enabled: true,
+			PublicClient: true, StandardFlowEnabled: true,
+			RedirectUris: []string{authz + "/callback"}, WebOrigins: []string{originOf(authz)},
+		}
+		c.Attributes.PkceCodeChallengeMethod = "S256"
+		clients = append(clients, c)
+	}
 	roles, selfRegistered := roleRealmRoles(p.Role)
 	defaultRole := realmRole{
 		Name:        "default-roles-" + name,
@@ -342,7 +355,7 @@ func KeycloakRealm(p Pair, values map[string]string) ([]byte, error) {
 		LoginWithEmailAllowed: true,
 		Roles:                 realmRoles{Realm: append(roles, defaultRole)},
 		DefaultRole:           realmRole{Name: defaultRole.Name, Composite: true},
-		Clients:               []realmClient{client},
+		Clients:               clients,
 	}
 	return json.MarshalIndent(r, "", "  ")
 }

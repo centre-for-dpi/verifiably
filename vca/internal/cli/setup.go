@@ -63,6 +63,11 @@ type SetupRequest struct {
 	// Now reads the clock for the stamp of a new stack .env. Nil reads
 	// the real clock.
 	Now func() time.Time
+	// WalletJWK is the public key of the client of Inji Web, from
+	// ReadWalletJWK. The holder bootstrap writes it. The Inji issuer pair
+	// registers the client with the holder authorization server of its
+	// adapter (ADR-052 decision 5). Empty registers no such client.
+	WalletJWK string
 }
 
 // Plan is the result of a setup run before anything reaches the disk.
@@ -170,6 +175,9 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	inji := InjiPublicValues(req.Pair, values, req.Domain, req.Peers)
 	for name, value := range inji {
 		extra[name] = value
+	}
+	if clients, ok := InjiWalletClients(req.Pair, values, req.Domain, req.Peers, req.WalletJWK); ok {
+		extra[InjiWalletClientsEnv] = clients
 	}
 	// The key managers of the stack name the organisation in the subject
 	// of their certificates (ADR-055 decision 3).

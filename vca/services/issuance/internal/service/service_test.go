@@ -907,3 +907,20 @@ func TestIssueAsksForAPresentationFirst(t *testing.T) {
 		t.Fatal("the option reached the adapter without a request")
 	}
 }
+
+// TestIssuePassesTheBindingRule: the rule of an authorization code offer
+// reaches the adapter (ADR-052 decision 3). Another channel, and an
+// offer with a presentation first, carry none.
+func TestIssuePassesTheBindingRule(t *testing.T) {
+	rule := &backendv1.BindingRule{TokenClaim: "email", SubjectClaim: "email"}
+	h := newHarness(t, nil)
+	h.issue(t, backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE, func(r *issuancev1.IssueRequest) { r.BindingRule = rule })
+	if got := h.adapter.specs[0].GetBindingRule(); got.GetTokenClaim() != "email" || got.GetSubjectClaim() != "email" {
+		t.Fatalf("the spec names the rule %v", got)
+	}
+	other := newHarness(t, nil)
+	other.issue(t, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, func(r *issuancev1.IssueRequest) { r.BindingRule = rule })
+	if other.adapter.specs[0].GetBindingRule() != nil {
+		t.Fatal("a pre-authorized offer carries the rule")
+	}
+}

@@ -52,6 +52,8 @@ type request struct {
 	// presentationSubject names the holder who may present: the identity
 	// claim of the presented credential and its value.
 	presentationSubject *backendv1.PresentationSubject
+	// bindingRule names who may claim an authorization code offer.
+	bindingRule *backendv1.BindingRule
 }
 
 // Issue issues one credential to one subject.
@@ -79,6 +81,7 @@ func (s *Service) Issue(
 		presentation:  msg.GetRequirePresentation(),
 
 		presentationSubject: msg.GetPresentationSubject(),
+		bindingRule:         msg.GetBindingRule(),
 	})
 	if err != nil {
 		return nil, err
@@ -190,6 +193,10 @@ func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 	}
 	if r.presentation {
 		spec.PresentationSubject = r.presentationSubject
+	} else if channel == backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE {
+		// The holder authorization server of the adapter checks the
+		// sign in against the rule (ADR-052 decision 3).
+		spec.BindingRule = r.bindingRule
 	}
 	now := s.opts.Now().UTC()
 	offer := offers.Offer{

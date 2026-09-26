@@ -40,11 +40,25 @@ func ParseDotenv(r io.Reader) (map[string]string, error) {
 	return out, nil
 }
 
+// unquote removes the quotes of a value. A double quoted value also
+// loses the escapes that quoteValue adds, so a value survives a write
+// and a read, as compose reads it.
 func unquote(v string) string {
-	if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
-		return v[1 : len(v)-1]
+	if len(v) < 2 || (v[0] != '"' && v[0] != '\'') || v[len(v)-1] != v[0] {
+		return v
 	}
-	return v
+	inner := v[1 : len(v)-1]
+	if v[0] == '\'' || !strings.Contains(inner, `\`) {
+		return inner
+	}
+	var b strings.Builder
+	for i := 0; i < len(inner); i++ {
+		if inner[i] == '\\' && i+1 < len(inner) && strings.IndexByte("\\\"`$", inner[i+1]) >= 0 {
+			i++
+		}
+		b.WriteByte(inner[i])
+	}
+	return b.String()
 }
 
 // RenderDotenv writes the values of the resolutions as a dotenv file.

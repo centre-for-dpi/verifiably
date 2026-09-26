@@ -543,7 +543,7 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-050 | 1 No mock artefact or sample data set ships | Partial | `vca/`, `deploy/` | `vca dpg bootstrap inji` adds no identity. The Inji stack still runs the mock identity system of eSignet. The pending list of `nomock_test.go` names each one. |
-| ADR-050 | 2 A configurable workflow replaces each artefact | Partial | `vca/services`, `vca/internal/cli` | Setup generates the stack secrets and asks for the certificate subject (ADR-055). ADR-051 to ADR-054 wait. |
+| ADR-050 | 2 A configurable workflow replaces each artefact | Partial | `vca/services`, `vca/internal/cli` | Setup generates the stack secrets and asks for the certificate subject (ADR-055). Certify issues from the claims store (ADR-051), and the holder authorization server replaces eSignet for a claim (ADR-052). ADR-053 and ADR-054 wait. |
 | ADR-050 | 3 Test doubles stay in test paths | Done | `vca/internal/cli/nomock_test.go` | `TestNoDeploymentReachesTestdata` and `TestNoBinaryImportsAFakePackage` keep test doubles out of every deployment. |
 | ADR-050 | 4 A guard test scans the tree | Done | `vca/internal/cli/nomock_test.go` | The allowlist gives a reason per entry. The pending list shrinks with each unit and fails on an entry that matches nothing. |
 | ADR-050 | 5 A stack secret has no default | Done | `deploy/vca/dpg/*.yaml`, `vca/internal/cli/stackenv.go` | Every stack file requires its passwords with `${NAME:?set by vca setup}`. `TestStackFilesHaveNoSecretDefault` pins it. |
@@ -556,19 +556,19 @@ A row that is not `Done` carries a note.
 | ADR-051 | 2 The adapter writes one file per subject | Done | `vca/services/dpg-adapter-inji/internal/claims` | The volume `inji-claims` sits in memory. The adapter renames each finished file and sweeps expired rows. |
 | ADR-051 | 3 One scope for every configuration | Done | `vca/services/dpg-adapter-inji/internal/inji/configs.go` | Every configuration has the scope `vca_credential`. |
 | ADR-051 | 4 Templates read the columns `c1` to `c64` | Done | `vca/services/dpg-adapter-inji/internal/inji/configs.go`, `vca/services/dpg-adapter-inji/internal/service/configs.go` | The adapter keeps the claim order with the registration. |
-| ADR-051 | 5 The subject key per flow | Partial | `vca/services/dpg-adapter-inji/internal/service/issuer.go` | The pre-authorized code stages the staging id, and a presentation during issuance names its holder. The holder authorization server of ADR-052 waits. |
+| ADR-051 | 5 The subject key per flow | Done | `vca/services/dpg-adapter-inji/internal/service/issuer.go`, `vca/services/dpg-adapter-inji/internal/authz` | The pre-authorized code stages the staging id. A presentation during issuance names its holder. The holder authorization server puts the staging id in its token. |
 | ADR-051 | 6 The adapter serves the presentation definition | Done | `vca/services/dpg-adapter-inji/internal/service/iar.go` | `SetPresentationRequirement` stores it. The issuer settings card waits for a later unit. |
 
 ## ADR-052: The holder authorization server of the Inji adapter
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-052 | 1 An authorization server under `/authz` | Not started | `vca/services/dpg-adapter-inji/internal/authz` | The package does not exist yet. |
-| ADR-052 | 2 The holder signs in at the configured provider | Not started | `vca/services/dpg-adapter-inji/internal/authz` | Offers still name the stack eSignet. |
-| ADR-052 | 3 Offer bound and wallet initiated claims | Not started | `vca/services/dpg-adapter-inji/internal/authz` | Needs the data source lookup. |
-| ADR-052 | 4 A JWT whose subject is the staging id | Not started | `vca/services/dpg-adapter-inji/internal/authz` |  |
-| ADR-052 | 5 Registered wallet clients | Not started | `vca/services/dpg-adapter-inji/internal/authz` |  |
-| ADR-052 | 6 The token key signs access tokens only | Not started | `vca/services/dpg-adapter-inji/internal/authz` |  |
+| ADR-052 | 1 An authorization server under `/authz` | Done | `vca/services/dpg-adapter-inji/internal/authz`, `vca/internal/cli/services.go` | RFC 8414 metadata, a key set, authorize, callback, and token. The proxy of the issuer pair publishes `/authz/*`. |
+| ADR-052 | 2 The holder signs in at the configured provider | Partial | `vca/services/dpg-adapter-inji/internal/app/app.go`, `vca/internal/cli/dpgconfig.go` | Setup seeds the holder realm of the stack Keycloak and the client `vca-inji-authz`. The registry lives in the store of the adapter; the admin portal cannot edit it yet. |
+| ADR-052 | 3 Offer bound and wallet initiated claims | Partial | `vca/services/dpg-adapter-inji/internal/authz/authorize.go`, `vca/services/issuance/internal/pages/issue.go` | The binding rule works end to end. A claim without an offer calls `DataSourceService.Lookup`, which the data source service answers from N6 on. |
+| ADR-052 | 4 A JWT whose subject is the staging id | Done | `vca/services/dpg-adapter-inji/internal/authz/token.go` | RS256, five minutes, `aud` the credential endpoint of `inji-certify-authcode`. |
+| ADR-052 | 5 Registered wallet clients | Done | `vca/services/dpg-adapter-inji/internal/authz/clients.go`, `vca/internal/cli/inji_public.go` | `vca-inji` of Inji Web uses `private_key_jwt` with the key that the holder bootstrap wrote. |
+| ADR-052 | 6 The token key signs access tokens only | Done | `vca/services/dpg-adapter-inji/internal/authz/keys.go` | The key sits in the store under AES-256-GCM with the pair session key. |
 
 ## ADR-053: eSignet runs only with a real authenticator
 

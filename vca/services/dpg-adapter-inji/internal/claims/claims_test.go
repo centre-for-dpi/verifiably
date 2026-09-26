@@ -401,3 +401,30 @@ func TestWriterReadsTheRealClockByDefault(t *testing.T) {
 		t.Fatalf("Find = %v, %v", ok, err)
 	}
 }
+
+// TestDeleteRemovesTheRow: Delete removes the file of the subject and
+// takes a missing row as done.
+func TestDeleteRemovesTheRow(t *testing.T) {
+	w, _ := writer(t)
+	if err := w.Put(row("gone")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Delete("gone"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := w.Find("gone"); err != nil || ok {
+		t.Fatalf("Find after Delete = %v, %v", ok, err)
+	}
+	if err := w.Delete("gone"); err != nil {
+		t.Fatalf("a second Delete: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(w.Dir, fileName("dir")), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(w.Dir, fileName("dir"), "x"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Delete("dir"); err == nil {
+		t.Fatal("Delete removed a directory that holds a file")
+	}
+}
