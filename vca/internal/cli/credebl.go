@@ -255,10 +255,18 @@ func createOrgWallet(ctx context.Context, opts BootstrapOptions, base, token str
 }
 
 // credeblPassword returns the password of the platform admin in the
-// form the sign in of the platform reads: AES 256 in cipher block
-// chaining mode with the OpenSSL key derivation, in the CryptoJS form,
-// under CRYPTO_PRIVATE_KEY of the stack .env.
+// form the sign in of the platform reads: the JSON form of the value,
+// encrypted by cryptoJSEncrypt under CRYPTO_PRIVATE_KEY of the stack
+// .env. The sign in parses the decrypted text as JSON.
 func credeblPassword(password, passphrase string, random io.Reader) (string, error) {
+	return cryptoJSEncrypt([]byte(`"`+password+`"`), passphrase, random)
+}
+
+// cryptoJSEncrypt encrypts a text as CryptoJS.AES.encrypt does with a
+// pass phrase: AES 256 in cipher block chaining mode with the OpenSSL
+// key derivation, as base64 of the marker Salted__, the salt and the
+// cipher text.
+func cryptoJSEncrypt(text []byte, passphrase string, random io.Reader) (string, error) {
 	salt := make([]byte, 8)
 	if _, err := io.ReadFull(random, salt); err != nil {
 		return "", fmt.Errorf("make the password salt: %w", err)
@@ -268,10 +276,8 @@ func credeblPassword(password, passphrase string, random io.Reader) (string, err
 	if err != nil {
 		return "", fmt.Errorf("make the cipher: %w", err)
 	}
-	// CryptoJS encrypts the JSON form of the value.
-	plain := []byte(`"` + password + `"`)
-	n := aes.BlockSize - len(plain)%aes.BlockSize
-	plain = append(plain, bytes.Repeat([]byte{byte(n)}, n)...)
+	n := aes.BlockSize - len(text)%aes.BlockSize
+	plain := append(append([]byte(nil), text...), bytes.Repeat([]byte{byte(n)}, n)...)
 	out := make([]byte, len(plain))
 	cipher.NewCBCEncrypter(block, iv).CryptBlocks(out, plain)
 	return base64.StdEncoding.EncodeToString(append(append([]byte("Salted__"), salt...), out...)), nil
@@ -301,4 +307,51 @@ func schemaFileServerToken(secret string, now time.Time) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	anyval.DiscardWrite(mac.Write([]byte(header + "." + claims)))
 	return header + "." + claims + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// The platform admin password and the master table of the CREDEBL
+// initialisation (P6-C0d, ADR-055 decision 1).
+const (
+	// PlatformAdminPasswordEnv is the generated password of the platform
+	// admin in the CREDEBL stack .env.
+	PlatformAdminPasswordEnv = "CREDEBL_PLATFORM_ADMIN_PASSWORD" //nolint:gosec // G101: this is a variable name, not a credential.
+	// CredeblMasterTableFile is the master table that setup writes under
+	// the deploy root.
+	CredeblMasterTableFile = "credebl/credebl-master-table.json" //nolint:gosec // G101: a file path, not a credential.
+	// CredeblMasterTableMount is where the initialisation reads its
+	// master table: the working directory libs/prisma-service of the
+	// image, then prisma/data/credebl-master-table.
+	CredeblMasterTableMount = "/app/libs/prisma-service/prisma/data/credebl-master-table/credebl-master-table.json" //nolint:gosec // G101: a file path, not a credential.
+)
+
+// The sign in of the CREDEBL adapter in the .env of a CREDEBL pair.
+const (
+	// CredeblAdapterEmailEnv names the platform admin.
+	CredeblAdapterEmailEnv = "VCA_CREDEBL_EMAIL" //nolint:gosec // G101: this is a variable name, not a credential.
+	// CredeblAdapterPasswordEnv holds the password of the platform admin.
+	CredeblAdapterPasswordEnv = "VCA_CREDEBL_PASSWORD" //nolint:gosec // G101: this is a variable name, not a credential.
+	// CredeblAdapterCryptoKeyEnv holds CRYPTO_PRIVATE_KEY of the stack.
+	CredeblAdapterCryptoKeyEnv = "VCA_CREDEBL_CRYPTO_KEY" //nolint:gosec // G101: this is a variable name, not a credential.
+)
+
+// CredeblAdapterValues returns the sign in of the CREDEBL adapter for
+// the .env of a CREDEBL pair: the platform admin, its generated
+// password, and CRYPTO_PRIVATE_KEY, all from the CREDEBL stack .env. A
+// pair of another DPG gets nothing. A flag of the operator still wins,
+// because the pass through values come later.
+func CredeblAdapterValues(p Pair, stack map[string]string) map[string]string {
+	if p.Dpg != configv1.Dpg_DPG_CREDEBL {
+		return nil
+	}
+	out := map[string]string{}
+	for name, from := range map[string]string{
+		CredeblAdapterEmailEnv:     PlatformAdminEmailEnv,
+		CredeblAdapterPasswordEnv:  PlatformAdminPasswordEnv,
+		CredeblAdapterCryptoKeyEnv: "CRYPTO_PRIVATE_KEY",
+	} {
+		if value := strings.TrimSpace(stack[from]); value != "" {
+			out[name] = value
+		}
+	}
+	return out
 }

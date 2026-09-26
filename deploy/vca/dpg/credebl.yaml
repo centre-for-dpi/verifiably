@@ -138,12 +138,28 @@ services:
   # roles, the agent types, the ledgers, and the platform admin of
   # setup. vca dpg bootstrap credebl runs it once with
   # docker compose run. The profile keeps it out of docker compose up.
+  #
+  # The release reads the platform admin password and the other
+  # credentials from the master table that the platform repository
+  # commits. vca setup writes a table of its own with the generated
+  # password of ../credebl/.env, with mode 0600, and the mount below
+  # replaces the committed one (ADR-055 decision 1). The container runs
+  # as root to read that file.
   credebl-seed:
     <<: *credebl-platform
     image: ghcr.io/credebl/seed:v2.1.3-hotfix.2@sha256:0e5bad1826ec2e386fe8294fade54bf0e4b74a1a7dbea7b11c5238b07bda9018
     profiles: [credebl-init]
     container_name: credebl-seed
     restart: "no"
+    user: root
+    environment:
+      <<: *credebl-environment
+      # The scripts of the release that load the country list and store
+      # the client of the platform for the platform admin.
+      GEO_LOCATION_MASTER_DATA_IMPORT_SCRIPT: /prisma/scripts/geo_location_data_import.sh
+      UPDATE_CLIENT_CREDENTIAL_SCRIPT: /prisma/scripts/update_client_credential_data.sh
+    volumes:
+      - ../credebl/credebl-master-table.json:/app/libs/prisma-service/prisma/data/credebl-master-table/credebl-master-table.json:ro
     depends_on:
       credebl-postgres:
         condition: service_healthy

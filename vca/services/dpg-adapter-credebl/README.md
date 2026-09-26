@@ -25,9 +25,9 @@ never opens the CREDEBL database and it never controls a container.
 | --- | --- |
 | `VCA_CREDEBL_LISTEN` | The address to bind. The default is `:8080`. |
 | `VCA_CREDEBL_API_URL` | The base URL of the CREDEBL api gateway. Set it. |
-| `VCA_CREDEBL_EMAIL` | The login name of the platform administrator. Set it. |
-| `VCA_CREDEBL_PASSWORD` | The login secret. Set it. It holds a secret. |
-| `VCA_CREDEBL_CRYPTO_KEY` | The pass phrase of the password encryption. It holds a secret. |
+| `VCA_CREDEBL_EMAIL` | The login name of the platform administrator. `vca setup` writes it from the stack. |
+| `VCA_CREDEBL_PASSWORD` | The login secret. `vca setup` writes the generated password of the stack. It holds a secret. |
+| `VCA_CREDEBL_CRYPTO_KEY` | The pass phrase of the password encryption. `vca setup` writes it from the stack. It holds a secret. |
 | `VCA_CREDEBL_ORG_ID` | The organisation the adapter works in. Set it. |
 | `VCA_CREDEBL_ISSUER_ID` | The OID4VCI issuer of the organisation. |
 | `VCA_CREDEBL_VERIFIER_ID` | The OID4VP verifier. Empty makes the adapter create one. |

@@ -114,8 +114,18 @@ migrations only. `vca dpg bootstrap credebl` runs the database
 initialisation of the release once. That script makes the platform
 admin from `PLATFORM_ADMIN_EMAIL` of `deploy/credebl/.env`, which setup
 writes from `VCA_CREDEBL_PLATFORM_ADMIN_EMAIL`. Setup also generates
-`CRYPTO_PRIVATE_KEY`, `PLATFORM_WALLET_PASSWORD` and `PLATFORM_SEED`
-there. No placeholder user exists (ADR-055 decision 4).
+`CRYPTO_PRIVATE_KEY`, `CREDEBL_PLATFORM_ADMIN_PASSWORD`,
+`PLATFORM_WALLET_PASSWORD` and `PLATFORM_SEED` there. No placeholder
+user exists (ADR-055 decision 4).
+
+**No published password reaches the platform.** The script reads the
+platform admin password from the master table of the platform
+repository. Setup writes a master table of its own with the generated
+password. The stack file mounts it over the published one. The
+password travels in the CryptoJS form without quotation marks. The
+script hands the plain text to Keycloak as it is. The mail key stays
+empty, and the user id is random. Setup writes the same password into
+`VCA_CREDEBL_PASSWORD` of each CREDEBL pair.
 
 **The token comes back once and lasts.** The adapter caches the token
 until one minute before its end. A call that gets the status

@@ -409,13 +409,17 @@ func BootstrapCredebl(ctx context.Context, opts BootstrapOptions) (BootstrapResu
 	if err != nil {
 		return result, err
 	}
-	password := opts.value(EnvBootstrapSecret, "")
-	if password == "" {
-		return result, fmt.Errorf("CREDEBL sign in: set %s to the password of the platform admin %s", EnvBootstrapSecret, admin)
-	}
 	stack, err := ReadStackEnv(filepath.Dir(opts.Dir), configv1.Dpg_DPG_CREDEBL)
 	if err != nil {
 		return result, err
+	}
+	// The password is the generated one of the stack .env, which the
+	// master table of the initialisation carries (P6-C0d). The
+	// environment of the run can name another.
+	password := opts.value(EnvBootstrapSecret, strings.TrimSpace(stack[PlatformAdminPasswordEnv]))
+	if password == "" {
+		return result, fmt.Errorf("CREDEBL sign in: %s is missing from %s; run vca setup, or set %s to the password of the platform admin %s",
+			PlatformAdminPasswordEnv, StackEnvFile(configv1.Dpg_DPG_CREDEBL), EnvBootstrapSecret, admin)
 	}
 	if strings.TrimSpace(stack["CRYPTO_PRIVATE_KEY"]) == "" {
 		return result, fmt.Errorf("CREDEBL sign in: CRYPTO_PRIVATE_KEY is missing from %s; run vca setup", StackEnvFile(configv1.Dpg_DPG_CREDEBL))

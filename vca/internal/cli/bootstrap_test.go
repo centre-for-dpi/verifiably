@@ -675,7 +675,6 @@ func credeblOptions(t *testing.T, base string, out io.Writer) BootstrapOptions {
 		Dir:  OutputDir(deploy, pair),
 		Values: map[string]string{
 			"VCA_DPG_URL": base, "VCA_PUBLIC_URL": "https://issuer.example",
-			EnvBootstrapSecret: "a-password-the-operator-set",
 		},
 		Out: out,
 		Run: func(context.Context, string, []string) error { return nil },
@@ -716,11 +715,41 @@ func TestBootstrapCredeblNeedsThePlatformAdmin(t *testing.T) {
 	if signedIn != nil || strings.Contains(err.Error(), "example.com") {
 		t.Errorf("the run signed in as %v: %v", signedIn, err)
 	}
-	// The password of the platform admin has no default either.
+	// The password of the platform admin has no default either: a
+	// stack .env of an earlier release without it stops the run.
 	noSecret := opts
-	noSecret.Values = map[string]string{"VCA_DPG_URL": server.URL}
-	if _, err := BootstrapCredebl(context.Background(), noSecret); err == nil || !strings.Contains(err.Error(), EnvBootstrapSecret) {
-		t.Errorf("err = %v, want the name of %s", err, EnvBootstrapSecret)
+	noSecret.Dir = OutputDir(filepath.Join(t.TempDir(), "deploy"), opts.Pair)
+	writeStackEnvAt(t, filepath.Dir(noSecret.Dir), configv1.Dpg_DPG_CREDEBL, secretsTime, map[string]string{PlatformAdminEmailEnv: credeblAdmin})
+	older := filepath.Join(filepath.Dir(noSecret.Dir), StackEnvFile(configv1.Dpg_DPG_CREDEBL))
+	values, rerr := ReadStackEnv(filepath.Dir(noSecret.Dir), configv1.Dpg_DPG_CREDEBL)
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	var lines []string
+	for name, value := range values {
+		if name != PlatformAdminPasswordEnv {
+			lines = append(lines, name+"="+value)
+		}
+	}
+	if werr := os.WriteFile(older, []byte(strings.Join(lines, "\n")+"\n"), 0o600); werr != nil {
+		t.Fatal(werr)
+	}
+	if _, berr := BootstrapCredebl(context.Background(), noSecret); berr == nil || !strings.Contains(berr.Error(), PlatformAdminPasswordEnv) {
+		t.Errorf("err = %v, want the name of %s", berr, PlatformAdminPasswordEnv)
+	}
+	// The environment of the run still names another password.
+	named := opts
+	named.Values = map[string]string{"VCA_DPG_URL": server.URL, EnvBootstrapSecret: "an-operator-password"}
+	signedIn = nil
+	if _, berr := BootstrapCredebl(context.Background(), named); berr == nil {
+		t.Error("a refused sign in passed")
+	}
+	stack, serr := ReadStackEnv(filepath.Dir(opts.Dir), configv1.Dpg_DPG_CREDEBL)
+	if serr != nil {
+		t.Fatal(serr)
+	}
+	if plain, derr := decryptCryptoJS(signedIn["password"], stack["CRYPTO_PRIVATE_KEY"]); derr != nil || plain != `"an-operator-password"` {
+		t.Errorf("the named password decrypts to %q, %v", plain, derr)
 	}
 }
 

@@ -216,6 +216,21 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	for name, value := range KeyCertValues(req.Pair, values) {
 		extra[name] = value
 	}
+	now := time.Now
+	if req.Now != nil {
+		now = req.Now
+	}
+	// Every stack .env holds its secrets and keys before any file that
+	// reads them renders, so the files and the .env agree.
+	stackValuesByDpg, err := CompleteStacks(req.Stacks, StackSettings(req.Pair, values), req.Random, now())
+	if err != nil {
+		return Plan{}, err
+	}
+	// The adapter of a CREDEBL pair signs in as the platform admin of
+	// the stack .env (P6-C0d).
+	for name, value := range CredeblAdapterValues(req.Pair, stackValuesByDpg[configv1.Dpg_DPG_CREDEBL]) {
+		extra[name] = value
+	}
 	// A setting of another pair, such as the platform admin of CREDEBL
 	// in a shared env file, is declared, so it never passes through.
 	for name, value := range Passthrough(Settings(), req.Flags, req.File) {
@@ -244,16 +259,6 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 		return Plan{}, err
 	}
 	files = append(files, dpgFiles...)
-	now := time.Now
-	if req.Now != nil {
-		now = req.Now
-	}
-	// Every stack .env holds its secrets and keys before any file that
-	// reads them renders, so the files and the .env agree.
-	stackValuesByDpg, err := CompleteStacks(req.Stacks, StackSettings(req.Pair, values), req.Random, now())
-	if err != nil {
-		return Plan{}, err
-	}
 	// The walt.id catalogue and wallet files (ADR-054).
 	waltidFiles, err := WaltidFiles(req.Pair, stackValuesByDpg[configv1.Dpg_DPG_WALTID])
 	if err != nil {

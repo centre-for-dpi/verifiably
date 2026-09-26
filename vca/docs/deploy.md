@@ -248,9 +248,11 @@ Start the other role, or edit the value by hand.
 
 A variable that no setting declares passes through from `--set` or the
 env file when its name starts with `VCA_`.
-The CREDEBL adapter needs four such values: `VCA_CREDEBL_EMAIL`,
-`VCA_CREDEBL_PASSWORD`, `VCA_CREDEBL_CRYPTO_KEY`, and
-`VCA_CREDEBL_ORG_ID`.
+Setup writes the sign in of the CREDEBL adapter into the `.env` file of a
+CREDEBL pair from `deploy/credebl/.env`: `VCA_CREDEBL_EMAIL`,
+`VCA_CREDEBL_PASSWORD` and `VCA_CREDEBL_CRYPTO_KEY`.
+A `--set` value still wins.
+The adapter also needs `VCA_CREDEBL_ORG_ID`.
 
 Each role and DPG pair owns a block of one hundred host ports.
 The first block starts at 18000.
@@ -502,7 +504,8 @@ A later run keeps that time.
 |---|---|
 | `deploy/waltid/.env` | `WALTID_DB_PASSWORD` and the four `WALTID_WALLET_*` keys |
 | `deploy/inji/.env` | `INJI_DB_PASSWORD`, `INJI_CERTIFY_KEYSTORE_PASSWORD`, `INJI_ESIGNET_DB_PASSWORD`, `INJI_MIMOTO_DB_PASSWORD`, `INJI_MIMOTO_KEYSTORE_PASSWORD`, `INJI_VERIFY_DB_PASSWORD` |
-| `deploy/credebl/.env` | `CREDEBL_DB_PASSWORD`, `CRYPTO_PRIVATE_KEY`, `PLATFORM_WALLET_PASSWORD`, `PLATFORM_SEED`, `CREDEBL_AGENT_WALLET_KEY`, `CREDEBL_AGENT_API_KEY`, `CREDEBL_SCHEMA_FILE_SERVER_SECRET`, `CREDEBL_SCHEMA_FILE_SERVER_TOKEN` |
+| `deploy/credebl/.env` | `CREDEBL_DB_PASSWORD`, `CRYPTO_PRIVATE_KEY`, `CREDEBL_PLATFORM_ADMIN_PASSWORD`, `PLATFORM_WALLET_PASSWORD`, `PLATFORM_SEED`, `CREDEBL_AGENT_WALLET_KEY`, `CREDEBL_AGENT_API_KEY`, `CREDEBL_SCHEMA_FILE_SERVER_SECRET`, `CREDEBL_SCHEMA_FILE_SERVER_TOKEN` |
+| `deploy/credebl/credebl-master-table.json` | The master table of the CREDEBL initialisation, with the platform admin password of the `.env` |
 
 A database volume keeps the password of its first start.
 If you remove a stack `.env`, remove the volumes of that stack too.
@@ -519,8 +522,18 @@ It runs the initialisation image of the release in the profile `credebl-init` fo
 No pair names the profile, so `docker compose up` never starts it.
 The run then signs in as that platform admin.
 It encrypts the password with `CRYPTO_PRIVATE_KEY`, as the platform expects.
-Set `VCA_BOOTSTRAP_ADMIN_PASSWORD` to the password of the platform admin
-for that run.
+
+The initialisation of the release reads the platform admin password from a
+master table that the platform repository publishes.
+That table also holds a mail key and a user id.
+Setup writes `deploy/credebl/credebl-master-table.json` with mode 0600 instead.
+It holds `CREDEBL_PLATFORM_ADMIN_PASSWORD` of `deploy/credebl/.env`, encrypted
+with `CRYPTO_PRIVATE_KEY`, a random user id, and no mail key.
+The stack file mounts it over the published table (ADR-055 decision 1).
+So no deployment signs in with a published password.
+The rows without a credential stay as the release has them.
+The bootstrap run and the adapter sign in with the generated password.
+Set `VCA_BOOTSTRAP_ADMIN_PASSWORD` only to sign in with another password.
 
 ### walt.id configuration
 

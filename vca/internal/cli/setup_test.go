@@ -907,8 +907,9 @@ func TestSetupWritesTheLandingEnv(t *testing.T) {
 		t.Fatalf("BuildPlan issuer: %v", err)
 	}
 	// The landing, the realm and the Keycloak .env, then the .env and
-	// the .gitignore of every stack (ADR-055 decision 1).
-	if len(plan.Shared) != 3+2*len(StackDpgs()) || plan.Shared[0].Name != filepath.Join(LandingDir, EnvFileName) || plan.Shared[0].Mode != 0o600 {
+	// the .gitignore of every stack (ADR-055 decision 1), and the master
+	// table of the CREDEBL initialisation (P6-C0d).
+	if len(plan.Shared) != 3+2*len(StackDpgs())+1 || plan.Shared[0].Name != filepath.Join(LandingDir, EnvFileName) || plan.Shared[0].Mode != 0o600 {
 		t.Fatalf("shared files = %v", sharedNames(plan))
 	}
 	if !strings.Contains(plan.Summary(), filepath.Join(LandingDir, EnvFileName)) {

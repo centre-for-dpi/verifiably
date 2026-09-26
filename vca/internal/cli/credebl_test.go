@@ -142,6 +142,7 @@ var upstreamCredeblServices = []string{
 type credeblStack struct {
 	Services map[string]struct {
 		Image    string   `yaml:"image"`
+		User     string   `yaml:"user"`
 		Profiles []string `yaml:"profiles"`
 		Command  []string `yaml:"command"`
 		Volumes  []string `yaml:"volumes"`
@@ -332,8 +333,9 @@ func TestBootstrapCredeblCreatesOrgAndSharedAgent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BootstrapCredebl: %v", err)
 	}
+	// The password is the generated one of the stack .env.
 	plain, err := decryptCryptoJS(state.signin["password"], stack["CRYPTO_PRIVATE_KEY"])
-	if err != nil || plain != `"a-password-the-operator-set"` {
+	if err != nil || plain != `"`+stack[PlatformAdminPasswordEnv]+`"` {
 		t.Errorf("the sign in password decrypts to %q, %v", plain, err)
 	}
 	configure := state.configured[credeblPlatformOrgID]

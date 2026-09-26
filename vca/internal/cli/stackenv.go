@@ -90,8 +90,11 @@ func stackKeys(d configv1.Dpg) []stackKey {
 		// with a key and guards its admin port with an API key of 16
 		// characters or more. The schema file server signs the upload
 		// tokens of the platform with a secret (P6-C0).
+		// The platform admin password replaces the one of the master
+		// table of the release (P6-C0d).
 		return []stackKey{
 			{"CRYPTO_PRIVATE_KEY", stackSecretLength},
+			{PlatformAdminPasswordEnv, stackSecretLength},
 			{"PLATFORM_WALLET_PASSWORD", stackSecretLength},
 			{"PLATFORM_SEED", stackSecretLength},
 			{SharedAgentWalletKeyEnv, stackSecretLength},
@@ -230,6 +233,20 @@ func StackFiles(existing map[configv1.Dpg]map[string]string, random io.Reader, n
 			File{Name: StackEnvFile(d), Data: []byte(env), Mode: 0o600},
 			File{Name: filepath.Join(StackDir(d), ".gitignore"), Data: []byte("*\n"), Mode: 0o600},
 		)
+		if d != configv1.Dpg_DPG_CREDEBL {
+			continue
+		}
+		// The master table of the CREDEBL initialisation carries the
+		// generated platform admin password of the .env (P6-C0d).
+		values, err := ParseDotenv(strings.NewReader(env))
+		if err != nil {
+			return nil, fmt.Errorf("read the CREDEBL stack .env: %w", err)
+		}
+		table, err := CredeblMasterTable(values, random)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, File{Name: CredeblMasterTableFile, Data: table, Mode: 0o600})
 	}
 	return out, nil
 }
