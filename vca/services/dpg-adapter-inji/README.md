@@ -44,7 +44,7 @@ Set at least one Inji URL. Each URL turns on one role.
 | `VCA_INJI_HOLDER_OIDC_DISCOVERY_URL`, `VCA_INJI_HOLDER_OIDC_CLIENT_ID`, `VCA_INJI_HOLDER_OIDC_PUBLIC_URL`, `VCA_INJI_HOLDER_OIDC_INTERNAL_AUTHORITY` | The holder provider that the server seeds into its registry. |
 | `VCA_INJI_HOLDER_ESIGNET_CLIENT_ID`, `VCA_INJI_HOLDER_ESIGNET_CLIENT_KEY` | The VCA client of eSignet and the base64 text of its RSA key. With `VCA_INJI_ESIGNET_URL` the server adds eSignet as a holder provider and turns the seeded realm off once (ADR-053 decision 4). |
 | `VCA_INJI_HOLDER_OIDC_VERIFIED_CLAIMS` | The claims beyond `email`, `phone_number` and `sub` that the holder provider verifies. A binding rule matches only verified claims. The setting fills an empty list; the admin portal edits it later. |
-| `VCA_INJI_ADMIN_JWKS_URL` | The key set of the admin pair. The admin portal edits the holder providers of the server with an admin session. |
+| `VCA_INJI_ADMIN_JWKS_URL` | The key set of the admin pair. The admin portal adds, edits, turns off and removes the holder providers of the server with an admin session. |
 | `VCA_INJI_DATA_SOURCE_URL` | The data source service that finds the subject of a claim without an offer. |
 | `VCA_INJI_OFFER_ISSUER` | The credential issuer of a hosted offer through the identity provider. The stack file sets the Certify that takes the tokens of the holder authorization server. An offer with a presentation during issuance names the issuer of the Certify metadata. |
 | `VCA_INJI_METADATA_PATH` | The path of the issuer metadata on Inji Certify. |

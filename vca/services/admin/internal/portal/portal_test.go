@@ -142,6 +142,8 @@ type harness struct {
 	// signInRegistry is the provider registry of the holder
 	// authorization server of the adapter, when the harness has one.
 	signInRegistry *oidcflow.Registry
+	// signInDown makes the provider RPCs of that adapter refuse.
+	signInDown bool
 }
 
 // newHarness wires the service, logs one super admin in, and returns the

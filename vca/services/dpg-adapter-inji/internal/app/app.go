@@ -150,13 +150,14 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		if holder, registry, err = buildAuthz(cfg, deps, backend, svc); err != nil {
 			return nil, err
 		}
-		// The admin portal edits the holder provider, such as the
-		// claims it verifies, with an admin session on the compose
-		// network. The proxy publishes no path to it (ADR-047, ADR-056
-		// decision 2).
+		// The admin portal adds, edits, turns off and removes the
+		// holder providers, with an admin session on the compose
+		// network. One record carries the default flag. The proxy
+		// publishes no path to it (ADR-047, ADR-052 decision 2).
 		if cfg.AdminJWKSURL != "" {
 			mux.Handle(oidcflow.NewAdminHandler(oidcflow.AdminProviders{
 				Registry: registry, Authorize: oidcflow.AdminJWTAuthorizer(cfg.AdminJWKSURL), Roles: []string{"holder"},
+				OneDefault: true,
 			}))
 		}
 		// The issuer page names the data source of a claim without an
@@ -234,7 +235,9 @@ func buildAuthz(cfg config.Config, deps Deps, backend store.KeyValue, svc *servi
 		return nil, nil, err
 	}
 	if cfg.HolderOIDCDiscoveryURL != "" && cfg.HolderOIDCClientID != "" {
-		if serr := registry.Seed(oidcflow.SeedProvider(oidcflow.Seed{
+		// The seed stays until an admin changes it: an admin who
+		// removes it keeps it removed (ADR-052 decision 2).
+		if _, serr := registry.SeedOnce(oidcflow.SeedProvider(oidcflow.Seed{
 			DiscoveryURL: cfg.HolderOIDCDiscoveryURL, ClientID: cfg.HolderOIDCClientID,
 			PublicURL: cfg.HolderOIDCPublicURL, InternalAuthority: cfg.HolderOIDCInternalAuthority,
 			Roles: []string{"holder"}, Scopes: []string{"openid", "email", "profile"},
@@ -303,11 +306,8 @@ func seedEsignet(registry *oidcflow.Registry, cfg config.Config, log *slog.Logge
 		return fmt.Errorf("app: %sHOLDER_ESIGNET_CLIENT_ID and %sHOLDER_ESIGNET_CLIENT_KEY go together; run vca setup again",
 			config.Prefix, config.Prefix)
 	}
-	if _, err := registry.Get(EsignetProviderID); err == nil {
-		return nil
-	}
 	base := strings.TrimRight(cfg.EsignetURL, "/")
-	if err := registry.Seed(oidcflow.Provider{
+	wrote, err := registry.SeedOnce(oidcflow.Provider{
 		ID: EsignetProviderID, DisplayName: "eSignet", DiscoveryURL: base + esignetDiscoveryPath,
 		ClientID: id, Scopes: []string{"openid", "profile", "email"}, Roles: []string{"holder"},
 		Enabled: true, InternalAuthority: base,
@@ -316,8 +316,14 @@ func seedEsignet(registry *oidcflow.Registry, cfg config.Config, log *slog.Logge
 			TokenAuthMethod: oidcflow.TokenAuthPrivateKeyJWT,
 			PrivateKey:      oidcflow.SecretRef{Store: oidcflow.SecretEnv, Name: config.Prefix + "HOLDER_ESIGNET_CLIENT_KEY"},
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		return fmt.Errorf("app: seed eSignet as the holder provider: %w", err)
+	}
+	// A registry that held eSignet before, or lost it to an admin,
+	// keeps the realm as it is.
+	if !wrote {
+		return nil
 	}
 	// A registry without the realm seed, or with the seed off, needs no
 	// change.
@@ -342,8 +348,11 @@ func seedEsignet(registry *oidcflow.Registry, cfg config.Config, log *slog.Logge
 // claims, the admin portal owns the list, so a restart keeps an edit of
 // the admin (ADR-056 decision 2).
 func syncVerifiedClaims(registry *oidcflow.Registry, verified []string) error {
-	// Seed wrote the record or found it, so it exists.
+	// An admin may have removed the seed; then no record takes the list.
 	p, err := registry.Get(oidcflow.SeedID)
+	if errors.Is(err, oidcflow.ErrProviderNotFound) {
+		return nil
+	}
 	if err != nil || len(verified) == 0 || len(p.VerifiedClaims) > 0 {
 		return err
 	}

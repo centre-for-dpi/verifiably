@@ -25,6 +25,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1/adminv1connect"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/authz"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/config"
@@ -743,6 +744,107 @@ func TestBuildSeedsEsignetAsTheHolderProvider(t *testing.T) {
 		change(&cfg)
 		if _, err := start(cfg); err == nil || !strings.Contains(err.Error(), "HOLDER_ESIGNET_CLIENT") {
 			t.Errorf("%s: Build = %v", name, err)
+		}
+	}
+}
+
+// TestAnAdminRemovalOfAHolderProviderStays: the seeds of setup stay only
+// until an admin changes them. A restart writes neither the realm of the
+// stack Keycloak nor eSignet again once an admin removed it, and it does
+// not turn the realm off again (ADR-052 decision 2).
+func TestAnAdminRemovalOfAHolderProviderStays(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	kv := store.Memory()
+	cfg := config.Config{
+		CertifyURL: f.URL(), PublicURL: "https://adapter.example", OfferTTL: time.Minute, Timeout: time.Second, MaxBytes: 1 << 20,
+		AuthzIssuer: "https://adapter.example/authz", AuthzKeySecret: "0123456789abcdef0123456789abcdef",
+		HolderOIDCDiscoveryURL: "http://keycloak-inji:8080/realms/vca-holder-realm/.well-known/openid-configuration",
+		HolderOIDCClientID:     "vca-inji-authz", HolderOIDCVerifiedClaims: "individual_id",
+		EsignetURL: "http://inji-esignet:8088", HolderEsignetClientID: "vca-inji", HolderEsignetClientKey: "MIIEpAIBAAKCAQEA",
+	}
+	start := func() *oidcflow.Registry {
+		t.Helper()
+		if _, err := app.Build(cfg, app.Deps{HTTP: f.Client(), Store: kv, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}); err != nil {
+			t.Fatalf("Build: %v", err)
+		}
+		return anyval.Must(oidcflow.NewRegistry(store.NewJSON(kv), nil))
+	}
+	registry := start()
+	if len(registry.List()) != 2 {
+		t.Fatalf("providers = %v", registry.List())
+	}
+	realm := anyval.Must(registry.Get(oidcflow.SeedID))
+	realm.Enabled = true
+	if _, err := registry.Put(realm); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Delete(app.EsignetProviderID); err != nil {
+		t.Fatal(err)
+	}
+	registry = start()
+	if _, err := registry.Get(app.EsignetProviderID); err == nil {
+		t.Fatal("a restart wrote eSignet again after the admin removed it")
+	}
+	if got := anyval.Must(registry.Get(oidcflow.SeedID)); !got.Enabled {
+		t.Fatal("a restart turned the realm off again")
+	}
+	if err := registry.Delete(oidcflow.SeedID); err != nil {
+		t.Fatal(err)
+	}
+	if registry = start(); len(registry.List()) != 0 {
+		t.Fatalf("a restart wrote a removed seed again: %v", registry.List())
+	}
+}
+
+// TestTheAdminPicksTheDefaultHolderProvider: the admin adds a holder
+// provider through the adapter and marks it as the default. The realm
+// seed then loses the flag, and the new record keeps the holder role
+// only.
+func TestTheAdminPicksTheDefaultHolderProvider(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	key := anyval.Must(oidcflow.GenerateKey())
+	signer := anyval.Must(oidcflow.NewSigner(key, "https://admin.test", oidcflow.AdminAudience, 15*time.Minute, nil))
+	jwks := httptest.NewServer(signer.JWKSHandler())
+	defer jwks.Close()
+	a := build(t, f, func(c *config.Config) {
+		c.AuthzIssuer = "https://adapter.example/authz"
+		c.AuthzKeySecret = "0123456789abcdef0123456789abcdef"
+		c.HolderOIDCDiscoveryURL = "http://keycloak-inji:8080/realms/vca-holder-realm/.well-known/openid-configuration"
+		c.HolderOIDCClientID = "vca-inji-authz"
+		c.AdminJWKSURL = jwks.URL
+	})
+	srv := httptest.NewServer(a.Mux)
+	defer srv.Close()
+	token, _, err := signer.Issue(oidcflow.Claims{Subject: "kc|admin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := adminv1connect.NewAdminServiceClient(srv.Client(), srv.URL)
+	create := connect.NewRequest(&adminv1.CreateAuthProviderRequest{Provider: &adminv1.AuthProvider{
+		DisplayName: "National ID", DiscoveryUrl: "https://id.gov.example/.well-known/openid-configuration",
+		ClientId: "vca-holders", Enabled: true, IsDefault: true, Roles: []commonv1.Role{commonv1.Role_ROLE_ADMIN},
+		TokenAuthMethod: adminv1.TokenAuth_TOKEN_AUTH_CLIENT_SECRET_BASIC,
+		ClientSecret:    &commonv1.SecretRef{Store: commonv1.SecretRef_STORE_ENV, Name: "VCA_INJI_HOLDER_NATIONAL_ID_SECRET"},
+	}})
+	create.Header().Set("Authorization", "Bearer "+token)
+	created, err := client.CreateAuthProvider(context.Background(), create)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if roles := created.Msg.GetProvider().GetRoles(); len(roles) != 1 || roles[0] != commonv1.Role_ROLE_HOLDER {
+		t.Fatalf("roles = %v", roles)
+	}
+	list := connect.NewRequest(&adminv1.ListAuthProvidersRequest{})
+	list.Header().Set("Authorization", "Bearer "+token)
+	got, err := client.ListAuthProviders(context.Background(), list)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range got.Msg.GetProviders() {
+		if p.GetIsDefault() != (p.GetId() == created.Msg.GetProvider().GetId()) {
+			t.Errorf("%s default = %v", p.GetId(), p.GetIsDefault())
 		}
 	}
 }

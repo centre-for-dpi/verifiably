@@ -525,7 +525,12 @@ adds it when staff save.
 **The holder provider.** The adapter keeps a provider registry in its
 store. Setup seeds it with the holder realm of the stack Keycloak and
 the public client `vca-inji-authz`. The server takes the enabled
-provider of the holder role for the Inji stack, the seeded one first.
+provider of the holder role for the Inji stack, the default one first.
+The admin portal adds, edits, turns off and removes providers through
+the provider RPCs of the adapter (`docs/admin.md`). The realm record
+of setup stays the default until an admin marks another provider. A
+record of setup that an admin removes stays away after a restart. An edit keeps the scopes and
+the internal address of a record while its discovery URL stays.
 
 The pair can run eSignet with a real authenticator. Then setup also
 names the VCA client of eSignet and its key (ADR-053 decision 4). The

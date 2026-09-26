@@ -4,6 +4,8 @@ package oidcflow
 
 import (
 	"encoding/json"
+	"maps"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -153,6 +155,57 @@ func (r *Registry) Seed(p Provider) error {
 	}
 	_, err := r.Put(p)
 	return err
+}
+
+// seededDoc names the document that lists the ids SeedOnce wrote.
+const seededDoc = "providers-seeded"
+
+// SeedOnce stores a seeded provider the first time only. The registry
+// remembers each id it seeded, so an admin who removes the record keeps
+// it removed after a restart (ADR-052 decision 2). A record that exists
+// already counts as seeded. It reports whether it wrote the record.
+func (r *Registry) SeedOnce(p Provider) (bool, error) {
+	var seeded []string
+	if err := r.store.Load(seededDoc, &seeded); err != nil {
+		return false, err
+	}
+	if slices.Contains(seeded, p.ID) {
+		return false, nil
+	}
+	_, err := r.Get(p.ID)
+	wrote := err != nil
+	if wrote {
+		if _, err := r.Put(p); err != nil {
+			return false, err
+		}
+	}
+	if err := r.store.Save(seededDoc, append(seeded, p.ID)); err != nil {
+		return false, err
+	}
+	return wrote, nil
+}
+
+// OnlyDefault clears the default flag of every provider but id, so one
+// record takes the logins that pick the default.
+func (r *Registry) OnlyDefault(id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	prev := map[string]Provider{}
+	for other, p := range r.m {
+		if other != id && p.IsDefault {
+			prev[other] = p
+			p.IsDefault = false
+			r.m[other] = p
+		}
+	}
+	if len(prev) == 0 {
+		return nil
+	}
+	if err := r.save(); err != nil {
+		maps.Copy(r.m, prev)
+		return err
+	}
+	return nil
 }
 
 // Delete removes a provider.

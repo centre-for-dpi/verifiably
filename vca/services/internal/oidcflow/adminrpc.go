@@ -153,6 +153,9 @@ type AdminProviders struct {
 	// InternalAuthority, when set, is applied to every provider it
 	// stores, for split horizon deployments (ADR-012 decision 6).
 	InternalAuthority string
+	// OneDefault keeps the default flag on one record: a record stored
+	// with the flag takes it from every other record.
+	OneDefault bool
 }
 
 func (a AdminProviders) apply(p Provider) Provider {
@@ -163,6 +166,40 @@ func (a AdminProviders) apply(p Provider) Provider {
 		p.InternalAuthority = a.InternalAuthority
 	}
 	return p
+}
+
+// keep carries over the fields of a stored record that the admin
+// message has no field for: the scopes, the logo, and the internal
+// address. They belong to the provider, so they stay only while the
+// discovery URL stays.
+func keep(p, stored Provider) Provider {
+	if p.DiscoveryURL != stored.DiscoveryURL {
+		return p
+	}
+	if len(p.Scopes) == 0 {
+		p.Scopes = stored.Scopes
+	}
+	if p.LogoURI == "" {
+		p.LogoURI = stored.LogoURI
+	}
+	if p.InternalAuthority == "" {
+		p.InternalAuthority = stored.InternalAuthority
+	}
+	return p
+}
+
+// store writes a record and, with OneDefault, moves the default flag to it.
+func (a AdminProviders) store(p Provider) (Provider, error) {
+	stored, err := a.Registry.Put(p)
+	if err != nil {
+		return Provider{}, err
+	}
+	if a.OneDefault && stored.IsDefault {
+		if err := a.Registry.OnlyDefault(stored.ID); err != nil {
+			return Provider{}, err
+		}
+	}
+	return stored, nil
 }
 
 // NewAdminHandler returns the Connect path and handler.
@@ -190,7 +227,7 @@ func (a AdminProviders) CreateAuthProvider(ctx context.Context, req *connect.Req
 	}
 	p := a.apply(FromAdminProto(req.Msg.GetProvider()))
 	p.ID = ""
-	stored, err := a.Registry.Put(p)
+	stored, err := a.store(p)
 	if err != nil {
 		return nil, ConnectError(err)
 	}
@@ -228,10 +265,11 @@ func (a AdminProviders) UpdateAuthProvider(ctx context.Context, req *connect.Req
 		return nil, err
 	}
 	p := a.apply(FromAdminProto(req.Msg.GetProvider()))
-	if _, err := a.Registry.Get(p.ID); err != nil {
+	current, err := a.Registry.Get(p.ID)
+	if err != nil {
 		return nil, ConnectError(err)
 	}
-	stored, err := a.Registry.Put(p)
+	stored, err := a.store(keep(p, current))
 	if err != nil {
 		return nil, ConnectError(err)
 	}

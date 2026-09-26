@@ -183,18 +183,40 @@ RPC answer carries the stored record and one `PushResult` per target.
 Each result names the pair, the outcome, and the reason of a failure.
 The portal shows one line per target after a save.
 
-### Holder sign in claims
+### Holder providers
 
 The holder authorization server of an issuer stack keeps a provider
-registry of its own (ADR-052). It binds an offer or finds a holder only
-on a claim the provider vouches for (ADR-056 decision 2). The providers
-page shows a card for each live issuer pair whose adapter lists
-`FEATURE_HOLDER_SIGN_IN_SOURCE`. The card lists its providers with the
-claims each one verifies beyond `email`, `phone_number` and `sub`. A
-save calls `GetAuthProvider` and `UpdateAuthProvider` of the adapter on
-the compose network, with the admin session. The adapter checks the
-session against the admin key set. List a claim only when the provider
-proves it, never for a claim a person picks at registration.
+registry of its own (ADR-052 decision 2). The providers page shows the
+card "Holder providers". It has a table for each live issuer pair whose
+adapter lists `FEATURE_HOLDER_SIGN_IN_SOURCE`. Each row names a
+provider, its issuer, its client authentication, its verified claims,
+its state and the default flag.
+
+"Add a holder provider" opens a form under
+`/admin/providers/holders/<pair>/new`. The form takes the kind, the
+display name, the discovery URL, the client ID and the client
+authentication. A public client uses PKCE only. A client secret or a
+private key needs a reference: an environment variable of the adapter
+or a file in the adapter container. The record keeps the reference,
+never the value. So add the variable to the `.env` of the pair first,
+then run `vca deploy`. The form never shows a stored reference, and an
+empty reference keeps it. The form also takes the verified claims and
+the default flag.
+
+The server binds an offer or finds a holder only on a claim the
+provider vouches for (ADR-056 decision 2). List a claim beyond `email`,
+`phone_number` and `sub` only when the provider proves it. Never list a
+claim that a person picks at registration.
+
+The portal calls the provider RPCs of the adapter on the compose
+network, with the admin session. The adapter checks the session against
+the admin key set, and the proxy publishes no path to these RPCs. The
+adapter gives every record the holder role. One record carries the
+default flag: a record that the admin marks as the default takes it from
+the others. Setup writes the holder realm of the stack Keycloak as the
+default. It stays the default until an admin picks another. A record of
+setup that an admin removes stays away after a restart. Each row can
+turn its provider off or on, or remove it.
 
 ## CLI login
 
