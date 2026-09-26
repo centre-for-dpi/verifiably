@@ -137,6 +137,12 @@ type Profile struct {
 	PrivateKey SecretRef `json:"private_key,omitempty"`
 	// IsDefault marks the provider that the setup CLI seeded.
 	IsDefault bool `json:"is_default,omitempty"`
+	// VerifiedClaims lists the ID token claims beyond email,
+	// phone_number and sub that the provider verifies, so a binding rule
+	// may match them (ADR-056 decision 2). An admin sets it only for a
+	// provider that proves those claims, for example an eSignet with a
+	// real authenticator.
+	VerifiedClaims []string `json:"verified_claims,omitempty"`
 }
 
 // Provider is one registered OpenID Connect provider.
@@ -266,6 +272,9 @@ type Seed struct {
 	// InternalAuthority moves the server side endpoints to a container
 	// network host (ADR-012 decision 6).
 	InternalAuthority string
+	// VerifiedClaims lists the claims the provider verifies beyond
+	// the standard ones (ADR-056 decision 2).
+	VerifiedClaims []string
 }
 
 // SeedProvider builds the seeded provider record (ADR-035 decision 2).
@@ -285,7 +294,7 @@ func SeedProvider(s Seed) Provider {
 		Roles:             s.Roles,
 		Enabled:           true,
 		InternalAuthority: s.InternalAuthority,
-		Profile:           Profile{Kind: KindGeneric, IsDefault: true},
+		Profile:           Profile{Kind: KindGeneric, IsDefault: true, VerifiedClaims: s.VerifiedClaims},
 	}
 	if s.ClientSecretEnv != "" {
 		p.ClientSecret = SecretRef{Store: SecretEnv, Name: s.ClientSecretEnv}

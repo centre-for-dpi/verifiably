@@ -224,6 +224,7 @@ type realm struct {
 	Enabled               bool          `json:"enabled"`
 	SslRequired           string        `json:"sslRequired"`
 	RegistrationAllowed   bool          `json:"registrationAllowed"`
+	VerifyEmail           bool          `json:"verifyEmail,omitempty"`
 	ResetPasswordAllowed  bool          `json:"resetPasswordAllowed"`
 	LoginWithEmailAllowed bool          `json:"loginWithEmailAllowed"`
 	Roles                 realmRoles    `json:"roles"`
@@ -324,6 +325,7 @@ func KeycloakRealm(p Pair, values map[string]string) ([]byte, error) {
 	}
 	client.Attributes.PkceCodeChallengeMethod = "S256"
 	clients := []realmClient{client}
+	verifyEmail := false
 	if authz := strings.TrimRight(values[injiAuthzIssuerHolderEnv], "/"); isInjiHolder(p) && authz != "" {
 		// The holder authorization server of the Inji issuer pair signs
 		// the holder in here: a public client with PKCE S256 and its one
@@ -335,6 +337,10 @@ func KeycloakRealm(p Pair, values map[string]string) ([]byte, error) {
 		}
 		c.Attributes.PkceCodeChallengeMethod = "S256"
 		clients = append(clients, c)
+		// The server binds an offer on a verified email only, and anyone
+		// can register here. So the realm verifies every email
+		// (ADR-056 decision 2). It needs a mail server; docs say how.
+		verifyEmail = true
 	}
 	roles, selfRegistered := roleRealmRoles(p.Role)
 	defaultRole := realmRole{
@@ -351,6 +357,7 @@ func KeycloakRealm(p Pair, values map[string]string) ([]byte, error) {
 		Enabled:               true,
 		SslRequired:           "external",
 		RegistrationAllowed:   true,
+		VerifyEmail:           verifyEmail,
 		ResetPasswordAllowed:  true,
 		LoginWithEmailAllowed: true,
 		Roles:                 realmRoles{Realm: append(roles, defaultRole)},

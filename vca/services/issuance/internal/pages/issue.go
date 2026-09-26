@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -510,8 +511,15 @@ func (p *Pages) review(pg page) error {
 }
 
 // The claims of an ID token that the rule of an authorization code
-// offer offers first (OpenID Connect Core 1.0 section 5.1).
-var bindingTokenClaims = []string{"email", "preferred_username", "sub", "phone_number"}
+// offer offers (OpenID Connect Core 1.0 section 5.1). The provider
+// vouches for each: email and phone_number when it calls them verified,
+// sub always. A claim the holder picks, such as preferred_username, is
+// not in the list (ADR-056 decision 2).
+var bindingTokenClaims = []string{"email", "sub", "phone_number"}
+
+// safeBindingClaims are the claims every provider vouches for without a
+// flag the provider may not send. Any other claim gets a warning.
+var safeBindingClaims = []string{"email", "sub"}
 
 // claimName is a claim name an issuer may type.
 var claimName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.:-]{0,63}$`)
@@ -526,7 +534,11 @@ func (p *Pages) bindingFields(b *blocks, w wizard) []template.HTML {
 	}
 	tokens := make([]components.Option, 0, len(bindingTokenClaims))
 	for _, c := range bindingTokenClaims {
-		tokens = append(tokens, components.Option{Value: c, Text: c, Selected: c == token})
+		text := c
+		if !slices.Contains(safeBindingClaims, c) {
+			text = msg.T("issuer.issue.binding.token.verified.label", c)
+		}
+		tokens = append(tokens, components.Option{Value: c, Text: text, Selected: c == token})
 	}
 	subject := w.form.Get("binding_subject")
 	if _, posted := w.form["binding_subject"]; !posted {
@@ -655,6 +667,10 @@ func (p *Pages) renderReview(pg page, w wizard) error {
 		if rule := bindingRule(w); rule != nil {
 			rows = append(rows, components.Row{{Text: msg.T("issuer.issue.binding.review.label")},
 				{Text: msg.T("issuer.issue.binding.review.text", rule.GetTokenClaim(), rule.GetSubjectClaim())}})
+			if !slices.Contains(safeBindingClaims, rule.GetTokenClaim()) {
+				w.toasts = append(w.toasts, components.Toast{Level: "warn",
+					Text: msg.T("issuer.issue.binding.review.warn", rule.GetTokenClaim())})
+			}
 		}
 	}
 	rows = append(rows, w.claims.rows(w.values.claims)...)

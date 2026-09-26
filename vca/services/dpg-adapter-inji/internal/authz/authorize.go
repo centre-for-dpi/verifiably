@@ -166,7 +166,7 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	subject := oidc.NewState()
-	if description, ok := s.stage(r, req, result.Claims, subject); !ok {
+	if description, ok := s.stage(r, req, result.Claims, p.VerifiedClaims, subject); !ok {
 		s.redirectError(w, r, req, "access_denied", description)
 		return
 	}
@@ -184,15 +184,16 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 
 // stage writes the claims row of the holder under subject: the row of
 // the offer after its binding rule matched, or the row the sign in
-// source holds for the holder. It returns the description of a denial.
-func (s *Server) stage(r *http.Request, req authRequest, claims map[string]any, subject string) (string, bool) {
+// source holds for the holder. vouched lists the claims the provider
+// record names as verified. It returns the description of a denial.
+func (s *Server) stage(r *http.Request, req authRequest, claims map[string]any, vouched []string, subject string) (string, bool) {
 	ctx := r.Context()
 	if req.IssuerState != "" {
 		offer, open := s.offers.Offer(ctx, req.IssuerState)
 		if !open {
 			return "The offer has expired or was claimed.", false
 		}
-		if !offer.Binding.matches(claims, offer.Subject) {
+		if !offer.Binding.matches(claims, offer.Subject, vouched) {
 			return DeniedAnotherPerson, false
 		}
 		if err := s.offers.StageOffer(ctx, req.IssuerState, subject); err != nil {
@@ -208,7 +209,7 @@ func (s *Server) stage(r *http.Request, req authRequest, claims map[string]any, 
 	if !ok {
 		return description, false
 	}
-	value, ok := tokenValue(claims, src.TokenClaim)
+	value, ok := tokenValue(claims, src.TokenClaim, vouched)
 	if !ok {
 		return DeniedNoRecord, false
 	}

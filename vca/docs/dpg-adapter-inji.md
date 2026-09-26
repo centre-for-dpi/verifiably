@@ -449,9 +449,32 @@ Certify reads the key set on the compose network, at
 **Which claims.** A request that names an offer in `issuer_state`
 issues the claims of that offer. The issuer set a binding rule in the
 wizard: a claim of the ID token must equal a claim of the credential.
-The default rule compares the email of both. An email that the ID token
-calls unverified never matches. A mismatch answers `access_denied` with
-"This offer is for another person." An offer opens once.
+The default rule compares the email of both. A mismatch answers
+`access_denied` with "This offer is for another person." An offer
+opens once.
+
+**Vouched claims only.** A binding rule and a sign in source match only
+a claim that the provider vouches for (ADR-056 decision 2):
+
+| Claim | Matches when |
+| --- | --- |
+| `email` | `email_verified` is `true`. A missing flag counts as unverified. Only ASCII letters compare without case. |
+| `phone_number` | `phone_number_verified` is `true` |
+| `sub` | Always. It is the account at the provider. |
+| Any other claim | The provider record lists it in `verified_claims` |
+
+A user name or an attribute that the holder picks never binds. Set
+`VCA_INJI_HOLDER_OIDC_VERIFIED_CLAIMS` only for a provider that proves
+those claims, such as an eSignet with a real authenticator. The wizard
+offers `email`, `sub` and `phone_number`, and it warns about any claim
+other than `email` and `sub`.
+
+**The holder realm.** Setup makes the holder realm of the Inji stack
+check the email of each user (`verifyEmail`). Keycloak then sends a
+mail before a self registered holder can sign in. Give the realm a
+mail server under Realm settings, Email. Without one, turn off self
+registration and add each holder yourself:
+`vca dpg realm --role holder --dpg inji --registration off`.
 A request without an offer uses the holder sign in source of the
 credential. The source names a data source, the field that identifies
 the person, and the ID token claim with the value. The adapter asks
@@ -484,6 +507,7 @@ cannot open it, so the start fails. The key signs access tokens only.
 | `VCA_INJI_AUTHZ_AUDIENCE` | The credential endpoint in `aud`. The default follows `VCA_INJI_OFFER_ISSUER`. |
 | `VCA_INJI_WALLET_CLIENTS` | The wallet clients |
 | `VCA_INJI_HOLDER_OIDC_DISCOVERY_URL`, `VCA_INJI_HOLDER_OIDC_CLIENT_ID`, `VCA_INJI_HOLDER_OIDC_PUBLIC_URL`, `VCA_INJI_HOLDER_OIDC_INTERNAL_AUTHORITY` | The seeded holder provider |
+| `VCA_INJI_HOLDER_OIDC_VERIFIED_CLAIMS` | The claims beyond `email`, `phone_number` and `sub` that the holder provider verifies, comma separated. Each start writes them into the seeded record. Empty clears them. |
 | `VCA_INJI_DATA_SOURCE_URL` | The data source service of a claim without an offer |
 
 ### Threat model
@@ -495,7 +519,9 @@ cannot open it, so the start fails. The key signs access tokens only.
 | The plain PKCE method weakens the check | The server takes S256 only. |
 | A forged callback or a login CSRF | The server keeps each sign in under its random state. A callback with another state, or a second callback, fails. The provider checks the nonce of its ID token. |
 | Somebody forges or replays a client assertion | Its signature must match the registered key. Its `iss` and `sub` name the client, its `aud` names the token endpoint or the issuer, and its `exp` falls within ten minutes. Each `jti` works once. |
-| Another person claims an offer | The binding rule compares a claim of the ID token with a claim of the credential. An unverified email never matches. |
+| Another person claims an offer | The binding rule compares a claim of the ID token with a claim of the credential. The claim must be one that the provider vouches for. An email without `email_verified` true never matches. |
+| A holder registers the user name or the attribute of another person | Such a claim never binds unless the provider record lists it as verified. The holder realm verifies every email. |
+| A look alike address matches | Only ASCII letters of an email compare without case, so the Kelvin sign is not `k`. |
 | A copy of the store gives codes or keys | The store keeps the SHA-256 of each code, state, and `jti`. The token key sits under AES-256-GCM with the pair session key. |
 | A token reaches another service | `aud` names the credential endpoint of one Certify. The token lives five minutes and carries the scope `vca_credential` only. |
 | A token for one credential asks for another type | The template of every configuration renders only a row of that configuration (ADR-056 decision 1). A farmer row gives no medical licence. |

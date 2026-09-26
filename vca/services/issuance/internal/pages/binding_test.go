@@ -26,7 +26,8 @@ func TestAuthCodeStepAsksWhoMayClaim(t *testing.T) {
 	a11ytest.AssertPage(t, doc)
 	for _, want := range []string{
 		"Sign in claim", `<select id="binding_token" name="binding_token"`, `<option value="email" selected>`,
-		`<option value="preferred_username">`, `<option value="sub">`, `<option value="phone_number">`,
+		`<option value="sub">`, `<option value="phone_number">phone_number, if verified</option>`,
+		"Other claims count only when the sign in provider verifies them.",
 		`id="binding_token_other"`, `<select id="binding_subject" name="binding_subject"`, `<option value="farmerID">`,
 		`<option value="email" selected>Email`,
 	} {
@@ -37,17 +38,36 @@ func TestAuthCodeStepAsksWhoMayClaim(t *testing.T) {
 	if strings.Contains(doc, `<option value="hectares">`) {
 		t.Error("the rule offers a claim that is not text")
 	}
-	form := with(goodClaims(), "channel", "CHANNEL_OID4VCI_AUTHCODE", "binding_token", "preferred_username",
+	// A user name is a claim the holder picks, so the list does not
+	// offer it (ADR-056 decision 2).
+	if strings.Contains(doc, `<option value="preferred_username">`) {
+		t.Error("the rule offers preferred_username")
+	}
+	form := with(goodClaims(), "channel", "CHANNEL_OID4VCI_AUTHCODE", "binding_token", "sub",
 		"binding_subject", "farmerID")
 	doc = body(t, h.post(t, "/issue/review", form))
 	a11ytest.AssertPage(t, doc)
 	for _, want := range []string{
-		`<input type="hidden" name="binding_token" value="preferred_username">`,
+		`<input type="hidden" name="binding_token" value="sub">`,
 		`<input type="hidden" name="binding_subject" value="farmerID">`,
-		"Who can claim", "The preferred_username of the sign in equals the farmerID of this credential.",
+		"Who can claim", "The sub of the sign in equals the farmerID of this credential.",
 	} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("the review lacks %q", want)
+		}
+	}
+	if strings.Contains(doc, "counts only when the sign in provider verifies it") {
+		t.Error("the review warns about sub")
+	}
+	// A claim the provider may not verify gets a warning.
+	for _, claim := range []url.Values{
+		with(form, "binding_token", "phone_number"),
+		with(form, "binding_token_other", "preferred_username"),
+	} {
+		doc = body(t, h.post(t, "/issue/review", claim))
+		a11ytest.AssertPage(t, doc)
+		if !strings.Contains(doc, "counts only when the sign in provider verifies it. Otherwise no holder can claim the offer.") {
+			t.Errorf("the review of %v has no warning", claim)
 		}
 	}
 	h.issuance.next = &issuancev1.Offer{Id: "offer-b"}
@@ -55,7 +75,7 @@ func TestAuthCodeStepAsksWhoMayClaim(t *testing.T) {
 		t.Fatalf("status %d", rec.Code)
 	}
 	rule := h.issuance.requests[0].GetBindingRule()
-	if rule.GetTokenClaim() != "preferred_username" || rule.GetSubjectClaim() != "farmerID" {
+	if rule.GetTokenClaim() != "sub" || rule.GetSubjectClaim() != "farmerID" {
 		t.Fatalf("the request names the rule %v", rule)
 	}
 	// Another claim of the sign in wins over the list.

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -210,6 +211,9 @@ func buildAuthz(cfg config.Config, deps Deps, backend store.KeyValue, svc *servi
 		})); err != nil {
 			return nil, fmt.Errorf("app: seed the holder provider: %w", err)
 		}
+		if err := syncVerifiedClaims(registry, cfg.VerifiedClaims()); err != nil {
+			return nil, err
+		}
 	} else {
 		deps.Log.Warn("no holder provider is seeded, so a holder signs in only at a provider an admin adds",
 			"setting", config.Prefix+"HOLDER_OIDC_DISCOVERY_URL")
@@ -227,6 +231,22 @@ func buildAuthz(cfg config.Config, deps Deps, backend store.KeyValue, svc *servi
 		Clients: clients, Registry: registry, Flow: &oidcflow.Flow{Cache: oidcflow.NewCache(client, 0), Client: client},
 		Offers: svc, Lookup: lookup, Log: deps.Log,
 	})
+}
+
+// syncVerifiedClaims makes the seeded holder provider list the claims
+// of the setting. Seed keeps a record it finds, so each start writes
+// the list, and an empty setting clears it (ADR-056 decision 2).
+func syncVerifiedClaims(registry *oidcflow.Registry, verified []string) error {
+	// Seed wrote the record or found it, so it exists.
+	p, err := registry.Get(oidcflow.SeedID)
+	if err != nil || slices.Equal(p.VerifiedClaims, verified) {
+		return err
+	}
+	p.VerifiedClaims = verified
+	if _, err := registry.Put(p); err != nil {
+		return fmt.Errorf("app: write the verified claims of the holder provider: %w", err)
+	}
+	return nil
 }
 
 // definitionHandler serves the presentation definition that the issuer

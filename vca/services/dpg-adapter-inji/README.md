@@ -42,6 +42,7 @@ Set at least one Inji URL. Each URL turns on one role.
 | `VCA_INJI_AUTHZ_AUDIENCE` | The credential endpoint the tokens name. The default follows `VCA_INJI_OFFER_ISSUER`. |
 | `VCA_INJI_WALLET_CLIENTS` | The wallet clients of the server, as a JSON array with `client_id`, `redirect_uris`, and an optional public `jwk`. |
 | `VCA_INJI_HOLDER_OIDC_DISCOVERY_URL`, `VCA_INJI_HOLDER_OIDC_CLIENT_ID`, `VCA_INJI_HOLDER_OIDC_PUBLIC_URL`, `VCA_INJI_HOLDER_OIDC_INTERNAL_AUTHORITY` | The holder provider that the server seeds into its registry. |
+| `VCA_INJI_HOLDER_OIDC_VERIFIED_CLAIMS` | The claims beyond `email`, `phone_number` and `sub` that the holder provider verifies. A binding rule matches only verified claims. |
 | `VCA_INJI_DATA_SOURCE_URL` | The data source service that finds the subject of a claim without an offer. |
 | `VCA_INJI_OFFER_ISSUER` | The credential issuer of a hosted offer through the identity provider. The stack file sets the Certify that takes eSignet tokens. An offer with a presentation during issuance names the issuer of the Certify metadata. |
 | `VCA_INJI_METADATA_PATH` | The path of the issuer metadata on Inji Certify. |

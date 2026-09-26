@@ -604,7 +604,7 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-056 | 1 A guard on `config_id` in every template | Done | `vca/services/dpg-adapter-inji/internal/inji/configs.go` | `TestARowOfOneConfigurationIssuesNoOtherConfiguration` shows that a farmer row gives no medical licence through the fake Certify. Publish every schema again after the upgrade. |
-| ADR-056 | 2 Binding only on vouched claims | Not started | `vca/services/dpg-adapter-inji/internal/authz/bind.go` | |
+| ADR-056 | 2 Binding only on vouched claims | Done | `vca/services/dpg-adapter-inji/internal/authz/bind.go`, `vca/services/issuance/internal/pages/issue.go`, `vca/internal/cli/dpgconfig.go` | `TestBindingNeedsAClaimTheProviderVouchesFor` pins the rule. The wizard offers `email`, `sub` and `phone_number` and warns about the rest. The Inji holder realm sets `verifyEmail`. The admin portal cannot edit `verified_claims` yet; `VCA_INJI_HOLDER_OIDC_VERIFIED_CLAIMS` sets it. |
 | ADR-056 | 3 The row lives as long as its token | Not started | `vca/services/dpg-adapter-inji/internal/authz`, `deploy/vca/dpg/inji/certify/certify-vca-store.properties` | |
 | ADR-056 | 4 Offer claims go at the token or at expiry | Not started | `vca/services/dpg-adapter-inji/internal/service/holderclaim.go` | |
 | ADR-056 | 5 Bounded parameters, a rate limit, no store walk | Not started | `vca/services/dpg-adapter-inji/internal/authz` | |
@@ -615,8 +615,8 @@ A row that is not `Done` carries a note.
 
 | Status | Decisions |
 |---|---|
-| Done | 240 |
+| Done | 241 |
 | Partial | 29 |
 | Deferred | 3 |
-| Not started | 42 |
+| Not started | 41 |
 | Total | 314 |

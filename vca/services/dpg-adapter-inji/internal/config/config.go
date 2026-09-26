@@ -66,6 +66,12 @@ type Config struct {
 	HolderOIDCClientID          string `env:"HOLDER_OIDC_CLIENT_ID"`
 	HolderOIDCPublicURL         string `env:"HOLDER_OIDC_PUBLIC_URL"`
 	HolderOIDCInternalAuthority string `env:"HOLDER_OIDC_INTERNAL_AUTHORITY"`
+	// HolderOIDCVerifiedClaims lists, comma separated, the ID token
+	// claims beyond email, phone_number and sub that the holder provider
+	// verifies. A binding rule matches only verified claims (ADR-056
+	// decision 2). Name a claim only when the provider proves it, never
+	// for a claim the holder picks at registration.
+	HolderOIDCVerifiedClaims string `env:"HOLDER_OIDC_VERIFIED_CLAIMS"`
 	// DataSourceURL is the data source service of the pair. A claim that
 	// no offer names finds its subject there. Empty turns such claims
 	// off.
@@ -177,6 +183,10 @@ func (c Config) Plugins() []string { return list(c.CertifyPlugins) }
 
 // IdentityClaims returns the claim names of IARIdentityClaims.
 func (c Config) IdentityClaims() []string { return list(c.IARIdentityClaims) }
+
+// VerifiedClaims returns the claims the holder provider verifies beyond
+// the standard ones.
+func (c Config) VerifiedClaims() []string { return list(c.HolderOIDCVerifiedClaims) }
 
 // list splits a comma separated value and drops the empty items.
 func list(value string) []string {

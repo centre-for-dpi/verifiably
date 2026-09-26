@@ -343,11 +343,12 @@ func TestSmallerRulesOfTheRequest(t *testing.T) {
 	wantError(t, h.signIn(r), "access_denied", r.state)
 	// A binding rule without claims, or a subject claim that is not text,
 	// binds nobody.
-	h.idp.Claims = map[string]any{"email": "amina@example.org", "email_verified": true, "sub_number": "7"}
+	h.idp.Claims = map[string]any{"email": "amina@example.org", "email_verified": true}
+	h.idp.Subject = "7"
 	h.issuer.mu.Lock()
-	h.issuer.offers["offer-2"] = authz.Offer{ConfigID: "c", Subject: map[string]any{"number": 7}, Binding: authz.Binding{TokenClaim: "sub_number", SubjectClaim: "number"}}
+	h.issuer.offers["offer-2"] = authz.Offer{ConfigID: "c", Subject: map[string]any{"number": 7}, Binding: authz.Binding{TokenClaim: "sub", SubjectClaim: "number"}}
 	h.issuer.offers["offer-3"] = authz.Offer{ConfigID: "c", Subject: map[string]any{"number": "7"}}
-	h.issuer.offers["offer-4"] = authz.Offer{ConfigID: "c", Subject: map[string]any{"number": "7"}, Binding: authz.Binding{TokenClaim: "sub_number", SubjectClaim: "number"}}
+	h.issuer.offers["offer-4"] = authz.Offer{ConfigID: "c", Subject: map[string]any{"number": "7"}, Binding: authz.Binding{TokenClaim: "sub", SubjectClaim: "number"}}
 	h.issuer.mu.Unlock()
 	for _, id := range []string{"offer-2", "offer-3"} {
 		r = newRequest(publicClient, walletCallback)

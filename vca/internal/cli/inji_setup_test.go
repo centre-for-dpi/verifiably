@@ -188,6 +188,29 @@ func TestInjiHolderRealmHasTheAuthzClient(t *testing.T) {
 	}
 }
 
+// TestInjiHolderRealmVerifiesEmail: the holder authorization server
+// binds an offer on a verified email only, and the holder realm lets
+// anyone register. So the holder realm of the Inji stack verifies the
+// email of every user (ADR-056 decision 2). Other realms keep their
+// setting.
+func TestInjiHolderRealmVerifiesEmail(t *testing.T) {
+	holder, issuer := injiPair(commonv1.Role_ROLE_HOLDER), injiPair(commonv1.Role_ROLE_ISSUER)
+	verifies := func(p Pair) bool {
+		t.Helper()
+		var r map[string]any
+		if err := json.Unmarshal(sharedFile(t, planOf(t, SetupRequest{Pair: p}), RealmFileOf(p)).Data, &r); err != nil {
+			t.Fatal(err)
+		}
+		return r["verifyEmail"] == true
+	}
+	if !verifies(holder) {
+		t.Error("the Inji holder realm does not verify email")
+	}
+	if verifies(issuer) {
+		t.Error("the Inji issuer realm verifies email")
+	}
+}
+
 // withFlag returns the flags with one more value.
 func withFlag(flags map[string]string, key, value string) map[string]string {
 	flags[key] = value

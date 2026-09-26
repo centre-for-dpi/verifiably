@@ -110,6 +110,7 @@ type harness struct {
 	nowMu     sync.Mutex
 	walletKey *rsa.PrivateKey
 	browser   *http.Client
+	verified  []string
 }
 
 func (h *harness) clock() time.Time {
@@ -126,13 +127,21 @@ func (h *harness) advance(d time.Duration) {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
+	return newHarnessVouching(t)
+}
+
+// newHarnessVouching is a harness whose holder provider record lists
+// the claims it verifies beyond the standard ones.
+func newHarnessVouching(t *testing.T, verified ...string) *harness {
+	t.Helper()
 	h := &harness{
-		t:      t,
-		idp:    oidctest.New(),
-		issuer: &fakeIssuer{offers: map[string]authz.Offer{}, staged: map[string]string{}, claimed: map[string]bool{}},
-		lookup: &fakeLookup{rows: map[string]string{}},
-		kv:     store.Memory(),
-		now:    time.Now().UTC().Truncate(time.Second),
+		verified: verified,
+		t:        t,
+		idp:      oidctest.New(),
+		issuer:   &fakeIssuer{offers: map[string]authz.Offer{}, staged: map[string]string{}, claimed: map[string]bool{}},
+		lookup:   &fakeLookup{rows: map[string]string{}},
+		kv:       store.Memory(),
+		now:      time.Now().UTC().Truncate(time.Second),
 		browser: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		}},
@@ -155,6 +164,7 @@ func (h *harness) build(t *testing.T, kv store.KeyValue) *authz.Server {
 	reg := anyval.Must(oidcflow.NewRegistry(nil, nil))
 	if err := reg.Seed(oidcflow.SeedProvider(oidcflow.Seed{
 		DiscoveryURL: h.idp.DiscoveryURL(), ClientID: "vca-inji-authz", Roles: []string{"holder"},
+		VerifiedClaims: h.verified,
 	})); err != nil {
 		t.Fatal(err)
 	}
@@ -514,14 +524,24 @@ func TestOfferBoundClaimRefusesAnotherPerson(t *testing.T) {
 
 func TestOfferBoundClaimRefusesMissingOrUnverifiedClaim(t *testing.T) {
 	cases := map[string]map[string]any{
-		"unverified email": {"email": "amina@example.org", "email_verified": false},
-		"no email":         {"name": "Amina"},
-		"email not text":   {"email": 7},
+		"unverified email":        {"email": "amina@example.org", "email_verified": false},
+		"unverified email text":   {"email": "amina@example.org", "email_verified": "false"},
+		"no email_verified":       {"email": "amina@example.org"},
+		"email_verified not bool": {"email": "amina@example.org", "email_verified": 1},
+		"no email":                {"name": "Amina"},
+		"email not text":          {"email": 7},
+		"a Kelvin sign":           {"email": "amina@example.org", "email_verified": true, "_subject": "amin\u212a@example.org"},
 	}
 	for name, claims := range cases {
 		h := newHarness(t)
+		subject := "amina@example.org"
+		if v, ok := claims["_subject"].(string); ok {
+			subject = v
+			claims["email"] = "amink@example.org"
+			delete(claims, "_subject")
+		}
 		h.idp.Claims = claims
-		h.addOffer("offer-1", "amina@example.org")
+		h.addOffer("offer-1", subject)
 		r := newRequest(publicClient, walletCallback)
 		r.issuerState = "offer-1"
 		wantError(t, h.signIn(r), "access_denied", r.state)
@@ -925,4 +945,83 @@ func TestNoHolderProviderIsAServerError(t *testing.T) {
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/authorize?"+r.query().Encode(), nil))
 	wantError(t, anyval.Must(url.Parse(rec.Header().Get("Location"))), "temporarily_unavailable", r.state)
+}
+
+// bindOffer adds an offer bound by the claim of the ID token to the
+// member number of the subject.
+func (h *harness) bindOffer(id, tokenClaim, number string) {
+	h.issuer.mu.Lock()
+	defer h.issuer.mu.Unlock()
+	h.issuer.offers[id] = authz.Offer{
+		ConfigID: "Membership",
+		Subject:  map[string]any{"fullName": "Amina Njeri", "memberID": number},
+		Binding:  authz.Binding{TokenClaim: tokenClaim, SubjectClaim: "memberID"},
+	}
+}
+
+// TestBindingNeedsAClaimTheProviderVouchesFor is finding 2 of the review:
+// a person who registers the user name 12345678 at a holder realm with
+// self registration must not claim the offer of the member 12345678.
+// A binding rule matches email and phone_number only when the provider
+// calls them verified, and sub always. Any other claim matches only
+// when the provider record lists it (ADR-056 decision 2).
+func TestBindingNeedsAClaimTheProviderVouchesFor(t *testing.T) {
+	cases := []struct {
+		name     string
+		claim    string
+		idToken  map[string]any
+		verified []string
+		match    bool
+	}{
+		{"a chosen user name", "preferred_username", map[string]any{"preferred_username": "12345678"}, nil, false},
+		{"a custom attribute", "national_id", map[string]any{"national_id": "12345678"}, nil, false},
+		{"an unverified phone", "phone_number", map[string]any{"phone_number": "12345678"}, nil, false},
+		{"a phone verified false", "phone_number", map[string]any{"phone_number": "12345678", "phone_number_verified": false}, nil, false},
+		{"a verified phone", "phone_number", map[string]any{"phone_number": "12345678", "phone_number_verified": true}, nil, true},
+		{"a verified phone as text", "phone_number", map[string]any{"phone_number": "12345678", "phone_number_verified": "true"}, nil, true},
+		{"a listed claim", "national_id", map[string]any{"national_id": "12345678"}, []string{"national_id"}, true},
+		{"a listed user name", "preferred_username", map[string]any{"preferred_username": "12345678"}, []string{"preferred_username"}, true},
+	}
+	for _, c := range cases {
+		h := newHarnessVouching(t, c.verified...)
+		h.idp.Claims = c.idToken
+		h.bindOffer("offer-1", c.claim, "12345678")
+		r := newRequest(publicClient, walletCallback)
+		r.issuerState = "offer-1"
+		back := h.signIn(r)
+		if c.match != (back.Query().Get("code") != "") {
+			t.Errorf("%s: redirect = %s, want a match %v", c.name, back, c.match)
+		}
+		if !c.match && back.Query().Get("error_description") != authz.DeniedAnotherPerson {
+			t.Errorf("%s: description = %q", c.name, back.Query().Get("error_description"))
+		}
+	}
+	// sub is the account at the provider, which the provider vouches for.
+	h := newHarness(t)
+	h.idp.Subject = "user-7"
+	h.bindOffer("offer-1", "sub", "user-7")
+	r := newRequest(publicClient, walletCallback)
+	r.issuerState = "offer-1"
+	if back := h.signIn(r); back.Query().Get("code") == "" {
+		t.Errorf("sub did not match: %s", back)
+	}
+}
+
+// TestWalletInitiatedClaimNeedsAVouchedClaim: the sign in source finds
+// the record by a claim of the ID token, so the same rule holds there.
+func TestWalletInitiatedClaimNeedsAVouchedClaim(t *testing.T) {
+	h := newHarness(t)
+	if err := h.srv.SetSignInSource(context.Background(), authz.SignInSource{
+		ConfigID: "ResidencePermit", SourceID: "registry", Field: "national_id", TokenClaim: "preferred_username",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	h.lookup.rows["12345678"] = `{"fullName":"Amina Njeri"}`
+	h.idp.Claims = map[string]any{"preferred_username": "12345678"}
+	r := newRequest(publicClient, walletCallback)
+	back := h.signIn(r)
+	wantError(t, back, "access_denied", r.state)
+	if len(h.issuer.staged) != 0 {
+		t.Fatalf("a row was staged: %v", h.issuer.staged)
+	}
 }

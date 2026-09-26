@@ -5,6 +5,7 @@ package app_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/fake"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
 const testdata = "../../testdata"
@@ -399,5 +401,71 @@ func TestBuildRefusesAHolderServerWithoutItsSettings(t *testing.T) {
 		if _, err := app.Build(cfg, app.Deps{HTTP: f.Client(), Log: slog.New(slog.NewTextHandler(io.Discard, nil))}); err == nil {
 			t.Errorf("%s: Build accepted it", name)
 		}
+	}
+}
+
+// TestBuildSeedsTheVerifiedClaimsOfTheHolderProvider: the setting lists
+// the claims the holder provider verifies beyond email, phone_number
+// and sub. The seeded record follows it at each start, so a binding
+// rule on those claims matches (ADR-056 decision 2).
+func TestBuildSeedsTheVerifiedClaimsOfTheHolderProvider(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	kv := store.Memory()
+	start := func(verified string) []string {
+		t.Helper()
+		cfg := config.Config{
+			CertifyURL: f.URL(), PublicURL: "https://adapter.example", OfferTTL: time.Minute, Timeout: time.Second, MaxBytes: 1 << 20,
+			AuthzIssuer: "https://adapter.example/authz", AuthzKeySecret: "0123456789abcdef0123456789abcdef",
+			HolderOIDCDiscoveryURL:   "http://keycloak-inji:8080/realms/vca-holder-realm/.well-known/openid-configuration",
+			HolderOIDCClientID:       "vca-inji-authz",
+			HolderOIDCVerifiedClaims: verified,
+		}
+		if _, err := app.Build(cfg, app.Deps{HTTP: f.Client(), Store: kv, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}); err != nil {
+			t.Fatalf("Build: %v", err)
+		}
+		raw, err := kv.Get(context.Background(), "providers")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var records []struct {
+			Verified []string `json:"verified_claims"`
+		}
+		if err := json.Unmarshal(raw, &records); err != nil || len(records) != 1 {
+			t.Fatalf("providers = %s, %v", raw, err)
+		}
+		return records[0].Verified
+	}
+	if got := start(" national_id, member_no ,"); len(got) != 2 || got[0] != "national_id" || got[1] != "member_no" {
+		t.Fatalf("verified claims = %v", got)
+	}
+	if got := start(""); len(got) != 0 {
+		t.Fatalf("an empty setting kept %v", got)
+	}
+}
+
+// refusingStore fails every write of a provider record that lists
+// verified claims.
+type refusingStore struct{ store.KeyValue }
+
+func (r refusingStore) Put(ctx context.Context, key string, value []byte) error {
+	if key == "providers" && strings.Contains(string(value), "verified_claims") {
+		return errors.New("the disk is full")
+	}
+	return r.KeyValue.Put(ctx, key, value)
+}
+
+func TestBuildStopsWhenTheVerifiedClaimsDoNotStay(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	cfg := config.Config{
+		CertifyURL: f.URL(), PublicURL: "https://adapter.example", OfferTTL: time.Minute, Timeout: time.Second, MaxBytes: 1 << 20,
+		AuthzIssuer: "https://adapter.example/authz", AuthzKeySecret: "0123456789abcdef0123456789abcdef",
+		HolderOIDCDiscoveryURL: "http://keycloak-inji:8080/realms/vca-holder-realm/.well-known/openid-configuration",
+		HolderOIDCClientID:     "vca-inji-authz", HolderOIDCVerifiedClaims: "national_id",
+	}
+	_, err := app.Build(cfg, app.Deps{HTTP: f.Client(), Store: refusingStore{store.Memory()}, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err == nil || !strings.Contains(err.Error(), "verified claims") {
+		t.Fatalf("Build = %v", err)
 	}
 }
