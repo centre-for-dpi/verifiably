@@ -44,6 +44,8 @@ flow, and it checks presentations with DCQL queries.
 | `POST /v1/orgs/{org}/cred-defs` | Writes the credential definition of an AnonCreds schema. |
 | `POST /v1/orgs/{org}/schemas` with the schema type `no_ledger` | Stores a W3C JSON-LD schema in the schema file server. |
 | `GET /v1/platform/ledgers` | Reads the names of the ledgers. |
+| `GET /v1/orgs/{org}/oid4vc/credential-offer/{id}` | Reads the issuance session of one offer. |
+| `GET /v1/orgs/{org}/oid4vc/credential-offer` | Lists the issuance sessions, for the issued list. |
 | `POST /v1/orgs/{org}/oid4vp/verifier` | Creates the OID4VP verifier. |
 | `POST /v1/orgs/{org}/oid4vp/presentation` | Starts an OID4VP transaction. |
 | `GET /v1/orgs/{org}/oid4vp/verifier-presentation` | Reads the answer of a transaction. |
@@ -58,7 +60,7 @@ The answer of `GetCapabilities` reports what the platform supports.
 | Channels | OID4VCI pre-authorized code |
 | Protocols | OID4VCI, OID4VP, OID4VP with DCQL |
 | Roles | Issuer and verifier |
-| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION` |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUANCE_STATUS`, `FEATURE_ISSUED_LEDGER` |
 | DID methods | `did:key` |
 | Key types | `Ed25519`, `secp256r1`, `secp256k1` |
 | Schema formats | AnonCreds on each ledger of the organisation, and W3C JSON-LD |
@@ -82,8 +84,7 @@ CREDEBL is the only one of the three DPGs that reads DCQL.
 | --- | --- |
 | `Issue` | CREDEBL signs a credential only when a wallet claims an offer. |
 | `IssueBatch` | CREDEBL has no batch credential endpoint. |
-| `GetIssuanceStatus` | The api gateway reports no issuance session state. |
-| `Revoke` | The status services own the status bits. |
+| `Revoke` | The platform revokes an OID4VC session only with a status list host. The stack file runs none, so the status services of VCA own the status bits. |
 | Every holder RPC | CREDEBL ships no wallet for a citizen. |
 | Every client credential RPC | The adapter makes no client credential of an organisation yet. The admin pages offer no stack credential. |
 | `CreateTenant` with a dedicated agent | The platform starts a dedicated agent through the Docker socket. The stack file mounts none, so every tenant gets the shared agent. |
@@ -169,6 +170,17 @@ most. A platform that does not answer lists no ledger.
 **A W3C JSON-LD schema goes on no ledger.** The adapter stores it with
 the schema type `no_ledger`. The schema file server of the stack keeps
 the document, and the configuration id is its address.
+
+**The state of an offer is the state of its session.** The offer id
+is the id of the issuance session of the agent. A session in the state
+`Completed` reads as issued, and its last change is the claim time. A session
+in the state `Error` failed, with the message of the agent. Every other
+session is pending until its end, and expired after it.
+
+**The issued list reads the sessions.** The adapter lists the completed
+sessions of a credential type, oldest first. A session matches when its
+offer carries each attribute of the query with the same value. An entry
+carries the session id, the type and the issue time, and no claim value.
 
 **The adapter creates the verifier once.** It creates the OID4VP
 verifier at the first request. It then stores the identifier. After a

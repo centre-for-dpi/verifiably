@@ -38,6 +38,12 @@ const (
 	// NoOrgs makes the list of organisations answer the status not
 	// found, as the platform does for an empty list.
 	NoOrgs Answer = ""
+	// OfferPending is an issuance session no wallet finished.
+	OfferPending Answer = "doc/offer-session-pending.json"
+	// OfferCompleted is an issuance session that issued.
+	OfferCompleted Answer = "doc/offer-session-completed.json"
+	// OfferError is an issuance session the agent ended in error.
+	OfferError Answer = "doc/offer-session-error.json"
 )
 
 // Server is a running fake CREDEBL platform.
@@ -56,6 +62,8 @@ type Server struct {
 	signins int
 	// orgs selects the organisation listing.
 	orgs Answer
+	// offer selects the answer of one issuance session.
+	offer Answer
 	// deleted holds the organisations the fake deleted.
 	deleted map[string]bool
 	// calls records the method and path of every call, in order.
@@ -74,6 +82,7 @@ func New(dir string) *Server {
 		session:   SessionPending,
 		templates: Templates,
 		orgs:      OrgList,
+		offer:     OfferPending,
 		deleted:   map[string]bool{},
 		requests:  map[string][]byte{},
 		status:    map[string][]int{},
@@ -110,6 +119,13 @@ func (f *Server) SetOrgs(a Answer) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.orgs = a
+}
+
+// SetOfferSession selects the answer of one issuance session.
+func (f *Server) SetOfferSession(a Answer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.offer = a
 }
 
 // Calls returns the method and path of every call, in order.
@@ -168,7 +184,7 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	f.requests[r.URL.Path] = body
 	f.calls = append(f.calls, r.Method+" "+r.URL.Path)
 	forced := f.take(r.URL.Path)
-	session, templates, orgs := f.session, f.templates, f.orgs
+	session, templates, orgs, offer := f.session, f.templates, f.orgs, f.offer
 	if r.URL.Path == "/v1/auth/signin" {
 		f.signins++
 	}
@@ -192,6 +208,10 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		f.send(w, schemaAnswer(body))
 	case strings.HasSuffix(path, "/cred-defs") && r.Method == http.MethodPost:
 		f.sendStatus(w, http.StatusCreated, "doc/cred-def-created.json")
+	case strings.HasSuffix(path, "/oid4vc/credential-offer") && r.Method == http.MethodGet:
+		f.send(w, "doc/offer-sessions.json")
+	case strings.Contains(path, "/oid4vc/credential-offer/") && r.Method == http.MethodGet:
+		f.send(w, string(offer))
 	case path == "/v1/platform/ledgers":
 		f.send(w, "doc/platform-ledgers.json")
 	case strings.HasSuffix(path, "/create-offer"):

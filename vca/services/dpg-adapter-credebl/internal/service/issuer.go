@@ -210,22 +210,16 @@ func (s *Service) IssueBatch(
 		"CREDEBL has no batch credential endpoint; call CreateOffer once per subject")
 }
 
-// GetIssuanceStatus is not available. The platform reports no state of
-// an issuance session through the api gateway.
-func (s *Service) GetIssuanceStatus(
-	context.Context, *connect.Request[backendv1.GetIssuanceStatusRequest],
-) (*connect.Response[backendv1.GetIssuanceStatusResponse], error) {
-	return nil, unimplemented(
-		"CREDEBL reports no issuance session state; read the record in the issued credentials service")
-}
-
-// Revoke is not available. The status list services of VCA own the
-// status bits (ADR-018, ADR-019).
+// Revoke is not available. The platform revokes an OID4VC session only
+// when it runs with a status list host, which the stack file does not
+// run. The status list services of VCA own the status bits instead
+// (ADR-018, ADR-019).
 func (s *Service) Revoke(
 	context.Context, *connect.Request[backendv1.RevokeRequest],
 ) (*connect.Response[backendv1.RevokeResponse], error) {
 	return nil, unimplemented(
-		"the CREDEBL adapter does not revoke; call the status list service that owns the list")
+		"CREDEBL revokes an OID4VC session only with a status list host, which the stack does not run; " +
+			"call the status list service that owns the list")
 }
 
 // GetIssuerMetadata returns the OID4VCI issuer metadata of the adapter.

@@ -1,0 +1,41 @@
+{
+  "statusCode": 200,
+  "message": "OID4VC credential offer fetched successfully",
+  "data": {
+    "id": "a1b2c3d4-0000-4e5f-8a9b-000000000002",
+    "createdAt": "2026-09-26T10:00:00.000Z",
+    "updatedAt": "2026-09-26T10:05:00.000Z",
+    "state": "Completed",
+    "issuerId": "credebl-issuer",
+    "credentialOfferUri": "http://credebl-agent.vca.internal:8001/oid4vci/credebl-issuer/offers/a1b2c3d4-0000-4e5f-8a9b-000000000002",
+    "credentialOfferPayload": {
+      "credential_issuer": "http://credebl-agent.vca.internal:8001/oid4vci/credebl-issuer",
+      "credential_configuration_ids": [
+        "RegistrationCertificate"
+      ],
+      "grants": {
+        "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
+          "pre-authorized_code": "[PRE-AUTHORIZED CODE]"
+        }
+      }
+    },
+    "issuanceMetadata": {
+      "issuerDid": "did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH",
+      "isRevocable": false,
+      "credentials": [
+        {
+          "credentialSupportedId": "RegistrationCertificate",
+          "format": "dc+sd-jwt",
+          "payload": {
+            "registration_number": "[REGISTRATION NUMBER]",
+            "holder_name": "[HOLDER NAME]",
+            "vct": "RegistrationCertificate"
+          }
+        }
+      ]
+    },
+    "issuedCredentials": [
+      "RegistrationCertificate"
+    ]
+  }
+}

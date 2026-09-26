@@ -258,3 +258,20 @@ func TestFakeServesTheSchemaCalls(t *testing.T) {
 		t.Errorf("ledgers = %s", body)
 	}
 }
+
+// TestFakeServesTheOfferSessions covers the answers of P6-C5.
+func TestFakeServesTheOfferSessions(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	if body := get(t, f, "/v1/orgs/org-1/oid4vc/credential-offer"); !strings.Contains(body, "Completed") {
+		t.Errorf("list = %s", body)
+	}
+	for answer, want := range map[fake.Answer]string{
+		fake.OfferPending: "OfferUriRetrieved", fake.OfferCompleted: "Completed", fake.OfferError: "errorMessage",
+	} {
+		f.SetOfferSession(answer)
+		if body := get(t, f, "/v1/orgs/org-1/oid4vc/credential-offer/s-1"); !strings.Contains(body, want) {
+			t.Errorf("%s = %s", answer, body)
+		}
+	}
+}

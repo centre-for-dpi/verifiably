@@ -165,8 +165,6 @@ func TestTheRpcsCredeblNeverSupportsAnswerUnimplemented(t *testing.T) {
 	wantCode(t, err, connect.CodeUnimplemented)
 	_, err = svc.IssueBatch(ctx, connect.NewRequest(&backendv1.IssueBatchRequest{}))
 	wantCode(t, err, connect.CodeUnimplemented)
-	_, err = svc.GetIssuanceStatus(ctx, connect.NewRequest(&backendv1.GetIssuanceStatusRequest{}))
-	wantCode(t, err, connect.CodeUnimplemented)
 	_, err = svc.Revoke(ctx, connect.NewRequest(&backendv1.RevokeRequest{}))
 	wantCode(t, err, connect.CodeUnimplemented)
 }
@@ -578,7 +576,13 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 		{backendv1.Feature_FEATURE_REVOCATION, revoke, true},
 		{backendv1.Feature_FEATURE_SUSPENSION, revoke, false},
 		{backendv1.Feature_FEATURE_ISSUANCE_STATUS, func() error {
-			_, err := svc.GetIssuanceStatus(ctx, connect.NewRequest(&backendv1.GetIssuanceStatusRequest{}))
+			_, err := svc.GetIssuanceStatus(ctx, connect.NewRequest(&backendv1.GetIssuanceStatusRequest{OfferId: "a1b2c3d4-0000-4e5f-8a9b-000000000001"}))
+			return err
+		}, true},
+		{backendv1.Feature_FEATURE_ISSUED_LEDGER, func() error {
+			_, err := svc.ListIssuedCredentials(ctx, connect.NewRequest(&backendv1.ListIssuedCredentialsRequest{
+				CredentialType: "RegistrationCertificate", Attributes: map[string]string{"registration_number": "[REGISTRATION NUMBER]"},
+			}))
 			return err
 		}, true},
 		{backendv1.Feature_FEATURE_BULK_NATIVE, func() error {

@@ -141,8 +141,8 @@ func TestContractTenantLifecycle(t *testing.T) {
 	}
 	id := created.Msg.GetTenant().GetId()
 	t.Cleanup(func() {
-		if _, err := a.Service.DeleteTenant(context.Background(), connect.NewRequest(&backendv1.DeleteTenantRequest{Id: id})); err != nil {
-			t.Errorf("DeleteTenant: %v", err)
+		if _, delErr := a.Service.DeleteTenant(context.Background(), connect.NewRequest(&backendv1.DeleteTenantRequest{Id: id})); delErr != nil {
+			t.Errorf("DeleteTenant: %v", delErr)
 		}
 	})
 	if !strings.HasPrefix(created.Msg.GetTenant().GetPrimaryDid(), "did:key:") {
@@ -201,5 +201,38 @@ func TestContractSchemaTargets(t *testing.T) {
 	}
 	if res.Msg.GetId() == "" {
 		t.Fatal("the answer carries no credential definition id")
+	}
+}
+
+// TestContractOfferStateAndIssuedList creates an offer, reads its state
+// from the issuance session, and reads the issued list of its type
+// (P6-C5).
+func TestContractOfferStateAndIssuedList(t *testing.T) {
+	a := newContractApp(t)
+	ctx := context.Background()
+	subject := os.Getenv("VCA_CREDEBL_CONTRACT_SUBJECT_DATA")
+	if subject == "" {
+		t.Skip("set VCA_CREDEBL_CONTRACT_SUBJECT_DATA to run the offer state contract test")
+	}
+	list, err := a.Service.ListCredentialTypes(ctx, connect.NewRequest(&backendv1.ListCredentialTypesRequest{}))
+	if err != nil || len(list.Msg.GetConfigurations()) == 0 {
+		t.Skipf("the real platform has no credential template: %v", err)
+	}
+	config := list.Msg.GetConfigurations()[0].GetId()
+	offer, err := a.Service.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
+		Spec: &backendv1.IssueSpec{ConfigurationId: config, SubjectData: subject},
+	}))
+	if err != nil {
+		t.Fatalf("CreateOffer: %v", err)
+	}
+	state, err := a.Service.GetIssuanceStatus(ctx, connect.NewRequest(&backendv1.GetIssuanceStatusRequest{OfferId: offer.Msg.GetOfferId()}))
+	if err != nil {
+		t.Fatalf("GetIssuanceStatus: %v", err)
+	}
+	if state.Msg.GetState() != backendv1.GetIssuanceStatusResponse_STATE_PENDING {
+		t.Errorf("state = %v, a new offer is pending", state.Msg.GetState())
+	}
+	if _, listErr := a.Service.ListIssuedCredentials(ctx, connect.NewRequest(&backendv1.ListIssuedCredentialsRequest{CredentialType: config})); listErr != nil {
+		t.Fatalf("ListIssuedCredentials: %v", listErr)
 	}
 }

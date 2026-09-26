@@ -160,14 +160,18 @@ func (s *Service) GetCapabilities(
 		},
 		// RegisterCredentialConfiguration writes a schema and a template
 		// to the platform. The organisations of the platform are the
-		// tenants, and the agent makes the issuer DID (P6-C1). Revoke,
-		// GetIssuanceStatus, and IssueBatch answer Unimplemented, so
-		// their features stay off the list. The platform embeds no
-		// status entry of VCA in what it signs.
+		// tenants, and the agent makes the issuer DID (P6-C1). Revoke
+		// and IssueBatch answer Unimplemented, so their features stay
+		// off the list. The platform embeds no status entry of VCA in
+		// what it signs.
 		Features: []backendv1.Feature{
 			backendv1.Feature_FEATURE_CREDENTIAL_CONFIG_API,
 			backendv1.Feature_FEATURE_MULTI_TENANCY,
 			backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION,
+			// The issuance sessions of the agent give the state of an
+			// offer and the issued credentials (P6-C5).
+			backendv1.Feature_FEATURE_ISSUANCE_STATUS,
+			backendv1.Feature_FEATURE_ISSUED_LEDGER,
 		},
 		// The stack file runs one shared agent and no Docker socket, so
 		// a tenant gets a wallet in the shared agent only.
