@@ -6,11 +6,15 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"connectrpc.com/connect"
 
+	datasourcev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1/datasourcev1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/servicetoken"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession/staffsessiontest"
 )
@@ -103,5 +107,90 @@ func TestInterceptorNeedsABearerSession(t *testing.T) {
 	}
 	if err := call(http.Header{"Authorization": {"bearer good"}}); err != nil || got.Subject != "bob" {
 		t.Fatalf("good bearer %v", err)
+	}
+}
+
+// principals answers Lookup and List with the principal of the call.
+type principals struct {
+	datasourcev1connect.UnimplementedDataSourceServiceHandler
+}
+
+func (principals) Lookup(ctx context.Context, _ *connect.Request[datasourcev1.LookupRequest]) (*connect.Response[datasourcev1.LookupResponse], error) {
+	p, err := Require(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&datasourcev1.LookupResponse{SubjectData: p.Subject, Found: p.Service}), nil
+}
+
+func (principals) List(ctx context.Context, _ *connect.Request[datasourcev1.ListRequest]) (*connect.Response[datasourcev1.ListResponse], error) {
+	if _, err := Require(ctx); err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&datasourcev1.ListResponse{}), nil
+}
+
+// TestServiceTokenOpensLookupOnly proves the service token of the pair
+// opens Lookup as the holder sign in and nothing else, a staff session
+// still opens every call, and a token of another purpose or another
+// pair opens nothing.
+func TestServiceTokenOpensLookupOnly(t *testing.T) {
+	const secret = "0123456789abcdef0123456789abcdef"
+	verify := func(_ context.Context, token string) (Principal, error) {
+		if token != "staff" {
+			return Principal{}, ErrNoSession
+		}
+		return Principal{Subject: "kc|staff", Roles: []string{Operator}}, nil
+	}
+	mux := http.NewServeMux()
+	mux.Handle(datasourcev1connect.NewDataSourceServiceHandler(principals{},
+		connect.WithInterceptors(ServiceInterceptor(verify, servicetoken.Derive(secret, servicetoken.DataSourceLookup)))))
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	client := datasourcev1connect.NewDataSourceServiceClient(srv.Client(), srv.URL)
+	lookup := func(token string) (*datasourcev1.LookupResponse, error) {
+		req := connect.NewRequest(&datasourcev1.LookupRequest{})
+		if token != "" {
+			servicetoken.Set(req.Header(), token)
+		}
+		res, err := client.Lookup(context.Background(), req)
+		if err != nil {
+			return nil, err
+		}
+		return res.Msg, nil
+	}
+	res, err := lookup(servicetoken.Derive(secret, servicetoken.DataSourceLookup))
+	if err != nil || !res.GetFound() || res.GetSubjectData() != ServiceSubject {
+		t.Fatalf("service token: %v %v", res, err)
+	}
+	if res, err = lookup("staff"); err != nil || res.GetFound() || res.GetSubjectData() != "kc|staff" {
+		t.Fatalf("staff session: %v %v", res, err)
+	}
+	for name, token := range map[string]string{
+		"none": "", "another purpose": servicetoken.Derive(secret, "another"),
+		"another pair": servicetoken.Derive(secret+"x", servicetoken.DataSourceLookup),
+	} {
+		if _, err := lookup(token); connect.CodeOf(err) != connect.CodeUnauthenticated {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	list := connect.NewRequest(&datasourcev1.ListRequest{})
+	servicetoken.Set(list.Header(), servicetoken.Derive(secret, servicetoken.DataSourceLookup))
+	if _, err := client.List(context.Background(), list); connect.CodeOf(err) != connect.CodeUnauthenticated {
+		t.Fatalf("the service token opened List: %v", err)
+	}
+	// Without a pair secret no service token opens Lookup.
+	bare := http.NewServeMux()
+	bare.Handle(datasourcev1connect.NewDataSourceServiceHandler(principals{},
+		connect.WithInterceptors(ServiceInterceptor(verify, ""))))
+	srv2 := httptest.NewServer(bare)
+	defer srv2.Close()
+	req := connect.NewRequest(&datasourcev1.LookupRequest{})
+	servicetoken.Set(req.Header(), "")
+	if _, err := datasourcev1connect.NewDataSourceServiceClient(srv2.Client(), srv2.URL).Lookup(context.Background(), req); connect.CodeOf(err) != connect.CodeUnauthenticated {
+		t.Fatalf("an empty token opened Lookup: %v", err)
+	}
+	if p := ServicePrincipal(); !p.Service || !p.HasRole(HolderSignIn) || p.HasRole(Admin) || p.Allowed(nil) {
+		t.Fatalf("service principal = %+v", p)
 	}
 }

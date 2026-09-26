@@ -55,6 +55,10 @@ type Config struct {
 	// list page counts the issued credentials of each schema there. Empty
 	// shows no count.
 	IssuedURL string `env:"ISSUED_URL"`
+	// DataSourceURL is the base URL of the data source service of the
+	// pair. The tab "Claims by sign in" lists the sources there with the
+	// session of the staff member. Empty hides the tab.
+	DataSourceURL string `env:"DATASOURCE_URL"`
 	// PageSizeMax caps the page size of List and Search.
 	PageSizeMax int `env:"PAGE_SIZE_MAX" default:"200"`
 
@@ -92,6 +96,7 @@ func (c Config) normalize() (Config, error) {
 	c.BaseURL = strings.TrimRight(c.BaseURL, "/")
 	c.BackendURL = strings.TrimRight(c.BackendURL, "/")
 	c.IssuedURL = strings.TrimRight(c.IssuedURL, "/")
+	c.DataSourceURL = strings.TrimRight(c.DataSourceURL, "/")
 	c.PortalPrefix = "/" + strings.Trim(c.PortalPrefix, "/")
 	if c.CredentialIssuer == "" {
 		c.CredentialIssuer = c.BaseURL

@@ -19,6 +19,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1/datasourcev1connect"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/authz"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/config"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/servicetoken"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession/staffsessiontest"
 )
@@ -130,5 +131,32 @@ func TestBuildRejectsABadStoreFile(t *testing.T) {
 func TestBuildFillsNilDeps(t *testing.T) {
 	if _, err := Build(settings(t, nil), Deps{Log: quiet()}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestBuildTakesTheServiceTokenOnLookup proves the wiring: with the pair
+// secret set, the token of the lookup purpose reaches Lookup, and a
+// deployment without the secret refuses it.
+func TestBuildTakesTheServiceTokenOnLookup(t *testing.T) {
+	const secret = "0123456789abcdef0123456789abcdef"
+	call := func(values map[string]string) error {
+		deps := testDeps()
+		deps.SessionKeys = staff(t).Keys()
+		a, err := Build(settings(t, values), deps)
+		if err != nil {
+			t.Fatal(err)
+		}
+		srv := httptest.NewServer(a.Mux)
+		defer srv.Close()
+		req := connect.NewRequest(&datasourcev1.LookupRequest{SourceId: "absent", Field: "f", Value: "v", SchemaId: "s"})
+		servicetoken.Set(req.Header(), servicetoken.Derive(secret, servicetoken.DataSourceLookup))
+		_, err = datasourcev1connect.NewDataSourceServiceClient(srv.Client(), srv.URL).Lookup(context.Background(), req)
+		return err
+	}
+	if err := call(map[string]string{"VCA_DATASOURCE_SERVICE_SECRET": secret}); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("with the secret: %v, want the lookup to run and find no source", err)
+	}
+	if err := call(map[string]string{}); connect.CodeOf(err) != connect.CodeUnauthenticated {
+		t.Fatalf("without the secret: %v", err)
 	}
 }

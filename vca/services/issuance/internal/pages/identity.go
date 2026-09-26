@@ -78,6 +78,8 @@ type identityView struct {
 	errs   map[string]string
 	kind   string
 	toasts []components.Toast
+	// presentation keeps a posted form of the presentation card.
+	presentation *presentationView
 }
 
 // identity draws board Issuer-Identity: the current status, "Start
@@ -152,6 +154,10 @@ func identityNotice(q url.Values) []components.Toast {
 			out = append(out, components.Toast{Level: "info", Text: msg.T("issuer.identity.trust.kept", id)})
 		case "trust_failed":
 			out = append(out, components.Toast{Level: "warn", Text: msg.T("issuer.identity.trust.failed", id)})
+		case "presentation_saved":
+			out = append(out, components.Toast{Level: "ok", Text: msg.T("issuer.presentation.saved")})
+		case "presentation_cleared":
+			out = append(out, components.Toast{Level: "ok", Text: msg.T("issuer.presentation.cleared")})
 		}
 	}
 	return out
@@ -169,6 +175,9 @@ func (p *Pages) renderIdentity(pg page, v identityView) error {
 		if kinds := importKinds(v.caps); len(kinds) > 0 {
 			parts = append(parts, p.ownBlock(b, v, kinds, csrf))
 		}
+	}
+	if card := p.presentationCard(pg, b, v); card != "" {
+		parts = append(parts, card)
 	}
 	if plugins := v.caps.GetDpgInfo().GetPlugins(); len(plugins) > 0 {
 		// The plugins of the stack, read only (ADR-045 decision 1).

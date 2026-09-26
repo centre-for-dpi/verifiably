@@ -68,7 +68,7 @@ Each source carries three role lists (ADR-015 decision 3).
 |---|---|
 | `view_fields` | `Get`, `PreviewFields`, `GetFieldMap`, and `SetFieldMap`. |
 | `preview_rows` | `PreviewRows`. |
-| `issue` | `RunBulk`, and the bulk run of the pages. |
+| `issue` | `RunBulk`, `Lookup`, and the bulk run of the pages. |
 
 The caller sends a session JWT from `issuer-auth` as a bearer token.
 The staff guard of the service checks the token against the key set of
@@ -84,6 +84,37 @@ that cannot pass `view_fields` gets `VCA-302` on `Get`, so the rule is
 not a way to learn that a source exists. `Create`, `Update`, and
 `Delete` need `issuer-admin` or `issuer-operator`. A caller with a
 tenant sees the sources of that tenant only.
+
+## Lookup
+
+`Lookup` returns the one row of a source whose field holds a value
+(ADR-057). The field map of the source and a schema turns the row into
+claims. The answer carries the claims as a JSON object. When two or
+more rows hold the value, `ambiguous` is true and no claim comes back.
+A field that the source does not hold is `InvalidArgument`. A source
+without a field map for the schema is `FailedPrecondition`.
+
+The service reads a CSV source or an HTTP source, then filters the rows.
+An SQL source filters in the database. The service wraps the query of
+the source in an outer `SELECT` with one `WHERE` clause. The field must
+be a plain column name that the query returns. The value travels as an
+argument of the statement.
+
+Two callers can call `Lookup`. Both need the `issue` rule of the source:
+
+- The holder authorization server of the pair calls it for a holder who
+  signs in without an offer. It sends a token that it derives from the
+  session key of the pair. The service derives the same token from
+  `VCA_DATASOURCE_SERVICE_SECRET`, which setup links to that key. The
+  token opens `Lookup` and no other call. It passes the `issue` rule
+  only when the rule names the role `holder-sign-in`. This caller gets
+  the values.
+- A staff member tests a source from the tab "Claims by sign in" of the
+  schema pages. This caller gets masked values, as `PreviewRows` masks
+  them.
+
+The RPCs stay on the compose network. No route of the proxy leads to
+them (ADR-047).
 
 ## Preview
 

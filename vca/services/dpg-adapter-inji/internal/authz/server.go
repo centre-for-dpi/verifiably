@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -357,6 +358,48 @@ func (s *Server) SetSignInSource(ctx context.Context, src SignInSource) error {
 		strings.TrimSpace(src.Field) == "" || strings.TrimSpace(src.TokenClaim) == "" {
 		return errors.New("authz: a sign in source needs the configuration, the source, the field, and the ID token claim")
 	}
+	return s.editSources(ctx, func(index map[string]SignInSource) { index[src.ConfigID] = src })
+}
+
+// ClearSignInSource removes the sign in source of one configuration, so
+// a holder claims it only from an offer.
+func (s *Server) ClearSignInSource(ctx context.Context, configID string) error {
+	return s.editSources(ctx, func(index map[string]SignInSource) { delete(index, configID) })
+}
+
+// SignInSourceOf returns the sign in source of one configuration.
+func (s *Server) SignInSourceOf(ctx context.Context, configID string) (SignInSource, bool, error) {
+	index := map[string]SignInSource{}
+	if _, err := getJSON(ctx, s.kv, signInKey, &index); err != nil {
+		return SignInSource{}, false, err
+	}
+	src, ok := index[configID]
+	return src, ok, nil
+}
+
+// VouchedClaims returns the ID token claims a sign in source may name:
+// sub, email and phone_number, whose verified flag the server checks,
+// then the claims the record of the holder provider lists (ADR-056
+// decision 2).
+func (s *Server) VouchedClaims() []string {
+	out := []string{"sub", "email", "phone_number"}
+	if p, ok := s.holderProvider(); ok {
+		for _, c := range p.VerifiedClaims {
+			if !slices.Contains(out, c) {
+				out = append(out, c)
+			}
+		}
+	}
+	return out
+}
+
+// LooksUp reports whether a claim without an offer can find its
+// subject: the server has a data source to ask.
+func (s *Server) LooksUp() bool { return s.lookup != nil }
+
+// editSources changes the document of the sign in sources with a
+// compare and swap, so two writes never lose each other.
+func (s *Server) editSources(ctx context.Context, edit func(map[string]SignInSource)) error {
 	for range 3 {
 		old, err := s.kv.Get(ctx, signInKey)
 		index := map[string]SignInSource{}
@@ -370,7 +413,7 @@ func (s *Server) SetSignInSource(ctx context.Context, src SignInSource) error {
 				return fmt.Errorf("authz: read the sign in sources: %w", uerr)
 			}
 		}
-		index[src.ConfigID] = src
+		edit(index)
 		next, err := json.Marshal(index)
 		if err != nil {
 			return err

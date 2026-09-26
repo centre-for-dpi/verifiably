@@ -20,10 +20,11 @@ import (
 type sources struct {
 	datasourcev1connect.UnimplementedDataSourceServiceHandler
 	last *datasourcev1.LookupRequest
+	auth string
 }
 
 func (s *sources) Lookup(_ context.Context, req *connect.Request[datasourcev1.LookupRequest]) (*connect.Response[datasourcev1.LookupResponse], error) {
-	s.last = req.Msg
+	s.last, s.auth = req.Msg, req.Header().Get("Authorization")
 	switch req.Msg.GetValue() {
 	case "amina@example.org":
 		return connect.NewResponse(&datasourcev1.LookupResponse{Found: true, SubjectData: `{"fullName":"Amina Njeri"}`}), nil
@@ -39,11 +40,14 @@ func TestDataSourceLookup(t *testing.T) {
 	mux.Handle(datasourcev1connect.NewDataSourceServiceHandler(h))
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
-	d := authz.DataSource{Client: datasourcev1connect.NewDataSourceServiceClient(srv.Client(), srv.URL)}
+	d := authz.DataSource{Client: datasourcev1connect.NewDataSourceServiceClient(srv.Client(), srv.URL), Token: "pair-token"}
 	src := authz.SignInSource{ConfigID: "c", SourceID: "registry", Field: "email", TokenClaim: "email", SchemaID: "s", SchemaVersion: 3}
 	row, found, err := d.Lookup(context.Background(), src, "amina@example.org")
 	if err != nil || !found || row != `{"fullName":"Amina Njeri"}` {
 		t.Fatalf("Lookup = %q, %v, %v", row, found, err)
+	}
+	if h.auth != "Bearer pair-token" {
+		t.Fatalf("the lookup carried %q, want the service token of the pair", h.auth)
 	}
 	if h.last.GetSourceId() != "registry" || h.last.GetField() != "email" || h.last.GetSchemaId() != "s" || h.last.GetSchemaVersion() != 3 {
 		t.Fatalf("request = %v", h.last)

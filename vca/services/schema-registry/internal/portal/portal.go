@@ -17,6 +17,9 @@
 //	POST /schemas/{id}/delete     delete one draft version
 //	GET  /schemas/{id}/mapping    the context and mapping page of a version
 //	POST /schemas/{id}/mapping    save the mapping as the next draft version
+//	GET  /schemas/{id}/signin     the claims by sign in tab of a version
+//	POST /schemas/{id}/signin     store or remove the holder sign in source
+//	POST /schemas/{id}/signin/test  look one value up in the source
 package portal
 
 import (
@@ -76,6 +79,16 @@ type Options struct {
 	// published version shows the render templates it returns for the
 	// type. Nil shows none.
 	Catalog Catalog
+	// SignIn is the issuer backend of the pair. The tab "Claims by sign
+	// in" stores the holder sign in source there. Nil hides the tab.
+	SignIn SignIn
+	// Sources is the data source service of the pair. The tab lists the
+	// sources and tests one with the session of the staff member. Nil
+	// hides the tab.
+	Sources Sources
+	// SourcesURL is the data source pages of the pair. Empty means
+	// DefaultSourcesURL.
+	SourcesURL string
 }
 
 // Catalog is the part of the issuer backend the detail page calls. The
@@ -132,6 +145,9 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/schemas/{id}/versions", p.handle(p.versions))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/schemas/{id}/publish", p.handle(p.publish))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/schemas/{id}/retire", p.handle(p.retire))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/schemas/{id}/signin", p.handle(p.signInPage))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/schemas/{id}/signin", p.handle(p.saveSignIn))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/schemas/{id}/signin/test", p.handle(p.testSignIn))
 	if p.opts.SignOut != nil {
 		mux.Handle("POST "+p.opts.Prefix+"/signout", p.opts.SignOut)
 	}
@@ -502,11 +518,15 @@ func (p *Portal) detail(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	tabs, err := p.schemaTabs(f, m, "detail")
+	if err != nil {
+		return err
+	}
 	return p.renderFrame(w, r, f, components.Page{
 		Title:       Name(m) + ", version " + strconv.Itoa(int(m.GetVersion())),
 		Heading:     Name(m),
 		Description: "The detail of one schema version.",
-		Content:     components.Join(summary, claims, display, document, actions),
+		Content:     components.Join(tabs, summary, claims, display, document, actions),
 		Toasts:      notice(r.URL.Query().Get("notice")),
 	})
 }

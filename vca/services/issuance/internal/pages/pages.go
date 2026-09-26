@@ -12,6 +12,7 @@
 //	GET  /identity/        the issuer identity
 //	POST /identity/provision  ask the stack for a new identity
 //	POST /identity/import     check or import a DID or an X.509 chain
+//	POST /identity/presentation  set the credential to present before issuance
 //	GET  /issue/           step 1 of the issue wizard: the schema
 //	GET  /issue/source     step 2: the source, then the claim form
 //	POST /issue/source     step 2 again, with the claims posted so far
@@ -99,6 +100,9 @@ type Options struct {
 	// Identity reads and changes the issuer identity of the adapter. Nil
 	// shows the identity as kept by the stack.
 	Identity Identity
+	// Presentation reads and sets the credential a holder presents
+	// before the stack issues. Nil hides the card.
+	Presentation Presentation
 	// Trust returns the client of the trust registry at a URL. Nil asks
 	// no registry for an entry.
 	Trust func(url string) Trust
@@ -139,6 +143,7 @@ func (p *Pages) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+IdentityPath+"{$}", p.handle(p.identity))
 	mux.HandleFunc("POST "+IdentityPath+"provision", p.handle(p.provision))
 	mux.HandleFunc("POST "+IdentityPath+"import", p.handle(p.importIdentity))
+	mux.HandleFunc("POST "+PresentationPath, p.handle(p.savePresentation))
 	mux.HandleFunc("GET "+IssuePath+"{$}", p.handle(p.issue))
 	mux.HandleFunc("GET "+IssueSourcePath, p.handle(p.source))
 	mux.HandleFunc("POST "+IssueSourcePath, p.handle(p.source))

@@ -19,3 +19,20 @@ func TestSetPresentationRequirementIsUnimplemented(t *testing.T) {
 		t.Errorf("code = %v", connect.CodeOf(err))
 	}
 }
+
+func TestSignInAndRequirementReadsAreUnimplemented(t *testing.T) {
+	var s *Service
+	ctx := context.Background()
+	_, err := s.GetPresentationRequirement(ctx, connect.NewRequest(&backendv1.GetPresentationRequirementRequest{}))
+	if connect.CodeOf(err) != connect.CodeUnimplemented {
+		t.Errorf("get requirement code = %v", connect.CodeOf(err))
+	}
+	_, err = s.GetHolderSignInSource(ctx, connect.NewRequest(&backendv1.GetHolderSignInSourceRequest{}))
+	if connect.CodeOf(err) != connect.CodeUnimplemented {
+		t.Errorf("get source code = %v", connect.CodeOf(err))
+	}
+	_, err = s.SetHolderSignInSource(ctx, connect.NewRequest(&backendv1.SetHolderSignInSourceRequest{}))
+	if connect.CodeOf(err) != connect.CodeUnimplemented {
+		t.Errorf("set source code = %v", connect.CodeOf(err))
+	}
+}

@@ -273,6 +273,8 @@ func TestBuildMemoryStoreAndBackendURL(t *testing.T) {
 			return "http://adapter.invalid"
 		case "VCA_SCHEMA_ISSUED_URL":
 			return "http://issued.invalid"
+		case "VCA_SCHEMA_DATASOURCE_URL":
+			return "http://data-source.invalid/"
 		}
 		return ""
 	})
@@ -285,6 +287,9 @@ func TestBuildMemoryStoreAndBackendURL(t *testing.T) {
 	}
 	if a.Mux == nil || storeName(cfg) != "memory" {
 		t.Fatal("memory store")
+	}
+	if cfg.DataSourceURL != "http://data-source.invalid" {
+		t.Fatalf("data source URL = %q", cfg.DataSourceURL)
 	}
 	if storeName(config.Config{StoreFile: "/data/x.json"}) != "/data/x.json" {
 		t.Fatal("store name")

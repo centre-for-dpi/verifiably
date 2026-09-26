@@ -130,6 +130,7 @@ type Service struct {
 	presentation        bool
 	claims              *claims.Writer
 	iarIdentity         []string
+	signIn              SignIn
 	now                 func() time.Time
 	newID               func() string
 }
@@ -268,6 +269,12 @@ func (s *Service) GetCapabilities(
 			// authorization endpoint of Certify, which asks for a
 			// presentation before it gives a code.
 			out.Features = append(out.Features, backendv1.Feature_FEATURE_PRESENTATION_DURING_ISSUANCE)
+		}
+		if s.signInReady() {
+			// A holder who signs in at the holder authorization server
+			// claims with no offer. The issuer names the data source of
+			// each credential (ADR-052 decision 3).
+			out.Features = append(out.Features, backendv1.Feature_FEATURE_HOLDER_SIGN_IN_SOURCE)
 		}
 		out.DidMethods = []string{didWeb}
 		for _, k := range inji.KeyTypes {

@@ -19,6 +19,8 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1/datasourcev1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/servicetoken"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 )
 
@@ -27,7 +29,14 @@ const (
 	Admin    = staffsession.IssuerAdminRole
 	Operator = staffsession.IssuerOperatorRole
 	Viewer   = "issuer-viewer"
+	// HolderSignIn is the role of the holder authorization server of
+	// the pair. A source lets it look up a row when its issue rule names
+	// the role (ADR-052 decision 3).
+	HolderSignIn = "holder-sign-in"
 )
+
+// ServiceSubject is the subject of a call with the service token.
+const ServiceSubject = "service:holder-sign-in"
 
 // Errors the package returns.
 var (
@@ -40,6 +49,15 @@ type Principal struct {
 	Subject string
 	Tenant  string
 	Roles   []string
+	// Service is true for a call with the service token of the pair.
+	// Such a principal holds HolderSignIn and no staff role.
+	Service bool
+}
+
+// ServicePrincipal returns the principal of a call with the service
+// token of the pair.
+func ServicePrincipal() Principal {
+	return Principal{Subject: ServiceSubject, Roles: []string{HolderSignIn}, Service: true}
 }
 
 // HasRole reports whether p holds role.
@@ -114,8 +132,19 @@ func SessionVerifier(verify func(ctx context.Context, token string) (staffsessio
 // of a request, checks it with verify, and puts the principal on the
 // context. A request with no valid session gets an unauthenticated error.
 func Interceptor(verify Verifier) connect.UnaryInterceptorFunc {
+	return ServiceInterceptor(verify, "")
+}
+
+// ServiceInterceptor is Interceptor that also takes the service token
+// of the pair on DataSourceService.Lookup, and on no other call. That
+// call gets ServicePrincipal. An empty token turns the service token
+// off, so only a staff session opens the service.
+func ServiceInterceptor(verify Verifier, token string) connect.UnaryInterceptorFunc {
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+			if req.Spec().Procedure == datasourcev1connect.DataSourceServiceLookupProcedure && servicetoken.Matches(req.Header(), token) {
+				return next(WithPrincipal(ctx, ServicePrincipal()), req)
+			}
 			p, err := principalOf(ctx, req.Header(), verify)
 			if err != nil {
 				return nil, connect.NewError(connect.CodeUnauthenticated, err)

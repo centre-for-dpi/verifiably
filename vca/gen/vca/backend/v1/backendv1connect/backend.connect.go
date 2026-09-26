@@ -92,6 +92,15 @@ const (
 	// IssuerBackendServiceSetPresentationRequirementProcedure is the fully-qualified name of the
 	// IssuerBackendService's SetPresentationRequirement RPC.
 	IssuerBackendServiceSetPresentationRequirementProcedure = "/vca.backend.v1.IssuerBackendService/SetPresentationRequirement"
+	// IssuerBackendServiceGetPresentationRequirementProcedure is the fully-qualified name of the
+	// IssuerBackendService's GetPresentationRequirement RPC.
+	IssuerBackendServiceGetPresentationRequirementProcedure = "/vca.backend.v1.IssuerBackendService/GetPresentationRequirement"
+	// IssuerBackendServiceGetHolderSignInSourceProcedure is the fully-qualified name of the
+	// IssuerBackendService's GetHolderSignInSource RPC.
+	IssuerBackendServiceGetHolderSignInSourceProcedure = "/vca.backend.v1.IssuerBackendService/GetHolderSignInSource"
+	// IssuerBackendServiceSetHolderSignInSourceProcedure is the fully-qualified name of the
+	// IssuerBackendService's SetHolderSignInSource RPC.
+	IssuerBackendServiceSetHolderSignInSourceProcedure = "/vca.backend.v1.IssuerBackendService/SetHolderSignInSource"
 	// HolderBackendServiceRegisterProcedure is the fully-qualified name of the HolderBackendService's
 	// Register RPC.
 	HolderBackendServiceRegisterProcedure = "/vca.backend.v1.HolderBackendService/Register"
@@ -295,6 +304,19 @@ type IssuerBackendServiceClient interface {
 	// before the DPG issues (ADR-051 decision 6). An adapter serves it only
 	// when it lists FEATURE_PRESENTATION_DURING_ISSUANCE.
 	SetPresentationRequirement(context.Context, *connect.Request[v1.SetPresentationRequirementRequest]) (*connect.Response[v1.SetPresentationRequirementResponse], error)
+	// GetPresentationRequirement returns the credential a holder presents
+	// before the DPG issues, as the issuer set it. An adapter serves it
+	// only when it lists FEATURE_PRESENTATION_DURING_ISSUANCE.
+	GetPresentationRequirement(context.Context, *connect.Request[v1.GetPresentationRequirementRequest]) (*connect.Response[v1.GetPresentationRequirementResponse], error)
+	// GetHolderSignInSource returns the data source of a credential that a
+	// holder claims after a sign in, with no offer. The source finds the
+	// subject (ADR-052 decision 3). An adapter serves it only when it
+	// lists FEATURE_HOLDER_SIGN_IN_SOURCE.
+	GetHolderSignInSource(context.Context, *connect.Request[v1.GetHolderSignInSourceRequest]) (*connect.Response[v1.GetHolderSignInSourceResponse], error)
+	// SetHolderSignInSource stores that data source for the credential
+	// configurations of one schema. An adapter serves it only when it
+	// lists FEATURE_HOLDER_SIGN_IN_SOURCE.
+	SetHolderSignInSource(context.Context, *connect.Request[v1.SetHolderSignInSourceRequest]) (*connect.Response[v1.SetHolderSignInSourceResponse], error)
 }
 
 // NewIssuerBackendServiceClient constructs a client for the vca.backend.v1.IssuerBackendService
@@ -380,6 +402,24 @@ func NewIssuerBackendServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(issuerBackendServiceMethods.ByName("SetPresentationRequirement")),
 			connect.WithClientOptions(opts...),
 		),
+		getPresentationRequirement: connect.NewClient[v1.GetPresentationRequirementRequest, v1.GetPresentationRequirementResponse](
+			httpClient,
+			baseURL+IssuerBackendServiceGetPresentationRequirementProcedure,
+			connect.WithSchema(issuerBackendServiceMethods.ByName("GetPresentationRequirement")),
+			connect.WithClientOptions(opts...),
+		),
+		getHolderSignInSource: connect.NewClient[v1.GetHolderSignInSourceRequest, v1.GetHolderSignInSourceResponse](
+			httpClient,
+			baseURL+IssuerBackendServiceGetHolderSignInSourceProcedure,
+			connect.WithSchema(issuerBackendServiceMethods.ByName("GetHolderSignInSource")),
+			connect.WithClientOptions(opts...),
+		),
+		setHolderSignInSource: connect.NewClient[v1.SetHolderSignInSourceRequest, v1.SetHolderSignInSourceResponse](
+			httpClient,
+			baseURL+IssuerBackendServiceSetHolderSignInSourceProcedure,
+			connect.WithSchema(issuerBackendServiceMethods.ByName("SetHolderSignInSource")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -397,6 +437,9 @@ type issuerBackendServiceClient struct {
 	provisionIssuerIdentity         *connect.Client[v1.ProvisionIssuerIdentityRequest, v1.ProvisionIssuerIdentityResponse]
 	importIssuerIdentity            *connect.Client[v1.ImportIssuerIdentityRequest, v1.ImportIssuerIdentityResponse]
 	setPresentationRequirement      *connect.Client[v1.SetPresentationRequirementRequest, v1.SetPresentationRequirementResponse]
+	getPresentationRequirement      *connect.Client[v1.GetPresentationRequirementRequest, v1.GetPresentationRequirementResponse]
+	getHolderSignInSource           *connect.Client[v1.GetHolderSignInSourceRequest, v1.GetHolderSignInSourceResponse]
+	setHolderSignInSource           *connect.Client[v1.SetHolderSignInSourceRequest, v1.SetHolderSignInSourceResponse]
 }
 
 // RegisterCredentialConfiguration calls
@@ -460,6 +503,21 @@ func (c *issuerBackendServiceClient) SetPresentationRequirement(ctx context.Cont
 	return c.setPresentationRequirement.CallUnary(ctx, req)
 }
 
+// GetPresentationRequirement calls vca.backend.v1.IssuerBackendService.GetPresentationRequirement.
+func (c *issuerBackendServiceClient) GetPresentationRequirement(ctx context.Context, req *connect.Request[v1.GetPresentationRequirementRequest]) (*connect.Response[v1.GetPresentationRequirementResponse], error) {
+	return c.getPresentationRequirement.CallUnary(ctx, req)
+}
+
+// GetHolderSignInSource calls vca.backend.v1.IssuerBackendService.GetHolderSignInSource.
+func (c *issuerBackendServiceClient) GetHolderSignInSource(ctx context.Context, req *connect.Request[v1.GetHolderSignInSourceRequest]) (*connect.Response[v1.GetHolderSignInSourceResponse], error) {
+	return c.getHolderSignInSource.CallUnary(ctx, req)
+}
+
+// SetHolderSignInSource calls vca.backend.v1.IssuerBackendService.SetHolderSignInSource.
+func (c *issuerBackendServiceClient) SetHolderSignInSource(ctx context.Context, req *connect.Request[v1.SetHolderSignInSourceRequest]) (*connect.Response[v1.SetHolderSignInSourceResponse], error) {
+	return c.setHolderSignInSource.CallUnary(ctx, req)
+}
+
 // IssuerBackendServiceHandler is an implementation of the vca.backend.v1.IssuerBackendService
 // service.
 type IssuerBackendServiceHandler interface {
@@ -499,6 +557,19 @@ type IssuerBackendServiceHandler interface {
 	// before the DPG issues (ADR-051 decision 6). An adapter serves it only
 	// when it lists FEATURE_PRESENTATION_DURING_ISSUANCE.
 	SetPresentationRequirement(context.Context, *connect.Request[v1.SetPresentationRequirementRequest]) (*connect.Response[v1.SetPresentationRequirementResponse], error)
+	// GetPresentationRequirement returns the credential a holder presents
+	// before the DPG issues, as the issuer set it. An adapter serves it
+	// only when it lists FEATURE_PRESENTATION_DURING_ISSUANCE.
+	GetPresentationRequirement(context.Context, *connect.Request[v1.GetPresentationRequirementRequest]) (*connect.Response[v1.GetPresentationRequirementResponse], error)
+	// GetHolderSignInSource returns the data source of a credential that a
+	// holder claims after a sign in, with no offer. The source finds the
+	// subject (ADR-052 decision 3). An adapter serves it only when it
+	// lists FEATURE_HOLDER_SIGN_IN_SOURCE.
+	GetHolderSignInSource(context.Context, *connect.Request[v1.GetHolderSignInSourceRequest]) (*connect.Response[v1.GetHolderSignInSourceResponse], error)
+	// SetHolderSignInSource stores that data source for the credential
+	// configurations of one schema. An adapter serves it only when it
+	// lists FEATURE_HOLDER_SIGN_IN_SOURCE.
+	SetHolderSignInSource(context.Context, *connect.Request[v1.SetHolderSignInSourceRequest]) (*connect.Response[v1.SetHolderSignInSourceResponse], error)
 }
 
 // NewIssuerBackendServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -580,6 +651,24 @@ func NewIssuerBackendServiceHandler(svc IssuerBackendServiceHandler, opts ...con
 		connect.WithSchema(issuerBackendServiceMethods.ByName("SetPresentationRequirement")),
 		connect.WithHandlerOptions(opts...),
 	)
+	issuerBackendServiceGetPresentationRequirementHandler := connect.NewUnaryHandler(
+		IssuerBackendServiceGetPresentationRequirementProcedure,
+		svc.GetPresentationRequirement,
+		connect.WithSchema(issuerBackendServiceMethods.ByName("GetPresentationRequirement")),
+		connect.WithHandlerOptions(opts...),
+	)
+	issuerBackendServiceGetHolderSignInSourceHandler := connect.NewUnaryHandler(
+		IssuerBackendServiceGetHolderSignInSourceProcedure,
+		svc.GetHolderSignInSource,
+		connect.WithSchema(issuerBackendServiceMethods.ByName("GetHolderSignInSource")),
+		connect.WithHandlerOptions(opts...),
+	)
+	issuerBackendServiceSetHolderSignInSourceHandler := connect.NewUnaryHandler(
+		IssuerBackendServiceSetHolderSignInSourceProcedure,
+		svc.SetHolderSignInSource,
+		connect.WithSchema(issuerBackendServiceMethods.ByName("SetHolderSignInSource")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.backend.v1.IssuerBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case IssuerBackendServiceRegisterCredentialConfigurationProcedure:
@@ -606,6 +695,12 @@ func NewIssuerBackendServiceHandler(svc IssuerBackendServiceHandler, opts ...con
 			issuerBackendServiceImportIssuerIdentityHandler.ServeHTTP(w, r)
 		case IssuerBackendServiceSetPresentationRequirementProcedure:
 			issuerBackendServiceSetPresentationRequirementHandler.ServeHTTP(w, r)
+		case IssuerBackendServiceGetPresentationRequirementProcedure:
+			issuerBackendServiceGetPresentationRequirementHandler.ServeHTTP(w, r)
+		case IssuerBackendServiceGetHolderSignInSourceProcedure:
+			issuerBackendServiceGetHolderSignInSourceHandler.ServeHTTP(w, r)
+		case IssuerBackendServiceSetHolderSignInSourceProcedure:
+			issuerBackendServiceSetHolderSignInSourceHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -661,6 +756,18 @@ func (UnimplementedIssuerBackendServiceHandler) ImportIssuerIdentity(context.Con
 
 func (UnimplementedIssuerBackendServiceHandler) SetPresentationRequirement(context.Context, *connect.Request[v1.SetPresentationRequirementRequest]) (*connect.Response[v1.SetPresentationRequirementResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.IssuerBackendService.SetPresentationRequirement is not implemented"))
+}
+
+func (UnimplementedIssuerBackendServiceHandler) GetPresentationRequirement(context.Context, *connect.Request[v1.GetPresentationRequirementRequest]) (*connect.Response[v1.GetPresentationRequirementResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.IssuerBackendService.GetPresentationRequirement is not implemented"))
+}
+
+func (UnimplementedIssuerBackendServiceHandler) GetHolderSignInSource(context.Context, *connect.Request[v1.GetHolderSignInSourceRequest]) (*connect.Response[v1.GetHolderSignInSourceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.IssuerBackendService.GetHolderSignInSource is not implemented"))
+}
+
+func (UnimplementedIssuerBackendServiceHandler) SetHolderSignInSource(context.Context, *connect.Request[v1.SetHolderSignInSourceRequest]) (*connect.Response[v1.SetHolderSignInSourceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.IssuerBackendService.SetHolderSignInSource is not implemented"))
 }
 
 // HolderBackendServiceClient is a client for the vca.backend.v1.HolderBackendService service.

@@ -141,6 +141,10 @@ message Schema {
   // The mapping of each claim to a term IRI and to its display labels.
   // The vct document and the issuer metadata carry the labels.
   repeated ClaimMapping claim_mappings = 18;
+  // The DPG credential configuration id per format, keyed by the
+  // OID4VCI format identifier. The service fills it when a version is
+  // published. The service ignores it on a write.
+  map<string, string> configuration_ids = 19;
 }
 
 // ClaimMapping maps one top level claim of a schema to a JSON-LD term.

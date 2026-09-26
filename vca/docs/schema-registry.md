@@ -132,6 +132,9 @@ of `services/internal/staffshell` (ADR-044 decision 5).
 | `POST /portal/schemas/{id}/delete` | Delete one draft version. |
 | `GET /portal/schemas/{id}/mapping` | The context extensions and the claim mapping of one version. |
 | `POST /portal/schemas/{id}/mapping` | Check the mapping and save it as the next draft version. |
+| `GET /portal/schemas/{id}/signin` | The tab "Claims by sign in" of a published version. |
+| `POST /portal/schemas/{id}/signin` | Store or remove the holder sign in source of the version. |
+| `POST /portal/schemas/{id}/signin/test` | Look one value up in the source, with masked values. |
 
 Each row shows the schema, its id, the version, and the formats. It
 also shows the status, the issued count, and the last change. The row actions follow
@@ -168,6 +171,19 @@ pair. It shows each render template of a configuration of the same
 type. The SVG goes in as an image from a data URL. No
 script of the stack runs in the page. A template above 256 KiB stays
 out. A failed call shows the display entries only.
+
+The tab "Claims by sign in" shows on a published version when the
+adapter of the pair lists `FEATURE_HOLDER_SIGN_IN_SOURCE`. A holder who
+signs in then claims the credential without an offer (ADR-052 decision
+3, ADR-057). Staff pick a data source, the field that identifies a
+person, and a claim of the ID token. The page offers only the claims
+that the holder provider vouches for. A save does two things. It adds
+the role `holder-sign-in` to the `issue` rule of the source with the
+session of the staff member. It then stores the source on the adapter
+for every configuration id of the version. A test looks one value up
+with the session of the staff member and shows masked values. The
+page reads the sources through `VCA_SCHEMA_DATASOURCE_URL`. A source
+without a field map for the schema gets a link to its field map page.
 
 Every page reads through a `SchemaService` client. The in-process service
 satisfies that client, so a page cannot see a state the API does not

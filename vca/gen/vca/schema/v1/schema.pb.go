@@ -222,8 +222,12 @@ type Schema struct {
 	// The mapping of each claim to a term IRI and to its display labels.
 	// The vct document and the issuer metadata carry the labels.
 	ClaimMappings []*ClaimMapping `protobuf:"bytes,18,rep,name=claim_mappings,json=claimMappings,proto3" json:"claim_mappings,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// The DPG credential configuration id per format, keyed by the
+	// OID4VCI format identifier. The service fills it when a version is
+	// published. The service ignores it on a write.
+	ConfigurationIds map[string]string `protobuf:"bytes,19,rep,name=configuration_ids,json=configurationIds,proto3" json:"configuration_ids,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *Schema) Reset() {
@@ -378,6 +382,13 @@ func (x *Schema) GetContexts() []string {
 func (x *Schema) GetClaimMappings() []*ClaimMapping {
 	if x != nil {
 		return x.ClaimMappings
+	}
+	return nil
+}
+
+func (x *Schema) GetConfigurationIds() map[string]string {
+	if x != nil {
+		return x.ConfigurationIds
 	}
 	return nil
 }
@@ -1892,7 +1903,7 @@ const file_vca_schema_v1_schema_proto_rawDesc = "" +
 	"\blogo_uri\x18\x04 \x01(\tR\alogoUri\x12)\n" +
 	"\x10background_color\x18\x05 \x01(\tR\x0fbackgroundColor\x12\x1d\n" +
 	"\n" +
-	"text_color\x18\x06 \x01(\tR\ttextColor\"\xd2\x05\n" +
+	"text_color\x18\x06 \x01(\tR\ttextColor\"\xf1\x06\n" +
 	"\x06Schema\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x05R\aversion\x12\x12\n" +
@@ -1916,7 +1927,11 @@ const file_vca_schema_v1_schema_proto_rawDesc = "" +
 	"retired_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tretiredAt\x12%\n" +
 	"\x0eretention_days\x18\x10 \x01(\x05R\rretentionDays\x12\x1a\n" +
 	"\bcontexts\x18\x11 \x03(\tR\bcontexts\x12B\n" +
-	"\x0eclaim_mappings\x18\x12 \x03(\v2\x1b.vca.schema.v1.ClaimMappingR\rclaimMappings\"i\n" +
+	"\x0eclaim_mappings\x18\x12 \x03(\v2\x1b.vca.schema.v1.ClaimMappingR\rclaimMappings\x12X\n" +
+	"\x11configuration_ids\x18\x13 \x03(\v2+.vca.schema.v1.Schema.ConfigurationIdsEntryR\x10configurationIds\x1aC\n" +
+	"\x15ConfigurationIdsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"i\n" +
 	"\fClaimMapping\x12\x14\n" +
 	"\x05claim\x18\x01 \x01(\tR\x05claim\x12\x10\n" +
 	"\x03iri\x18\x02 \x01(\tR\x03iri\x121\n" +
@@ -2042,7 +2057,7 @@ func file_vca_schema_v1_schema_proto_rawDescGZIP() []byte {
 }
 
 var file_vca_schema_v1_schema_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_vca_schema_v1_schema_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
+var file_vca_schema_v1_schema_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
 var file_vca_schema_v1_schema_proto_goTypes = []any{
 	(State)(0),                        // 0: vca.schema.v1.State
 	(*Display)(nil),                   // 1: vca.schema.v1.Display
@@ -2074,76 +2089,78 @@ var file_vca_schema_v1_schema_proto_goTypes = []any{
 	(*ListVersionsResponse)(nil),      // 27: vca.schema.v1.ListVersionsResponse
 	(*DeleteDraftRequest)(nil),        // 28: vca.schema.v1.DeleteDraftRequest
 	(*DeleteDraftResponse)(nil),       // 29: vca.schema.v1.DeleteDraftResponse
-	nil,                               // 30: vca.schema.v1.PublicSchema.ConfigurationIdsEntry
-	nil,                               // 31: vca.schema.v1.GetIssuerMetadataResponse.CredentialConfigurationsSupportedEntry
-	(v1.Format)(0),                    // 32: vca.common.v1.Format
-	(*timestamppb.Timestamp)(nil),     // 33: google.protobuf.Timestamp
-	(*v1.Pagination)(nil),             // 34: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),             // 35: vca.common.v1.PageResult
+	nil,                               // 30: vca.schema.v1.Schema.ConfigurationIdsEntry
+	nil,                               // 31: vca.schema.v1.PublicSchema.ConfigurationIdsEntry
+	nil,                               // 32: vca.schema.v1.GetIssuerMetadataResponse.CredentialConfigurationsSupportedEntry
+	(v1.Format)(0),                    // 33: vca.common.v1.Format
+	(*timestamppb.Timestamp)(nil),     // 34: google.protobuf.Timestamp
+	(*v1.Pagination)(nil),             // 35: vca.common.v1.Pagination
+	(*v1.PageResult)(nil),             // 36: vca.common.v1.PageResult
 }
 var file_vca_schema_v1_schema_proto_depIdxs = []int32{
 	0,  // 0: vca.schema.v1.Schema.state:type_name -> vca.schema.v1.State
 	1,  // 1: vca.schema.v1.Schema.display:type_name -> vca.schema.v1.Display
-	32, // 2: vca.schema.v1.Schema.formats:type_name -> vca.common.v1.Format
-	33, // 3: vca.schema.v1.Schema.created_at:type_name -> google.protobuf.Timestamp
-	33, // 4: vca.schema.v1.Schema.published_at:type_name -> google.protobuf.Timestamp
-	33, // 5: vca.schema.v1.Schema.retired_at:type_name -> google.protobuf.Timestamp
+	33, // 2: vca.schema.v1.Schema.formats:type_name -> vca.common.v1.Format
+	34, // 3: vca.schema.v1.Schema.created_at:type_name -> google.protobuf.Timestamp
+	34, // 4: vca.schema.v1.Schema.published_at:type_name -> google.protobuf.Timestamp
+	34, // 5: vca.schema.v1.Schema.retired_at:type_name -> google.protobuf.Timestamp
 	3,  // 6: vca.schema.v1.Schema.claim_mappings:type_name -> vca.schema.v1.ClaimMapping
-	4,  // 7: vca.schema.v1.ClaimMapping.labels:type_name -> vca.schema.v1.ClaimLabel
-	2,  // 8: vca.schema.v1.CreateRequest.schema:type_name -> vca.schema.v1.Schema
-	2,  // 9: vca.schema.v1.CreateResponse.schema:type_name -> vca.schema.v1.Schema
-	2,  // 10: vca.schema.v1.UpdateRequest.schema:type_name -> vca.schema.v1.Schema
-	2,  // 11: vca.schema.v1.UpdateResponse.schema:type_name -> vca.schema.v1.Schema
-	2,  // 12: vca.schema.v1.PublishResponse.schema:type_name -> vca.schema.v1.Schema
-	2,  // 13: vca.schema.v1.RetireResponse.schemas:type_name -> vca.schema.v1.Schema
-	2,  // 14: vca.schema.v1.GetResponse.schema:type_name -> vca.schema.v1.Schema
-	34, // 15: vca.schema.v1.ListRequest.page:type_name -> vca.common.v1.Pagination
-	0,  // 16: vca.schema.v1.ListRequest.state:type_name -> vca.schema.v1.State
-	32, // 17: vca.schema.v1.ListRequest.format:type_name -> vca.common.v1.Format
-	2,  // 18: vca.schema.v1.ListResponse.schemas:type_name -> vca.schema.v1.Schema
-	35, // 19: vca.schema.v1.ListResponse.page:type_name -> vca.common.v1.PageResult
-	34, // 20: vca.schema.v1.SearchRequest.page:type_name -> vca.common.v1.Pagination
-	2,  // 21: vca.schema.v1.SearchResponse.schemas:type_name -> vca.schema.v1.Schema
-	35, // 22: vca.schema.v1.SearchResponse.page:type_name -> vca.common.v1.PageResult
-	1,  // 23: vca.schema.v1.PublicSchema.display:type_name -> vca.schema.v1.Display
-	32, // 24: vca.schema.v1.PublicSchema.formats:type_name -> vca.common.v1.Format
-	30, // 25: vca.schema.v1.PublicSchema.configuration_ids:type_name -> vca.schema.v1.PublicSchema.ConfigurationIdsEntry
-	34, // 26: vca.schema.v1.ListPublicRequest.page:type_name -> vca.common.v1.Pagination
-	19, // 27: vca.schema.v1.ListPublicResponse.schemas:type_name -> vca.schema.v1.PublicSchema
-	35, // 28: vca.schema.v1.ListPublicResponse.page:type_name -> vca.common.v1.PageResult
-	31, // 29: vca.schema.v1.GetIssuerMetadataResponse.credential_configurations_supported:type_name -> vca.schema.v1.GetIssuerMetadataResponse.CredentialConfigurationsSupportedEntry
-	33, // 30: vca.schema.v1.GetIssuerMetadataResponse.generated_at:type_name -> google.protobuf.Timestamp
-	2,  // 31: vca.schema.v1.ListVersionsResponse.schemas:type_name -> vca.schema.v1.Schema
-	2,  // 32: vca.schema.v1.DeleteDraftResponse.schema:type_name -> vca.schema.v1.Schema
-	5,  // 33: vca.schema.v1.SchemaService.Create:input_type -> vca.schema.v1.CreateRequest
-	7,  // 34: vca.schema.v1.SchemaService.Update:input_type -> vca.schema.v1.UpdateRequest
-	9,  // 35: vca.schema.v1.SchemaService.Publish:input_type -> vca.schema.v1.PublishRequest
-	11, // 36: vca.schema.v1.SchemaService.Retire:input_type -> vca.schema.v1.RetireRequest
-	13, // 37: vca.schema.v1.SchemaService.Get:input_type -> vca.schema.v1.GetRequest
-	15, // 38: vca.schema.v1.SchemaService.List:input_type -> vca.schema.v1.ListRequest
-	17, // 39: vca.schema.v1.SchemaService.Search:input_type -> vca.schema.v1.SearchRequest
-	20, // 40: vca.schema.v1.SchemaService.ListPublic:input_type -> vca.schema.v1.ListPublicRequest
-	22, // 41: vca.schema.v1.SchemaService.GetIssuerMetadata:input_type -> vca.schema.v1.GetIssuerMetadataRequest
-	24, // 42: vca.schema.v1.SchemaService.GetVct:input_type -> vca.schema.v1.GetVctRequest
-	26, // 43: vca.schema.v1.SchemaService.ListVersions:input_type -> vca.schema.v1.ListVersionsRequest
-	28, // 44: vca.schema.v1.SchemaService.DeleteDraft:input_type -> vca.schema.v1.DeleteDraftRequest
-	6,  // 45: vca.schema.v1.SchemaService.Create:output_type -> vca.schema.v1.CreateResponse
-	8,  // 46: vca.schema.v1.SchemaService.Update:output_type -> vca.schema.v1.UpdateResponse
-	10, // 47: vca.schema.v1.SchemaService.Publish:output_type -> vca.schema.v1.PublishResponse
-	12, // 48: vca.schema.v1.SchemaService.Retire:output_type -> vca.schema.v1.RetireResponse
-	14, // 49: vca.schema.v1.SchemaService.Get:output_type -> vca.schema.v1.GetResponse
-	16, // 50: vca.schema.v1.SchemaService.List:output_type -> vca.schema.v1.ListResponse
-	18, // 51: vca.schema.v1.SchemaService.Search:output_type -> vca.schema.v1.SearchResponse
-	21, // 52: vca.schema.v1.SchemaService.ListPublic:output_type -> vca.schema.v1.ListPublicResponse
-	23, // 53: vca.schema.v1.SchemaService.GetIssuerMetadata:output_type -> vca.schema.v1.GetIssuerMetadataResponse
-	25, // 54: vca.schema.v1.SchemaService.GetVct:output_type -> vca.schema.v1.GetVctResponse
-	27, // 55: vca.schema.v1.SchemaService.ListVersions:output_type -> vca.schema.v1.ListVersionsResponse
-	29, // 56: vca.schema.v1.SchemaService.DeleteDraft:output_type -> vca.schema.v1.DeleteDraftResponse
-	45, // [45:57] is the sub-list for method output_type
-	33, // [33:45] is the sub-list for method input_type
-	33, // [33:33] is the sub-list for extension type_name
-	33, // [33:33] is the sub-list for extension extendee
-	0,  // [0:33] is the sub-list for field type_name
+	30, // 7: vca.schema.v1.Schema.configuration_ids:type_name -> vca.schema.v1.Schema.ConfigurationIdsEntry
+	4,  // 8: vca.schema.v1.ClaimMapping.labels:type_name -> vca.schema.v1.ClaimLabel
+	2,  // 9: vca.schema.v1.CreateRequest.schema:type_name -> vca.schema.v1.Schema
+	2,  // 10: vca.schema.v1.CreateResponse.schema:type_name -> vca.schema.v1.Schema
+	2,  // 11: vca.schema.v1.UpdateRequest.schema:type_name -> vca.schema.v1.Schema
+	2,  // 12: vca.schema.v1.UpdateResponse.schema:type_name -> vca.schema.v1.Schema
+	2,  // 13: vca.schema.v1.PublishResponse.schema:type_name -> vca.schema.v1.Schema
+	2,  // 14: vca.schema.v1.RetireResponse.schemas:type_name -> vca.schema.v1.Schema
+	2,  // 15: vca.schema.v1.GetResponse.schema:type_name -> vca.schema.v1.Schema
+	35, // 16: vca.schema.v1.ListRequest.page:type_name -> vca.common.v1.Pagination
+	0,  // 17: vca.schema.v1.ListRequest.state:type_name -> vca.schema.v1.State
+	33, // 18: vca.schema.v1.ListRequest.format:type_name -> vca.common.v1.Format
+	2,  // 19: vca.schema.v1.ListResponse.schemas:type_name -> vca.schema.v1.Schema
+	36, // 20: vca.schema.v1.ListResponse.page:type_name -> vca.common.v1.PageResult
+	35, // 21: vca.schema.v1.SearchRequest.page:type_name -> vca.common.v1.Pagination
+	2,  // 22: vca.schema.v1.SearchResponse.schemas:type_name -> vca.schema.v1.Schema
+	36, // 23: vca.schema.v1.SearchResponse.page:type_name -> vca.common.v1.PageResult
+	1,  // 24: vca.schema.v1.PublicSchema.display:type_name -> vca.schema.v1.Display
+	33, // 25: vca.schema.v1.PublicSchema.formats:type_name -> vca.common.v1.Format
+	31, // 26: vca.schema.v1.PublicSchema.configuration_ids:type_name -> vca.schema.v1.PublicSchema.ConfigurationIdsEntry
+	35, // 27: vca.schema.v1.ListPublicRequest.page:type_name -> vca.common.v1.Pagination
+	19, // 28: vca.schema.v1.ListPublicResponse.schemas:type_name -> vca.schema.v1.PublicSchema
+	36, // 29: vca.schema.v1.ListPublicResponse.page:type_name -> vca.common.v1.PageResult
+	32, // 30: vca.schema.v1.GetIssuerMetadataResponse.credential_configurations_supported:type_name -> vca.schema.v1.GetIssuerMetadataResponse.CredentialConfigurationsSupportedEntry
+	34, // 31: vca.schema.v1.GetIssuerMetadataResponse.generated_at:type_name -> google.protobuf.Timestamp
+	2,  // 32: vca.schema.v1.ListVersionsResponse.schemas:type_name -> vca.schema.v1.Schema
+	2,  // 33: vca.schema.v1.DeleteDraftResponse.schema:type_name -> vca.schema.v1.Schema
+	5,  // 34: vca.schema.v1.SchemaService.Create:input_type -> vca.schema.v1.CreateRequest
+	7,  // 35: vca.schema.v1.SchemaService.Update:input_type -> vca.schema.v1.UpdateRequest
+	9,  // 36: vca.schema.v1.SchemaService.Publish:input_type -> vca.schema.v1.PublishRequest
+	11, // 37: vca.schema.v1.SchemaService.Retire:input_type -> vca.schema.v1.RetireRequest
+	13, // 38: vca.schema.v1.SchemaService.Get:input_type -> vca.schema.v1.GetRequest
+	15, // 39: vca.schema.v1.SchemaService.List:input_type -> vca.schema.v1.ListRequest
+	17, // 40: vca.schema.v1.SchemaService.Search:input_type -> vca.schema.v1.SearchRequest
+	20, // 41: vca.schema.v1.SchemaService.ListPublic:input_type -> vca.schema.v1.ListPublicRequest
+	22, // 42: vca.schema.v1.SchemaService.GetIssuerMetadata:input_type -> vca.schema.v1.GetIssuerMetadataRequest
+	24, // 43: vca.schema.v1.SchemaService.GetVct:input_type -> vca.schema.v1.GetVctRequest
+	26, // 44: vca.schema.v1.SchemaService.ListVersions:input_type -> vca.schema.v1.ListVersionsRequest
+	28, // 45: vca.schema.v1.SchemaService.DeleteDraft:input_type -> vca.schema.v1.DeleteDraftRequest
+	6,  // 46: vca.schema.v1.SchemaService.Create:output_type -> vca.schema.v1.CreateResponse
+	8,  // 47: vca.schema.v1.SchemaService.Update:output_type -> vca.schema.v1.UpdateResponse
+	10, // 48: vca.schema.v1.SchemaService.Publish:output_type -> vca.schema.v1.PublishResponse
+	12, // 49: vca.schema.v1.SchemaService.Retire:output_type -> vca.schema.v1.RetireResponse
+	14, // 50: vca.schema.v1.SchemaService.Get:output_type -> vca.schema.v1.GetResponse
+	16, // 51: vca.schema.v1.SchemaService.List:output_type -> vca.schema.v1.ListResponse
+	18, // 52: vca.schema.v1.SchemaService.Search:output_type -> vca.schema.v1.SearchResponse
+	21, // 53: vca.schema.v1.SchemaService.ListPublic:output_type -> vca.schema.v1.ListPublicResponse
+	23, // 54: vca.schema.v1.SchemaService.GetIssuerMetadata:output_type -> vca.schema.v1.GetIssuerMetadataResponse
+	25, // 55: vca.schema.v1.SchemaService.GetVct:output_type -> vca.schema.v1.GetVctResponse
+	27, // 56: vca.schema.v1.SchemaService.ListVersions:output_type -> vca.schema.v1.ListVersionsResponse
+	29, // 57: vca.schema.v1.SchemaService.DeleteDraft:output_type -> vca.schema.v1.DeleteDraftResponse
+	46, // [46:58] is the sub-list for method output_type
+	34, // [34:46] is the sub-list for method input_type
+	34, // [34:34] is the sub-list for extension type_name
+	34, // [34:34] is the sub-list for extension extendee
+	0,  // [0:34] is the sub-list for field type_name
 }
 
 func init() { file_vca_schema_v1_schema_proto_init() }
@@ -2157,7 +2174,7 @@ func file_vca_schema_v1_schema_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_schema_v1_schema_proto_rawDesc), len(file_vca_schema_v1_schema_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   31,
+			NumMessages:   32,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

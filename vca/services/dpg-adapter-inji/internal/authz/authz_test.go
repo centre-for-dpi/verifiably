@@ -1457,3 +1457,50 @@ func TestInvalidClientNamesTheSchemeUsed(t *testing.T) {
 		t.Errorf("form = %d %q", res.StatusCode, res.Header.Get("WWW-Authenticate"))
 	}
 }
+
+// TestSignInSourceReadAndClear proves the issuer page can read back and
+// remove the source of one configuration, and the others stay.
+func TestSignInSourceReadAndClear(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, found, err := h.srv.SignInSourceOf(ctx, "MemberCard"); err != nil || found {
+		t.Fatalf("before a write: %v %v", found, err)
+	}
+	for _, id := range []string{"MemberCard", "MemberCardSd"} {
+		if err := h.srv.SetSignInSource(ctx, authz.SignInSource{ConfigID: id, SourceID: "register", Field: "member_no", TokenClaim: "sub"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, found, err := h.srv.SignInSourceOf(ctx, "MemberCard")
+	if err != nil || !found || got.SourceID != "register" || got.Field != "member_no" || got.TokenClaim != "sub" {
+		t.Fatalf("read = %+v %v %v", got, found, err)
+	}
+	if err := h.srv.ClearSignInSource(ctx, "MemberCard"); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, rerr := h.srv.SignInSourceOf(ctx, "MemberCard"); rerr != nil || found {
+		t.Fatal("the source stayed after the clear")
+	}
+	if _, found, rerr := h.srv.SignInSourceOf(ctx, "MemberCardSd"); rerr != nil || !found {
+		t.Fatal("the clear removed another configuration")
+	}
+	if err := h.srv.ClearSignInSource(ctx, "absent"); err != nil {
+		t.Fatalf("a clear of nothing: %v", err)
+	}
+	if !h.srv.LooksUp() {
+		t.Fatal("a server with a lookup must say so")
+	}
+}
+
+// TestVouchedClaimsFollowTheProvider proves the claims a source can
+// name: sub, email and phone_number always, and the claims the provider
+// record lists (ADR-056 decision 2).
+func TestVouchedClaimsFollowTheProvider(t *testing.T) {
+	if got := newHarness(t).srv.VouchedClaims(); strings.Join(got, ",") != "sub,email,phone_number" {
+		t.Fatalf("standard claims = %v", got)
+	}
+	got := newHarnessVouching(t, "member_no", "email").srv.VouchedClaims()
+	if strings.Join(got, ",") != "sub,email,phone_number,member_no" {
+		t.Fatalf("with the provider list = %v", got)
+	}
+}

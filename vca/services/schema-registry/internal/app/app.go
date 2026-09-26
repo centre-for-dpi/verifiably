@@ -12,6 +12,7 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1/datasourcev1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
@@ -44,6 +45,9 @@ type Deps struct {
 	// Issued counts the issued credentials of each schema. Nil builds a
 	// Connect client from the configured issued URL, when there is one.
 	Issued portal.Issued
+	// Sources reads the data sources of the pair. Nil builds a Connect
+	// client from the configured data source URL, when there is one.
+	Sources portal.Sources
 	// Prober replaces the probe of the peers of the issuer shell.
 	Prober *topology.Prober
 	// Now returns the current time. Nil means time.Now.
@@ -67,6 +71,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if deps.Issued == nil && cfg.IssuedURL != "" {
 		deps.Issued = issuedv1connect.NewIssuedServiceClient(
 			&http.Client{Timeout: cfg.BackendTimeout}, cfg.IssuedURL)
+	}
+	if deps.Sources == nil && cfg.DataSourceURL != "" {
+		deps.Sources = datasourcev1connect.NewDataSourceServiceClient(
+			&http.Client{Timeout: cfg.BackendTimeout}, cfg.DataSourceURL)
 	}
 	backend := sharedstore.MemoryDoc()
 	if cfg.StoreFile != "" {
@@ -96,8 +104,14 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Shell: shell, SignOut: signOut, Issued: deps.Issued,
 	}
 	if deps.Backend != nil {
-		// The detail page shows the card templates of the stack.
+		// The detail page shows the card templates of the stack, and the
+		// tab "Claims by sign in" stores the source of a claim without an
+		// offer on the adapter (ADR-052 decision 3).
 		popts.Catalog = deps.Backend
+		popts.SignIn = deps.Backend
+	}
+	if deps.Sources != nil {
+		popts.Sources = deps.Sources
 	}
 	pages, err := portal.New(popts)
 	if err != nil {

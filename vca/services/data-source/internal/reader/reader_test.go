@@ -155,3 +155,36 @@ func TestReadSQL(t *testing.T) {
 		t.Fatalf("missing dsn: %v", err)
 	}
 }
+
+// TestMatchFiltersEveryKind proves a CSV source and an SQL source give
+// the rows whose field holds the value, and a field the source lacks
+// is ErrField.
+func TestMatchFiltersEveryKind(t *testing.T) {
+	r := newReader(t, nil, map[string]string{"DSN": "postgres://ok"})
+	inline := DataPrefix + base64.StdEncoding.EncodeToString([]byte("code,label\nA-1,[LABEL]\nA-2,[OTHER]\n"))
+	csv := source.Source{Kind: source.KindCSV, CSV: &source.CSV{FileRef: inline, HasHeader: true}}
+	tb, err := r.Match(context.Background(), csv, "code", "A-2")
+	if err != nil || len(tb.Rows) != 1 || tb.Rows[0]["label"] != "[OTHER]" || tb.Total != 1 {
+		t.Fatalf("csv match = %+v %v", tb, err)
+	}
+	if tb, err = r.Match(context.Background(), csv, "code", "A-9"); err != nil || len(tb.Rows) != 0 {
+		t.Fatalf("csv without the value = %+v %v", tb, err)
+	}
+	if _, ferr := r.Match(context.Background(), csv, "absent", "A-1"); !errors.Is(ferr, ErrField) {
+		t.Fatalf("csv field: %v", ferr)
+	}
+	if _, rerr := r.Match(context.Background(), source.Source{Kind: source.KindCSV, CSV: &source.CSV{FileRef: ".bad"}}, "code", "A-1"); !errors.Is(rerr, ErrCSVRef) {
+		t.Fatalf("csv read failure: %v", rerr)
+	}
+	sqlSrc := source.Source{Kind: source.KindSQL, SQL: &source.SQL{Driver: "fakepg", DSN: env("DSN"), Query: "SELECT id, name FROM t"}}
+	if tb, err = r.Match(context.Background(), sqlSrc, "id", "7"); err != nil || len(tb.Rows) != 1 {
+		t.Fatalf("sql match = %+v %v", tb, err)
+	}
+	if _, err := r.Match(context.Background(), sqlSrc, "absent", "7"); !errors.Is(err, ErrField) {
+		t.Fatalf("sql field: %v", err)
+	}
+	sqlSrc.SQL.DSN = env("NOPE")
+	if _, err := r.Match(context.Background(), sqlSrc, "id", "7"); !errors.Is(err, secrets.ErrNotFound) {
+		t.Fatalf("missing dsn: %v", err)
+	}
+}

@@ -8,10 +8,12 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -41,6 +43,8 @@ const (
 	DefaultPreviewRows = 10
 	// SampleRows is the number of rows PreviewFields reads for types.
 	SampleRows = 200
+	// MaxLookupValue caps the value of a Lookup in bytes.
+	MaxLookupValue = 512
 )
 
 // SchemaProperties returns the property names of a schema version. The
@@ -294,11 +298,76 @@ func (s *Service) IssueRows(ctx context.Context, id string) (table.Table, error)
 	return s.read(ctx, id, func(a source.Access) []string { return a.Issue }, "issue")
 }
 
+// Lookup returns the one row of a source whose field holds a value, as
+// the claims of the field map of the source and a schema (ADR-052
+// decision 3). The caller needs the issue rule of the source: the holder
+// sign in through the service token of the pair, or a staff member who
+// tests the source. A staff member gets masked values, so no unmasked
+// row leaves through the API (ADR-015 decision 4). Two rows that hold
+// the value give no row.
+func (s *Service) Lookup(ctx context.Context, req *connect.Request[datasourcev1.LookupRequest]) (*connect.Response[datasourcev1.LookupResponse], error) {
+	p, err := authz.Require(ctx)
+	if err != nil {
+		return nil, err
+	}
+	in := req.Msg
+	field, value, schemaID := strings.TrimSpace(in.GetField()), in.GetValue(), strings.TrimSpace(in.GetSchemaId())
+	switch {
+	case field == "" || value == "" || schemaID == "":
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("a lookup needs the field, the value, and the schema"))
+	case len(value) > MaxLookupValue:
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("the value is longer than %d bytes", MaxLookupValue))
+	}
+	src, err := s.visible(p, in.GetSourceId())
+	if err != nil {
+		return nil, err
+	}
+	if aerr := s.allow(p, src.Access.Issue, "issue"); aerr != nil {
+		return nil, aerr
+	}
+	fm, ok := s.opts.Store.GetFieldMap(src.ID, schemaID)
+	if !ok {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("map the fields of source %s to schema %s first", src.ID, schemaID))
+	}
+	tb, err := s.opts.Reader.Match(ctx, src, field, value)
+	if err != nil {
+		return nil, toConnect(err)
+	}
+	out := &datasourcev1.LookupResponse{}
+	switch len(tb.Rows) {
+	case 0:
+		return connect.NewResponse(out), nil
+	case 1:
+	default:
+		out.Ambiguous = true
+		return connect.NewResponse(out), nil
+	}
+	claims, err := mapping.Apply(tb.Rows[0], fm)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("the field map does not fit the row: %w", err))
+	}
+	if !p.Service {
+		for k, v := range claims {
+			claims[k] = table.DefaultMasker.Mask(fmt.Sprint(v))
+		}
+	}
+	raw, err := json.Marshal(claims)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	out.Found, out.SubjectData = true, string(raw)
+	return connect.NewResponse(out), nil
+}
+
 // read loads the source, checks the rule that pick selects, and reads it.
+// The service token opens no read of a whole source.
 func (s *Service) read(ctx context.Context, id string, pick func(source.Access) []string, action string) (table.Table, error) {
 	p, err := authz.Require(ctx)
 	if err != nil {
 		return table.Table{}, err
+	}
+	if p.Service {
+		return table.Table{}, denied(authz.Operator + " (" + action + ")")
 	}
 	src, err := s.visible(p, id)
 	if err != nil {
@@ -385,7 +454,7 @@ func toConnect(err error) error {
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		return connect.NewError(connect.CodeNotFound, err)
-	case errors.Is(err, source.ErrInvalid), errors.Is(err, mapping.ErrEmptyProperty), errors.Is(err, mapping.ErrDuplicateRule),
+	case errors.Is(err, source.ErrInvalid), errors.Is(err, reader.ErrField), errors.Is(err, mapping.ErrEmptyProperty), errors.Is(err, mapping.ErrDuplicateRule),
 		errors.Is(err, mapping.ErrNoSourceField), errors.Is(err, mapping.ErrTooManyFields), errors.Is(err, mapping.ErrUnknownTransform),
 		errors.Is(err, mapping.ErrMissingParam), errors.Is(err, csvsrc.ErrBadOptions), errors.Is(err, reader.ErrCSVRef),
 		errors.Is(err, httpsrc.ErrMethod), errors.Is(err, sqlsrc.ErrNotSelect):

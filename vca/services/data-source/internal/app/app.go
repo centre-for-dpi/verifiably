@@ -32,6 +32,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/sqlsrc"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/store"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/servicetoken"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
@@ -118,8 +119,13 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
+	// The holder authorization server of the pair shows a token that it
+	// derives from the pair secret. It opens Lookup and nothing else
+	// (ADR-052 decision 3). The RPCs stay on the compose network
+	// (ADR-047).
+	service := servicetoken.Derive(cfg.ServiceSecret, servicetoken.DataSourceLookup)
 	mux.Handle(datasourcev1connect.NewDataSourceServiceHandler(svc,
-		connect.WithInterceptors(authz.Interceptor(authz.SessionVerifier(guard.Verify)))))
+		connect.WithInterceptors(authz.ServiceInterceptor(authz.SessionVerifier(guard.Verify), service))))
 	if err := mountPages(mux, cfg, deps, svc, guard); err != nil {
 		return nil, err
 	}

@@ -22,6 +22,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/dpgclient"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/servicetoken"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
@@ -147,6 +148,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		if holder, err = buildAuthz(cfg, deps, backend, svc); err != nil {
 			return nil, err
 		}
+		// The issuer page names the data source of a claim without an
+		// offer through the issuer RPCs of the service (ADR-052
+		// decision 3).
+		svc.UseSignIn(holder)
 		// A wallet and Inji Web reach the server under the public URL of
 		// the adapter. The proxy of the pair publishes the path (ADR-052
 		// decision 1).
@@ -238,7 +243,12 @@ func buildAuthz(cfg config.Config, deps Deps, backend store.KeyValue, svc *servi
 	}
 	var lookup authz.Lookup
 	if cfg.DataSourceURL != "" {
-		lookup = authz.DataSource{Client: datasourcev1connect.NewDataSourceServiceClient(client, cfg.DataSourceURL)}
+		// The token opens Lookup of the data source of the same pair,
+		// which holds the same session key (ADR-052 decision 3).
+		lookup = authz.DataSource{
+			Client: datasourcev1connect.NewDataSourceServiceClient(client, cfg.DataSourceURL),
+			Token:  servicetoken.Derive(cfg.AuthzKeySecret, servicetoken.DataSourceLookup),
+		}
 	}
 	return authz.New(context.Background(), authz.Options{
 		Issuer: issuer, Audience: cfg.Audience(), Store: backend, KeySecret: []byte(cfg.AuthzKeySecret),

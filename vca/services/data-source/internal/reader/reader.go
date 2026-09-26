@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/csvsrc"
@@ -27,6 +28,7 @@ import (
 var (
 	ErrCSVRef   = errors.New("reader: the csv file reference is not a plain file name or a data URL")
 	ErrNoCSVDir = errors.New("reader: the deployment has no csv directory")
+	ErrField    = errors.New("reader: the source has no such field")
 )
 
 // DataPrefix starts a file reference that carries the CSV bytes inline.
@@ -60,6 +62,37 @@ func (r Reader) Read(ctx context.Context, src source.Source) (table.Table, error
 		return r.readSQL(ctx, *src.SQL)
 	}
 	return table.Table{}, fmt.Errorf("%w: kind %q", source.ErrInvalid, src.Kind)
+}
+
+// Match returns the rows of src whose field holds value. An SQL source
+// filters in the database. A CSV or an HTTP source is read, then
+// filtered here. A field that the source does not hold is ErrField.
+func (r Reader) Match(ctx context.Context, src source.Source, field, value string) (table.Table, error) {
+	if src.Kind == source.KindSQL {
+		dsn, err := r.Secrets.Resolve(src.SQL.DSN)
+		if err != nil {
+			return table.Table{}, err
+		}
+		tb, err := r.SQL.Match(ctx, sqlsrc.Request{Driver: src.SQL.Driver, DSN: dsn, Query: src.SQL.Query, Timeout: src.SQL.Timeout}, field, value)
+		if errors.Is(err, sqlsrc.ErrField) {
+			return table.Table{}, fmt.Errorf("%w: %q", ErrField, field)
+		}
+		return tb, err
+	}
+	tb, err := r.Read(ctx, src)
+	if err != nil {
+		return table.Table{}, err
+	}
+	if !slices.Contains(tb.Fields, field) && !slices.Contains(table.FieldsOf(tb.Rows, nil), field) {
+		return table.Table{}, fmt.Errorf("%w: %q", ErrField, field)
+	}
+	var rows []map[string]string
+	for _, row := range tb.Rows {
+		if row[field] == value {
+			rows = append(rows, row)
+		}
+	}
+	return table.Table{Fields: tb.Fields, Rows: rows, Total: int64(len(rows))}, nil
 }
 
 func (r Reader) readCSV(c source.CSV) (table.Table, error) {

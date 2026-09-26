@@ -121,6 +121,12 @@ func TestProtoConversion(t *testing.T) {
 	if m.GetCreatedAt() == nil || m.GetPublishedAt() == nil || m.GetRetiredAt() != nil || m.GetDisplay()[0].GetName() != "Degree" {
 		t.Fatalf("stamps: %v", m)
 	}
+	if m.GetConfigurationIds()[FormatDcSdJwt] != "cfg" || len(m.GetConfigurationIds()) != 1 {
+		t.Fatalf("the staff view lacks the configuration ids: %v", m.GetConfigurationIds())
+	}
+	if draft := ToProto(valid()); draft.GetConfigurationIds() != nil {
+		t.Fatalf("a draft has configuration ids: %v", draft.GetConfigurationIds())
+	}
 	m.Formats = append(m.Formats, commonv1.Format_FORMAT_DC_SD_JWT)
 	back, err := FromProto(m)
 	if err != nil {

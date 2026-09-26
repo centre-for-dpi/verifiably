@@ -58,6 +58,19 @@ service IssuerBackendService {
   // before the DPG issues (ADR-051 decision 6). An adapter serves it only
   // when it lists FEATURE_PRESENTATION_DURING_ISSUANCE.
   rpc SetPresentationRequirement(SetPresentationRequirementRequest) returns (SetPresentationRequirementResponse);
+  // GetPresentationRequirement returns the credential a holder presents
+  // before the DPG issues, as the issuer set it. An adapter serves it
+  // only when it lists FEATURE_PRESENTATION_DURING_ISSUANCE.
+  rpc GetPresentationRequirement(GetPresentationRequirementRequest) returns (GetPresentationRequirementResponse);
+  // GetHolderSignInSource returns the data source of a credential that a
+  // holder claims after a sign in, with no offer. The source finds the
+  // subject (ADR-052 decision 3). An adapter serves it only when it
+  // lists FEATURE_HOLDER_SIGN_IN_SOURCE.
+  rpc GetHolderSignInSource(GetHolderSignInSourceRequest) returns (GetHolderSignInSourceResponse);
+  // SetHolderSignInSource stores that data source for the credential
+  // configurations of one schema. An adapter serves it only when it
+  // lists FEATURE_HOLDER_SIGN_IN_SOURCE.
+  rpc SetHolderSignInSource(SetHolderSignInSourceRequest) returns (SetHolderSignInSourceResponse);
 }
 
 // HolderBackendService drives the wallet side of a DPG.
@@ -267,6 +280,10 @@ enum Feature {
   // The wallet portal asks the holder for it through GetWalletLock and
   // UnlockWallet. The adapter never stores the PIN.
   FEATURE_WALLET_PIN = 25;
+  // A holder who signs in claims a credential with no offer. The DPG
+  // finds the subject in the data source that the issuer names for the
+  // credential through SetHolderSignInSource.
+  FEATURE_HOLDER_SIGN_IN_SOURCE = 26;
 }
 
 // GetCapabilitiesRequest has no fields.
@@ -762,6 +779,72 @@ message SetPresentationRequirementResponse {
   // The claims of a presented credential that can identify a holder.
   // An offer names one of them in presentation_subject.
   repeated string identity_claims = 2;
+}
+
+// GetPresentationRequirementRequest has no fields.
+message GetPresentationRequirementRequest {}
+
+// GetPresentationRequirementResponse carries the stored request.
+message GetPresentationRequirementResponse {
+  // The stored request. Absent when the issuer set none.
+  SetPresentationRequirementRequest requirement = 1;
+  // The presentation definition the DPG reads, as a JSON string. Empty
+  // when the issuer set none.
+  string definition_json = 2;
+  // The claims of a presented credential that can identify a holder.
+  repeated string identity_claims = 3;
+}
+
+// HolderSignInSource names the data source row of the holder who signs
+// in: the row whose field holds the value of one claim of the ID token.
+message HolderSignInSource {
+  // The id of the VCA data source.
+  string source_id = 1;
+  // The source field that identifies the person.
+  string field = 2;
+  // The claim of the ID token whose value the field must hold. Only a
+  // claim that the holder provider vouches for matches (ADR-056
+  // decision 2).
+  string token_claim = 3;
+  // The schema whose field map turns the row into claims.
+  string schema_id = 4;
+  // The version of that schema.
+  int32 schema_version = 5;
+}
+
+// GetHolderSignInSourceRequest names the credential configurations of
+// one schema.
+message GetHolderSignInSourceRequest {
+  // The credential configuration ids of the schema, one per format.
+  repeated string configuration_ids = 1;
+}
+
+// GetHolderSignInSourceResponse carries the source and the claims the
+// issuer can pick.
+message GetHolderSignInSourceResponse {
+  // The stored source of the first configuration that has one. Absent
+  // when none has one.
+  HolderSignInSource source = 1;
+  // The ID token claims that the holder provider vouches for. The
+  // source can name only one of them.
+  repeated string vouched_claims = 2;
+}
+
+// SetHolderSignInSourceRequest stores or removes the source of the
+// credential configurations of one schema.
+message SetHolderSignInSourceRequest {
+  // The credential configuration ids of the schema, one per format.
+  repeated string configuration_ids = 1;
+  // The source to store. Ignored when clear is true.
+  HolderSignInSource source = 2;
+  // Remove the source, so a holder claims only from an offer.
+  bool clear = 3;
+}
+
+// SetHolderSignInSourceResponse carries the stored source.
+message SetHolderSignInSourceResponse {
+  // The source as stored. Absent after a clear.
+  HolderSignInSource source = 1;
 }
 
 // RegisterRequest creates a wallet for one citizen.

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"testing"
@@ -35,7 +36,16 @@ func (fakeConn) Prepare(string) (driver.Stmt, error) { return nil, errors.New("n
 func (fakeConn) Close() error                        { return nil }
 func (fakeConn) Begin() (driver.Tx, error)           { return nil, errors.New("not used") }
 
-func (c fakeConn) QueryContext(_ context.Context, q string, _ []driver.NamedValue) (driver.Rows, error) {
+// statements keeps the statements the fake driver ran, with the
+// arguments after a bar.
+var statements []string
+
+func (c fakeConn) QueryContext(_ context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
+	line := q + " |"
+	for _, a := range args {
+		line += " " + fmt.Sprint(a.Value)
+	}
+	statements = append(statements, line)
 	if c.dsn == "queryfail" {
 		return nil, errors.New("query failed")
 	}
@@ -129,5 +139,52 @@ func TestRead(t *testing.T) {
 func TestStringify(t *testing.T) {
 	if Stringify(int64(3)) != "3" || Stringify(nil) != "" || Stringify(2.5) != "2.5" || Stringify(make(chan int)) == "" {
 		t.Fatal("stringify")
+	}
+}
+
+// TestMatchWrapsTheQuery proves the database filters: the query of the
+// source sits inside an outer SELECT, the field is a quoted identifier
+// that the query returns, and the value is an argument.
+func TestMatchWrapsTheQuery(t *testing.T) {
+	statements = nil
+	tb, err := Reader{}.Match(context.Background(), Request{Driver: "fake", DSN: "ok", Query: " SELECT * FROM t ; "}, "name", "x' OR '1'='1")
+	if err != nil || len(tb.Rows) != 2 {
+		t.Fatalf("match = %+v %v", tb, err)
+	}
+	want := []string{
+		"SELECT * FROM (SELECT * FROM t) vca_q WHERE 1 = 0 |",
+		`SELECT * FROM (SELECT * FROM t) vca_q WHERE vca_q."name" = $1 | x' OR '1'='1`,
+	}
+	if fmt.Sprint(statements) != fmt.Sprint(want) {
+		t.Fatalf("statements %q, want %q", statements, want)
+	}
+	sql.Register("mysql", fakeDriver{})
+	statements = nil
+	if _, err := (Reader{}).Match(context.Background(), Request{Driver: "mysql", DSN: "ok", Query: "SELECT 1"}, "id", "7"); err != nil {
+		t.Fatal(err)
+	}
+	if statements[1] != "SELECT * FROM (SELECT 1) vca_q WHERE vca_q.`id` = ? | 7" {
+		t.Fatalf("mysql statement %q", statements[1])
+	}
+}
+
+func TestMatchRefuses(t *testing.T) {
+	ok := Request{Driver: "fake", DSN: "ok", Query: "SELECT 1"}
+	for _, field := range []string{"", "1st", "name;", `name" --`, "a b", string(make([]byte, 64))} {
+		if _, err := (Reader{}).Match(context.Background(), ok, field, "v"); !errors.Is(err, ErrField) {
+			t.Errorf("field %q: %v", field, err)
+		}
+	}
+	if _, err := (Reader{}).Match(context.Background(), ok, "absent", "v"); !errors.Is(err, ErrField) {
+		t.Errorf("a column the query lacks: %v", err)
+	}
+	if _, err := (Reader{}).Match(context.Background(), Request{Driver: "pgx", Query: "SELECT 1"}, "id", "v"); !errors.Is(err, ErrDriver) {
+		t.Errorf("driver: %v", err)
+	}
+	if _, err := (Reader{}).Match(context.Background(), Request{Driver: "fake", DSN: "queryfail", Query: "SELECT 1"}, "id", "v"); err == nil {
+		t.Error("a failed probe gave rows")
+	}
+	if !identifier("Member_No2") || identifier("_") == false {
+		t.Error("plain identifiers")
 	}
 }

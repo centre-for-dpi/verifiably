@@ -11,15 +11,21 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/inji"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
 // definitionKey is the store key of the presentation definition of a
-// presentation during issuance (ADR-051 decision 6).
-const definitionKey = "iar/definition"
+// presentation during issuance (ADR-051 decision 6). requirementKey
+// keeps the request that made it, so the settings card reads it back.
+const (
+	definitionKey  = "iar/definition"
+	requirementKey = "iar/requirement"
+)
 
 // SetPresentationRequirement stores the credential a holder presents
 // before Certify issues. Certify reads the definition from the plain
@@ -34,8 +40,10 @@ func (s *Service) SetPresentationRequirement(
 	}
 	out := &backendv1.SetPresentationRequirementResponse{IdentityClaims: s.iarIdentity}
 	if req.Msg.GetClear() {
-		if err := s.store.Delete(ctx, definitionKey); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
+		for _, key := range []string{definitionKey, requirementKey} {
+			if err := s.store.Delete(ctx, key); err != nil {
+				return nil, connect.NewError(connect.CodeInternal, err)
+			}
 		}
 		return connect.NewResponse(out), nil
 	}
@@ -43,10 +51,45 @@ func (s *Service) SetPresentationRequirement(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	requirement, err := protojson.Marshal(req.Msg)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	if err := s.store.Put(ctx, requirementKey, requirement); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
 	if err := s.store.Put(ctx, definitionKey, definition); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	out.DefinitionJson = string(definition)
+	return connect.NewResponse(out), nil
+}
+
+// GetPresentationRequirement returns the requirement the issuer stored,
+// with the definition and the claims that can identify a holder.
+func (s *Service) GetPresentationRequirement(
+	ctx context.Context, _ *connect.Request[backendv1.GetPresentationRequirementRequest],
+) (*connect.Response[backendv1.GetPresentationRequirementResponse], error) {
+	if !s.presentation {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(
+			"this Inji deployment checks no presentation during issuance; set VCA_INJI_PRESENTATION_DURING_ISSUANCE once Certify reaches Inji Verify"))
+	}
+	out := &backendv1.GetPresentationRequirementResponse{IdentityClaims: s.iarIdentity}
+	raw, err := s.store.Get(ctx, requirementKey)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return connect.NewResponse(out), nil
+	case err != nil:
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	requirement := &backendv1.SetPresentationRequirementRequest{}
+	if err := protojson.Unmarshal(raw, requirement); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	out.Requirement = requirement
+	if definition, ok := s.PresentationDefinition(ctx); ok {
+		out.DefinitionJson = string(definition)
+	}
 	return connect.NewResponse(out), nil
 }
 

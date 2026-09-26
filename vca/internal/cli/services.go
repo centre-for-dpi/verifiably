@@ -296,6 +296,9 @@ func Catalog() []Service {
 				{Env: "VCA_DATASOURCE_PUBLIC_URL", Kind: LinkPublicURL},
 				{Env: "VCA_DATASOURCE_SCHEMA_URL", Target: "schema-registry", Kind: LinkURL},
 				{Env: "VCA_DATASOURCE_ISSUANCE_URL", Target: "issuance", Kind: LinkURL},
+				// The holder authorization server of the pair derives a
+				// token from the session key that opens Lookup only.
+				{Env: "VCA_DATASOURCE_SERVICE_SECRET", Target: "VCA_SECRETS_SESSION_KEY", Kind: LinkCopy},
 				staffJWKS("VCA_DATASOURCE_AUTH_JWKS_URL", "issuer-auth"),
 				staffLogin("VCA_DATASOURCE_LOGIN_URL"),
 				peers,
@@ -448,6 +451,9 @@ func Catalog() []Service {
 				{Env: "VCA_SCHEMA_BUILDER_URL", Kind: LinkPublicURL, Path: "/builder/"},
 				// The list page counts the issued credentials of each schema.
 				{Env: "VCA_SCHEMA_ISSUED_URL", Target: "issued-credentials", Kind: LinkURL},
+				// The tab "Claims by sign in" lists the data sources and
+				// tests one with the session of the staff member.
+				{Env: "VCA_SCHEMA_DATASOURCE_URL", Target: "data-source", Kind: LinkURL},
 				staffJWKS("VCA_SCHEMA_AUTH_JWKS_URL", "issuer-auth"),
 				staffLogin("VCA_SCHEMA_LOGIN_URL"),
 				peers,

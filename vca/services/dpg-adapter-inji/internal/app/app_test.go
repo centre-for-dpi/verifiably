@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -397,6 +398,18 @@ func TestBuildServesTheHolderAuthorizationServer(t *testing.T) {
 	}
 	if meta["token_endpoint"] != "https://adapter.example/authz/token" {
 		t.Fatalf("metadata = %v", meta)
+	}
+	// The issuer page can name the data source of a claim without an
+	// offer, because the server can ask one.
+	caps, cerr := a.Service.GetCapabilities(context.Background(), connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+	if cerr != nil || !slices.Contains(caps.Msg.GetFeatures(), backendv1.Feature_FEATURE_HOLDER_SIGN_IN_SOURCE) {
+		t.Fatalf("features = %v %v", caps, cerr)
+	}
+	if _, serr := a.Service.SetHolderSignInSource(context.Background(), connect.NewRequest(&backendv1.SetHolderSignInSourceRequest{
+		ConfigurationIds: []string{"MemberCard"},
+		Source:           &backendv1.HolderSignInSource{SourceId: "register", Field: "member_no", TokenClaim: "sub", SchemaId: "member"},
+	})); serr != nil {
+		t.Fatalf("set the sign in source: %v", serr)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

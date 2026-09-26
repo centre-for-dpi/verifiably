@@ -152,6 +152,15 @@ server asks the wallet for the presentation, so the offer keeps the
 channel the adapter used. The stack reads the claims from its own data
 provider for the holder the presentation names.
 
+The issuer names the credential to present on the identity page. The
+card "Presentation during issuance" shows when the adapter lists the
+feature. It offers the published types of the issuer and a type of
+another issuer. It also offers the format, the identity claim, other
+claims, and a purpose. The identity claim is one of the names that the
+stack accepts. A save calls `SetPresentationRequirement`, and "Stop the
+presentation" clears it. An issuer operator or admin can change it. The audit log records
+`issuance.SetPresentationRequirement`.
+
 ### The identity QR channel
 
 The channel prints the identity QR code that a stack signs (ADR-043

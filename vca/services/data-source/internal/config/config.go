@@ -60,6 +60,11 @@ type Config struct {
 	IssuanceURL string `env:"ISSUANCE_URL"`
 	// Timeout bounds one call to another service.
 	Timeout time.Duration `env:"TIMEOUT" default:"30s"`
+	// ServiceSecret is the session key of the pair. The holder
+	// authorization server of the pair derives a token from it that opens
+	// Lookup, and no other call. Empty means only a staff session opens
+	// the service.
+	ServiceSecret string `env:"SERVICE_SECRET" secret:"true"`
 	// RunTimeout bounds one bulk run.
 	RunTimeout time.Duration `env:"RUN_TIMEOUT" default:"2h"`
 

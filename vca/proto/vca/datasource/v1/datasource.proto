@@ -54,9 +54,10 @@ service DataSourceService {
   }
   // Lookup returns the one row of a source whose field holds a value.
   // The field map of a schema turns it into claims (ADR-052 decision 3).
-  // The holder
-  // authorization server of the Inji adapter calls it for a claim that
-  // no offer names.
+  // The holder authorization server of the pair calls it for a claim
+  // that no offer names. It sends the service token of the pair. Staff
+  // with the issue rule of the source can call it for a test. They get
+  // masked values.
   rpc Lookup(LookupRequest) returns (LookupResponse) {
     option (vca.common.v1.description) = "Returns the one row of a source whose field holds a value, as schema claims.";
   }
@@ -81,7 +82,11 @@ message LookupResponse {
   // Whether exactly one row holds the value.
   bool found = 1;
   // The claims of the row after the field map, as a JSON object string.
+  // A staff caller gets masked values. The holder authorization server
+  // of the pair gets the values.
   string subject_data = 2;
+  // Whether two or more rows hold the value. found is then false.
+  bool ambiguous = 3;
 }
 
 // Source is one data source.

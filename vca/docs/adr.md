@@ -36,3 +36,4 @@ each decision of each record.
 - [ADR-054: VCA writes the walt.id catalogue and wallet configuration](adr/ADR-054-waltid-written-config.md)
 - [ADR-055: Stack secrets and identities come from setup or the operator](adr/ADR-055-generated-stack-secrets.md)
 - [ADR-056: The claims store and the holder authorization server refuse what a claim did not stage](adr/ADR-056-holder-claim-hardening.md)
+- [ADR-057: The holder sign in reads one row of a data source with a service token of its pair](adr/ADR-057-data-source-lookup.md)

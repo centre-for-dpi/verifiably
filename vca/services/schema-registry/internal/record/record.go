@@ -378,6 +378,12 @@ func ToProto(r Record) *schemav1.Schema {
 	for _, f := range r.Formats {
 		m.Formats = append(m.Formats, FormatToProto(f))
 	}
+	for f, id := range r.ConfigurationIDs {
+		if m.ConfigurationIds == nil {
+			m.ConfigurationIds = map[string]string{}
+		}
+		m.ConfigurationIds[f] = id
+	}
 	m.CreatedAt = stamp(r.CreatedAt)
 	m.PublishedAt = stamp(r.PublishedAt)
 	m.RetiredAt = stamp(r.RetiredAt)

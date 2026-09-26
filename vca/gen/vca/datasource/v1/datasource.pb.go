@@ -184,7 +184,11 @@ type LookupResponse struct {
 	// Whether exactly one row holds the value.
 	Found bool `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"`
 	// The claims of the row after the field map, as a JSON object string.
-	SubjectData   string `protobuf:"bytes,2,opt,name=subject_data,json=subjectData,proto3" json:"subject_data,omitempty"`
+	// A staff caller gets masked values. The holder authorization server
+	// of the pair gets the values.
+	SubjectData string `protobuf:"bytes,2,opt,name=subject_data,json=subjectData,proto3" json:"subject_data,omitempty"`
+	// Whether two or more rows hold the value. found is then false.
+	Ambiguous     bool `protobuf:"varint,3,opt,name=ambiguous,proto3" json:"ambiguous,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -231,6 +235,13 @@ func (x *LookupResponse) GetSubjectData() string {
 		return x.SubjectData
 	}
 	return ""
+}
+
+func (x *LookupResponse) GetAmbiguous() bool {
+	if x != nil {
+		return x.Ambiguous
+	}
+	return false
 }
 
 // Source is one data source.
@@ -2239,10 +2250,11 @@ const file_vca_datasource_v1_datasource_proto_rawDesc = "" +
 	"\x05field\x18\x02 \x01(\tR\x05field\x12\x14\n" +
 	"\x05value\x18\x03 \x01(\tR\x05value\x12\x1b\n" +
 	"\tschema_id\x18\x04 \x01(\tR\bschemaId\x12%\n" +
-	"\x0eschema_version\x18\x05 \x01(\x05R\rschemaVersion\"I\n" +
+	"\x0eschema_version\x18\x05 \x01(\x05R\rschemaVersion\"g\n" +
 	"\x0eLookupResponse\x12\x14\n" +
 	"\x05found\x18\x01 \x01(\bR\x05found\x12!\n" +
-	"\fsubject_data\x18\x02 \x01(\tR\vsubjectData\"\x8d\x04\n" +
+	"\fsubject_data\x18\x02 \x01(\tR\vsubjectData\x12\x1c\n" +
+	"\tambiguous\x18\x03 \x01(\bR\tambiguous\"\x8d\x04\n" +
 	"\x06Source\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x1b\n" +

@@ -328,7 +328,9 @@ the compose network. Certify reads it there at each interactive
 authorization. Before the issuer sets one, the path answers 404, and
 an offer with `require_presentation` fails with "configure the
 credential to present first". The answer of the call lists the
-identity claims of the stack.
+identity claims of the stack. `GetPresentationRequirement` reads the
+stored setting back. The card "Presentation during issuance" of
+the issuer identity page calls both.
 
 The setting `VCA_INJI_PRESENTATION_DURING_ISSUANCE` turns the feature
 on. The stack file points Certify at Inji Verify through
@@ -505,11 +507,16 @@ the person, and the ID token claim with the value. The adapter asks
 issuer." With more than one source, the request names its credential in
 `authorization_details`.
 
-The wallet initiated mode is pending. Nothing in this release sets a
-sign in source, and the data source service does not answer `Lookup`
-yet. So every claim without an offer ends in "Claim this credential
-from an offer of the issuer." When the mode lands, `Lookup` must check
-its caller, because it runs on the compose network with no guard.
+The issuer sets the sign in source in the tab "Claims by sign in" of
+the schema pages. The tab calls `GetHolderSignInSource` and
+`SetHolderSignInSource` of the adapter. The adapter stores a source
+only for a claim that the holder provider vouches for. The adapter
+lists `FEATURE_HOLDER_SIGN_IN_SOURCE` when the server runs with
+`VCA_INJI_DATA_SOURCE_URL`. The adapter calls `Lookup` with a token
+that it derives from the pair session key. The data source service
+opens `Lookup` for that token and for no other call (ADR-057). The
+source must name the role `holder-sign-in` on its `issue` rule. The tab
+adds it when staff save.
 
 **The holder provider.** The adapter keeps a provider registry in its
 store. Setup seeds it with the holder realm of the stack Keycloak and

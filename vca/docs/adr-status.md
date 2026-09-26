@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-055, one row per decision.
+ADR-057, one row per decision.
 
 The status values are:
 
@@ -557,7 +557,7 @@ A row that is not `Done` carries a note.
 | ADR-051 | 3 One scope for every configuration | Done | `vca/services/dpg-adapter-inji/internal/inji/configs.go` | Every configuration has the scope `vca_credential`. ADR-056 decision 1 adds a guard on `config_id` to every template. |
 | ADR-051 | 4 Templates read the columns `c1` to `c64` | Done | `vca/services/dpg-adapter-inji/internal/inji/configs.go`, `vca/services/dpg-adapter-inji/internal/service/configs.go` | The adapter keeps the claim order with the registration. |
 | ADR-051 | 5 The subject key per flow | Done | `vca/services/dpg-adapter-inji/internal/service/issuer.go`, `vca/services/dpg-adapter-inji/internal/authz` | The pre-authorized code stages the staging id. A presentation during issuance names its holder. The holder authorization server puts the staging id in its token. |
-| ADR-051 | 6 The adapter serves the presentation definition | Done | `vca/services/dpg-adapter-inji/internal/service/iar.go` | `SetPresentationRequirement` stores it. The issuer settings card waits for a later unit. |
+| ADR-051 | 6 The adapter serves the presentation definition | Done | `vca/services/dpg-adapter-inji/internal/service/iar.go` | `SetPresentationRequirement` stores it. The card "Presentation during issuance" of the issuer identity page sets it (`vca/services/issuance/internal/pages/requirement.go`). |
 
 ## ADR-052: The holder authorization server of the Inji adapter
 
@@ -565,7 +565,7 @@ A row that is not `Done` carries a note.
 |---|---|---|---|---|
 | ADR-052 | 1 An authorization server under `/authz` | Done | `vca/services/dpg-adapter-inji/internal/authz`, `vca/internal/cli/services.go` | RFC 8414 metadata, a key set, authorize, callback, and token. The proxy of the issuer pair publishes `/authz/*`. |
 | ADR-052 | 2 The holder signs in at the configured provider | Partial | `vca/services/dpg-adapter-inji/internal/app/app.go`, `vca/internal/cli/dpgconfig.go` | Setup seeds the holder realm of the stack Keycloak and the client `vca-inji-authz`. The registry lives in the store of the adapter; the admin portal cannot edit it yet. |
-| ADR-052 | 3 Offer bound and wallet initiated claims | Partial | `vca/services/dpg-adapter-inji/internal/authz/authorize.go`, `vca/services/issuance/internal/pages/issue.go` | The binding rule works end to end. A claim without an offer calls `DataSourceService.Lookup`, which the data source service answers from N6 on. |
+| ADR-052 | 3 Offer bound and wallet initiated claims | Done | `vca/services/dpg-adapter-inji/internal/authz/authorize.go`, `vca/services/issuance/internal/pages/issue.go`, `vca/services/schema-registry/internal/portal/signin.go` | The binding rule works end to end. The tab "Claims by sign in" names the source of a claim without an offer, and `DataSourceService.Lookup` answers it (ADR-057). |
 | ADR-052 | 4 A JWT whose subject is the staging id | Done | `vca/services/dpg-adapter-inji/internal/authz/token.go` | RS256, five minutes, `aud` the credential endpoint of `inji-certify-authcode`. |
 | ADR-052 | 5 Registered wallet clients | Done | `vca/services/dpg-adapter-inji/internal/authz/clients.go`, `vca/internal/cli/inji_public.go` | `vca-inji` of Inji Web uses `private_key_jwt` with the key that the holder bootstrap wrote. |
 | ADR-052 | 6 The token key signs access tokens only | Done | `vca/services/dpg-adapter-inji/internal/authz/keys.go` | The key sits in the store under AES-256-GCM with the pair session key. |
@@ -611,12 +611,23 @@ A row that is not `Done` carries a note.
 | ADR-056 | 6 A key ring and a rotation command | Done | `vca/services/dpg-adapter-inji/internal/authz/keys.go`, `vca/internal/cli/rotate.go` | The adapter serves the rotation at `/internal/authz/rotate-key` on its host port. `TestNoPublicRouteReachesTheRotation` pins that no route leads there. |
 | ADR-056 | 7 Claim values without control characters | Done | `vca/services/dpg-adapter-inji/internal/claims/claims.go`, `vca/services/dpg-adapter-inji/internal/inji/claims.go` | `CreateOffer` refuses the value with the claim name. `Put` refuses any field. |
 
+## ADR-057: The holder sign in reads one row of a data source with a service token of its pair
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-057 | 1 `Lookup` returns the one row of a value | Done | `vca/services/data-source/internal/service/service.go`, `vca/services/data-source/internal/reader/reader.go` | `TestLookupCsvByField` and `TestLookupHttpFiltersRows` pin it. Two rows set `ambiguous`. |
+| ADR-057 | 2 A service token of the pair opens `Lookup` only | Done | `vca/services/internal/servicetoken`, `vca/services/data-source/internal/authz/authz.go`, `vca/services/dpg-adapter-inji/internal/authz/datasource.go` | `TestServiceTokenOpensLookupOnly` pins it. No route of the proxy leads to the RPCs. |
+| ADR-057 | 3 A source names `holder-sign-in` on its issue rule | Done | `vca/services/schema-registry/internal/portal/signin.go` | The tab adds the role with the session of the staff member. |
+| ADR-057 | 4 A staff test gets masked values | Done | `vca/services/data-source/internal/service/service.go` | `TestLookupMasksTheRowForStaff` pins it. |
+| ADR-057 | 5 The SQL kind filters in the database | Done | `vca/services/data-source/internal/sqlsrc/sqlsrc.go` | `TestLookupSqlWrapsTheQuery` records the statement and its argument. |
+| ADR-057 | 6 Only a vouched claim names a source | Done | `vca/services/dpg-adapter-inji/internal/service/signin.go` | `TestHolderSignInSourceNeedsAVouchedClaim` pins it. The server checks the claim again at each claim. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 246 |
-| Partial | 29 |
+| Done | 253 |
+| Partial | 28 |
 | Deferred | 3 |
 | Not started | 36 |
-| Total | 314 |
+| Total | 320 |

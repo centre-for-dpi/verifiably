@@ -259,6 +259,10 @@ func mountPages(mux *http.ServeMux, wr wiring) error {
 	if opts.Identity == nil {
 		opts.Identity = backendv1connect.NewIssuerBackendServiceClient(httpClient, cfg.AdapterURL)
 	}
+	if opts.Presentation == nil {
+		// The same client sets the credential to present on the adapter.
+		opts.Presentation = backendv1connect.NewIssuerBackendServiceClient(httpClient, cfg.AdapterURL)
+	}
 	if opts.Trust == nil {
 		opts.Trust = func(url string) pages.Trust { return trustv1connect.NewTrustServiceClient(httpClient, url) }
 	}

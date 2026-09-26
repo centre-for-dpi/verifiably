@@ -96,9 +96,10 @@ type DataSourceServiceClient interface {
 	RunBulk(context.Context, *connect.Request[v1.RunBulkRequest]) (*connect.ServerStreamForClient[v1.RunBulkResponse], error)
 	// Lookup returns the one row of a source whose field holds a value.
 	// The field map of a schema turns it into claims (ADR-052 decision 3).
-	// The holder
-	// authorization server of the Inji adapter calls it for a claim that
-	// no offer names.
+	// The holder authorization server of the pair calls it for a claim
+	// that no offer names. It sends the service token of the pair. Staff
+	// with the issue rule of the source can call it for a test. They get
+	// masked values.
 	Lookup(context.Context, *connect.Request[v1.LookupRequest]) (*connect.Response[v1.LookupResponse], error)
 }
 
@@ -277,9 +278,10 @@ type DataSourceServiceHandler interface {
 	RunBulk(context.Context, *connect.Request[v1.RunBulkRequest], *connect.ServerStream[v1.RunBulkResponse]) error
 	// Lookup returns the one row of a source whose field holds a value.
 	// The field map of a schema turns it into claims (ADR-052 decision 3).
-	// The holder
-	// authorization server of the Inji adapter calls it for a claim that
-	// no offer names.
+	// The holder authorization server of the pair calls it for a claim
+	// that no offer names. It sends the service token of the pair. Staff
+	// with the issue rule of the source can call it for a test. They get
+	// masked values.
 	Lookup(context.Context, *connect.Request[v1.LookupRequest]) (*connect.Response[v1.LookupResponse], error)
 }
 

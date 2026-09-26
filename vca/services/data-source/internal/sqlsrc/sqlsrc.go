@@ -23,6 +23,7 @@ var (
 	ErrDriver    = errors.New("sqlsrc: the driver is not available in this deployment")
 	ErrNotSelect = errors.New("sqlsrc: the query must be one SELECT statement")
 	ErrTooMany   = errors.New("sqlsrc: the query returns more rows than the limit")
+	ErrField     = errors.New("sqlsrc: the field is not a column of the query")
 )
 
 // Limits when a field is zero.
@@ -74,11 +75,76 @@ func Available(driver string) bool {
 
 // Read runs the query and returns the rows as strings.
 func (r Reader) Read(ctx context.Context, req Request) (table.Table, error) {
+	db, ctx, done, err := r.open(ctx, req)
+	if err != nil {
+		return table.Table{}, err
+	}
+	defer done()
+	return r.query(ctx, db, req.Query)
+}
+
+// Match returns the rows of the query whose column field holds value.
+// The database filters: Match wraps the query of the source in an outer
+// SELECT with one WHERE clause. The field must be a plain identifier
+// and a column of the query, and the value travels as an argument, so
+// neither can change the statement (ADR-052 decision 3).
+func (r Reader) Match(ctx context.Context, req Request, field, value string) (table.Table, error) {
+	if !identifier(field) {
+		return table.Table{}, fmt.Errorf("%w: %q", ErrField, field)
+	}
+	db, ctx, done, err := r.open(ctx, req)
+	if err != nil {
+		return table.Table{}, err
+	}
+	defer done()
+	inner := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(req.Query), ";"))
+	outer := "SELECT * FROM (" + inner + ") vca_q WHERE "
+	probe, err := r.query(ctx, db, outer+"1 = 0")
+	if err != nil {
+		return table.Table{}, err
+	}
+	if !contains(probe.Fields, field) {
+		return table.Table{}, fmt.Errorf("%w: %q", ErrField, field)
+	}
+	quoted, placeholder := `"`+field+`"`, "$1"
+	if req.Driver == "mysql" {
+		quoted, placeholder = "`"+field+"`", "?"
+	}
+	return r.query(ctx, db, outer+"vca_q."+quoted+" = "+placeholder, value)
+}
+
+// identifier reports whether s is a plain column name: a letter or an
+// underscore, then letters, digits, and underscores.
+func identifier(s string) bool {
+	if s == "" || len(s) > 63 {
+		return false
+	}
+	for i, c := range s {
+		letter := c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+		if !letter && (i == 0 || c < '0' || c > '9') {
+			return false
+		}
+	}
+	return true
+}
+
+func contains(list []string, v string) bool {
+	for _, item := range list {
+		if item == v {
+			return true
+		}
+	}
+	return false
+}
+
+// open checks the request and opens the database with one connection.
+// done closes it and ends the timeout.
+func (r Reader) open(ctx context.Context, req Request) (*sql.DB, context.Context, func(), error) {
 	if !Available(req.Driver) {
-		return table.Table{}, fmt.Errorf("%w: %q", ErrDriver, req.Driver)
+		return nil, nil, nil, fmt.Errorf("%w: %q", ErrDriver, req.Driver)
 	}
 	if err := CheckQuery(req.Query); err != nil {
-		return table.Table{}, err
+		return nil, nil, nil, err
 	}
 	open := r.Open
 	if open == nil {
@@ -86,18 +152,25 @@ func (r Reader) Read(ctx context.Context, req Request) (table.Table, error) {
 	}
 	db, err := open(req.Driver, req.DSN)
 	if err != nil {
-		return table.Table{}, fmt.Errorf("sqlsrc: open: %w", err)
+		return nil, nil, nil, fmt.Errorf("sqlsrc: open: %w", err)
 	}
-	// Nothing can act on a close fault of a handle.
-	defer func() { ignored := db.Close(); _ = ignored }()
 	db.SetMaxOpenConns(1)
 	timeout := req.Timeout
 	if timeout <= 0 {
 		timeout = DefaultTimeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	rows, err := db.QueryContext(ctx, req.Query)
+	return db, ctx, func() {
+		cancel()
+		// Nothing can act on a close fault of a handle.
+		ignored := db.Close()
+		_ = ignored
+	}, nil
+}
+
+// query runs one statement and returns its rows as strings.
+func (r Reader) query(ctx context.Context, db *sql.DB, statement string, args ...any) (table.Table, error) {
+	rows, err := db.QueryContext(ctx, statement, args...)
 	if err != nil {
 		return table.Table{}, fmt.Errorf("sqlsrc: query: %w", err)
 	}
