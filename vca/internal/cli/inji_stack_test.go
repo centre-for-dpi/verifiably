@@ -218,36 +218,19 @@ func TestInjiStackRunsMimotoWithWhatItNeeds(t *testing.T) {
 	if boot["config.server.file.storage.uri"] != "http://inji-web:3004/" || boot["server.servlet.context-path"] != "/v1/mimoto" {
 		t.Errorf("the bootstrap properties = %v", boot)
 	}
-	issuersPath := mountSource(web.Volumes, "/home/mosip/mimoto-issuers-config.json")
-	raw, err := os.ReadFile(filepath.Join(repoRoot(), "deploy", "vca", filepath.FromSlash(issuersPath))) // #nosec G304 -- a path of the stack file
-	if err != nil {
-		t.Fatalf("Inji Web serves no issuer list: %v", err)
+	// vca setup writes the issuer list and the trusted verifiers from the
+	// addresses of the deployment (P6-I7h). Mimoto and Inji Web read the
+	// same files.
+	for _, svc := range []injiService{web, mimoto} {
+		for _, name := range []string{MimotoIssuersFile, MimotoVerifiersFile} {
+			if got := mountSource(svc.Volumes, "/home/mosip/"+name); got != "../"+MimotoDir+"/"+name {
+				t.Errorf("%s is mounted from %q, not from the file of vca setup", name, got)
+			}
+		}
 	}
-	var issuers struct {
-		Issuers []map[string]any `json:"issuers"`
-	}
-	if err := json.Unmarshal(raw, &issuers); err != nil || len(issuers.Issuers) != 1 {
-		t.Fatalf("issuers = %s, %v", raw, err)
-	}
-	issuer := issuers.Issuers[0]
-	for key, want := range map[string]string{
-		// Mimoto reads <credential_issuer_host>/.well-known/openid-credential-issuer,
-		// so the host is the nginx server of the Certify that takes
-		// eSignet tokens (P6-I0).
-		"wellknown_endpoint":     "http://inji-certify-nginx:8091/.well-known/openid-credential-issuer",
-		"credential_issuer_host": "http://inji-certify-nginx:8091",
-		"client_id":              EsignetClientID,
-		"client_alias":           EsignetClientID,
-		"proxy_token_endpoint":   "http://inji-esignet:8088/v1/esignet/oauth/v2/token",
-		// eSignet checks the audience of the client assertion against
-		// its public token endpoint, on the login page (P6-I7f).
-		"authorization_audience": "http://localhost:17089/v1/esignet/oauth/v2/token",
-		"redirect_uri":           DefaultInjiWebURL + "/redirect",
-		"protocol":               "OpenId4VCI",
-		"enabled":                "true",
-	} {
-		if issuer[key] != want {
-			t.Errorf("issuer %s = %v, want %s", key, issuer[key], want)
+	for _, name := range []string{MimotoIssuersFile, MimotoVerifiersFile} {
+		if _, err := os.Stat(filepath.Join(repoRoot(), "deploy", "vca", "dpg", "inji", "mimoto", name)); err == nil {
+			t.Errorf("the tree still tracks a static %s", name)
 		}
 	}
 	for _, target := range []string{"/home/mosip/mimoto-trusted-verifiers.json", "/home/mosip/credential-template.html"} {

@@ -580,11 +580,35 @@ The stack file reads these variables:
 | `INJI_MIMOTO_DB_PASSWORD` | `mimoto` | The password of the Mimoto database |
 | `INJI_MIMOTO_KEYSTORE_PASSWORD` | `mimoto` | The password of the key store of the Mimoto key manager |
 
-A public deployment sets the first two variables.
-It then adds `<Inji Web address>/v1/mimoto/oauth2/callback/google` to
-the redirect URIs of the client `vca-holder`.
-It also edits the issuer list and the trusted verifiers of
-`deploy/vca/dpg/inji/mimoto/`.
+`vca setup` writes the first two variables from the addresses of the
+deployment, and `VCA_INJI_WEB_URL` of the adapter with the first one.
+It adds `<Inji Web address>/v1/mimoto/oauth2/callback/google` to the
+redirect URIs of the client `vca-holder`.
+It also writes the issuer list and the trusted verifiers of Mimoto into
+`deploy/mimoto-inji/` (P6-I7h):
+
+| File | What it names |
+|---|---|
+| `mimoto-issuers-config.json` | `inji-certify-esignet` on the compose network. The redirect page and the token proxy of Inji Web. The token endpoint of the eSignet login page as the audience. |
+| `mimoto-trusted-verifiers.json` | The page of Inji Verify as the client. The answer endpoint and the key set of the Inji Verify service. |
+
+The addresses follow the deployment:
+
+| Container | Local | Base domain |
+|---|---|---|
+| `inji-web` | `http://localhost:17085` | `https://inji-web.<domain>` |
+| `inji-verify-service` | `http://localhost:17086` | `https://inji-verify-service.<domain>` |
+| `inji-verify-ui` | `http://localhost:17087` | `https://inji-verify-ui.<domain>` |
+
+Under a base domain, the Caddyfile of the Inji holder pair publishes
+the host of Inji Web.
+The Caddyfile of the Inji verifier pair publishes the two hosts of
+Inji Verify.
+A pair on a public host with no base domain names the host port on
+that host.
+A holder setup reads the addresses of Inji Verify from the verifier pair
+directory when it finds one.
+Run `vca setup` for the holder pair again after the verifier pair moves.
 `vca doctor` checks the Inji Web port of a holder pair.
 
 ### Presentation during issuance on the Inji stack
@@ -601,8 +625,10 @@ upstream files.
 
 Inji Verify listens on 8080 and its UI on 8000, as the release does.
 The host ports stay 17086 and 17087. A wallet posts its answer to the
-address of `INJI_VERIFY_PUBLIC_URL`, `http://localhost:17086` by
-default. `INJI_VERIFY_DID_HOST` sets the host of its `did:web`.
+address of `INJI_VERIFY_PUBLIC_URL`. `INJI_VERIFY_DID_HOST` sets the
+host of its `did:web`. The issuer and verifier profiles both run
+Inji Verify, so `vca setup` writes both variables into the `.env` of
+both pairs. The values follow the table of the Inji holder stack above.
 
 ### The identity provider
 

@@ -55,13 +55,18 @@ func injiWebURL(values map[string]string) string {
 
 // mimotoSharedFiles are the files of the Inji holder pair that live
 // beside the pair directories: the ignore file of the key store
-// directory. setup writes it, so the directory belongs to the operator
-// before compose mounts it.
-func mimotoSharedFiles(p Pair) []File {
+// directory, the issuer list, and the trusted verifiers (P6-I7h). setup
+// writes them, so the directory belongs to the operator before compose
+// mounts it.
+func mimotoSharedFiles(p Pair, values map[string]string, domain string, peers PeerOverrides) ([]File, error) {
 	if !isInjiHolder(p) {
-		return nil
+		return nil, nil
 	}
-	return []File{{Name: filepath.Join(MimotoDir, ".gitignore"), Data: []byte("*\n"), Mode: 0o600}}
+	files, err := mimotoFiles(values, domain, peers)
+	if err != nil {
+		return nil, err
+	}
+	return append([]File{{Name: filepath.Join(MimotoDir, ".gitignore"), Data: []byte("*\n"), Mode: 0o600}}, files...), nil
 }
 
 // writeMimotoKeystore writes the key of the VCA client of eSignet into

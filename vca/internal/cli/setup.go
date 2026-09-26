@@ -159,7 +159,8 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	}
 	// The browser addresses of the Inji stack follow the deployment. A
 	// flag or an env file value of the operator still wins below.
-	for name, value := range InjiPublicValues(req.Pair, values, req.Domain, req.Peers) {
+	inji := InjiPublicValues(req.Pair, values, req.Domain, req.Peers)
+	for name, value := range inji {
 		extra[name] = value
 	}
 	for name, value := range Passthrough(settings, req.Flags, req.File) {
@@ -174,18 +175,31 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 		Mode: 0o600,
 	}}
 	files = append(files, secretFiles...)
-	dpgFiles, err := DpgConfigFiles(req.Pair, values, plan)
+	// The Caddyfile, the realm, and the Mimoto files carry the addresses
+	// of the .env too.
+	stackValues := make(map[string]string, len(values)+len(extra))
+	for name, value := range values {
+		stackValues[name] = value
+	}
+	for name, value := range extra {
+		stackValues[name] = value
+	}
+	dpgFiles, err := DpgConfigFiles(req.Pair, stackValues, plan)
 	if err != nil {
 		return Plan{}, err
 	}
 	files = append(files, dpgFiles...)
 	shared := []File{LandingEnvFile(req.Domain, req.Pair, values, req.Peers, req.Existing[VersionEnv])}
-	keycloak, err := KeycloakFiles(req.Pair, values, req.Keycloak, req.Random)
+	keycloak, err := KeycloakFiles(req.Pair, stackValues, req.Keycloak, req.Random)
 	if err != nil {
 		return Plan{}, err
 	}
 	shared = append(shared, keycloak...)
-	shared = append(shared, mimotoSharedFiles(req.Pair)...)
+	mimoto, err := mimotoSharedFiles(req.Pair, stackValues, req.Domain, req.Peers)
+	if err != nil {
+		return Plan{}, err
+	}
+	shared = append(shared, mimoto...)
 	return Plan{Pair: req.Pair, Resolutions: list, Ports: plan, Files: files, Shared: shared}, nil
 }
 

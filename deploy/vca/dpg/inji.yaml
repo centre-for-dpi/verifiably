@@ -379,8 +379,10 @@ services:
     volumes:
       - ./dpg/inji/mimoto/mimoto-default.properties:/home/mosip/mimoto-default.properties:ro
       - ./dpg/inji/mimoto/mimoto-bootstrap.properties:/home/mosip/mimoto-bootstrap.properties:ro
-      - ./dpg/inji/mimoto/mimoto-issuers-config.json:/home/mosip/mimoto-issuers-config.json:ro
-      - ./dpg/inji/mimoto/mimoto-trusted-verifiers.json:/home/mosip/mimoto-trusted-verifiers.json:ro
+      # vca setup writes the issuer list and the trusted verifiers from
+      # the addresses of the deployment (P6-I7h).
+      - ../mimoto-inji/mimoto-issuers-config.json:/home/mosip/mimoto-issuers-config.json:ro
+      - ../mimoto-inji/mimoto-trusted-verifiers.json:/home/mosip/mimoto-trusted-verifiers.json:ro
       - ../mimoto-inji:/home/mosip/certs:ro
       - inji-mimoto-keys:/home/mosip/keymanager
     ports:
@@ -403,8 +405,8 @@ services:
     volumes:
       # Inji Web serves these files to the browser and to Mimoto, whose
       # bootstrap properties name http://inji-web:3004/.
-      - ./dpg/inji/mimoto/mimoto-issuers-config.json:/home/mosip/mimoto-issuers-config.json:ro
-      - ./dpg/inji/mimoto/mimoto-trusted-verifiers.json:/home/mosip/mimoto-trusted-verifiers.json:ro
+      - ../mimoto-inji/mimoto-issuers-config.json:/home/mosip/mimoto-issuers-config.json:ro
+      - ../mimoto-inji/mimoto-trusted-verifiers.json:/home/mosip/mimoto-trusted-verifiers.json:ro
       - ./dpg/inji/mimoto/credential-template.html:/home/mosip/credential-template.html:ro
     ports:
       - "${VCA_BIND:-0.0.0.0}:${INJI_WEB_HOST_PORT:-17085}:3004"

@@ -150,6 +150,7 @@ func Caddyfile(p Pair, values map[string]string) string {
 	if site := keycloakSite(p, values); site != "" {
 		b.WriteString("\n" + site)
 	}
+	b.WriteString(dpgSiteBlocks(p, values))
 	return b.String()
 }
 
