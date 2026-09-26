@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
@@ -229,12 +230,13 @@ func keepError(d, inner *draft) {
 	}
 }
 
-// title returns the card title of a credential.
+// title returns the card title of a credential as words. A result that
+// an older release stored may hold the raw type name as its title.
 func title(cred *resultsv1.CredentialSummary) string {
-	if t := cred.GetTitle(); t != "" {
+	if t := vc.TypeTitle(cred.GetTitle()); t != "" {
 		return t
 	}
-	if t := cred.GetType(); t != "" {
+	if t := vc.TypeTitle(cred.GetType()); t != "" {
 		return t
 	}
 	return "Credential"

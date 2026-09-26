@@ -381,7 +381,7 @@ h1,h2,h3,h4{overflow-wrap:break-word}
 .credential-bad{border-top-color:var(--bad)}
 .credential-top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:var(--space-2) var(--space-3)}
 .credential-issuer{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--secondary);overflow-wrap:anywhere}
-.credential-title{margin:0;font-size:1.35rem;line-height:1.2;overflow-wrap:anywhere}
+.credential-title{margin:0;font-size:1.35rem;line-height:1.2;overflow-wrap:break-word;hyphens:manual;text-wrap:balance}
 .credential-meta{margin:auto 0 0;font-size:.85rem;color:var(--muted)}
 .credential-more summary{cursor:pointer;font-size:.85rem;font-weight:600;color:var(--primary)}
 .credential-more[open] summary{margin-bottom:var(--space-3)}

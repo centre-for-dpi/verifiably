@@ -237,3 +237,24 @@ func mustResult(t *testing.T, r *resultsv1.VerificationResult) []byte {
 	}
 	return []byte(got)
 }
+
+// TestResultCardTitleReadsAsWords is P4-05. The card of a credential
+// names its type as words, for a title the summary stored and for a
+// type with no title.
+func TestResultCardTitleReadsAsWords(t *testing.T) {
+	r := &resultsv1.VerificationResult{Credentials: []*resultsv1.CredentialSummary{
+		{Title: "OpenBadgeCredential", Type: "OpenBadgeCredential"},
+		{Type: "urn:eu.europa.ec.eudi:pid:1"},
+	}}
+	got, err := newCards(t).Result(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(got)
+	for _, want := range []string{">Open badge credential<", ">PID<"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the cards lack the title %q:\n%s", want, body)
+		}
+	}
+	a11ytest.AssertFragment(t, body)
+}

@@ -82,9 +82,10 @@ func Build(cred *commonv1.Credential, checks []*policyv1.CheckResult, opts Optio
 	return out
 }
 
-// Title returns the card title. It uses the primary type, then fallback.
+// Title returns the card title. It uses the primary type as words, then
+// fallback.
 func Title(c vc.Credential, fallback string) string {
-	if t := c.PrimaryType(); t != "" {
+	if t := vc.TypeTitle(c.PrimaryType()); t != "" {
 		return t
 	}
 	return fallback

@@ -443,7 +443,11 @@ through `aria-describedby`. Put the fields from `Kit.HTML` in `Body`.
 `Credentials`: `Label`, `Items`, `Add` (a `Link`). `CredentialCard`: `ID`,
 `Issuer`, `Title`, `Status` (one of the badge statuses), `StatusText`,
 `Meta`, `Summary`, `Body`. A body sits in a `details` disclosure that
-the summary names. The layout classes `split` and `mono` sit in the kit
+the summary names. A title wraps between words and never breaks a word
+early. Pass a type name through `vc.TypeTitle` first, so
+`OpenBadgeCredential` shows as "Open badge credential". The wallet
+cards, the issued list, and the verifier result cards do this. A display
+name of the issuer stays as the issuer wrote it. The layout classes `split` and `mono` sit in the kit
 stylesheet too: `split` puts blocks side by side on a wide screen, and
 `mono` sets an identifier in the monospace stack.
 

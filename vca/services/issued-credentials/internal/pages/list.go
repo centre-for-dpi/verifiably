@@ -13,6 +13,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
@@ -141,7 +142,7 @@ func (p *Pages) exportButtons(b *blocks, q listQuery) template.HTML {
 func (p *Pages) filters(b *blocks, q listQuery) template.HTML {
 	schemas := []components.Option{{Value: "", Text: msg.T("issuer.issued.schema.any.label")}}
 	for _, id := range p.opts.Records.SchemaIDs() {
-		schemas = append(schemas, components.Option{Value: id, Text: id, Selected: id == q.values.Get("schema")})
+		schemas = append(schemas, components.Option{Value: id, Text: vc.TypeTitle(id), Selected: id == q.values.Get("schema")})
 	}
 	states := []components.Option{{Value: "", Text: msg.T("issuer.issued.status.any.label")}}
 	for _, s := range statuses {

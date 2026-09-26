@@ -37,6 +37,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
@@ -308,7 +309,7 @@ func shortID(id string) string {
 
 // schemaText names a schema version, for example "farmer v2".
 func schemaText(id string, version int32) string {
-	return msg.T("issuer.issued.schema.value.label", id, strconv.Itoa(int(version)))
+	return msg.T("issuer.issued.schema.value.label", vc.TypeTitle(id), strconv.Itoa(int(version)))
 }
 
 // subjectText is the searchable claim values of a record: a claim whose

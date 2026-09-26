@@ -146,7 +146,7 @@ func TestHybridHomeKeepsBrowserCardsBesideAStackProblem(t *testing.T) {
 	body := h.get(t, "/wallet/").Body.String()
 	for _, want := range []string{
 		`id="stack-problem"`, "The Inji wallet did not answer.", "Your browser credentials show below.",
-		"DriverLicence", "Open the Inji wallet", `id="wallet-paste-save"`,
+		">Driver licence<", "Open the Inji wallet", `id="wallet-paste-save"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the home page misses %s\n%s", want, body)
@@ -169,7 +169,7 @@ func TestLockedHybridHomeKeepsBrowserCards(t *testing.T) {
 		t.Fatalf("paste: %d", rec.Code)
 	}
 	body := h.get(t, "/wallet/").Body.String()
-	if !strings.Contains(body, `id="wallet-pin"`) || !strings.Contains(body, "DriverLicence") || strings.Contains(body, `id="stack-problem"`) {
+	if !strings.Contains(body, `id="wallet-pin"`) || !strings.Contains(body, ">Driver licence<") || strings.Contains(body, `id="stack-problem"`) {
 		t.Fatalf("the locked home page\n%s", body)
 	}
 }

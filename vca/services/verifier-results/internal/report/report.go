@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/pdf"
+	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
@@ -167,9 +168,9 @@ func checks(w *writer, heading string, list []*policyv1.CheckResult) {
 // credential writes the block of one credential without claim values.
 func credential(w *writer, c *resultsv1.CredentialSummary) {
 	w.gap()
-	title := c.GetTitle()
+	title := vc.TypeTitle(c.GetTitle())
 	if title == "" {
-		title = c.GetType()
+		title = vc.TypeTitle(c.GetType())
 	}
 	w.line(pdf.HelveticaBold, headSize, margin, title)
 	issuer := c.GetIssuer()

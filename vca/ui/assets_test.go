@@ -377,6 +377,26 @@ func TestHeroTitleNeverBreaksInsideAWord(t *testing.T) {
 	}
 }
 
+// TestCredentialTitleNeverBreaksInsideAWord is P4-05. The title of a
+// credential card wraps between words. It breaks a word only when that
+// word alone is wider than the card, and it never breaks eagerly.
+func TestCredentialTitleNeverBreaksInsideAWord(t *testing.T) {
+	joined := strings.Join(cssRules(baseCSS(t), ".credential-title"), "\n")
+	if joined == "" {
+		t.Fatal("base.css has no .credential-title rule")
+	}
+	for _, bad := range []string{"break-all", "anywhere"} {
+		if strings.Contains(joined, bad) {
+			t.Errorf(".credential-title rules allow breaking inside a word: %q", bad)
+		}
+	}
+	for _, want := range []string{"overflow-wrap:break-word", "text-wrap:balance", "hyphens:manual"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf(".credential-title rules missing %q", want)
+		}
+	}
+}
+
 // TestBaseCSSUsesBrandVariables checks that every brand variable reaches
 // the page, so a radius, a spacing step, or a role accent in the theme
 // file changes what users see.

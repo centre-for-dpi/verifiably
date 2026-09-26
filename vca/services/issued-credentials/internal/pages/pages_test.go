@@ -39,7 +39,7 @@ func TestIssuedListSearch(t *testing.T) {
 		msg.T("issuer.issued.lead"), msg.T("issuer.issued.search.hint"), `class="field-row"`, `<form method="get" action="/issued/">`,
 		msg.T("issuer.issued.schema.any.label"), `<option value="nurse-licence">`, msg.T("issuer.issued.status.any.label"),
 		`type="date"`, msg.T("issuer.issued.export.csv.label"), msg.T("issuer.issued.export.json.label"),
-		"Wanjiku Njeri", "farmer v2", "20 Sep 2026", msg.T("issuer.issued.status.active.label"),
+		"Wanjiku Njeri", "Farmer v2", "20 Sep 2026", msg.T("issuer.issued.status.active.label"),
 		msg.T("issuer.issued.caption.label", "3", "3"), `aria-current="page"`,
 	} {
 		if !strings.Contains(doc, want) {
@@ -509,5 +509,21 @@ func TestIssuedSyncOnlyWithFeature(t *testing.T) {
 	h.sess = viewer
 	if rec := h.post(t, "/issued/sync", url.Values{"type": {"Other"}, "attribute": {"x"}, "value": {"FM-9"}}); rec.Code != http.StatusForbidden {
 		t.Fatalf("a viewer syncs: %d", rec.Code)
+	}
+}
+
+// TestIssuedListSchemaReadsAsWords is P4-05. The schema column and the
+// schema filter name each schema as words. The filter still sends the
+// schema id.
+func TestIssuedListSchemaReadsAsWords(t *testing.T) {
+	h := newHarness(t)
+	doc := body(t, h.get(t, "/issued/"))
+	for _, want := range []string{">Farmer v2<", `<option value="nurse-licence">Nurse licence</option>`, `<option value="farmer">Farmer</option>`} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("the list lacks %q", want)
+		}
+	}
+	if strings.Contains(doc, ">farmer v2<") {
+		t.Error("the list shows the schema id")
 	}
 }

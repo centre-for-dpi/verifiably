@@ -430,3 +430,27 @@ func TestCardOfTheStackWallet(t *testing.T) {
 		t.Fatalf("card = %v", card)
 	}
 }
+
+// TestCardTitleReadsAsWords is P4-05. A card with no display name shows
+// its type as words, for a stored credential and for one that a stack
+// wallet lists by name only. A display name of the issuer stays as the
+// issuer wrote it.
+func TestCardTitleReadsAsWords(t *testing.T) {
+	b := cards.New(cards.Options{Now: now})
+	stored := b.Card(context.Background(), held("c1", map[string]any{"type": []any{"VerifiableCredential", "OpenBadgeCredential"}}))
+	if stored.GetTitle() != "Open badge credential" || stored.GetType() != "OpenBadgeCredential" {
+		t.Errorf("stored card: title %q, type %q", stored.GetTitle(), stored.GetType())
+	}
+	named := b.Card(context.Background(), &backendv1.WalletCredential{
+		Id: "c2", Type: "https://example.org/vct/UniversityDegreeCredential", Issuer: "University of Nairobi",
+	})
+	if named.GetTitle() != "University degree credential" {
+		t.Errorf("named card: title %q", named.GetTitle())
+	}
+	shown := cards.New(cards.Options{Now: now, Display: func(context.Context, string, string) *schemav1.Display {
+		return &schemav1.Display{Name: "University Degree"}
+	}}).Card(context.Background(), held("c3", nil))
+	if shown.GetTitle() != "University Degree" {
+		t.Errorf("display name: title %q", shown.GetTitle())
+	}
+}

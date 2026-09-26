@@ -81,6 +81,10 @@ func TestTitleFallback(t *testing.T) {
 	if got := summary.Title(vc.Credential{Types: []string{"VerifiableCredential", "Passport"}}, "x"); got != "Passport" {
 		t.Fatalf("title = %q", got)
 	}
+	// P4-05: the title reads as words.
+	if got := summary.Title(vc.Credential{Types: []string{"VerifiableCredential", "OpenBadgeCredential"}}, "x"); got != "Open badge credential" {
+		t.Fatalf("title = %q", got)
+	}
 }
 
 func TestTrustWord(t *testing.T) {

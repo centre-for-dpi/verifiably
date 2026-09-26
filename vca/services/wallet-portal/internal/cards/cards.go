@@ -97,7 +97,7 @@ func (b *Builder) Card(ctx context.Context, held *backendv1.WalletCredential) *w
 	if len(payload) == 0 && held.GetType() != "" {
 		// Some stack wallets list names only. The card names the type
 		// and the issuer and points at the document.
-		card.Title = held.GetType()
+		card.Title = vc.TypeTitle(held.GetType())
 		card.IssuerName = held.GetIssuer()
 		card.StatusText = "The wallet of the stack keeps this credential. Open its document to read what it says."
 		return card
@@ -269,13 +269,13 @@ func validityOf(parsed vc.Credential) *commonv1.ValidityWindow {
 	return out
 }
 
-// titleOf returns the card title. The display name wins. The type name
-// is the fallback.
+// titleOf returns the card title. The display name wins. The type name,
+// as words, is the fallback.
 func titleOf(card *walletportalv1.Card) string {
 	if name := strings.TrimSpace(card.GetDisplay().GetName()); name != "" {
 		return name
 	}
-	if t := strings.TrimSpace(card.GetType()); t != "" {
+	if t := vc.TypeTitle(card.GetType()); t != "" {
 		return t
 	}
 	return "Credential"

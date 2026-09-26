@@ -316,7 +316,7 @@ func TestMinePage(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"My credentials", "DriverLicence", "Issuer: trusted",
+	for _, want := range []string{"My credentials", ">Driver licence<", "Issuer: trusted",
 		"given_name", "Ada", "Remove from my wallet"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("page misses %q", want)
