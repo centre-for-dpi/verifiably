@@ -121,7 +121,19 @@ func (s *Service) presentationOffer(ctx context.Context, spec *backendv1.IssueSp
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("read the interactive authorization server of Inji Certify: %w", err))
 	}
-	return s.hostOffer(ctx, spec, server.Issuer)
+	// The code of the interactive server is good at this Certify only.
+	// Certify 0.14.0 checks every token against one issuer, so the
+	// offer names the credential issuer of its own metadata, not the
+	// Certify of VCA_INJI_OFFER_ISSUER that takes eSignet tokens.
+	meta, err := s.certify.Metadata(ctx)
+	if err != nil {
+		return nil, failed("read the issuer metadata", err)
+	}
+	issuer := meta.CredentialIssuer
+	if issuer == "" {
+		issuer = s.certify.BaseURL()
+	}
+	return s.hostOffer(ctx, spec, issuer, server.Issuer)
 }
 
 // authorizationCodeOffer builds and stores the offer document. The offer
@@ -144,21 +156,21 @@ func (s *Service) authorizationCodeOffer(ctx context.Context, spec *backendv1.Is
 		}
 		server = meta.AuthorizationServers[0]
 	}
-	return s.hostOffer(ctx, spec, server)
+	issuer := s.offerIssuer
+	if issuer == "" {
+		issuer = s.certify.BaseURL()
+	}
+	return s.hostOffer(ctx, spec, issuer, server)
 }
 
 // hostOffer builds and stores the authorization code offer document of
-// the authorization server.
-func (s *Service) hostOffer(ctx context.Context, spec *backendv1.IssueSpec, authorizationServer string) (
+// the credential issuer and its authorization server.
+func (s *Service) hostOffer(ctx context.Context, spec *backendv1.IssueSpec, issuer, authorizationServer string) (
 	*connect.Response[backendv1.CreateOfferResponse], error,
 ) {
 	if s.publicURL == "" {
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("the authorization code channel needs a public URL for the offer document"))
-	}
-	issuer := s.offerIssuer
-	if issuer == "" {
-		issuer = s.certify.BaseURL()
 	}
 	document := inji.AuthorizationCodeOffer(issuer, spec.GetConfigurationId(),
 		s.newID(), authorizationServer)

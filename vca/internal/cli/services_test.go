@@ -904,3 +904,23 @@ func TestInjiIssuerTurnsOnPresentationDuringIssuance(t *testing.T) {
 		}
 	}
 }
+
+// TestInjiIssuerOffersThroughTheEsignetCertify: the stack file runs a
+// second Certify that takes eSignet tokens (P6-I0), behind the second
+// server of inji-certify-nginx. An authorization code offer of the Inji
+// issuer pair names it as the credential issuer.
+func TestInjiIssuerOffersThroughTheEsignetCertify(t *testing.T) {
+	values := map[string]string{"VCA_PUBLIC_URL": "https://issuer.example"}
+	for _, p := range PairsForDpg(configv1.Dpg_DPG_INJI) {
+		got, ok := LinkValues(p, values)["VCA_INJI_OFFER_ISSUER"]
+		if p.Role == commonv1.Role_ROLE_ISSUER {
+			if got != "http://inji-certify-nginx:8091" {
+				t.Errorf("%s: VCA_INJI_OFFER_ISSUER = %q", p.Name(), got)
+			}
+			continue
+		}
+		if ok {
+			t.Errorf("%s gets VCA_INJI_OFFER_ISSUER", p.Name())
+		}
+	}
+}

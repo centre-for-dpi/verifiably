@@ -4,6 +4,7 @@ package config_test
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -178,6 +179,21 @@ func TestPluginsSplitTheList(t *testing.T) {
 	}
 	if got := cfg.Plugins(); len(got) != 2 || got[0] != "A" || got[1] != "B" || cfg.CADomain != "DEVICE" {
 		t.Fatalf("plugins %v, domain %q", got, cfg.CADomain)
+	}
+}
+
+// TestPluginsDefaultIsTheStackFile: the stack file runs Certify twice
+// (P6-I0). inji-certify reads the staged claims with the pre-authorized
+// data provider, and inji-certify-esignet reads the farmer data with the
+// CSV data provider. The DPG information lists both.
+func TestPluginsDefaultIsTheStackFile(t *testing.T) {
+	cfg, err := config.Load(env(map[string]string{"VCA_INJI_CERTIFY_URL": "http://c"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"PreAuthDataProviderPlugin", "MockCSVDataProviderPlugin", "LoggerAuditService"}
+	if got := cfg.Plugins(); !slices.Equal(got, want) {
+		t.Fatalf("plugins = %v, want %v", got, want)
 	}
 }
 

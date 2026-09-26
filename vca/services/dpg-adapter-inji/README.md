@@ -37,7 +37,7 @@ Set at least one Inji URL. Each URL turns on one role.
 | `VCA_INJI_WEB_URL` | The public address of Inji Web. A holder claims a credential there. |
 | `VCA_INJI_PUBLIC_URL` | The address a wallet reaches this adapter on. |
 | `VCA_INJI_AUTHORIZATION_SERVER` | The identity provider of the authorization code flow. Empty names the first authorization server of the Certify metadata, eSignet in the stack file. |
-| `VCA_INJI_OFFER_ISSUER` | The issuer identifier of a hosted offer. |
+| `VCA_INJI_OFFER_ISSUER` | The credential issuer of a hosted offer through the identity provider. The stack file sets the Certify that takes eSignet tokens. An offer with a presentation during issuance names the issuer of the Certify metadata. |
 | `VCA_INJI_METADATA_PATH` | The path of the issuer metadata on Inji Certify. |
 | `VCA_INJI_VERIFY_CLIENT_ID` | The DID Inji Verify shows a wallet. |
 | `VCA_INJI_DPG_VERSION` | The Inji Certify release the answer of `GetCapabilities` reports. |
@@ -63,7 +63,7 @@ Set at least one Inji URL. Each URL turns on one role.
 | `VCA_INJI_MDOC_KEY_APP_ID` | The Certify key application of mDocs. The default is `CERTIFY_VC_SIGN_EC_R1`. |
 | `VCA_INJI_MDOC_KEY_REF_ID` | The Certify key reference of mDocs. The default is `EC_SECP256R1_SIGN`. |
 | `VCA_INJI_MDOC_SIGNATURE_ALGO` | The COSE signature algorithm of mDocs. The default is `ES256`. |
-| `VCA_INJI_CERTIFY_PLUGINS` | The plugins of the Certify deployment, comma separated. The DPG information lists them. The default is `MockCSVDataProviderPlugin,LoggerAuditService`. |
+| `VCA_INJI_CERTIFY_PLUGINS` | The plugins of the Certify deployment, comma separated. The DPG information lists them. The default is `PreAuthDataProviderPlugin,MockCSVDataProviderPlugin,LoggerAuditService`, the plugins of the stack file. |
 | `VCA_INJI_CA_DOMAIN` | The partner domain of an uploaded CA certificate. The default is `DEVICE`. |
 | `VCA_INJI_RENDERING_TEMPLATE_ID` | The SVG template id of the Certify deployment. A registered `ldp_vc` configuration names it as its render method. |
 | `VCA_INJI_PRESENTATION_DURING_ISSUANCE` | Set `true` once Certify reaches Inji Verify and holds a presentation definition. An offer can then ask the holder to present a credential first. The default is `false`. |

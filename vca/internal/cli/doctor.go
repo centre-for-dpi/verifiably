@@ -222,7 +222,11 @@ func FloorReport(pairs []Pair) string {
 	var b strings.Builder
 	b.WriteString("\nMemory floor of this selection\n")
 	for _, p := range pairs {
-		fmt.Fprintf(&b, "  %-18s %5d MiB\n", p.Name(), MemoryFloorMiB(p))
+		note := ""
+		if AboveFloorTarget(p) {
+			note = fmt.Sprintf("  above the %d MiB target (ADR-049)", FloorTargetMiB)
+		}
+		fmt.Fprintf(&b, "  %-18s %5d MiB%s\n", p.Name(), MemoryFloorMiB(p), note)
 	}
 	fmt.Fprintf(&b, "  %-18s %5d MiB\n", "total", SelectionFloorMiB(pairs))
 	return b.String()

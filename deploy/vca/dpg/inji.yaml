@@ -39,21 +39,36 @@ services:
     networks:
       - vca
 
+  # Inji Certify 0.14.0 (P6-I0). The layout follows
+  # docker-compose/docker-compose-injistack/docker-compose.yaml of the
+  # release, and dpg/inji/certify/SOURCE.md names every file. Certify
+  # checks every access token against one issuer and one key set, so the
+  # stack runs it twice on one database and one key store:
+  #   - inji-certify is its own authorization server. It serves the
+  #     adapter: the pre-authorized code, the presentation during
+  #     issuance, the configuration API, the ledger, and the keys.
+  #   - inji-certify-esignet takes the tokens of the stack eSignet. It
+  #     serves a claim in Inji Web and an authorization code offer.
   inji-certify-postgres:
-    image: postgres:15.8-alpine
+    # certify_init.sql names the locale en_US.UTF-8, so the image is the
+    # Debian one.
+    image: postgres:15.8
     profiles: [issuer-inji]
     container_name: inji-certify-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: certify
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${INJI_DB_PASSWORD:-certify}
-      POSTGRES_DB: certify
+      # vca_certify_did.sql names this DID in the sample configuration.
+      INJI_CERTIFY_DID: ${INJI_CERTIFY_DID:-did:web:inji-certify-nginx}
     volumes:
       - inji-certify-db:/var/lib/postgresql/data
+      - ./dpg/inji/certify/certify_init.sql:/docker-entrypoint-initdb.d/certify_init.sql:ro
+      - ./dpg/inji/certify/vca_certify_did.sql:/docker-entrypoint-initdb.d/vca_certify_did.sql:ro
     networks:
       - vca
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U certify"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d inji_certify"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -63,6 +78,9 @@ services:
     profiles: [issuer-inji]
     container_name: inji-certify
     restart: unless-stopped
+    # The release runs Certify as root, and the image drops to
+    # container_user.
+    user: root
     depends_on:
       inji-certify-postgres:
         condition: service_healthy
@@ -70,10 +88,20 @@ services:
         condition: service_started
       inji-certify-nginx:
         condition: service_started
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://inji-certify-postgres:5432/certify
-      SPRING_DATASOURCE_USERNAME: certify
+    environment: &certify-environment
+      container_user: mosip
+      active_profile_env: default,preauth
+      SPRING_CONFIG_NAME: certify
+      SPRING_CONFIG_LOCATION: /home/mosip/config/
+      enable_certify_artifactory: "false"
+      download_hsm_client: "false"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://inji-certify-postgres:5432/inji_certify?currentSchema=certify
+      SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${INJI_DB_PASSWORD:-certify}
+      INJI_CERTIFY_KEYSTORE_PASSWORD: ${INJI_CERTIFY_KEYSTORE_PASSWORD:-certify}
+      INJI_CERTIFY_DID: ${INJI_CERTIFY_DID:-did:web:inji-certify-nginx}
+      # The browser address of the stack eSignet. Its tokens carry it.
+      INJI_ESIGNET_PUBLIC_URL: ${INJI_ESIGNET_PUBLIC_URL:-http://localhost:17082}
       # Presentation during issuance (P6-I4b). Certify asks Inji Verify
       # of this stack for the presentation it wants before it issues,
       # and reads the definition over HTTP. The names are the
@@ -84,19 +112,59 @@ services:
       MOSIP_CERTIFY_VERIFY_SERVICE_VP_RESULT_ENDPOINT: http://inji-verify-service:8080/v1/verify/vp-result
       MOSIP_CERTIFY_VERIFY_SERVICE_VERIFIER_CLIENT_ID: certify-verifier-client
       MOSIP_CERTIFY_VP_REQUEST_CONFIG_FILE_URL: http://inji-certify-nginx/vp_request_config.json
+    volumes:
+      - ./dpg/inji/certify/certify-default.properties:/home/mosip/config/certify-default.properties:ro
+      - ./dpg/inji/certify/certify-preauth.properties:/home/mosip/config/certify-preauth.properties:ro
+      - ./dpg/inji/certify/vp_request_config.json:/home/mosip/config/vp_request_config.json:ro
+      # The key manager keeps its PKCS #12 store here. Both Certify
+      # containers sign with its keys.
+      - inji-certify-keys:/home/mosip/CERTIFY_PKCS12
     ports:
       - "${VCA_BIND:-0.0.0.0}:${INJI_CERTIFY_HOST_PORT:-17081}:8090"
     networks:
       - vca
+    # Readiness follows the key setup of the start, so the second
+    # Certify reads a full key store. The image has bash, not curl.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8090 && printf 'GET /v1/certify/actuator/health/readiness HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+
+  inji-certify-esignet:
+    image: injistack/inji-certify-with-plugins:0.14.0
+    profiles: [issuer-inji]
+    container_name: inji-certify-esignet
+    restart: unless-stopped
+    user: root
+    depends_on:
+      inji-certify:
+        condition: service_healthy
+      inji-esignet:
+        condition: service_started
+    environment:
+      <<: *certify-environment
+      active_profile_env: default,csvdp-farmer
+    volumes:
+      - ./dpg/inji/certify/certify-default.properties:/home/mosip/config/certify-default.properties:ro
+      - ./dpg/inji/certify/certify-csvdp-farmer.properties:/home/mosip/config/certify-csvdp-farmer.properties:ro
+      - ./dpg/inji/certify/farmer_identity_data.csv:/home/mosip/config/farmer_identity_data.csv:ro
+      - ./dpg/inji/certify/vp_request_config.json:/home/mosip/config/vp_request_config.json:ro
+      - inji-certify-keys:/home/mosip/CERTIFY_PKCS12
+    networks:
+      - vca
 
   # The presentation definition of the interactive authorization, served
-  # over HTTP as the certify-nginx of the injistack compose file does.
+  # over HTTP as the certify-nginx of the injistack compose file does,
+  # and the root of each Certify, where OID4VCI puts the issuer metadata.
   inji-certify-nginx:
     image: nginx:1.27.2-alpine
     profiles: [issuer-inji]
     container_name: inji-certify-nginx
     restart: unless-stopped
     volumes:
+      - ./dpg/inji/certify/certify-nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./dpg/inji/certify/vp_request_config.json:/usr/share/nginx/html/vp_request_config.json:ro
     networks:
       - vca
@@ -302,6 +370,7 @@ services:
 
 volumes:
   inji-certify-db:
+  inji-certify-keys:
   inji-verify-db:
   inji-mimoto-db:
   inji-mimoto-redis:

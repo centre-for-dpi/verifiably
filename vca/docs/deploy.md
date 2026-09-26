@@ -456,6 +456,41 @@ Set it to a digest before you go to production.
 A VCA service never needs a DPG rebuild.
 A DPG upgrade is a version change in one file.
 
+### The Inji issuer stack
+
+The `issuer-inji` profile runs Inji Certify 0.14.0 as the injistack
+compose file of the release does.
+`deploy/vca/dpg/inji/certify/` holds its properties, the init script of
+its database, and the sample data of its CSV data provider.
+Its `SOURCE.md` cites each upstream file.
+Certify checks every access token against one issuer, so the profile
+runs it twice (ADR-049):
+
+| Container | What it does | Host port |
+|---|---|---|
+| `inji-certify` | Its own authorization server. The adapter stages claims, issues, and presents here. | 17081, `INJI_CERTIFY_HOST_PORT` |
+| `inji-certify-esignet` | It takes eSignet tokens. Inji Web claims here, and so does a wallet with an authorization code offer. | none |
+| `inji-certify-postgres` | The database of both, from `certify_init.sql` of the release | none |
+| `inji-certify-nginx` | The issuer metadata of each Certify at the root, and the presentation definition | none |
+
+Both containers sign with the keys of the volume `inji-certify-keys`.
+`inji-certify-esignet` starts once `inji-certify` is ready.
+`vca setup` sets `VCA_INJI_OFFER_ISSUER` of the issuer pair to
+`http://inji-certify-nginx:8091`, the address of `inji-certify-esignet`.
+
+| Variable | Default | What it sets |
+|---|---|---|
+| `INJI_DB_PASSWORD` | `certify` | The password of the Certify database |
+| `INJI_CERTIFY_KEYSTORE_PASSWORD` | `certify` | The password of the key store of the Certify key manager |
+| `INJI_CERTIFY_DID` | `did:web:inji-certify-nginx` | The issuer DID of both containers and of the sample configuration |
+
+Set `INJI_CERTIFY_DID` to a `did:web` whose host serves
+`/.well-known/did.json` over TLS.
+A verifier outside the host resolves the DID there.
+The database of an earlier release has another name.
+Remove the volume `inji-certify-db` once, so the init script of the
+release runs.
+
 ### The Inji holder stack
 
 The `holder-inji` profile runs Mimoto 0.21.0 and Inji Web 0.16.0.
@@ -631,12 +666,13 @@ Your value always wins over the default.
 ## The resource floor
 
 One role with one DPG stays under 4 GB of memory (ADR-008 decision 7).
+The Inji issuer is the one exception (ADR-049).
 The whole legacy stack needed 8 GB to 12 GB and about 25 ports.
 
 | Role and DPG | VCA services | VCA memory | DPG memory | Total memory | CPUs |
 |---|---|---|---|---|---|
 | `issuer-waltid` | 9 | 864 MiB | 2048 MiB | 2912 MiB | 3.25 |
-| `issuer-inji` | 9 | 864 MiB | 3232 MiB | 4096 MiB | 3.25 |
+| `issuer-inji` | 9 | 864 MiB | 4000 MiB | 4864 MiB | 3.25 |
 | `issuer-credebl` | 9 | 864 MiB | 2560 MiB | 3424 MiB | 3.25 |
 | `holder-waltid` | 3 | 288 MiB | 2048 MiB | 2336 MiB | 1.75 |
 | `holder-inji` | 3 | 288 MiB | 3584 MiB | 3872 MiB | 1.75 |
@@ -652,9 +688,9 @@ One stack is the four roles of one DPG together:
 
 | Selection | `waltid` | `inji` | `credebl` |
 |---|---|---|---|
-| `--all --dpg <dpg>` | 4064 MiB | 6272 MiB | 4576 MiB |
+| `--all --dpg <dpg>` | 4064 MiB | 7040 MiB | 4576 MiB |
 
-`--all` alone starts every role of every DPG and needs 14912 MiB.
+`--all` alone starts every role of every DPG and needs 15680 MiB.
 The four roles of one DPG share one DPG stack and one Keycloak, so a
 stack counts once.
 
@@ -666,9 +702,13 @@ Each service is one static Go binary in a distroless image.
 The DPG figure is the floor of the stack in `deploy/vca/dpg/`.
 The Inji holder role adds 1024 MiB to the Inji stack.
 It runs Mimoto with its Postgres and its Redis, and Inji Web.
-The Inji issuer role adds 672 MiB.
+The Inji issuer role adds 1440 MiB.
 It runs Inji Verify with its Postgres, and the nginx of the presentation definition.
 Certify checks a presentation during issuance with them.
+It also runs the second Certify, which takes the tokens of eSignet.
+Certify 0.14.0 takes the tokens of one authorization server only, so the stack runs it twice (ADR-049).
+So the `issuer-inji` pair needs more than the 4 GB target of ADR-008 decision 7.
+`vca doctor` marks it in the floor report.
 An added figure counts for each role that brings it.
 The admin role talks to no DPG.
 Its profile starts only the Keycloak of the stack.

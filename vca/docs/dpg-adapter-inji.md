@@ -272,8 +272,9 @@ no such offer. The adapter builds the document, serves it at
 
 **The offer names eSignet.** The authorization code offer names
 `VCA_INJI_AUTHORIZATION_SERVER`. Without it, the offer names the first
-authorization server of the Certify metadata. In the stack file that
-is eSignet, whose token Certify takes at its credential endpoint.
+authorization server of the Certify metadata. Its credential issuer is
+`VCA_INJI_OFFER_ISSUER`, the Certify that takes eSignet tokens. See
+"The two Certify containers" below.
 eSignet is also a login provider of the issuer and holder portals.
 `vca dpg bootstrap` registers the VCA client there with an RSA key.
 
@@ -303,7 +304,9 @@ wallet flow has four calls:
 
 `CreateOffer` with `require_presentation` reads the metadata of that
 server. It builds an authorization code offer that names the server as
-its `authorization_server`, and the adapter hosts the offer. The answer
+its `authorization_server`, and the adapter hosts the offer. The offer
+names the credential issuer of the Certify metadata, because only that
+Certify takes the code. The answer
 names the authorization code channel, also when the caller asked for
 the pre-authorized one.
 
@@ -329,6 +332,28 @@ answers 400 in two shapes:
 
 The wallet reads both. It claims nothing and shows the description
 when Certify gives one.
+
+## The two Certify containers
+
+Certify 0.14.0 checks every access token against one issuer and one key
+set. A deployment can take the tokens of its own authorization server
+or the tokens of eSignet, not both. So the stack file runs Certify
+twice, on one database and one key store (ADR-049, P6-I0).
+
+| Container | Authorization server | Data provider | What reaches it |
+| --- | --- | --- | --- |
+| `inji-certify` | Certify itself | `PreAuthDataProviderPlugin`, which reads the staged claims | Every call of the adapter: staging, `Issue`, the configuration API, the ledger, the keys, and a presentation during issuance |
+| `inji-certify-esignet` | The eSignet of the stack | `MockCSVDataProviderPlugin`, with the farmer data of the release | A claim in Inji Web, and an authorization code offer through eSignet |
+
+`VCA_INJI_CERTIFY_URL` names `inji-certify`. `VCA_INJI_OFFER_ISSUER`
+names `inji-certify-esignet` behind the nginx of the stack, and an
+authorization code offer names it as the credential issuer. The second
+container starts after the first one is ready, so it reads the keys the
+first one made. `VCA_INJI_CERTIFY_PLUGINS` lists the plugins of both.
+
+The CSV data provider reads the claims of the identity that signed in
+at eSignet. So an authorization code offer issues the sample
+data of that identity, not the claims of the staging call.
 
 ## The identity QR channel
 

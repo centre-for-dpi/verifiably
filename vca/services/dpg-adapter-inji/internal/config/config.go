@@ -44,7 +44,9 @@ type Config struct {
 	// the authorization code flow.
 	AuthorizationServer string `env:"AUTHORIZATION_SERVER"`
 	// OfferIssuer is the credential_issuer value of an authorization
-	// code offer. Empty uses CertifyURL.
+	// code offer through the identity provider: the Certify that takes
+	// its tokens. Empty uses CertifyURL. An offer with a presentation
+	// during issuance names the Certify of CertifyURL.
 	OfferIssuer string `env:"OFFER_ISSUER"`
 	// MetadataPath is the path of the OID4VCI issuer metadata on Certify.
 	MetadataPath string `env:"METADATA_PATH" default:"/v1/certify/issuance/.well-known/openid-credential-issuer"`
@@ -103,8 +105,10 @@ type Config struct {
 	RenderingTemplateID string `env:"RENDERING_TEMPLATE_ID"`
 	// CertifyPlugins names the plugins of the Certify deployment, comma
 	// separated, as its properties set them. The DPG information lists
-	// them. The default is the plugin set of the stack sample.
-	CertifyPlugins string `env:"CERTIFY_PLUGINS" default:"MockCSVDataProviderPlugin,LoggerAuditService"`
+	// them. The default is the plugin set of the stack file: the
+	// pre-authorized data provider of inji-certify, the CSV data
+	// provider of inji-certify-esignet, and the audit logger.
+	CertifyPlugins string `env:"CERTIFY_PLUGINS" default:"PreAuthDataProviderPlugin,MockCSVDataProviderPlugin,LoggerAuditService"`
 	// CADomain is the partner domain of an uploaded CA certificate.
 	CADomain string `env:"CA_DOMAIN" default:"DEVICE"`
 	// PresentationDuringIssuance says that Certify reaches Inji Verify

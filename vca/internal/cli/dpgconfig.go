@@ -481,10 +481,27 @@ var dpgMemoryMiB = map[configv1.Dpg]int{
 // Postgres (128 MiB), its Redis (64 MiB), and Inji Web 0.16.0 (64 MiB).
 // The Inji issuer profile runs Inji Verify 0.16.0 (512 MiB), its
 // Postgres (128 MiB), and the nginx of the presentation definition
-// (32 MiB), because Certify checks a presentation during issuance.
+// (32 MiB), because Certify checks a presentation during issuance. It
+// also runs the second Certify 0.14.0 that takes eSignet tokens
+// (768 MiB), because Certify takes the tokens of one authorization
+// server only (ADR-049).
 var dpgRoleMemoryMiB = map[configv1.Dpg]map[commonv1.Role]int{
-	configv1.Dpg_DPG_INJI: {commonv1.Role_ROLE_HOLDER: 1024, commonv1.Role_ROLE_ISSUER: 672},
+	configv1.Dpg_DPG_INJI: {commonv1.Role_ROLE_HOLDER: 1024, commonv1.Role_ROLE_ISSUER: 1440},
 }
+
+// FloorTargetMiB is the memory target of one role with one DPG
+// (ADR-008 decision 7).
+const FloorTargetMiB = 4096
+
+// floorAboveTarget lists the pairs whose floor rises above the target.
+// ADR-049 names them: the Inji issuer runs Certify twice.
+var floorAboveTarget = map[configv1.Dpg]map[commonv1.Role]bool{
+	configv1.Dpg_DPG_INJI: {commonv1.Role_ROLE_ISSUER: true},
+}
+
+// AboveFloorTarget reports a pair whose floor ADR-049 lets rise above
+// FloorTargetMiB.
+func AboveFloorTarget(p Pair) bool { return floorAboveTarget[p.Dpg][p.Role] }
 
 // keycloakMemoryMiB is the memory floor of the Keycloak of one stack.
 const keycloakMemoryMiB = 512

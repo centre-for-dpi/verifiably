@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-048, one row per decision.
+ADR-049, one row per decision.
 
 The status values are:
 
@@ -528,12 +528,22 @@ A row that is not `Done` carries a note.
 | ADR-048 | 2 RS256 for a provider that takes nothing else | Done | `vca/core/jose/jose.go` | `Sign` keeps ES256 and EdDSA only. |
 | ADR-048 | 3 The eSignet client of the Inji stack | Done | `vca/internal/cli/bootstrap_esignet.go` | The key lives in `deploy/esignet-inji/vca-client.pem`. |
 
+## ADR-049: Two authorization modes of Inji Certify in the Inji stack
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-049 | 1 Two Certify containers on one database and one key store | Done | `deploy/vca/dpg/inji.yaml` | The volume `inji-certify-keys` holds the key store of both. |
+| ADR-049 | 2 `inji-certify` is its own authorization server | Done | `deploy/vca/dpg/inji/certify/certify-preauth.properties` | The pre-authorized data provider reads the staged claims. |
+| ADR-049 | 3 `inji-certify-esignet` takes eSignet tokens | Done | `deploy/vca/dpg/inji/certify/certify-csvdp-farmer.properties`, `vca/services/dpg-adapter-inji` | An authorization code offer names it through `VCA_INJI_OFFER_ISSUER`. |
+| ADR-049 | 4 The second container waits for the keys | Done | `deploy/vca/dpg/inji.yaml` | It waits for the readiness check of `inji-certify`. |
+| ADR-049 | 5 The doctor names a floor above the target | Done | `vca/internal/cli/dpgconfig.go`, `vca/internal/cli/doctor.go` | The floor report marks `issuer-inji`. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 178 |
+| Done | 183 |
 | Partial | 20 |
 | Deferred | 3 |
 | Not started | 70 |
-| Total | 271 |
+| Total | 276 |

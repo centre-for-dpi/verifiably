@@ -12,7 +12,7 @@ from them.
 | `mimoto-bootstrap.properties` | https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/docker-compose/config/mimoto-bootstrap.properties | The configuration server is `http://inji-web:3004/`, as in https://raw.githubusercontent.com/mosip/inji-web/v0.16.0/docker-compose/config/mimoto-bootstrap.properties |
 | `mimoto_init.sql` | https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/docker-compose/mimoto_init.sql | None |
 | `credential-template.html` | https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/docker-compose/config/credential-template.html | The three links to the Google Fonts CDN are gone, because no deployment file loads from a CDN. The PDF uses a local font. |
-| `mimoto-issuers-config.json` | The structure of the "Mimoto Issuers Configuration" section of https://raw.githubusercontent.com/mosip/inji-web/v0.16.0/docker-compose/README.md | One issuer: the Inji Certify of the stack, with eSignet as the authorization server and the VCA client `vca-inji`. |
+| `mimoto-issuers-config.json` | The structure of the "Mimoto Issuers Configuration" section of https://raw.githubusercontent.com/mosip/inji-web/v0.16.0/docker-compose/README.md and https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/mimoto-issuers-config.json | One issuer: the Certify of the stack that takes eSignet tokens, `inji-certify-esignet`, behind the second server of `inji-certify-nginx`. eSignet is the authorization server, and the VCA client `vca-inji` signs in. |
 | `mimoto-trusted-verifiers.json` | https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/docker-compose/config/mimoto-trusted-verifiers.json | The Inji Verify of the stack on its host ports. |
 
 ## Facts the stack file relies on

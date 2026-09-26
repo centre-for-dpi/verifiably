@@ -183,3 +183,43 @@ func TestPresentationFeatureListed(t *testing.T) {
 		t.Fatalf("listed: on %v, off %v, verifier only %v", has(on), has(off), has(verifier))
 	}
 }
+
+// TestOfferIssuerFollowsTheAuthorizationServer: Certify 0.14.0 checks
+// every access token against one issuer, so the stack runs one Certify
+// that is its own authorization server and one that takes eSignet
+// tokens (P6-I0). An offer through eSignet names the Certify of
+// VCA_INJI_OFFER_ISSUER. An offer with a presentation during issuance
+// names the Certify whose interactive server gives the code: the one of
+// the metadata, whatever VCA_INJI_OFFER_ISSUER says.
+func TestOfferIssuerFollowsTheAuthorizationServer(t *testing.T) {
+	svc, _ := newServiceWith(t, both, func(o *serviceOptions) {
+		withPresentation(o)
+		o.OfferIssuer = "http://inji-certify-nginx:8091"
+	})
+	issuerOf := func(requirePresentation bool) string {
+		t.Helper()
+		resp, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
+			Spec: farmerSpec(), Channel: backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE, RequirePresentation: requirePresentation,
+		}))
+		if err != nil {
+			t.Fatalf("CreateOffer: %v", err)
+		}
+		document, ok := svc.HostedOffer(context.Background(), resp.Msg.GetOfferId())
+		if !ok {
+			t.Fatal("the adapter does not host the offer")
+		}
+		var offer struct {
+			Issuer string `json:"credential_issuer"`
+		}
+		if err := json.Unmarshal([]byte(document), &offer); err != nil {
+			t.Fatal(err)
+		}
+		return offer.Issuer
+	}
+	if got := issuerOf(false); got != "http://inji-certify-nginx:8091" {
+		t.Errorf("the eSignet offer names %q", got)
+	}
+	if got := issuerOf(true); got != "https://inji-certify.example.org" {
+		t.Errorf("the presentation offer names %q, want the credential issuer of the Certify metadata", got)
+	}
+}

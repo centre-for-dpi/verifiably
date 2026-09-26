@@ -275,6 +275,11 @@ func Catalog() []Service {
 				// Certify reaches it, so a presentation during issuance
 				// works (P6-I4b).
 				{Env: "VCA_INJI_PRESENTATION_DURING_ISSUANCE", Value: "true", Roles: issuer},
+				// Certify checks every token against one issuer, so the
+				// issuer profile runs a second Certify that takes eSignet
+				// tokens, behind the second server of inji-certify-nginx.
+				// An authorization code offer names it (P6-I0).
+				{Env: "VCA_INJI_OFFER_ISSUER", Value: "http://inji-certify-nginx:8091", Roles: issuer},
 			},
 			// The credential offer of the authorization code channel lives
 			// under the public URL of the adapter. The Connect services of

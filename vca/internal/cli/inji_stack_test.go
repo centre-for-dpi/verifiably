@@ -231,7 +231,11 @@ func TestInjiStackRunsMimotoWithWhatItNeeds(t *testing.T) {
 	}
 	issuer := issuers.Issuers[0]
 	for key, want := range map[string]string{
-		"wellknown_endpoint":     "http://inji-certify:8090/v1/certify/issuance/.well-known/openid-credential-issuer",
+		// Mimoto reads <credential_issuer_host>/.well-known/openid-credential-issuer,
+		// so the host is the nginx server of the Certify that takes
+		// eSignet tokens (P6-I0).
+		"wellknown_endpoint":     "http://inji-certify-nginx:8091/.well-known/openid-credential-issuer",
+		"credential_issuer_host": "http://inji-certify-nginx:8091",
 		"client_id":              EsignetClientID,
 		"client_alias":           EsignetClientID,
 		"proxy_token_endpoint":   "http://inji-esignet:8088/v1/esignet/oauth/v2/token",
@@ -344,5 +348,193 @@ func TestInjiStackPointsCertifyAtInjiVerify(t *testing.T) {
 	}
 	if got := DefaultDpgURL(Pair{Role: commonv1.Role_ROLE_VERIFIER, Dpg: configv1.Dpg_DPG_INJI}); got != "http://inji-verify-service:8080" {
 		t.Errorf("the verifier DPG URL = %s", got)
+	}
+}
+
+// certifyService reads one Certify service of the stack file with its
+// health check.
+type certifyService struct {
+	injiService `yaml:",inline"`
+	User        string `yaml:"user"`
+	Healthcheck struct {
+		Test []string `yaml:"test"`
+	} `yaml:"healthcheck"`
+}
+
+// readCertifyServices reads the services of the stack file with the
+// fields the Certify test needs.
+func readCertifyServices(t *testing.T) map[string]certifyService {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(repoRoot(), "deploy", "vca", "dpg", "inji.yaml")) // #nosec G304 -- a fixed test path
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Services map[string]certifyService `yaml:"services"`
+		Volumes  map[string]any            `yaml:"volumes"`
+	}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	for name := range doc.Volumes {
+		doc.Services["volume:"+name] = certifyService{}
+	}
+	return doc.Services
+}
+
+// mountedFile reads a file that the stack file mounts, by its host path.
+func mountedFile(t *testing.T, source string) string {
+	t.Helper()
+	if source == "" {
+		t.Fatal("the stack file mounts no such file")
+	}
+	data, err := os.ReadFile(filepath.Join(repoRoot(), "deploy", "vca", filepath.FromSlash(source))) // #nosec G304 -- a path of the stack file
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// TestInjiStackRunsCertifyAsTheReleaseDoes is P6-I0. Certify 0.14.0
+// reads its properties from /home/mosip/config/, as the injistack
+// compose file of the release mounts them, and its database comes from
+// certify_init.sql of the release. Certify checks every access token
+// against one issuer and one key set, so the stack runs it twice on one
+// database and one key store: inji-certify is its own authorization
+// server for the pre-authorized code and the presentation during
+// issuance, with the pre-authorized data provider; inji-certify-esignet
+// takes the eSignet tokens of Inji Web and of the authorization code
+// offer, with the CSV data provider and the farmer data of the release.
+func TestInjiStackRunsCertifyAsTheReleaseDoes(t *testing.T) {
+	stack := readCertifyServices(t)
+	db := stack["inji-certify-postgres"]
+	if db.Image != "postgres:15.8" {
+		t.Errorf("the Certify database image = %q; certify_init.sql names the locale en_US.UTF-8", db.Image)
+	}
+	sql := mountedFile(t, mountSource(db.Volumes, "/docker-entrypoint-initdb.d/certify_init.sql"))
+	for _, want := range []string{"CREATE DATABASE inji_certify", "CREATE TABLE IF NOT EXISTS certify.iar_session", "'FarmerCredential'"} {
+		if !strings.Contains(sql, want) {
+			t.Errorf("certify_init.sql is not the one of Certify 0.14.0: it lacks %q", want)
+		}
+	}
+	did := mountedFile(t, mountSource(db.Volumes, "/docker-entrypoint-initdb.d/vca_certify_did.sql"))
+	if !strings.Contains(did, `\getenv`) || !strings.Contains(did, "INJI_CERTIFY_DID") {
+		t.Errorf("the sample configuration keeps the DID of the release sample:\n%s", did)
+	}
+	if db.Environment["INJI_CERTIFY_DID"] == "" {
+		t.Error("the Certify database does not read the DID of the stack")
+	}
+
+	type want struct {
+		profile, profileFile, plugin, issuerURI, jwks string
+		audiences                                     []string
+	}
+	wants := map[string]want{
+		"inji-certify": {
+			profile: "default,preauth", profileFile: "certify-preauth.properties",
+			plugin:    "PreAuthDataProviderPlugin",
+			issuerURI: "${mosip.certify.oauth.issuer}",
+			jwks:      "http://inji-certify:8090/v1/certify/.well-known/jwks.json",
+			audiences: []string{"${mosip.certify.oauth.access-token.audience}"},
+		},
+		"inji-certify-esignet": {
+			profile: "default,csvdp-farmer", profileFile: "certify-csvdp-farmer.properties",
+			plugin:    "MockCSVDataProviderPlugin",
+			issuerURI: "${INJI_ESIGNET_PUBLIC_URL:http://localhost:17082}/v1/esignet",
+			jwks:      "http://inji-esignet:8088/v1/esignet/oauth/.well-known/jwks.json",
+			audiences: []string{EsignetClientID, "${mosip.certify.domain.url}${server.servlet.path}/issuance/credential"},
+		},
+	}
+	defaults := ""
+	for name, w := range wants {
+		svc, ok := stack[name]
+		if !ok {
+			t.Fatalf("the Inji stack has no %s service", name)
+		}
+		if svc.Image != "injistack/inji-certify-with-plugins:0.14.0" || strings.Join(svc.Profiles, ",") != "issuer-inji" {
+			t.Errorf("%s = %s %v", name, svc.Image, svc.Profiles)
+		}
+		for key, value := range map[string]string{
+			"active_profile_env": w.profile, "SPRING_CONFIG_NAME": "certify", "SPRING_CONFIG_LOCATION": "/home/mosip/config/",
+			"container_user": "mosip", "enable_certify_artifactory": "false", "download_hsm_client": "false",
+			"SPRING_DATASOURCE_URL": "jdbc:postgresql://inji-certify-postgres:5432/inji_certify?currentSchema=certify",
+		} {
+			if svc.Environment[key] != value {
+				t.Errorf("%s %s = %q, want %q", name, key, svc.Environment[key], value)
+			}
+		}
+		if svc.User != "root" {
+			t.Errorf("%s runs as %q; the release runs Certify as root and drops to container_user", name, svc.User)
+		}
+		if mountSource(svc.Volumes, "/home/mosip/CERTIFY_PKCS12") != "inji-certify-keys" {
+			t.Errorf("%s does not keep the key store on the shared volume: %v", name, svc.Volumes)
+		}
+		defaults = mountedFile(t, mountSource(svc.Volumes, "/home/mosip/config/certify-default.properties"))
+		props := readProperties(t, filepath.Join(repoRoot(), "deploy", "vca",
+			filepath.FromSlash(mountSource(svc.Volumes, "/home/mosip/config/"+w.profileFile))))
+		for key, value := range map[string]string{
+			"mosip.certify.integration.data-provider-plugin": w.plugin,
+			"mosip.certify.integration.scan-base-package":    "io.mosip.certify.mock.integration",
+			"mosip.certify.authn.issuer-uri":                 w.issuerURI,
+			"mosip.certify.authn.jwk-set-uri":                w.jwks,
+			"mosip.certify.plugin-mode":                      "DataProvider",
+		} {
+			if props[key] != value {
+				t.Errorf("%s %s = %q, want %q", name, key, props[key], value)
+			}
+		}
+		for _, aud := range w.audiences {
+			if !strings.Contains(props["mosip.certify.authn.allowed-audiences"], "'"+aud+"'") {
+				t.Errorf("%s does not take tokens for %s: %s", name, aud, props["mosip.certify.authn.allowed-audiences"])
+			}
+		}
+	}
+	if !strings.Contains(defaults, "mosip.kernel.keymanager.hsm.config-path=CERTIFY_PKCS12/local.p12") ||
+		!strings.Contains(defaults, "mosip.certify.database.hostname=inji-certify-postgres") ||
+		!strings.Contains(defaults, "management.endpoint.health.probes.enabled=true") {
+		t.Error("certify-default.properties does not point Certify at the stack")
+	}
+	preauth := stack["inji-certify"]
+	if len(preauth.Healthcheck.Test) == 0 || !strings.Contains(strings.Join(preauth.Healthcheck.Test, " "), "/v1/certify/actuator/health/readiness") {
+		t.Errorf("inji-certify has no readiness check: %v", preauth.Healthcheck.Test)
+	}
+	esignet := stack["inji-certify-esignet"]
+	if esignet.DependsOn["inji-certify"].Condition != "service_healthy" {
+		t.Error("inji-certify-esignet starts before inji-certify made the keys of the shared key store")
+	}
+	csv := mountSource(esignet.Volumes, "/home/mosip/config/farmer_identity_data.csv")
+	if !strings.HasPrefix(mountedFile(t, csv), "id,fullName,mobileNumber,dateOfBirth") {
+		t.Errorf("inji-certify-esignet mounts no farmer data of the release: %s", csv)
+	}
+	if _, ok := stack["volume:inji-certify-keys"]; !ok {
+		t.Error("the stack file declares no volume inji-certify-keys")
+	}
+
+	// The nginx serves the presentation definition and fronts each
+	// Certify at the root, as certify-nginx of the release does:
+	// OID4VCI puts the metadata under the credential issuer.
+	nginx := stack["inji-certify-nginx"]
+	conf := mountedFile(t, mountSource(nginx.Volumes, "/etc/nginx/conf.d/default.conf"))
+	for _, want := range []string{
+		"listen 80;", "set $certify http://inji-certify:8090;",
+		"listen 8091;", "set $certify http://inji-certify-esignet:8090;",
+		"proxy_pass $certify/v1/certify/.well-known/openid-credential-issuer;",
+		"location = /.well-known/openid-credential-issuer", "location = /.well-known/did.json",
+	} {
+		if !strings.Contains(conf, want) {
+			t.Errorf("the nginx file lacks %q", want)
+		}
+	}
+	for name, domain := range map[string]string{
+		"certify-preauth.properties": "http://inji-certify-nginx", "certify-csvdp-farmer.properties": "http://inji-certify-nginx:8091",
+	} {
+		source := mountSource(stack["inji-certify"].Volumes, "/home/mosip/config/"+name)
+		if source == "" {
+			source = mountSource(esignet.Volumes, "/home/mosip/config/"+name)
+		}
+		props := readProperties(t, filepath.Join(repoRoot(), "deploy", "vca", filepath.FromSlash(source)))
+		if props["mosip.certify.domain.url"] != domain {
+			t.Errorf("%s domain = %q, want %q", name, props["mosip.certify.domain.url"], domain)
+		}
 	}
 }

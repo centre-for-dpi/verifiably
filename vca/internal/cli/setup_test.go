@@ -668,8 +668,13 @@ func TestFloorAndFloorTable(t *testing.T) {
 		if f.Services != len(ServicesFor(p)) {
 			t.Errorf("%s: service count = %d", p.Name(), f.Services)
 		}
-		if f.TotalMemoryMiB() > 4096 {
+		// Only the pairs that ADR-049 names may rise above the 4 GB
+		// target of ADR-008 decision 7.
+		if f.TotalMemoryMiB() > FloorTargetMiB && !AboveFloorTarget(p) {
 			t.Errorf("%s needs %d MiB, over the 4 GB target", p.Name(), f.TotalMemoryMiB())
+		}
+		if AboveFloorTarget(p) && f.TotalMemoryMiB() <= FloorTargetMiB {
+			t.Errorf("%s is marked above the target but needs %d MiB", p.Name(), f.TotalMemoryMiB())
 		}
 		if f.Cpus <= 0 {
 			t.Errorf("%s needs %v CPUs", p.Name(), f.Cpus)

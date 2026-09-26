@@ -182,8 +182,9 @@ func TestDoctorComparesTheMemoryFloor(t *testing.T) {
 func TestMemoryFloorOfEveryPairMatchesTheDocument(t *testing.T) {
 	want := map[string]int{
 		// Inji Verify, its database, and the nginx of the presentation
-		// definition add 672 MiB to the Inji issuer (P6-I4b).
-		"issuer-waltid": 2912, "issuer-inji": 4096, "holder-waltid": 2336,
+		// definition add 672 MiB to the Inji issuer (P6-I4b). The second
+		// Certify, which takes eSignet tokens, adds 768 MiB (P6-I0).
+		"issuer-waltid": 2912, "issuer-inji": 4864, "holder-waltid": 2336,
 		"verifier-waltid": 2720, "admin-waltid": 704, "admin-inji": 704,
 		// Mimoto, its database and Redis, and Inji Web add 1024 MiB (P6-I7d).
 		"holder-inji": 3872,
@@ -764,5 +765,20 @@ func TestDoctorChecksTheInjiWebPort(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("the report lacks %q:\n%s", want, out.String())
 		}
+	}
+}
+
+// TestDoctorNamesAFloorAboveTheTarget: the Inji issuer pair runs Certify
+// twice, because Certify 0.14.0 takes the tokens of one authorization
+// server only (ADR-049). Its floor rises above the 4 GB target of
+// ADR-008 decision 7, and the floor report of vca doctor says so.
+func TestDoctorNamesAFloorAboveTheTarget(t *testing.T) {
+	issuer := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_INJI}
+	report := FloorReport([]Pair{issuer, issuerPair()})
+	if !strings.Contains(report, "issuer-inji") || !strings.Contains(report, "above the 4096 MiB target (ADR-049)") {
+		t.Errorf("the floor report does not name the rise:\n%s", report)
+	}
+	if strings.Count(report, "above the") != 1 {
+		t.Errorf("the report marks a pair under the target:\n%s", report)
 	}
 }
