@@ -247,27 +247,49 @@ func TestTheRpcsThatWaltidNeverSupportsAnswerUnimplemented(t *testing.T) {
 	wantCode(t, err, connect.CodeUnimplemented)
 }
 
+// permitID is a configuration that registerPermit registers.
+const permitID = "permit-2026"
+
+// registerPermit registers one jwt_vc_json configuration, as the
+// schema registry does when an issuer publishes a schema.
+func registerPermit(t *testing.T, svc *service.Service) string {
+	t.Helper()
+	register(t, svc, &backendv1.CredentialConfiguration{
+		Id: permitID, Format: commonv1.Format_FORMAT_JWT_VC_JSON, Type: "ResidencePermitCredential",
+	})
+	return permitID
+}
+
+// register registers one configuration and fails the test on an error.
+func register(t *testing.T, svc *service.Service, cfg *backendv1.CredentialConfiguration) {
+	t.Helper()
+	if _, err := svc.RegisterCredentialConfiguration(context.Background(),
+		connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{Configuration: cfg})); err != nil {
+		t.Fatalf("register %s: %v", cfg.GetId(), err)
+	}
+}
+
 func TestRegisterCredentialConfigurationBorrowsAConfigurationOfTheSameFormat(t *testing.T) {
 	svc, f := newService(t, all)
 	resp, err := svc.RegisterCredentialConfiguration(context.Background(),
 		connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{
 			Configuration: &backendv1.CredentialConfiguration{
-				Id:     "farmer-2026",
+				Id:     "permit-2026",
 				Format: commonv1.Format_FORMAT_JWT_VC_JSON,
-				Type:   "FarmerCredential",
+				Type:   "ResidencePermitCredential",
 			},
 		}))
 	if err != nil {
 		t.Fatalf("RegisterCredentialConfiguration: %v", err)
 	}
-	if resp.Msg.GetId() != "farmer-2026" {
+	if resp.Msg.GetId() != "permit-2026" {
 		t.Fatalf("id = %q", resp.Msg.GetId())
 	}
 	// The offer must now use the borrowed walt.id configuration and the
 	// type of the schema.
 	if _, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
 		Spec: &backendv1.IssueSpec{
-			ConfigurationId: "farmer-2026",
+			ConfigurationId: "permit-2026",
 			Format:          commonv1.Format_FORMAT_JWT_VC_JSON,
 			SubjectData:     `{"given_name":"Ada"}`,
 		},
@@ -279,15 +301,15 @@ func TestRegisterCredentialConfigurationBorrowsAConfigurationOfTheSameFormat(t *
 	if err := f.RequestJSON("/openid4vc/jwt/issue", &body); err != nil {
 		t.Fatalf("read the issue request: %v", err)
 	}
-	if body["credentialConfigurationId"] != "UniversityDegree_jwt_vc_json" {
-		t.Fatalf("configuration = %v, want the borrowed walt.id one", body["credentialConfigurationId"])
+	if body["credentialConfigurationId"] != "vca_jwt_vc_json" {
+		t.Fatalf("configuration = %v, want the entry of vca setup", body["credentialConfigurationId"])
 	}
 	var credential map[string]any
 	if err := json.Unmarshal([]byte(toJSON(t, body["credentialData"])), &credential); err != nil {
 		t.Fatalf("read the credential data: %v", err)
 	}
 	types := mustAs[[]any](t, credential["type"])
-	if len(types) != 2 || types[1] != "FarmerCredential" {
+	if len(types) != 2 || types[1] != "ResidencePermitCredential" {
 		t.Fatalf("types = %v, want the type of the schema", types)
 	}
 }
@@ -315,15 +337,22 @@ func TestRegisterCredentialConfigurationChecksItsInput(t *testing.T) {
 	wantCode(t, err, connect.CodeInvalidArgument)
 }
 
+// TestRegisterCredentialConfigurationFailsWithoutAMatchingFormat: an
+// issuer API without the catalogue of vca setup runs the example types
+// of the release. The adapter borrows none of them (ADR-054 decision 2).
 func TestRegisterCredentialConfigurationFailsWithoutAMatchingFormat(t *testing.T) {
-	svc, _ := newService(t, all)
+	svc, f := newService(t, all)
+	f.SetIssuerMetadata(fake.IssuerMetadataRelease)
 	_, err := svc.RegisterCredentialConfiguration(context.Background(),
 		connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{
 			Configuration: &backendv1.CredentialConfiguration{
-				Id: "x", Format: commonv1.Format_FORMAT_LDP_VC, Type: "Example",
+				Id: "x", Format: commonv1.Format_FORMAT_JWT_VC_JSON, Type: "Example",
 			},
 		}))
 	wantCode(t, err, connect.CodeFailedPrecondition)
+	if !strings.Contains(err.Error(), "vca setup") {
+		t.Fatalf("err = %v, want a pointer to vca setup", err)
+	}
 }
 
 func TestCreateOfferUsesTheSdJwtPathAndSetsTheDisclosureMap(t *testing.T) {
@@ -395,9 +424,10 @@ func TestCreateOfferUsesTheSdJwtPathAndSetsTheDisclosureMap(t *testing.T) {
 
 func TestCreateOfferPutsABitstringStatusEntryInTheVcdmBody(t *testing.T) {
 	svc, f := newService(t, all)
+	registerPermit(t, svc)
 	_, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
 		Spec: &backendv1.IssueSpec{
-			ConfigurationId: "UniversityDegree_jwt_vc_json",
+			ConfigurationId: permitID,
 			SubjectData:     `{"degree":"Mathematics"}`,
 			Subject:         &commonv1.Subject{Did: "did:key:zHolder"},
 			Status: &backendv1.StatusListBinding{
@@ -430,9 +460,10 @@ func TestCreateOfferPutsABitstringStatusEntryInTheVcdmBody(t *testing.T) {
 
 func TestCreateOfferSendsAWholeCredentialBodyAsItIs(t *testing.T) {
 	svc, f := newService(t, all)
+	registerPermit(t, svc)
 	_, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
 		Spec: &backendv1.IssueSpec{
-			ConfigurationId: "UniversityDegree_jwt_vc_json",
+			ConfigurationId: permitID,
 			CredentialData:  `{"type":["VerifiableCredential","Delegation"],"termsOfUse":{"id":"x"}}`,
 		},
 	}))
@@ -451,9 +482,12 @@ func TestCreateOfferSendsAWholeCredentialBodyAsItIs(t *testing.T) {
 
 func TestCreateOfferUsesTheMdocPath(t *testing.T) {
 	svc, f := newService(t, all)
+	register(t, svc, &backendv1.CredentialConfiguration{
+		Id: "licence-mdoc", Format: commonv1.Format_FORMAT_MSO_MDOC, Type: "org.iso.18013.5.1.mDL",
+	})
 	_, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
 		Spec: &backendv1.IssueSpec{
-			ConfigurationId: "org.iso.18013.5.1.mDL",
+			ConfigurationId: "licence-mdoc",
 			SubjectData:     `{"family_name":"Lovelace"}`,
 		},
 	}))
@@ -474,6 +508,7 @@ func TestCreateOfferUsesTheMdocPath(t *testing.T) {
 func TestCreateOfferChecksItsInput(t *testing.T) {
 	svc, _ := newService(t, all)
 	ctx := context.Background()
+	registerPermit(t, svc)
 	_, err := svc.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{}))
 	wantCode(t, err, connect.CodeInvalidArgument)
 	_, err = svc.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
@@ -490,13 +525,13 @@ func TestCreateOfferChecksItsInput(t *testing.T) {
 	wantCode(t, err, connect.CodeNotFound)
 	_, err = svc.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
 		Spec: &backendv1.IssueSpec{
-			ConfigurationId: "UniversityDegree_jwt_vc_json", SubjectData: "not json",
+			ConfigurationId: permitID, SubjectData: "not json",
 		},
 	}))
 	wantCode(t, err, connect.CodeInvalidArgument)
 	_, err = svc.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
 		Spec: &backendv1.IssueSpec{
-			ConfigurationId: "UniversityDegree_jwt_vc_json", CredentialData: "{",
+			ConfigurationId: permitID, CredentialData: "{",
 		},
 	}))
 	wantCode(t, err, connect.CodeInvalidArgument)
@@ -504,25 +539,33 @@ func TestCreateOfferChecksItsInput(t *testing.T) {
 
 func TestCreateOfferReportsAFailureOfWaltid(t *testing.T) {
 	svc, f := newService(t, all)
+	registerPermit(t, svc)
 	f.SetStatus("/openid4vc/jwt/issue", http.StatusBadRequest)
 	_, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
-		Spec: &backendv1.IssueSpec{ConfigurationId: "UniversityDegree_jwt_vc_json"},
+		Spec: &backendv1.IssueSpec{ConfigurationId: permitID},
 	}))
 	wantCode(t, err, connect.CodeInvalidArgument)
 	f.SetStatus("/openid4vc/jwt/issue", http.StatusInternalServerError)
 	_, err = svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
-		Spec: &backendv1.IssueSpec{ConfigurationId: "UniversityDegree_jwt_vc_json"},
+		Spec: &backendv1.IssueSpec{ConfigurationId: permitID},
 	}))
 	wantCode(t, err, connect.CodeUnavailable)
+	// An offer of a registered schema reads no catalogue.
+	f.SetStatus("/openid4vc/jwt/issue", 0)
 	f.SetStatus("/draft13/.well-known/openid-credential-issuer", http.StatusServiceUnavailable)
-	_, err = svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
-		Spec: &backendv1.IssueSpec{ConfigurationId: "UniversityDegree_jwt_vc_json"},
-	}))
-	wantCode(t, err, connect.CodeUnavailable)
+	if _, err = svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
+		Spec: &backendv1.IssueSpec{ConfigurationId: permitID},
+	})); err != nil {
+		t.Fatalf("CreateOffer read the catalogue: %v", err)
+	}
 }
 
 func TestGetIssuerMetadataReturnsTheCatalogue(t *testing.T) {
 	svc, _ := newService(t, all)
+	registerPermit(t, svc)
+	register(t, svc, &backendv1.CredentialConfiguration{
+		Id: "identity-2026", Format: commonv1.Format_FORMAT_VC_SD_JWT, Type: "IdentityCredential",
+	})
 	resp, err := svc.GetIssuerMetadata(context.Background(),
 		connect.NewRequest(&backendv1.GetIssuerMetadataRequest{}))
 	if err != nil {
@@ -534,8 +577,12 @@ func TestGetIssuerMetadataReturnsTheCatalogue(t *testing.T) {
 	if !strings.HasPrefix(resp.Msg.GetIssuerDid(), "did:key:") {
 		t.Fatalf("issuer DID = %q", resp.Msg.GetIssuerDid())
 	}
-	if len(resp.Msg.GetConfigurations()) != 3 {
-		t.Fatalf("configurations = %d, want 3", len(resp.Msg.GetConfigurations()))
+	configs := resp.Msg.GetConfigurations()
+	if len(configs) != 2 || configs[0].GetId() != "identity-2026" || configs[1].GetId() != permitID {
+		t.Fatalf("configurations = %v, want the two registrations", configs)
+	}
+	if configs[1].GetType() != "ResidencePermitCredential" || configs[1].GetFormat() != commonv1.Format_FORMAT_JWT_VC_JSON {
+		t.Fatalf("the registration maps to %v", configs[1])
 	}
 	if !strings.Contains(resp.Msg.GetMetadataJson(), "credential_configurations_supported") {
 		t.Fatal("the metadata document is missing")
@@ -558,6 +605,13 @@ func TestGetIssuerMetadataWorksWithoutAnOnboardedKey(t *testing.T) {
 func TestListCredentialTypesPagesTheCatalogue(t *testing.T) {
 	svc, _ := newService(t, all)
 	ctx := context.Background()
+	registerPermit(t, svc)
+	register(t, svc, &backendv1.CredentialConfiguration{
+		Id: "identity-2026", Format: commonv1.Format_FORMAT_VC_SD_JWT, Type: "IdentityCredential",
+	})
+	register(t, svc, &backendv1.CredentialConfiguration{
+		Id: "licence-mdoc", Format: commonv1.Format_FORMAT_MSO_MDOC, Type: "org.iso.18013.5.1.mDL",
+	})
 	first, err := svc.ListCredentialTypes(ctx, connect.NewRequest(&backendv1.ListCredentialTypesRequest{}))
 	if err != nil {
 		t.Fatalf("ListCredentialTypes: %v", err)

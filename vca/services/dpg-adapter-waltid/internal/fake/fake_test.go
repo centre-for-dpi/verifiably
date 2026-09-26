@@ -55,6 +55,21 @@ func TestFakeSwitchesToTheClaimedWalletAfterAnOffer(t *testing.T) {
 	}
 }
 
+// TestFakeServesTheCatalogueOfVcaSetup: the issuer metadata is the
+// catalogue that vca setup writes, unless a test picks the release one.
+func TestFakeServesTheCatalogueOfVcaSetup(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	const path = "/draft13/.well-known/openid-credential-issuer"
+	if body := get(t, f, path); !strings.Contains(body, "vca_jwt_vc_json") || strings.Contains(body, "UniversityDegree") {
+		t.Fatalf("the default metadata is not the catalogue of vca setup: %s", body)
+	}
+	f.SetIssuerMetadata(fake.IssuerMetadataRelease)
+	if body := get(t, f, path); !strings.Contains(body, "UniversityDegree") {
+		t.Fatalf("the release metadata is missing: %s", body)
+	}
+}
+
 func TestFakeSwitchesTheVerifierSession(t *testing.T) {
 	f := fake.New(testdata)
 	defer f.Close()

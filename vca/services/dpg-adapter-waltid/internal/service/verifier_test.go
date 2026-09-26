@@ -245,3 +245,34 @@ func TestRecordedSessionsAreValidJson(t *testing.T) {
 		}
 	}
 }
+
+// TestListCredentialTypesShowsRegistrationsOnly: a verifier sees the
+// schemas that VCA registered, never a type of the walt.id catalogue.
+// The issuer API here runs the example list of the release, as it does
+// without the file of vca setup (ADR-054 decision 2).
+func TestListCredentialTypesShowsRegistrationsOnly(t *testing.T) {
+	svc, f := newService(t, all)
+	registerPermit(t, svc)
+	f.SetIssuerMetadata(fake.IssuerMetadataRelease)
+	resp, err := svc.ListCredentialTypes(context.Background(),
+		connect.NewRequest(&backendv1.ListCredentialTypesRequest{}))
+	if err != nil {
+		t.Fatalf("ListCredentialTypes: %v", err)
+	}
+	got := resp.Msg.GetConfigurations()
+	if len(got) != 1 || got[0].GetId() != permitID || got[0].GetType() != "ResidencePermitCredential" {
+		t.Fatalf("configurations = %v, want the one registration", got)
+	}
+	for _, c := range got {
+		if strings.Contains(c.GetId(), "UniversityDegree") || strings.HasPrefix(c.GetId(), "vca_") {
+			t.Errorf("the list shows the catalogue entry %s", c.GetId())
+		}
+	}
+	// A fresh adapter lists nothing, whatever the catalogue holds.
+	empty, _ := newService(t, all)
+	resp, err = empty.ListCredentialTypes(context.Background(),
+		connect.NewRequest(&backendv1.ListCredentialTypesRequest{}))
+	if err != nil || len(resp.Msg.GetConfigurations()) != 0 || resp.Msg.GetPage().GetTotalSize() != 0 {
+		t.Fatalf("a fresh adapter lists %v, %v", resp.Msg.GetConfigurations(), err)
+	}
+}

@@ -228,6 +228,22 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 		return Plan{}, err
 	}
 	files = append(files, dpgFiles...)
+	now := time.Now
+	if req.Now != nil {
+		now = req.Now
+	}
+	// Every stack .env holds its secrets and keys before any file that
+	// reads them renders, so the files and the .env agree.
+	stackValuesByDpg, err := CompleteStacks(req.Stacks, req.Random, now())
+	if err != nil {
+		return Plan{}, err
+	}
+	// The walt.id catalogue and wallet files (ADR-054).
+	waltidFiles, err := WaltidFiles(req.Pair, stackValuesByDpg[configv1.Dpg_DPG_WALTID])
+	if err != nil {
+		return Plan{}, err
+	}
+	files = append(files, waltidFiles...)
 	shared := []File{LandingEnvFile(req.Domain, req.Pair, values, req.Peers, req.Existing[VersionEnv])}
 	keycloak, err := KeycloakFiles(req.Pair, stackValues, req.Keycloak, req.Random)
 	if err != nil {
@@ -239,11 +255,7 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 		return Plan{}, err
 	}
 	shared = append(shared, mimoto...)
-	now := time.Now
-	if req.Now != nil {
-		now = req.Now
-	}
-	stacks, err := StackFiles(req.Stacks, req.Random, now())
+	stacks, err := StackFiles(stackValuesByDpg, req.Random, now())
 	if err != nil {
 		return Plan{}, err
 	}

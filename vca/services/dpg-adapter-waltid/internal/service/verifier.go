@@ -247,18 +247,23 @@ func dpgChecks(checks []waltid.Check) []*backendv1.GetResultResponse_DpgCheck {
 	return out
 }
 
-// ListCredentialTypes returns the credential configurations of walt.id.
+// ListCredentialTypes returns the credential configurations that VCA
+// registered. The walt.id metadata only proves that the issuer API
+// answers: its catalogue holds the entries of vca setup, not types
+// (ADR-054 decision 2).
 func (s *Service) ListCredentialTypes(
 	ctx context.Context, req *connect.Request[backendv1.ListCredentialTypesRequest],
 ) (*connect.Response[backendv1.ListCredentialTypesResponse], error) {
 	if !s.client.HasIssuer() {
 		return nil, unimplemented("this adapter has no issuer URL, so it has no credential catalogue")
 	}
-	meta, err := s.client.Metadata(ctx)
-	if err != nil {
+	if _, err := s.client.Metadata(ctx); err != nil {
 		return nil, failed("read the issuer metadata", err)
 	}
-	all := configurations(meta)
+	all, err := s.registeredConfigurations(ctx)
+	if err != nil {
+		return nil, err
+	}
 	size := int(req.Msg.GetPage().GetPageSize())
 	if size <= 0 || size > s.pageSizeMax {
 		size = s.pageSizeMax
@@ -285,30 +290,41 @@ func (s *Service) ListCredentialTypes(
 	}), nil
 }
 
-// configurations maps the walt.id catalog onto the contract message. The
-// entries come back in a stable order.
-func configurations(meta waltid.IssuerMetadata) []*backendv1.CredentialConfiguration {
-	ids := make([]string, 0, len(meta.CredentialConfigurationsSupported))
-	for id := range meta.CredentialConfigurationsSupported {
-		ids = append(ids, id)
+// registeredConfigurations maps the registrations of the store onto the
+// contract message, in the order of their ids. A record of an earlier
+// release that holds no id stays out until its schema registers again.
+func (s *Service) registeredConfigurations(ctx context.Context) ([]*backendv1.CredentialConfiguration, error) {
+	keys, err := s.store.List(ctx, registrationPrefix)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	sort.Strings(ids)
-	out := make([]*backendv1.CredentialConfiguration, 0, len(ids))
-	for _, id := range ids {
-		entry := meta.CredentialConfigurationsSupported[id]
+	out := make([]*backendv1.CredentialConfiguration, 0, len(keys))
+	for _, key := range keys {
+		raw, gerr := s.store.Get(ctx, key)
+		if gerr != nil {
+			return nil, connect.NewError(connect.CodeInternal, gerr)
+		}
+		var reg registration
+		if jerr := json.Unmarshal(raw, &reg); jerr != nil {
+			return nil, connect.NewError(connect.CodeInternal, jerr)
+		}
+		if reg.ID == "" {
+			continue
+		}
 		cfg := &backendv1.CredentialConfiguration{
-			Id:     id,
-			Format: contractFormat(entry.Format),
-			Type:   entry.Vct,
+			Id:      reg.ID,
+			Format:  contractFormat(reg.Format),
+			Type:    reg.Vct,
+			Display: reg.Display,
 		}
-		if entry.CredentialDefinition != nil && len(entry.CredentialDefinition.Type) > 0 {
-			types := entry.CredentialDefinition.Type
-			cfg.Type = types[len(types)-1]
-		}
-		if len(entry.Display) > 0 {
-			cfg.Display = string(entry.Display[0])
+		switch {
+		case len(reg.Types) > 0:
+			cfg.Type = reg.Types[len(reg.Types)-1]
+		case reg.Doctype != "":
+			cfg.Type = reg.Doctype
 		}
 		out = append(out, cfg)
 	}
-	return out
+	sort.Slice(out, func(i, j int) bool { return out[i].GetId() < out[j].GetId() })
+	return out, nil
 }

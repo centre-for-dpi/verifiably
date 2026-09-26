@@ -543,7 +543,7 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-050 | 1 No mock artefact or sample data set ships | Partial | `vca/`, `deploy/` | `vca dpg bootstrap inji` adds no identity. The Inji stack runs no mock identity system. The pending list of `nomock_test.go` names each one. |
-| ADR-050 | 2 A configurable workflow replaces each artefact | Partial | `vca/services`, `vca/internal/cli` | Setup generates the stack secrets and asks for the certificate subject (ADR-055). Certify issues from the claims store (ADR-051), and the holder authorization server replaces eSignet for a claim (ADR-052). eSignet runs only with a real authenticator (ADR-053). ADR-054 waits. |
+| ADR-050 | 2 A configurable workflow replaces each artefact | Partial | `vca/services`, `vca/internal/cli` | Setup generates the stack secrets and asks for the certificate subject (ADR-055). Certify issues from the claims store (ADR-051), and the holder authorization server replaces eSignet for a claim (ADR-052). eSignet runs only with a real authenticator (ADR-053). Setup writes the walt.id catalogue and wallet files (ADR-054). |
 | ADR-050 | 3 Test doubles stay in test paths | Done | `vca/internal/cli/nomock_test.go` | `TestNoDeploymentReachesTestdata` and `TestNoBinaryImportsAFakePackage` keep test doubles out of every deployment. |
 | ADR-050 | 4 A guard test scans the tree | Done | `vca/internal/cli/nomock_test.go` | The allowlist gives a reason per entry. The pending list shrinks with each unit and fails on an entry that matches nothing. |
 | ADR-050 | 5 A stack secret has no default | Done | `deploy/vca/dpg/*.yaml`, `vca/internal/cli/stackenv.go` | Every stack file requires its passwords with `${NAME:?set by vca setup}`. `TestStackFilesHaveNoSecretDefault` pins it. |
@@ -584,10 +584,10 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-054 | 1 Setup writes the issuer catalogue | Not started | `vca/internal/cli/dpgconfig.go` | The issuer API runs on its release catalogue today. |
-| ADR-054 | 2 The adapter answers discovery from its registrations | Not started | `vca/services/dpg-adapter-waltid` | The verifier list comes from the walt.id catalogue today. |
-| ADR-054 | 3 Setup writes the wallet configuration | Not started | `vca/internal/cli/dpgconfig.go` | The wallet API runs on code defaults today. |
-| ADR-054 | 4 The CLI writes files and restarts containers | Not started | `vca/internal/cli` |  |
+| ADR-054 | 1 Setup writes the issuer catalogue | Done | `vca/internal/cli/waltid_config.go`, `deploy/vca/dpg/waltid.yaml` | One entry per wire format with the prefix `vca_`. `TestIssuerCatalogueHasOneEntryPerFormatAndNoDemoType` pins it. |
+| ADR-054 | 2 The adapter answers discovery from its registrations | Done | `vca/services/dpg-adapter-waltid/internal/waltid/build.go`, `vca/services/dpg-adapter-waltid/internal/service/verifier.go` | The adapter borrows `vca_` entries only. `TestListCredentialTypesShowsRegistrationsOnly` pins the list. |
+| ADR-054 | 3 Setup writes the wallet configuration | Done | `vca/internal/cli/waltid_config.go`, `vca/internal/cli/stackenv.go` | The keys and the pepper live in `deploy/waltid/.env`. `vca dpg upgrade-secrets` writes `db.conf` again. The login token uses HS256 with a generated key. |
+| ADR-054 | 4 The CLI writes files and restarts containers | Done | `vca/internal/cli` | The adapter writes no file. Setup writes the files, and `vca deploy` starts the containers on them. The nightly contract run starts the wallet API on the files. |
 
 ## ADR-055: Stack secrets and identities come from setup or the operator
 

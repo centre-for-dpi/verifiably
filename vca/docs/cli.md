@@ -289,9 +289,25 @@ A pair also gets the extra file its DPG needs:
 
 | DPG | Extra file |
 |---|---|
-| `waltid` | `waltid-onboard.json` |
+| `waltid` | `waltid-onboard.json`, and the files of the `config` folder below |
 | `inji` | None |
 | `credebl` | None |
+
+The walt.id issuer pair gets `config/credential-issuer-metadata.conf`
+with mode 0644. It is the catalogue of the issuer API: one entry per
+wire format, with the prefix `vca_`. The walt.id holder pair gets the
+wallet API files of the same folder (ADR-054):
+
+| File | Mode | What it holds |
+|---|---|---|
+| `config/auth.conf` | 0600 | The generated login keys |
+| `config/ktor-authnz.conf` | 0600 | The generated hash pepper |
+| `config/registration-defaults.conf` | 0644 | The key and DID of a new wallet, and no issuer |
+| `config/db.conf` | 0600 | The database with the password of the stack |
+| `config/_features.conf` | 0644 | The developer mode off |
+
+The keys live in `deploy/waltid/.env`, so a later run writes the same
+files. The stack file mounts each folder read only.
 
 The first run also writes `deploy/vca/theme.yaml` with mode 0644 when the
 file is absent (ADR-032 decision 1).

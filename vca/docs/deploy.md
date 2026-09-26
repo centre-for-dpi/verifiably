@@ -479,12 +479,44 @@ A later run keeps that time.
 
 | File | Variables |
 |---|---|
-| `deploy/waltid/.env` | `WALTID_DB_PASSWORD` |
+| `deploy/waltid/.env` | `WALTID_DB_PASSWORD` and the four `WALTID_WALLET_*` keys |
 | `deploy/inji/.env` | `INJI_DB_PASSWORD`, `INJI_CERTIFY_KEYSTORE_PASSWORD`, `INJI_ESIGNET_DB_PASSWORD`, `INJI_MIMOTO_DB_PASSWORD`, `INJI_MIMOTO_KEYSTORE_PASSWORD`, `INJI_VERIFY_DB_PASSWORD` |
 | `deploy/credebl/.env` | `CREDEBL_DB_PASSWORD` |
 
 A database volume keeps the password of its first start.
 If you remove a stack `.env`, remove the volumes of that stack too.
+
+### walt.id configuration
+
+walt.id 0.18.2 reads the files of its `config` folder at start.
+Code defaults fill every value that no file sets.
+Without a file, the issuer API lists the example types of the release.
+The wallet API then runs on the defaults of the release.
+So `vca setup` writes both folders (ADR-054).
+
+The issuer pair gets `deploy/issuer-waltid/config/credential-issuer-metadata.conf`.
+It holds one entry per wire format: `vca_jwt_vc_json`, `vca_ldp_vc`,
+`vca_vc_sd_jwt`, `vca_dc_sd_jwt` and `vca_mso_mdoc`.
+The walt.id adapter signs each schema through the entry of its format.
+The credential carries the type of the schema.
+The portals list the schemas that the adapter registered.
+They never list a catalogue entry.
+
+The holder pair gets `auth.conf`, `ktor-authnz.conf`,
+`registration-defaults.conf`, `db.conf` and `_features.conf` under
+`deploy/holder-waltid/config`.
+The login keys and the hash pepper come from `deploy/waltid/.env`.
+`db.conf` holds the database password of the stack.
+A new wallet gets no issuer, and the developer mode stays off.
+The files with a key have mode 0600.
+The release image runs as root, so the container reads them.
+`vca dpg upgrade-secrets` writes `db.conf` again when it changes the
+database password.
+
+The stack file mounts `../issuer-waltid/config` at
+`/waltid-issuer-api/config` and `../holder-waltid/config` at
+`/waltid-wallet-api/config`, both read only.
+The nightly contract run starts the wallet API on these files.
 
 ### Upgrade from shared passwords
 

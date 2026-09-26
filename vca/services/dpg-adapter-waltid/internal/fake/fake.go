@@ -74,6 +74,8 @@ type Server struct {
 	claimQuery url.Values
 	// resolved is the answer of resolveCredentialOffer.
 	resolved string
+	// metadata is the answer of the issuer metadata.
+	metadata string
 	// claimed reports whether a wallet claimed an offer.
 	claimed bool
 	// requests records the body of every write call by path.
@@ -92,6 +94,7 @@ func New(dir string) *Server {
 		session:  SessionPending,
 		session2: Session2Active,
 		resolved: "resolve-offer.json",
+		metadata: IssuerMetadataVca,
 		requests: map[string][]byte{},
 		history:  map[string][][]byte{},
 		status:   map[string]int{},
@@ -111,6 +114,23 @@ func (f *Server) URL() string { return f.Server.URL }
 
 // Client is an HTTP client that reaches the fake.
 func (f *Server) Client() *http.Client { return f.Server.Client() }
+
+// The issuer metadata answers.
+const (
+	// IssuerMetadataVca is the catalogue that vca setup writes: one
+	// entry per wire format (ADR-054). The fake serves it by default.
+	IssuerMetadataVca = "doc/issuer-metadata-vca.json"
+	// IssuerMetadataRelease is the recorded catalogue of the release
+	// that runs without the file of vca setup.
+	IssuerMetadataRelease = "issuer-metadata.json"
+)
+
+// SetIssuerMetadata selects the issuer metadata answer.
+func (f *Server) SetIssuerMetadata(name string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.metadata = name
+}
 
 // SetSession selects the verifier session answer.
 func (f *Server) SetSession(state SessionState) {
@@ -206,6 +226,7 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	f.lastQuery = r.URL.Query()
 	f.lastHeader = r.Header.Clone()
 	resolved := f.resolved
+	metadata := f.metadata
 	forced := f.status[r.URL.Path]
 	session := f.session
 	session2 := f.session2
@@ -218,7 +239,7 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	switch {
 	case strings.HasSuffix(path, "/.well-known/openid-credential-issuer"):
-		f.send(w, "issuer-metadata.json", "application/json")
+		f.send(w, metadata, "application/json")
 	case path == "/onboard/issuer":
 		f.onboard(w, body)
 	case strings.HasPrefix(path, "/openid4vc/") && strings.HasSuffix(path, "/issue"):

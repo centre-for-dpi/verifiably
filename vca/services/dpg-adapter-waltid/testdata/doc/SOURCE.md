@@ -26,6 +26,7 @@ run replaces each file with a recording.
 | `verifier2-create-dcapi.json` | Verifier API 2 `POST /verification-session/create` with `flow_type` `dc_api_openid4vp` and `expectedOrigins` | https://docs.walt.id/community-stack/verifier2/credential-verification/dc-api and the OpenAPI examples of https://verifier2.demo.walt.id/api.json | 2026-09-25 |
 | `verifier2-response.json` | Verifier API 2 `POST /verification-session/{id}/response` with the JSON answer of the browser | https://docs.walt.id/community-stack/verifier2/credential-verification/dc-api | 2026-09-25 |
 | `verifier2-session-expired.json` | The same, status `EXPIRED` | as above | 2026-09-25 |
+| `issuer-metadata-vca.json` | Issuer API `GET /draft13/.well-known/openid-credential-issuer` with the catalogue that `vca setup` writes (ADR-054) | The entries of `internal/cli/waltid_config.go`, parsed as https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-services/waltid-issuer-api/src/main/kotlin/id/walt/issuer/config/CredentialTypeConfig.kt (`parse`) reads an object entry, and the member names of `CredentialSupported` in waltid-libraries/protocols/waltid-openid4vc at the same tag | 2026-09-26 |
 
 The answer has the shape of `onboard-issuer.json`: the key as a walt.id
 JWK key object, and the DID. The test key is fixed, so the did:key in

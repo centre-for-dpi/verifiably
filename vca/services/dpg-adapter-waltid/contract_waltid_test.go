@@ -61,8 +61,26 @@ func newContractApp(t *testing.T) *app.App {
 	return a
 }
 
+// contractConfiguration registers the configuration that the contract
+// cases issue, as the schema registry does for a published schema.
+func contractConfiguration(t *testing.T, a *app.App) string {
+	t.Helper()
+	const id = "contract-2026"
+	if _, err := a.Service.RegisterCredentialConfiguration(context.Background(),
+		connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{Configuration: &backendv1.CredentialConfiguration{
+			Id: id, Format: commonv1.Format_FORMAT_JWT_VC_JSON, Type: "ContractCredential",
+		}})); err != nil {
+		t.Fatalf("RegisterCredentialConfiguration: %v", err)
+	}
+	return id
+}
+
+// TestContractIssuerMetadata: the issuer API runs on the catalogue that
+// vca setup writes, and the adapter lists its own registrations
+// (ADR-054 decisions 1 and 2).
 func TestContractIssuerMetadata(t *testing.T) {
 	a := newContractApp(t)
+	id := contractConfiguration(t, a)
 	resp, err := a.Service.GetIssuerMetadata(context.Background(),
 		connect.NewRequest(&backendv1.GetIssuerMetadataRequest{}))
 	if err != nil {
@@ -71,31 +89,22 @@ func TestContractIssuerMetadata(t *testing.T) {
 	if resp.Msg.GetIssuer() == "" {
 		t.Fatal("the real issuer returned no identifier")
 	}
-	if len(resp.Msg.GetConfigurations()) == 0 {
-		t.Fatal("the real issuer advertises no credential configuration")
+	raw := resp.Msg.GetMetadataJson()
+	if !strings.Contains(raw, "vca_jwt_vc_json") || strings.Contains(raw, "UniversityDegree") {
+		t.Fatalf("the issuer API does not run on the catalogue of vca setup: %s", raw)
+	}
+	configs := resp.Msg.GetConfigurations()
+	if len(configs) == 0 || configs[0].GetId() != id {
+		t.Fatalf("configurations = %v, want the registration", configs)
 	}
 }
 
 func TestContractCreateOfferForTheFirstConfiguration(t *testing.T) {
 	a := newContractApp(t)
 	ctx := context.Background()
-	meta, err := a.Service.GetIssuerMetadata(ctx, connect.NewRequest(&backendv1.GetIssuerMetadataRequest{}))
-	if err != nil {
-		t.Fatalf("GetIssuerMetadata: %v", err)
-	}
-	var pick *backendv1.CredentialConfiguration
-	for _, cfg := range meta.Msg.GetConfigurations() {
-		if cfg.GetFormat() == commonv1.Format_FORMAT_JWT_VC_JSON {
-			pick = cfg
-			break
-		}
-	}
-	if pick == nil {
-		t.Skip("the real issuer advertises no jwt_vc_json configuration")
-	}
 	resp, err := a.Service.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
 		Spec: &backendv1.IssueSpec{
-			ConfigurationId: pick.GetId(),
+			ConfigurationId: contractConfiguration(t, a),
 			SubjectData:     `{"holder":"Contract test"}`,
 		},
 		Channel: backendv1.Channel_CHANNEL_OID4VCI_PREAUTH,
@@ -301,12 +310,8 @@ func TestContractCallbackHeaderAccepted(t *testing.T) {
 	go func() { _ = srv.ListenAndServe() }()
 	defer func() { _ = srv.Close() }()
 	ctx := context.Background()
-	meta, err := a.Service.GetIssuerMetadata(ctx, connect.NewRequest(&backendv1.GetIssuerMetadataRequest{}))
-	if err != nil || len(meta.Msg.GetConfigurations()) == 0 {
-		t.Fatalf("GetIssuerMetadata: %v", err)
-	}
 	created, err := a.Service.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{Spec: &backendv1.IssueSpec{
-		ConfigurationId: meta.Msg.GetConfigurations()[0].GetId(), SubjectData: `{"holder":"Contract test"}`,
+		ConfigurationId: contractConfiguration(t, a), SubjectData: `{"holder":"Contract test"}`,
 	}}))
 	if err != nil {
 		t.Fatalf("CreateOffer: %v", err)

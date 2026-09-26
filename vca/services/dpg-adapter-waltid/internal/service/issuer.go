@@ -134,8 +134,8 @@ func (s *Service) buildIssuance(ctx context.Context, spec *backendv1.IssueSpec, 
 	return built{request: request, format: format}, nil
 }
 
-// registrationFor returns the stored registration of the configuration,
-// or one built from the walt.id catalog when the caller never registered
+// registrationFor returns the stored registration of the configuration.
+// A configuration the caller never registered is not found
 // the configuration.
 func (s *Service) registrationFor(ctx context.Context, spec *backendv1.IssueSpec) (registration, error) {
 	id := strings.TrimSpace(spec.GetConfigurationId())
@@ -160,25 +160,11 @@ func (s *Service) registrationFor(ctx context.Context, spec *backendv1.IssueSpec
 	if !errors.Is(err, store.ErrNotFound) {
 		return registration{}, connect.NewError(connect.CodeInternal, err)
 	}
-	// The configuration is not registered. It must be one the walt.id
-	// catalog already advertises.
-	meta, merr := s.client.Metadata(ctx)
-	if merr != nil {
-		return registration{}, failed("read the issuer metadata", merr)
-	}
-	entry, ok := meta.CredentialConfigurationsSupported[id]
-	if !ok {
-		return registration{}, connect.NewError(connect.CodeNotFound, fmt.Errorf(
-			"the walt.id issuer does not advertise the configuration %q; register it first", id))
-	}
-	reg := registration{ConfigurationID: id, Format: entry.Format, Vct: entry.Vct}
-	if entry.CredentialDefinition != nil {
-		reg.Types = entry.CredentialDefinition.Type
-	}
-	if waltid.Format(entry.Format) == waltid.FormatMsoMdoc {
-		reg.Doctype = id
-	}
-	return reg, nil
+	// Only a published schema of VCA issues. The catalogue of walt.id
+	// holds the entries of vca setup, which carry no type of their own
+	// (ADR-054 decision 2).
+	return registration{}, connect.NewError(connect.CodeNotFound, fmt.Errorf(
+		"the configuration %q is not registered; publish its schema first", id))
 }
 
 // subjectClaims reads the subject data of the spec and adds the subject
@@ -268,10 +254,14 @@ func (s *Service) GetIssuerMetadata(
 		// The metadata is still useful without the DID.
 		did = ""
 	}
+	configs, err := s.registeredConfigurations(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return connect.NewResponse(&backendv1.GetIssuerMetadataResponse{
 		Issuer:         meta.CredentialIssuer,
 		IssuerDid:      did,
 		MetadataJson:   string(meta.Raw),
-		Configurations: configurations(meta),
+		Configurations: configs,
 	}), nil
 }

@@ -6,6 +6,9 @@
 # The database password comes from ../waltid/.env, which vca setup
 # generates with mode 0600 and the include reads. The file requires it,
 # so no container starts on a default password (ADR-055 decision 1).
+# The issuer API and the wallet API read the files that vca setup
+# writes under the pair directories. No example type and no example issuer
+# reach them (ADR-054).
 # Every host port binds to VCA_BIND, which vca setup sets to 127.0.0.1
 # on a public host.
 # VCA services never rebuild a DPG image.
@@ -66,6 +69,11 @@ services:
     container_name: waltid-issuer-api
     restart: unless-stopped
     command: ["--webPort=7002", "--baseUrl=${WALTID_ISSUER_BASE_URL:-http://waltid-issuer-api:7002}"]
+    # The catalogue that vca setup writes in the directory of the issuer
+    # pair. It replaces the example list of the release, so the issuer API
+    # advertises one entry per wire format and nothing else (ADR-054).
+    volumes:
+      - ../issuer-waltid/config:/waltid-issuer-api/config:ro
     ports:
       - "${VCA_BIND:-0.0.0.0}:${WALTID_ISSUER_HOST_PORT:-17002}:7002"
     networks:
@@ -110,10 +118,13 @@ services:
     depends_on:
       waltid-postgres:
         condition: service_healthy
-    environment:
-      WALTID_DATASOURCE_URL: jdbc:postgresql://waltid-postgres:5432/waltid
-      WALTID_DATASOURCE_USER: waltid
-      WALTID_DATASOURCE_PASSWORD: ${WALTID_DB_PASSWORD:?set by vca setup}
+    # The files that vca setup writes in the directory of the holder
+    # pair: generated login keys, a generated pepper, the database with
+    # the password of the stack, no default issuer, and no developer
+    # mode (ADR-054 decision 3). The files with a key have mode 0600.
+    # The release image runs as root, so it reads them.
+    volumes:
+      - ../holder-waltid/config:/waltid-wallet-api/config:ro
     ports:
       - "${VCA_BIND:-0.0.0.0}:${WALTID_WALLET_HOST_PORT:-17001}:7001"
     networks:

@@ -271,11 +271,20 @@ definition, which the wallet cannot read.
 
 **The adapter never writes the walt.id catalog file.** The legacy code
 wrote the walt.id configuration file. It then restarted the container
-through the Docker socket. ADR-002 decision 4 forbids both acts. The
-adapter instead records the credential type of the schema. It then signs
-the credential through a walt.id configuration of the same format. The
-signed credential carries the type of the schema, because walt.id signs
-the credential body it receives.
+through the Docker socket. ADR-002 decision 4 forbids both acts. `vca
+setup` writes the catalogue instead, with one entry per wire format
+(ADR-054 decision 1). Each entry id starts with `vca_`. The adapter
+records the credential type of the schema. It then signs the credential
+through the entry of the same format. The signed credential carries the
+type of the schema, because walt.id signs the credential body it
+receives. The adapter signs through no entry without the prefix. So
+no example type of the release reaches a credential.
+
+**The catalogue calls answer from the registrations.**
+`ListCredentialTypes` and the configurations of `GetIssuerMetadata` list
+the schemas that VCA registered (ADR-054 decision 2). An offer names a
+registered configuration. An unknown one answers `NOT_FOUND`. The walt.id
+metadata only proves that the issuer API answers.
 
 **The wallet account comes from the pairwise subject.** The adapter
 builds the wallet account name and password from a one way function of

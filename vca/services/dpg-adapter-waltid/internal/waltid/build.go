@@ -156,20 +156,27 @@ func BuildSelectiveDisclosure(subject map[string]any) []byte {
 	return raw
 }
 
-// BorrowConfigurationID returns a configuration id the walt.id catalog
-// advertises for the format. The adapter cannot add an entry to the
-// catalog over the HTTP API, so a credential of a new type is signed
-// through a configuration of the same format. The signed credential
-// carries the type of the credential body, not of the configuration.
+// CataloguePrefix starts the id of every entry of the catalogue that
+// vca setup writes for the issuer API (ADR-054 decision 1).
+const CataloguePrefix = "vca_"
+
+// BorrowConfigurationID returns the entry of the catalogue of vca setup
+// for the format. The adapter cannot add an entry to the catalogue over
+// the HTTP API, so a credential of a new type is signed through the
+// entry of its format. The signed credential carries the type of the
+// credential body, not of the entry. An entry of any other catalogue,
+// such as the example types of the release, is never used
+// (ADR-054 decision 2).
 func BorrowConfigurationID(meta IssuerMetadata, f Format) (string, error) {
 	ids := make([]string, 0, len(meta.CredentialConfigurationsSupported))
 	for id, entry := range meta.CredentialConfigurationsSupported {
-		if Format(entry.Format) == f {
+		if strings.HasPrefix(id, CataloguePrefix) && Format(entry.Format) == f {
 			ids = append(ids, id)
 		}
 	}
 	if len(ids) == 0 {
-		return "", fmt.Errorf("waltid: the issuer advertises no configuration of the format %q", f)
+		return "", fmt.Errorf("waltid: the issuer advertises no entry of vca setup for the format %q; "+
+			"run vca setup for the walt.id issuer and restart the issuer API", f)
 	}
 	sort.Strings(ids)
 	return ids[0], nil

@@ -58,6 +58,31 @@ func stackSecretNames(d configv1.Dpg) []string {
 	return nil
 }
 
+// stackKey is one generated key of a stack .env that a configuration
+// file of the stack holds. No volume keeps it, so a new value costs the
+// sessions of the stack and nothing else.
+type stackKey struct {
+	name   string
+	length int
+}
+
+// stackKeys returns the keys of the configuration files that setup
+// writes for the stack of one DPG, in the order of the .env file. The
+// walt.id wallet API reads its keys and the hash pepper from the files
+// of ADR-054 decision 3. An AES-128 key and an HMAC key of the legacy
+// login take 16 characters.
+func stackKeys(d configv1.Dpg) []stackKey {
+	if d == configv1.Dpg_DPG_WALTID {
+		return []stackKey{
+			{WaltidWalletEncryptionKeyEnv, 16},
+			{WaltidWalletSignKeyEnv, 16},
+			{WaltidWalletTokenKeyEnv, 48},
+			{WaltidWalletPepperEnv, stackSecretLength},
+		}
+	}
+	return nil
+}
+
 // StackDir returns the directory of the secrets of one stack under the
 // deploy root, for example inji. A DPG with no stack file gives "".
 func StackDir(d configv1.Dpg) string {
@@ -100,6 +125,20 @@ func StackEnv(d configv1.Dpg, existing map[string]string, random io.Reader, now 
 			value = generated
 		}
 		b.WriteString(name + "=" + quoteValue(value) + "\n")
+	}
+	if keys := stackKeys(d); len(keys) > 0 {
+		b.WriteString("# The keys of the configuration files that setup writes for the stack.\n")
+		for _, k := range keys {
+			value := existing[k.name]
+			if value == "" {
+				generated, err := randomAlphanumeric(random, k.length)
+				if err != nil {
+					return "", fmt.Errorf("generate %s: %w", k.name, err)
+				}
+				value = generated
+			}
+			b.WriteString(k.name + "=" + quoteValue(value) + "\n")
+		}
 	}
 	since := existing[StackSecretsSinceEnv]
 	if since == "" {

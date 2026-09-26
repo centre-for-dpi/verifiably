@@ -157,15 +157,37 @@ func TestBuildSelectiveDisclosureMarksEveryClaim(t *testing.T) {
 
 func TestBorrowConfigurationIDPicksTheFirstOfTheFormat(t *testing.T) {
 	meta := IssuerMetadata{CredentialConfigurationsSupported: map[string]ConfigurationEntry{
-		"B_jwt": {Format: "jwt_vc_json"},
-		"A_jwt": {Format: "jwt_vc_json"},
-		"C_sd":  {Format: "vc+sd-jwt"},
+		"vca_b_jwt": {Format: "jwt_vc_json"},
+		"vca_a_jwt": {Format: "jwt_vc_json"},
+		"vca_c_sd":  {Format: "vc+sd-jwt"},
 	}}
 	got, err := BorrowConfigurationID(meta, FormatJwtVcJSON)
-	if err != nil || got != "A_jwt" {
+	if err != nil || got != "vca_a_jwt" {
 		t.Fatalf("BorrowConfigurationID = %q, %v", got, err)
 	}
 	if _, err := BorrowConfigurationID(meta, FormatMsoMdoc); err == nil {
 		t.Fatal("BorrowConfigurationID accepted a format the issuer does not advertise")
+	}
+}
+
+// TestBorrowTakesOnlyVcaEntries: the adapter signs through an entry of
+// the catalogue that vca setup writes, never through a type of the
+// release catalogue (ADR-054 decision 2).
+func TestBorrowTakesOnlyVcaEntries(t *testing.T) {
+	meta := IssuerMetadata{CredentialConfigurationsSupported: map[string]ConfigurationEntry{
+		"BankId_jwt_vc_json":            {Format: "jwt_vc_json"},
+		"OpenBadgeCredential_ldp_vc":    {Format: "ldp_vc"},
+		"vca_jwt_vc_json":               {Format: "jwt_vc_json"},
+		"identity_credential_vc+sd-jwt": {Format: "vc+sd-jwt"},
+	}}
+	got, err := BorrowConfigurationID(meta, FormatJwtVcJSON)
+	if err != nil || got != "vca_jwt_vc_json" {
+		t.Fatalf("BorrowConfigurationID = %q, %v, want the entry of vca setup", got, err)
+	}
+	for _, f := range []Format{FormatLdpVc, FormatVcSdJwt} {
+		_, err := BorrowConfigurationID(meta, f)
+		if err == nil || !strings.Contains(err.Error(), "vca setup") {
+			t.Errorf("%s: err = %v, want a pointer to vca setup", f, err)
+		}
 	}
 }

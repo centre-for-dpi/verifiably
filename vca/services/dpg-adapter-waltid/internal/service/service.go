@@ -229,6 +229,11 @@ func (s *Service) GetCapabilities(
 // registration is the stored link between a schema configuration id and
 // the walt.id configuration that signs it.
 type registration struct {
+	// ID is the id of the configuration of VCA. A record of an earlier
+	// release has none, and the catalogue calls leave it out.
+	ID string `json:"id,omitempty"`
+	// Display is the OID4VCI display metadata of the schema.
+	Display string `json:"display,omitempty"`
 	// ConfigurationID is the id walt.id advertises.
 	ConfigurationID string `json:"configuration_id"`
 	// Format is the walt.id wire format.
@@ -241,8 +246,11 @@ type registration struct {
 	Doctype string `json:"doctype,omitempty"`
 }
 
+// registrationPrefix starts the store key of every registration.
+const registrationPrefix = "config/"
+
 // registrationKey returns the store key of one registration.
-func registrationKey(id string) string { return "config/" + storeSafe(id) }
+func registrationKey(id string) string { return registrationPrefix + storeSafe(id) }
 
 // walletKey returns the store key of one wallet session.
 func walletKey(id string) string { return "wallet/" + storeSafe(id) }
@@ -258,9 +266,10 @@ func storeSafe(value string) string {
 //
 // walt.id 0.18.2 reads its catalog from a configuration file at start.
 // The adapter must not write that file or restart the container
-// (ADR-002 decision 4). The adapter therefore records the credential
-// type of the schema and signs it through a walt.id configuration of the
-// same format. The signed credential carries the type of the schema.
+// (ADR-002 decision 4). vca setup writes one entry per wire format
+// (ADR-054). The adapter therefore records the credential type of the
+// schema and signs it through the entry of its format. The signed
+// credential carries the type of the schema.
 func (s *Service) RegisterCredentialConfiguration(
 	ctx context.Context, req *connect.Request[backendv1.RegisterCredentialConfigurationRequest],
 ) (*connect.Response[backendv1.RegisterCredentialConfigurationResponse], error) {
@@ -280,15 +289,11 @@ func (s *Service) RegisterCredentialConfiguration(
 	if err != nil {
 		return nil, failed("read the issuer metadata", err)
 	}
-	configurationID := cfg.GetId()
-	if _, ok := meta.CredentialConfigurationsSupported[configurationID]; !ok {
-		borrowed, berr := waltid.BorrowConfigurationID(meta, format)
-		if berr != nil {
-			return nil, connect.NewError(connect.CodeFailedPrecondition, berr)
-		}
-		configurationID = borrowed
+	configurationID, berr := waltid.BorrowConfigurationID(meta, format)
+	if berr != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, berr)
 	}
-	reg := registration{ConfigurationID: configurationID, Format: string(format)}
+	reg := registration{ID: cfg.GetId(), Display: cfg.GetDisplay(), ConfigurationID: configurationID, Format: string(format)}
 	switch {
 	case waltid.IsSdJwt(format):
 		reg.Vct = s.vctFor(cfg)

@@ -3,8 +3,10 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
@@ -281,6 +284,40 @@ func writeStackEnv(opts UpgradeOptions, d configv1.Dpg, values map[string]string
 			return fmt.Errorf("write %s: %w", path, err)
 		}
 		if err := os.Chmod(path, 0o600); err != nil {
+			return fmt.Errorf("set the mode of %s: %w", path, err)
+		}
+	}
+	return refreshWaltidWallet(opts.Deploy, d, text)
+}
+
+// refreshWaltidWallet writes the wallet files of the walt.id holder pair
+// again from the new stack .env, so db.conf holds the password of the
+// volume (ADR-054 decision 3). A deployment without the holder pair
+// gets nothing.
+func refreshWaltidWallet(deploy string, d configv1.Dpg, stackEnv string) error {
+	if d != configv1.Dpg_DPG_WALTID {
+		return nil
+	}
+	holder := filepath.Join(deploy, Pair{Role: commonv1.Role_ROLE_HOLDER, Dpg: d}.Name())
+	if _, err := os.Stat(filepath.Join(holder, WaltidConfigDir)); errors.Is(err, fs.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("read %s: %w", holder, err)
+	}
+	values, err := ParseDotenv(strings.NewReader(stackEnv))
+	if err != nil {
+		return err
+	}
+	files, err := waltidWalletFiles(values)
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
+		path := filepath.Join(holder, f.Name)
+		if err := os.WriteFile(path, f.Data, f.Mode); err != nil {
+			return fmt.Errorf("write %s: %w", path, err)
+		}
+		if err := os.Chmod(path, f.Mode); err != nil {
 			return fmt.Errorf("set the mode of %s: %w", path, err)
 		}
 	}

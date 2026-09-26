@@ -27,9 +27,10 @@ var withCallbacks = roles{issuer: true, callbacks: true}
 // walt.id got in the statusCallbackUri header.
 func offer(t *testing.T, svc *service.Service, f interface{ LastHeader(string) string }) (string, string) {
 	t.Helper()
+	registerPermit(t, svc)
 	resp, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
 		Spec: &backendv1.IssueSpec{
-			ConfigurationId: "UniversityDegree_jwt_vc_json", SubjectData: `{"degree":"Mathematics"}`,
+			ConfigurationId: permitID, SubjectData: `{"degree":"Mathematics"}`,
 			Subject: &commonv1.Subject{Did: "did:key:zHolder"},
 			Status:  &backendv1.StatusListBinding{Kind: backendv1.StatusListBinding_KIND_BITSTRING, Index: 7, PublishUrl: "https://status.example.org/bitstring/1"},
 		},
