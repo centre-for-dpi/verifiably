@@ -471,7 +471,8 @@ No default password ships.
 Compose checks the values of every included file, so every setup run
 writes the file of every stack.
 `vca deploy` stops before compose when a file is missing.
-Run `vca setup` again after an upgrade to write them.
+Each file records when its secrets began in `VCA_STACK_SECRETS_SINCE`.
+A later run keeps that time.
 
 | File | Variables |
 |---|---|
@@ -481,6 +482,50 @@ Run `vca setup` again after an upgrade to write them.
 
 A database volume keeps the password of its first start.
 If you remove a stack `.env`, remove the volumes of that stack too.
+
+### Upgrade from shared passwords
+
+An earlier release ran every stack on fixed passwords.
+Its volumes still hold them, so the new passwords of setup fail there.
+Run these steps once on a host with volumes of that release:
+
+```sh
+vca setup --role <role> --dpg <dpg>
+vca dpg upgrade-secrets
+vca doctor --role <role> --dpg <dpg>
+vca deploy --role <role> --dpg <dpg>
+```
+
+`vca dpg upgrade-secrets` reads the creation time of each volume below.
+A volume older than `VCA_STACK_SECRETS_SINCE` gets its old password in
+the stack `.env`.
+Other values stay.
+The command prints one line per value and no password.
+`vca doctor` fails a volume older than the stamp with another password.
+It passes a volume with its old password and asks you to rotate it.
+
+| Volume | Variable |
+|---|---|
+| `vca_waltid-db` | `WALTID_DB_PASSWORD` |
+| `vca_inji-certify-db` | `INJI_DB_PASSWORD` |
+| `vca_inji-certify-keys` | `INJI_CERTIFY_KEYSTORE_PASSWORD` |
+| `vca_inji-esignet-db` | `INJI_ESIGNET_DB_PASSWORD` |
+| `vca_inji-mimoto-db` | `INJI_MIMOTO_DB_PASSWORD` |
+| `vca_inji-mimoto-keys` | `INJI_MIMOTO_KEYSTORE_PASSWORD` |
+| `vca_inji-verify-db` | `INJI_VERIFY_DB_PASSWORD` |
+| `vca_credebl-db` | `CREDEBL_DB_PASSWORD` |
+
+Rotate an old database password soon after the upgrade:
+
+1. Delete the line of the variable from the stack `.env`.
+2. Run `vca setup` for a pair of the stack. It generates a new value.
+3. Set that value in the database with `ALTER USER <user> PASSWORD '<value>'`.
+   Run it through `docker compose exec` on the Postgres container of the volume.
+4. Run `vca deploy` for every pair of the stack.
+
+A key store password protects the keys in its volume.
+To rotate it, change the password of the store with `keytool -storepasswd`, then follow steps 1, 2 and 4.
+You can also remove the key volume. The key manager then makes new keys, and credentials of the old keys fail their checks.
 
 ### Key certificates
 

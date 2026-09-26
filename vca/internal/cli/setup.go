@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
@@ -59,6 +60,9 @@ type SetupRequest struct {
 	// run, from ReadStackEnvs, keyed by DPG. The run keeps every stack
 	// secret it finds there (ADR-055 decision 1).
 	Stacks map[configv1.Dpg]map[string]string
+	// Now reads the clock for the stamp of a new stack .env. Nil reads
+	// the real clock.
+	Now func() time.Time
 }
 
 // Plan is the result of a setup run before anything reaches the disk.
@@ -209,7 +213,11 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 		return Plan{}, err
 	}
 	shared = append(shared, mimoto...)
-	stacks, err := StackFiles(req.Stacks, req.Random)
+	now := time.Now
+	if req.Now != nil {
+		now = req.Now
+	}
+	stacks, err := StackFiles(req.Stacks, req.Random, now())
 	if err != nil {
 		return Plan{}, err
 	}

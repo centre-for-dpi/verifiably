@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra/doc"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/themefile"
 )
 
@@ -641,7 +642,14 @@ func newDoctorCommand(env *Environment) *cobra.Command {
 				return err
 			}
 			deployRoot := filepath.Join(env.Root, "deploy")
+			// A broken stack .env shows as a failed stack check, not as
+			// a stop of the whole report.
+			stacks, stacksErr := ReadStackEnvs(deployRoot)
+			if stacksErr != nil {
+				anyval.DiscardWrite(fmt.Fprintf(cmd.ErrOrStderr(), "doctor: %v\n", stacksErr))
+			}
 			return Doctor(DoctorOptions{
+				Stacks:     stacks,
 				Pairs:      pairs,
 				FromSource: fromSource,
 				PublicURL:  public,
@@ -858,6 +866,7 @@ func newDpgCommand(env *Environment) *cobra.Command {
 		"Ask nothing. The run uses the named DPG and the default role.")
 	dpg.AddCommand(bootstrap)
 	dpg.AddCommand(newDpgRealmCommand(env))
+	dpg.AddCommand(newDpgUpgradeSecretsCommand(env))
 	return dpg
 }
 
@@ -936,6 +945,47 @@ func newDpgRealmCommand(env *Environment) *cobra.Command {
 		"The stack whose Keycloak holds the realm: "+strings.Join(DpgNames(), ", ")+".")
 	cmd.Flags().StringVar(&registration, "registration", "",
 		"on lets anyone register in the realm. off closes it.")
+	return cmd
+}
+
+// newDpgUpgradeSecretsCommand builds vca dpg upgrade-secrets (ADR-055
+// decision 1).
+func newDpgUpgradeSecretsCommand(env *Environment) *cobra.Command {
+	var dpgName string
+	cmd := &cobra.Command{
+		Use:   "upgrade-secrets [--dpg <dpg>]",
+		Short: "Keep the old passwords of volumes from before generated secrets.",
+		Long: "upgrade-secrets reads the volumes of each stack from Docker. A " +
+			"volume older than the secrets of deploy/<dpg>/.env holds the " +
+			"default password of an earlier release. The command writes that " +
+			"password into the .env, so the containers reach their data. It " +
+			"keeps every other value and prints no password.\n\n" +
+			"Run it once after an upgrade, before vca deploy. Rotate the old " +
+			"passwords later, as docs/deploy.md says. vca doctor names every " +
+			"volume that needs it.\n\n" +
+			"<dpg> is one of " + strings.Join(DpgNames(), ", ") + ". No --dpg means every stack.",
+		Example: "  vca dpg upgrade-secrets --dpg <dpg>",
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			opts := UpgradeOptions{
+				Deploy: filepath.Join(env.Root, "deploy"),
+				Probe:  env.NewProbe(cmd.Context()),
+				Random: env.Random,
+				Out:    cmd.OutOrStdout(),
+			}
+			if dpgName != "" {
+				d, err := ParseDpg(dpgName)
+				if err != nil {
+					return err
+				}
+				opts.Dpgs = []configv1.Dpg{d}
+			}
+			_, err := UpgradeSecrets(opts)
+			return err
+		},
+	}
+	cmd.Flags().StringVar(&dpgName, "dpg", "",
+		"The stack to upgrade: "+strings.Join(DpgNames(), ", ")+". Empty means every stack.")
 	return cmd
 }
 

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
@@ -32,6 +33,17 @@ type fakeProbe struct {
 	lookupErr   error
 	lookedUp    []string
 	testedPorts []int
+	// volumes holds the creation time of each Docker volume by name.
+	volumes   map[string]time.Time
+	volumeErr error
+}
+
+func (p *fakeProbe) VolumeCreated(name string) (time.Time, bool, error) {
+	if p.volumeErr != nil {
+		return time.Time{}, false, p.volumeErr
+	}
+	at, ok := p.volumes[name]
+	return at, ok, nil
 }
 
 func (p *fakeProbe) GoVersion() (string, error)      { return p.goVersion, p.goErr }

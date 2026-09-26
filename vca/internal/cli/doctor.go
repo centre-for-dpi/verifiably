@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
@@ -49,6 +50,9 @@ type Probe interface {
 	PortFree(port int) (bool, error)
 	// LookupHost resolves a host name.
 	LookupHost(host string) error
+	// VolumeCreated returns when Docker made a volume. A volume that
+	// does not exist gives false and no error.
+	VolumeCreated(name string) (time.Time, bool, error)
 }
 
 // Check is the result of one prerequisite. The doctor command prints one
@@ -88,6 +92,10 @@ type DoctorOptions struct {
 	// Landing holds the .env values of the landing. A nil map uses the
 	// default host port.
 	Landing map[string]string
+	// Stacks holds the .env values of every stack, from ReadStackEnvs.
+	// The doctor compares the volumes of each stack with the time of its
+	// secrets. A nil map means no stack .env yet.
+	Stacks map[configv1.Dpg]map[string]string
 	// Probe reads the host.
 	Probe Probe
 	// Out receives the report.
@@ -255,6 +263,7 @@ func RunChecks(opts DoctorOptions) []Check {
 	out = append(out, dockerCheck(opts.Probe), composeCheck(opts.Probe), memoryCheck(opts))
 	out = append(out, portChecks(opts)...)
 	out = append(out, publicURLChecks(opts)...)
+	out = append(out, stackVolumeChecks(opts)...)
 	return out
 }
 

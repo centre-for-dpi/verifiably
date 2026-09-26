@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -30,6 +31,11 @@ const stackSecretLength = 32
 
 // stackSecretAlphabet holds the characters of a generated stack secret.
 const stackSecretAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+
+// StackSecretsSinceEnv names the time, in RFC 3339, when the secrets of
+// a stack .env began. Compose reads it as a variable that no service
+// uses.
+const StackSecretsSinceEnv = "VCA_STACK_SECRETS_SINCE"
 
 // StackDpgs returns every DPG that has a stack file, in the order of the
 // includes of the main compose file.
@@ -74,7 +80,12 @@ func StackEnvFile(d configv1.Dpg) string {
 // StackEnv renders the .env of one stack. A value of existing stays, so
 // a later run of any role keeps the passwords that the containers and
 // their volumes already hold. A missing value comes from random.
-func StackEnv(d configv1.Dpg, existing map[string]string, random io.Reader) (string, error) {
+//
+// The file records when its secrets began in StackSecretsSinceEnv. The
+// first run writes now, and a later run keeps the value. A volume older
+// than that time holds a password of a release before generated secrets
+// (see UpgradeSecrets).
+func StackEnv(d configv1.Dpg, existing map[string]string, random io.Reader, now time.Time) (string, error) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# The secrets of the %s stack. Every role of the stack shares them.\n", ShortName(d.String()))
 	b.WriteString("# The vca setup command wrote this file. A later run keeps every value.\n")
@@ -90,6 +101,12 @@ func StackEnv(d configv1.Dpg, existing map[string]string, random io.Reader) (str
 		}
 		b.WriteString(name + "=" + quoteValue(value) + "\n")
 	}
+	since := existing[StackSecretsSinceEnv]
+	if since == "" {
+		since = now.UTC().Format(time.RFC3339)
+	}
+	b.WriteString("# When these secrets began. A volume older than this holds an older password.\n")
+	b.WriteString(StackSecretsSinceEnv + "=" + quoteValue(since) + "\n")
 	return b.String(), nil
 }
 
@@ -98,10 +115,10 @@ func StackEnv(d configv1.Dpg, existing map[string]string, random io.Reader) (str
 // all of them: the main compose file includes every stack file, and
 // compose checks the required variables of each one, whatever profile
 // runs. existing holds the values of an earlier run by DPG.
-func StackFiles(existing map[configv1.Dpg]map[string]string, random io.Reader) ([]File, error) {
+func StackFiles(existing map[configv1.Dpg]map[string]string, random io.Reader, now time.Time) ([]File, error) {
 	var out []File
 	for _, d := range StackDpgs() {
-		env, err := StackEnv(d, existing[d], random)
+		env, err := StackEnv(d, existing[d], random, now)
 		if err != nil {
 			return nil, err
 		}
@@ -157,6 +174,15 @@ func ReadStackEnv(root string, d configv1.Dpg) (map[string]string, error) {
 	values, err := ParseDotenv(f)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	// A file of an earlier release has no stamp. Its last write is the
+	// latest moment its secrets can have begun.
+	if values[StackSecretsSinceEnv] == "" {
+		info, statErr := f.Stat()
+		if statErr != nil {
+			return nil, fmt.Errorf("read %s: %w", path, statErr)
+		}
+		values[StackSecretsSinceEnv] = info.ModTime().UTC().Format(time.RFC3339)
 	}
 	return values, nil
 }

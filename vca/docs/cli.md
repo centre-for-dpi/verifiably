@@ -14,6 +14,7 @@ The source is `vca/cmd/vca` and `vca/internal/cli`.
 - `vca status` shows the containers. `vca down` stops them.
 - `vca dpg bootstrap` configures a DPG after it boots.
 - `vca dpg realm` turns self registration of a realm on or off.
+- `vca dpg upgrade-secrets` keeps the old passwords of volumes from an earlier release.
 - `vca admin` calls the admin service.
 - `vca migrate` carries the data of a legacy deployment into the services.
 - `vca theme` checks and applies the theme file of every page.
@@ -94,6 +95,7 @@ The memory check adds only the pairs you selected.
 | `port <n>` | Every host port of the pair and of the Keycloak is free. |
 | `public url` | `VCA_PUBLIC_URL` resolves when it is not localhost. |
 | `port 80`, `port 443` | Both are free when you use a public URL. |
+| `stack secrets <dpg>` | No volume of the stack is older than the secrets of `deploy/<dpg>/.env` with another password. |
 
 The public URL comes from the environment, or from the `.env` file of the
 pair.
@@ -474,6 +476,26 @@ run. The run then sets the register action of every Keycloak provider
 record of that realm to none. The checklist step turns green.
 Without the admin service the run changes the realm and prints how to
 record the step.
+
+## dpg upgrade-secrets
+
+```sh
+vca dpg upgrade-secrets --dpg <dpg>
+```
+
+A release before generated stack secrets ran every stack on fixed
+passwords.
+A database volume keeps the password of its first start.
+So a volume of that release fails with the new passwords of setup.
+The command reads the creation time of each volume from Docker.
+It compares that time with `VCA_STACK_SECRETS_SINCE` of
+`deploy/<dpg>/.env`.
+For each older volume, it writes the old password into the `.env`.
+It keeps every other value and prints no password.
+No `--dpg` means every stack.
+Run it once after the upgrade, before `vca deploy`.
+`vca doctor` names each volume that needs it.
+Rotate the old passwords later, as `docs/deploy.md` says.
 
 ## admin
 
