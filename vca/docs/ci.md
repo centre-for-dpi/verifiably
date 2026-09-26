@@ -116,5 +116,5 @@ exact release. Do not use `@master` or `@main`.
 | `check-commits.sh <range>` | Validates commit subjects in a git range |
 | `check-commits_test.sh` | Tests `check-commits.sh` with good and bad subjects |
 | `release-notes.sh <from> <to> [version]` | Writes a CHANGELOG section from Conventional Commits |
-| `contract-tests.sh` | Runs contract tests for the DPGs in `VCA_CONTRACT_DPGS` |
+| `contract-tests.sh` | Runs contract tests for the DPGs in `VCA_CONTRACT_DPGS`, and makes the Inji test holder when the job gives none |
 | `k8s-smoke.sh` | Deploys the Helm charts into the current cluster and waits |

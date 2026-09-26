@@ -513,6 +513,24 @@ build.
 The contract set targets a real Inji deployment. It carries the build
 tag `contract_inji`. It skips itself when the variables hold no value.
 
+The holder case signs a test holder in at the holder realm of the stack
+Keycloak. `hack/contract-tests.sh` makes that holder when the job gives
+none. It signs in to the Keycloak admin API as the administrator of
+`deploy/vca/keycloak-inji/.env`. It makes the user `contract-holder`
+with a random password and a random six digit wallet PIN. A second run
+finds the user and sets the same password again.
+
+The script keeps the password, the PIN, and the redirect URI of the
+holder pair in `deploy/vca/mimoto-inji/contract-holder.env` with mode
+0600. It then sets the four `VCA_INJI_CONTRACT_HOLDER_*` variables for
+the test run. A variable that the job gives wins over the file.
+
+| Variable | Default |
+| --- | --- |
+| `VCA_CONTRACT_DEPLOY_DIR` | `deploy/vca` of the repository |
+| `VCA_CONTRACT_KEYCLOAK_URL` | `http://127.0.0.1:17080`, the host port of the stack Keycloak |
+| `VCA_CONTRACT_PREPARE_ONLY` | empty; `1` makes the holder and runs no test |
+
 ## Reference
 
 - Service folder: `services/dpg-adapter-inji`
