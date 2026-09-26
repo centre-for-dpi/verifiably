@@ -239,7 +239,7 @@ uses both places:
 
 | Action | Where it runs |
 | --- | --- |
-| List | The stack wallet first, then the credentials the holder loaded into the browser store. |
+| List | The stack wallet first. Then the credentials the holder loaded into the browser store. When the stack does not answer, the browser credentials stay on the page. A note above them names the stack. `ListMineResponse.stack_problem` carries the sentence. A locked stack wallet shows its PIN card beside the browser credentials. |
 | Claim an offer | The page of the stack. The offer page and the claim page link to the component of the adapter answer that has a public address. |
 | Load a file or a paste | The browser store, as without an adapter. |
 | Present | The stack for a stack credential. The wallet itself for a browser credential. |

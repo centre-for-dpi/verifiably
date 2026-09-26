@@ -29,14 +29,25 @@ func (p *Portal) mine(w http.ResponseWriter, r *http.Request) error {
 	// enters the PIN (P6-I7c). The home page then asks for it.
 	if state, lerr := p.walletLock(b, r); lerr == nil && pinShut(state) {
 		parts = append(parts, p.pinCard(b, state))
+		// The browser store stays open beside a locked stack wallet.
+		if local, herr := p.opts.Service.HeldInBrowser(r.Context()); herr == nil && len(local) > 0 {
+			parts = append(parts, p.cardList(b, local))
+		}
 	} else {
 		resp, err := p.opts.Service.ListMine(r.Context(),
 			connect.NewRequest(&walletportalv1.ListMineRequest{}))
-		if err != nil {
+		switch {
+		case err != nil:
 			parts = append(parts, b.part("card", components.Card{
 				ID: "wallet-problem", Title: msg.T("holder.problem.title"), Text: msg.T("holder.problem.text"),
 			}))
-		} else {
+		case resp.Msg.GetStackProblem() != "":
+			// A hybrid wallet keeps the browser cards when the stack does
+			// not answer, and names the stack in a note beside them
+			// (P6-I7e).
+			name, _ := stackPage(b)
+			parts = append(parts, p.stackProblem(b, name), p.cardList(b, resp.Msg.GetCards()))
+		default:
 			parts = append(parts, p.cardList(b, resp.Msg.GetCards()))
 		}
 	}
@@ -213,3 +224,11 @@ func (p *Portal) walletLock(b *pen, r *http.Request) (backendv1.WalletLock, erro
 
 // errNoPin reports a stack that keeps no PIN.
 var errNoPin = errors.New("portal: the stack wallet keeps no PIN")
+
+// stackProblem renders the note of a stack wallet that did not answer.
+// It sits beside the browser cards, which stay on the page.
+func (p *Portal) stackProblem(b *pen, name string) template.HTML {
+	return b.part("card", components.Card{
+		ID: "stack-problem", Title: msg.T("holder.stack.problem.title", name), Text: msg.T("holder.stack.problem.text"),
+	})
+}

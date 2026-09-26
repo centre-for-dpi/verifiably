@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -154,5 +155,42 @@ func TestDocument(t *testing.T) {
 	browser := build(t, nil)
 	if _, err := browser.Document(ctx(), connect.NewRequest(&walletportalv1.DocumentRequest{Id: "x"})); connect.CodeOf(err) != connect.CodeUnimplemented {
 		t.Fatalf("browser: %v", err)
+	}
+}
+
+// TestHybridKeepsBrowserCardsWhenTheStackFails is P6-I7e: in hybrid
+// mode a stack list that fails keeps the credentials of the browser
+// store, and the answer names the stack problem in one sentence. A
+// wallet with the stack alone still fails, because it has nothing else
+// to show.
+func TestHybridKeepsBrowserCardsWhenTheStackFails(t *testing.T) {
+	h := &stackHolder{fakeHolder: fakeHolder{credential: named(), listErr: errors.New("mimoto: connection refused")}}
+	svc := hybrid(t, h, true)
+	if _, err := svc.Paste(ctx(), connect.NewRequest(&walletportalv1.PasteRequest{Text: token(t)})); err != nil {
+		t.Fatal(err)
+	}
+	mine, err := svc.ListMine(ctx(), connect.NewRequest(&walletportalv1.ListMineRequest{}))
+	if err != nil {
+		t.Fatalf("ListMine: %v", err)
+	}
+	got := mine.Msg.GetCards()
+	if len(got) != 1 || !got[0].GetInBrowser() || mine.Msg.GetStackProblem() == "" {
+		t.Fatalf("cards = %v, problem %q", got, mine.Msg.GetStackProblem())
+	}
+	if strings.Contains(mine.Msg.GetStackProblem(), "connection refused") {
+		t.Fatalf("the note leaks the error of the stack: %q", mine.Msg.GetStackProblem())
+	}
+	h.listErr = nil
+	ok, err := svc.ListMine(ctx(), connect.NewRequest(&walletportalv1.ListMineRequest{}))
+	if err != nil || ok.Msg.GetStackProblem() != "" || len(ok.Msg.GetCards()) != 2 {
+		t.Fatalf("a stack that answers: %v %v", ok, err)
+	}
+	plain := hybrid(t, &stackHolder{fakeHolder: fakeHolder{listErr: errors.New("down")}}, false)
+	if _, perr := plain.ListMine(ctx(), connect.NewRequest(&walletportalv1.ListMineRequest{})); connect.CodeOf(perr) != connect.CodeUnavailable {
+		t.Fatalf("a stack wallet alone: %v", perr)
+	}
+	cards, err := svc.HeldInBrowser(ctx())
+	if err != nil || len(cards) != 1 || !cards[0].GetInBrowser() {
+		t.Fatalf("HeldInBrowser = %v %v", cards, err)
 	}
 }

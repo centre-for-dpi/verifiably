@@ -553,22 +553,42 @@ func (s *Service) ListMine(ctx context.Context, req *connect.Request[walletporta
 	if err != nil {
 		return nil, err
 	}
-	list, err := s.held(ctx, citizen, req.Msg.GetPage())
+	list, problem, err := s.held(ctx, citizen, req.Msg.GetPage())
 	if err != nil {
 		return nil, err
 	}
 	return connect.NewResponse(&walletportalv1.ListMineResponse{
-		Cards: list, Page: &commonv1.PageResult{TotalSize: int64(len(list))},
+		Cards: list, Page: &commonv1.PageResult{TotalSize: int64(len(list))}, StackProblem: problem,
 	}), nil
+}
+
+// stackProblem is the sentence of a stack wallet that did not answer
+// beside the browser store (P6-I7e).
+const stackProblem = "the stack wallet did not answer, so the list holds the browser credentials alone"
+
+// HeldInBrowser returns the cards of the browser store of the citizen,
+// or none when the wallet keeps no browser store. The home page of a
+// locked stack wallet lists them beside the PIN step.
+func (s *Service) HeldInBrowser(ctx context.Context) ([]*walletportalv1.Card, error) {
+	citizen, err := session.Require(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !s.KeepsBrowser(ctx) {
+		return nil, nil
+	}
+	return s.browserCards(ctx, citizen)
 }
 
 // held returns the cards of the citizen. In browser storage mode the
 // server sees only the credentials the citizen pasted in this session,
-// because it cannot read the ciphertext blobs.
+// because it cannot read the ciphertext blobs. In hybrid mode a stack
+// that does not answer leaves the browser cards and a problem sentence.
 func (s *Service) held(ctx context.Context, citizen session.Citizen, page *commonv1.Pagination,
-) ([]*walletportalv1.Card, error) {
+) ([]*walletportalv1.Card, string, error) {
 	if s.opts.Holder == nil {
-		return s.browserCards(ctx, citizen)
+		list, err := s.browserCards(ctx, citizen)
+		return list, "", err
 	}
 	size := page.GetPageSize()
 	if size <= 0 || int(size) > s.opts.PageSizeMax {
@@ -578,19 +598,24 @@ func (s *Service) held(ctx context.Context, citizen session.Citizen, page *commo
 		WalletId: citizen.WalletID,
 		Page:     &commonv1.Pagination{PageSize: size, PageToken: page.GetPageToken()},
 	}))
-	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable,
+	hybrid := s.hybrid(ctx)
+	if err != nil && !hybrid {
+		return nil, "", connect.NewError(connect.CodeUnavailable,
 			errors.New("the wallet is not available, try again later"))
 	}
-	out := s.opts.Cards.Cards(ctx, resp.Msg.GetCredentials())
-	if !s.hybrid(ctx) {
-		return out, nil
+	var out []*walletportalv1.Card
+	problem := stackProblem
+	if err == nil {
+		out, problem = s.opts.Cards.Cards(ctx, resp.Msg.GetCredentials()), ""
+	}
+	if !hybrid {
+		return out, "", nil
 	}
 	local, err := s.browserCards(ctx, citizen)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return append(out, local...), nil
+	return append(out, local...), problem, nil
 }
 
 // browserCards returns the cards of the credentials the citizen loaded
@@ -653,7 +678,9 @@ func (s *Service) PresentStart(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	held, err := s.held(ctx, citizen, nil)
+	// A hybrid wallet whose stack does not answer still presents the
+	// credentials of the browser store.
+	held, _, err := s.held(ctx, citizen, nil)
 	if err != nil {
 		return nil, err
 	}

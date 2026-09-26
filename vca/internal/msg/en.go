@@ -1420,6 +1420,8 @@ var en = map[string]string{
 	"holder.stack.title":                      "Your {1} wallet claims in its own page.",
 	"holder.stack.text":                       "Open it and claim the credential there. The credential then shows in this list.",
 	"holder.stack.open.label":                 "Open the {1} wallet",
+	"holder.stack.problem.title":              "The {1} wallet did not answer.",
+	"holder.stack.problem.text":               "Your browser credentials show below. Load the page again in a few minutes to see the rest.",
 	"holder.stack.pin":                        "It asks for the PIN you set here.",
 	"holder.pin.new.title":                    "Set the PIN of your {1} wallet.",
 	"holder.pin.new.card":                     "Your stack wallet needs a PIN of six digits before it lists your credentials.",

@@ -132,3 +132,44 @@ func TestDocumentDownload(t *testing.T) {
 		t.Fatalf("problem: %d %s", problem.Code, problem.Body.String())
 	}
 }
+
+// TestHybridHomeKeepsBrowserCardsBesideAStackProblem is P6-I7e on the
+// home page: when the stack list fails, the credentials of the browser
+// store stay on the page, and a note beside them names the stack. The
+// problem card that replaced the whole list shows no more.
+func TestHybridHomeKeepsBrowserCardsBesideAStackProblem(t *testing.T) {
+	h := setupStack(t, backendv1.Feature_FEATURE_WALLET_CLAIM_IN_STACK, backendv1.Feature_FEATURE_WALLET_DOCUMENT)
+	if rec := h.post(t, "/wallet/scan", url.Values{"text": {sdjwtToken(t)}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("paste: %d", rec.Code)
+	}
+	h.holder.listErr = errors.New("mimoto: connection refused")
+	body := h.get(t, "/wallet/").Body.String()
+	for _, want := range []string{
+		`id="stack-problem"`, "The Inji wallet did not answer.", "Your browser credentials show below.",
+		"DriverLicence", "Open the Inji wallet", `id="wallet-paste-save"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the home page misses %s\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `id="wallet-problem"`) || strings.Contains(body, "Farmer Credential") || strings.Contains(body, "connection refused") {
+		t.Fatalf("the home page hides the browser cards or leaks the error\n%s", body)
+	}
+	h.holder.listErr = nil
+	if body := h.get(t, "/wallet/").Body.String(); strings.Contains(body, `id="stack-problem"`) || !strings.Contains(body, "Farmer Credential") {
+		t.Fatalf("a stack that answers still shows the note\n%s", body)
+	}
+}
+
+// TestLockedHybridHomeKeepsBrowserCards keeps the browser credentials
+// beside the PIN card of a locked stack wallet (P6-I7c with P6-I7e).
+func TestLockedHybridHomeKeepsBrowserCards(t *testing.T) {
+	h := pinStack(t, backendv1.WalletLock_WALLET_LOCK_NEEDS_PIN)
+	if rec := h.post(t, "/wallet/scan", url.Values{"text": {sdjwtToken(t)}}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("paste: %d", rec.Code)
+	}
+	body := h.get(t, "/wallet/").Body.String()
+	if !strings.Contains(body, `id="wallet-pin"`) || !strings.Contains(body, "DriverLicence") || strings.Contains(body, `id="stack-problem"`) {
+		t.Fatalf("the locked home page\n%s", body)
+	}
+}

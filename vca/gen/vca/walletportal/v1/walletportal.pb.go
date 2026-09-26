@@ -1755,7 +1755,11 @@ type ListMineResponse struct {
 	// The cards in the page.
 	Cards []*Card `protobuf:"bytes,1,rep,name=cards,proto3" json:"cards,omitempty"`
 	// The page description.
-	Page          *v1.PageResult `protobuf:"bytes,2,opt,name=page,proto3" json:"page,omitempty"`
+	Page *v1.PageResult `protobuf:"bytes,2,opt,name=page,proto3" json:"page,omitempty"`
+	// A sentence when the stack wallet beside the browser store did not
+	// answer. The cards then hold the browser credentials alone. Empty
+	// when the stack answered.
+	StackProblem  string `protobuf:"bytes,3,opt,name=stack_problem,json=stackProblem,proto3" json:"stack_problem,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1802,6 +1806,13 @@ func (x *ListMineResponse) GetPage() *v1.PageResult {
 		return x.Page
 	}
 	return nil
+}
+
+func (x *ListMineResponse) GetStackProblem() string {
+	if x != nil {
+		return x.StackProblem
+	}
+	return ""
 }
 
 // PresentStartRequest selects a presentation request.
@@ -2749,10 +2760,11 @@ const file_vca_walletportal_v1_walletportal_proto_rawDesc = "" +
 	"\n" +
 	"media_type\x18\x02 \x01(\tR\tmediaType\"@\n" +
 	"\x0fListMineRequest\x12-\n" +
-	"\x04page\x18\x01 \x01(\v2\x19.vca.common.v1.PaginationR\x04page\"r\n" +
+	"\x04page\x18\x01 \x01(\v2\x19.vca.common.v1.PaginationR\x04page\"\x97\x01\n" +
 	"\x10ListMineResponse\x12/\n" +
 	"\x05cards\x18\x01 \x03(\v2\x19.vca.walletportal.v1.CardR\x05cards\x12-\n" +
-	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page\">\n" +
+	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page\x12#\n" +
+	"\rstack_problem\x18\x03 \x01(\tR\fstackProblem\">\n" +
 	"\x13PresentStartRequest\x12'\n" +
 	"\x0fpresentation_id\x18\x01 \x01(\tR\x0epresentationId\"\xba\x05\n" +
 	"\x14PresentStartResponse\x12'\n" +

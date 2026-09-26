@@ -334,6 +334,10 @@ message ListMineResponse {
   repeated Card cards = 1;
   // The page description.
   vca.common.v1.PageResult page = 2;
+  // A sentence when the stack wallet beside the browser store did not
+  // answer. The cards then hold the browser credentials alone. Empty
+  // when the stack answered.
+  string stack_problem = 3;
 }
 
 // PresentStartRequest selects a presentation request.
