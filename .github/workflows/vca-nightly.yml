@@ -77,7 +77,11 @@ jobs:
           VCA_INJI_CONTRACT_HOLDER_PASSWORD: ${{ secrets.VCA_INJI_CONTRACT_HOLDER_PASSWORD }}
           VCA_INJI_CONTRACT_HOLDER_REDIRECT_URI: ${{ vars.VCA_INJI_CONTRACT_HOLDER_REDIRECT_URI }}
           VCA_INJI_CONTRACT_HOLDER_PIN: ${{ secrets.VCA_INJI_CONTRACT_HOLDER_PIN }}
-        run: ./hack/contract-tests.sh
+        # The job deploys a throwaway test deployment, so it writes the
+        # marker that the script needs before it touches a deployment.
+        run: |
+          printf 'VCA_CONTRACT_DEPLOYMENT=test\n' > ../deploy/vca/contract.env
+          ./hack/contract-tests.sh
 
   k8s:
     name: helm render + kind deploy

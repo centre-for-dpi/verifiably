@@ -31,6 +31,7 @@ test: ## unit tests with race detector
 hack-test: ## tests of the shell scripts under hack
 	./hack/check-commits_test.sh
 	./hack/secret-scan_test.sh
+	./hack/contract-tests_test.sh
 
 cover: ## enforce per-package coverage floor
 	./hack/coverage.sh $(COVERAGE_FLOOR)

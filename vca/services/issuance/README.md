@@ -92,7 +92,7 @@ Issue one credential over the document channel:
 ```
 curl -s -X POST localhost:8080/vca.issuance.v1.IssuanceService/Issue \
   -H 'Content-Type: application/json' \
-  -d '{"schemaId":"farmer","subjectData":"{\"fullName\":\"Ada\"}",
+  -d '{"schemaId":"residence-permit","subjectData":"{\"fullName\":\"Ada\"}",
        "delivery":{"channel":"CHANNEL_PDF"}}'
 ```
 

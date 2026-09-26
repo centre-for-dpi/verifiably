@@ -17,6 +17,14 @@
 # The holder authorization server case of the Inji issuer pair reads
 # VCA_INJI_CONTRACT_AUTHZ_ISSUER (the public issuer of the adapter) and
 # VCA_INJI_CONTRACT_AUTHCODE_URL (the root of inji-certify-authcode).
+#
+# The script makes a test holder and writes claims rows, so it runs
+# against a test deployment only (ADR-050). It refuses to run unless the
+# deploy root holds contract.env with the line
+# VCA_CONTRACT_DEPLOYMENT=test, which the operator of the test
+# deployment writes. It also refuses a deploy root that holds a sample
+# data set or a mock identity system of an old release, because a pass
+# there proves nothing about the real workflows.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -125,11 +133,42 @@ prepare_inji_holder() {
   export VCA_INJI_CONTRACT_HOLDER_PIN="$pin" VCA_INJI_CONTRACT_HOLDER_REDIRECT_URI="$redirect"
 }
 
+# sample_marks are the names of the sample data set, the sample
+# credential type and the mock identity system that old releases of the
+# Inji stack shipped.
+sample_marks='mock-identity|esignet-mock|farmer_identity_data|FarmerCredential'
+
+# check_deployment stops the script unless the deploy root is a test
+# deployment without sample data.
+check_deployment() {
+  local deploy="${VCA_CONTRACT_DEPLOY_DIR:-../deploy/vca}"
+  local marker="$deploy/contract.env" found line
+  if [[ "$(env_value "$marker" VCA_CONTRACT_DEPLOYMENT)" != "test" ]]; then
+    echo "contract-tests: REFUSED: $marker does not say VCA_CONTRACT_DEPLOYMENT=test"
+    echo "contract-tests: the script makes a test holder and writes claims rows; write the marker on a test deployment only"
+    exit 2
+  fi
+  # A file whose name or text holds a mark.
+  found="$({
+    find "$deploy" -type f 2>/dev/null | grep -E "$sample_marks" || true
+    grep -rIlE --exclude=contract.env "$sample_marks" "$deploy" 2>/dev/null || true
+  } | sort -u | head -n 5)"
+  if [[ -n "$found" ]]; then
+    echo "contract-tests: REFUSED: the deployment holds sample data or a mock identity system:"
+    while IFS= read -r line; do
+      echo "  $line"
+    done <<<"$found"
+    echo "contract-tests: set the deployment up again with this release of vca"
+    exit 2
+  fi
+}
+
 dpgs="${VCA_CONTRACT_DPGS:-}"
 if [[ -z "$dpgs" ]]; then
   echo "contract-tests: no DPG containers configured (VCA_CONTRACT_DPGS is empty); nothing to run"
   exit 0
 fi
+check_deployment
 
 fail=0
 for dpg in $dpgs; do

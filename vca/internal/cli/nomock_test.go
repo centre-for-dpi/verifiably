@@ -50,10 +50,10 @@ const composeDefaultRule = "${VAR:-default}"
 // deployment file or an operator document.
 var mockWordRe = regexp.MustCompile(`(?i)\b(mock|dummy|fake|sample|seed|demo)\b`)
 
-// The token scan skips _test.go files, .proto files (an RPC name is an
-// API name), testdata and gen folders, docs/adr (the records describe
-// what was removed) and internal/fake packages (test doubles that no
-// binary imports, see TestNoBinaryImportsAFakePackage).
+// The token scan skips _test.go and _test.sh files, .proto files (an
+// RPC name is an API name), testdata and gen folders, docs/adr (the
+// records describe what was removed) and internal/fake packages (test
+// doubles that no binary imports, see TestNoBinaryImportsAFakePackage).
 
 // nomockException names one line pattern in one file that the word
 // rule or the token rule accepts, with the reason.
@@ -72,6 +72,10 @@ var nomockAllowlist = []nomockException{
 	{"vca/docs/dpg-adapter-inji.md", "fake", "The document describes the test double of the adapter tests."},
 	{"vca/docs/dpg-adapter-waltid.md", "fake", "The document describes the test double of the adapter tests."},
 	{"vca/internal/cli/credebl.go", "seed", "The CREDEBL release names its database initialisation script prisma db seed. The data comes from setup."},
+	{"vca/hack/contract-tests.sh", "mock-identity", "The contract script refuses a deployment that runs the mock identity system of an old release."},
+	{"vca/hack/contract-tests.sh", "esignet-mock", "The contract script refuses a deployment that runs the mock plugin of an old release."},
+	{"vca/hack/contract-tests.sh", "farmer_identity_data", "The contract script refuses a deployment that holds the sample identities of an old release."},
+	{"vca/hack/contract-tests.sh", "FarmerCredential", "The contract script refuses a deployment that holds the sample credential of an old release."},
 }
 
 // pendingRemovals are the findings of the tree when the guard landed.
@@ -80,11 +84,7 @@ var nomockAllowlist = []nomockException{
 // matches, so nobody forgets to delete it. The last unit empties the
 // list.
 // The reason column names the unit that deletes the entry.
-var pendingRemovals = []nomockException{
-	{"vca/docs/deploy.md", "mock", "N12"},
-	{"vca/docs/deploy.md", "sample", "N12"},
-	{"vca/docs/dpg-adapter-inji.md", "sample", "N12"},
-}
+var pendingRemovals = []nomockException{}
 
 // trackedFiles lists the committed files under deploy/ and vca/,
 // relative to the repository root, without the folders the scan skips.
@@ -121,7 +121,7 @@ func trackedFiles(t *testing.T) []string {
 
 // nomockSkipsFile says whether the token scan leaves a file out.
 func nomockSkipsFile(rel string) bool {
-	if strings.HasSuffix(rel, "_test.go") || strings.HasSuffix(rel, ".proto") {
+	if strings.HasSuffix(rel, "_test.go") || strings.HasSuffix(rel, "_test.sh") || strings.HasSuffix(rel, ".proto") {
 		return true
 	}
 	parts := strings.Split(rel, "/")
@@ -395,7 +395,7 @@ func TestTestPathMarks(t *testing.T) {
 
 func TestNomockSkipsTestPathsOnly(t *testing.T) {
 	for _, rel := range []string{
-		"vca/internal/cli/x_test.go", "vca/proto/x.proto", "vca/services/a/testdata/x.json",
+		"vca/internal/cli/x_test.go", "vca/hack/x_test.sh", "vca/proto/x.proto", "vca/services/a/testdata/x.json",
 		"vca/gen/x.pb.go", "vca/docs/adr/ADR-050-no-mock-data.md", "vca/services/a/internal/fake/fake.go",
 	} {
 		if !nomockSkipsFile(rel) {

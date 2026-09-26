@@ -114,6 +114,13 @@ func fakeAdminKeycloak(t *testing.T, state *adminKeycloak, password string) *htt
 // contractScript is the script under test, relative to this package.
 const contractScript = "../../hack/contract-tests.sh"
 
+// contractMarker is the file under the deploy root that marks a test
+// deployment. The script refuses to run without it (ADR-050).
+const (
+	contractMarker     = "contract.env"
+	contractMarkerText = "VCA_CONTRACT_DEPLOYMENT=test\n"
+)
+
 // contractScriptCommand runs hack/contract-tests.sh in its prepare only
 // mode with a clean environment.
 func contractScriptCommand(t *testing.T, env ...string) *exec.Cmd {
@@ -153,6 +160,7 @@ func TestContractScriptMakesTheTestHolder(t *testing.T) {
 	for name, body := range map[string]string{
 		filepath.Join(KeycloakDir(injiIssuer.Dpg), EnvFileName): "KEYCLOAK_ADMIN=admin\nKEYCLOAK_ADMIN_PASSWORD=" + adminPassword + "\n",
 		filepath.Join("holder-inji", EnvFileName):               "VCA_OIDC_REDIRECT_URI=https://holder.example/auth/callback\n",
+		contractMarker: contractMarkerText,
 	} {
 		path := filepath.Join(root, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
@@ -235,6 +243,9 @@ func TestContractScriptStopsOnAWrongAdminPassword(t *testing.T) {
 	if err := os.WriteFile(path, []byte("KEYCLOAK_ADMIN=admin\nKEYCLOAK_ADMIN_PASSWORD=stale-secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(root, contractMarker), []byte(contractMarkerText), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	kc := &adminKeycloak{}
 	srv := fakeAdminKeycloak(t, kc, "current-secret")
 	out, err := contractScriptCommand(t, "VCA_CONTRACT_DEPLOY_DIR="+root, "VCA_CONTRACT_KEYCLOAK_URL="+srv.URL,
@@ -251,4 +262,19 @@ func TestContractScriptStopsOnAWrongAdminPassword(t *testing.T) {
 	if got := kc.snapshot(); len(got.creates) != 0 {
 		t.Errorf("creates = %v", got.creates)
 	}
+}
+
+// TestContractScriptRunsOnATestDeploymentOnly runs the cases of
+// hack/contract-tests_test.sh. The script makes a test holder and writes
+// claims rows, so it refuses a deploy root without the marker of a test
+// deployment, and one that holds a sample data set or a mock identity
+// system (ADR-050).
+func TestContractScriptRunsOnATestDeploymentOnly(t *testing.T) {
+	script := filepath.Join(repoRoot(), "vca", "hack", "contract-tests_test.sh")
+	cmd := exec.CommandContext(context.Background(), "bash", script) // #nosec G204 -- a fixed script of the repository
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s: %v\n%s", script, err, out)
+	}
+	t.Logf("%s", out)
 }

@@ -143,3 +143,7 @@ verifiably-go/deploy/**/*.pem
 # The local copy of the theme file (ADR-032). vca theme check and the
 # compose file read it through VCA_THEME_HOST_FILE.
 deploy/theme.local.yaml
+
+# The marker of a test deployment for vca/hack/contract-tests.sh. Each
+# test deployment writes its own; it never ships.
+/deploy/vca/contract.env

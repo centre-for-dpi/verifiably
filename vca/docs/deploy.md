@@ -408,7 +408,7 @@ Each one checks its caller or serves public data only.
 | `/verify/*` | `verifier-results` | The citizen check page. It keeps no result. |
 | `/static/*` | the home service | The shared style sheet, fonts, and scripts. |
 | `/issuance/pdf/*` | `issuance` | The document of a citizen. A random 128 bit reference names it, and it expires. |
-| `/pdf/preview/*` | `schema-builder-ui` | The preview of sample data. A hash of the preview names it. |
+| `/pdf/preview/*` | `schema-builder-ui` | The PDF preview of the values that the schema derives. A hash of the preview names it. |
 | `/.well-known/openid-credential-issuer`, `/.well-known/vct/*`, `/vct/*`, `/schemas/*`, `/api/schemas` | `schema-registry` | The OID4VCI metadata and the published schema documents. `GET` only. |
 | `/.well-known/did.json` | `issuance` | The DID document of a `did:web` issuer. |
 | `/issued/chain-head`, `/issued/jwks.json` | `issued-credentials` | The signed chain head and its key for an auditor. `GET` only. |
@@ -682,8 +682,8 @@ eSignet reads it as the profile `integration`.
 `vca setup` copies a custom jar to `deploy/esignet-inji/vca/`.
 The folder `deploy/esignet-inji` holds a `.gitignore` that ignores
 everything, so no secret reaches git.
-The mock plugin of the eSignet image is not an option of VCA.
-The stack runs no mock identity system.
+The eSignet image also holds a plugin for tests.
+VCA does not offer it, and the stack runs no identity system of its own.
 
 `vca deploy` adds the compose profile `esignet-inji` when the `.env` of
 the pair names an authenticator.
@@ -803,9 +803,11 @@ Run `vca setup` for the holder pair again after the verifier pair moves.
 Certify 0.14.0 can ask the holder to present a credential before it
 issues. It asks Inji Verify for the request and checks the answer there.
 So the `issuer-inji` profile runs Inji Verify too, with its
-database. Certify reads the presentation definition from
-`deploy/vca/dpg/inji/certify/vp_request_config.json` over HTTP, through
-the small `inji-certify-nginx` container. `vca setup` sets
+database. Certify reads the presentation definition over HTTP from
+`/iar/presentation-definition.json` of the Inji adapter (ADR-051
+decision 6). The issuer sets the credential to present on the issuer
+portal. Until then the adapter answers 404, and an offer that needs a
+presentation fails. `vca setup` sets
 `VCA_INJI_PRESENTATION_DURING_ISSUANCE=true` for the Inji issuer pair,
 so the issue page offers the step. The folder `SOURCE.md` names the
 upstream files.

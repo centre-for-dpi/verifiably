@@ -29,13 +29,21 @@ A removal from the tree alone protects nothing.
 
 ### 1. Rotate first, purge second
 
-Treat every value below as compromised, whatever the purge does:
+Treat every value below as compromised, whatever the purge does.
+
+#### Legacy tree, not shipped by VCA
+
+Every value below lives in the legacy `verifiably-go` tree. VCA builds
+and ships nothing from that tree. No VCA image, chart, stack file or
+setup run reads these files, and `scripts/gen-demo-pki.sh` is a tool of
+that tree only. VCA setup generates the keys of a VCA deployment
+(ADR-055).
 
 | Secret | Where it was | What to do |
 |---|---|---|
 | Federation API keys | `verifiably-go/config/federation.json` | Issue a new key on each member deployment. |
 | Inji Web keystore | `verifiably-go/deploy/compose/injiweb/config/certs/oidckeystore.p12` and `.../certs-runtime/` | Generate a new keystore per host and register the new certificate with eSignet. |
-| walt.id wallet token key | the `tokenKey` chart default and `deploy/k8s/config/wallet/auth.conf` | Generate a key per deployment with `scripts/gen-demo-pki.sh`. Every wallet token signed with the old key stays forgeable. |
+| walt.id wallet token key | the `tokenKey` chart default and `verifiably-go/deploy/k8s/config/wallet/auth.conf` | Generate a key per deployment with `scripts/gen-demo-pki.sh`. Every wallet token signed with the old key stays forgeable. |
 | WSO2 demo keystores | `verifiably-go/deploy/compose/stack/wso2-certs/` | Generate them per host with `scripts/gen-demo-pki.sh`. |
 | CREDEBL seed password | `verifiably-go/deploy/compose/credebl/config/credebl-master-table.json` | Rewrite the seed so that it reads the password from the environment. Then remove the entry from `vca/hack/secret-scan-allow.txt`. |
 | MOSIP release literals | `verifiably-go/deploy/compose/injiweb/config/*.properties` and `verifiably-go/deploy/compose/stack/inji/certify/certify-default.properties` | The `key=value` rule of the scan finds them (ADR-055 decision 5). Delete the legacy files or empty the values. Then remove the three entries from `vca/hack/secret-scan-allow.txt`. |

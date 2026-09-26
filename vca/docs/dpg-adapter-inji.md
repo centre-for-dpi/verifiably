@@ -95,7 +95,7 @@ shows a feature on this stack only when the answer lists it (ADR-034).
 | Every webhook RPC | Inji keeps no tenants to hold a webhook. |
 | `VerifyCredential` of a JWT VC, an mDoc, or a Claim 169 QR code | Inji Verify 0.16.0 checks JSON-LD and SD-JWT credentials only. The adapter answers `invalid_argument`. |
 | A presentation during issuance without `VCA_INJI_PRESENTATION_DURING_ISSUANCE` | Certify checks the presentation with Inji Verify. A deployment outside the stack file can leave it unset. The adapter then answers `failed_precondition` and lists no `FEATURE_PRESENTATION_DURING_ISSUANCE`. The stack file points it there, and `vca setup` sets the value. |
-| A presentation definition per offer | Certify 0.14.0 reads one definition for the deployment from `vp_request_config.json`. The offer cannot name another. |
+| A presentation definition per offer | Certify 0.14.0 reads one definition for the deployment from `GET /iar/presentation-definition.json` of the adapter. The offer cannot name another. |
 | An identity QR code beside an mDoc | The adapter asks for the code in `ldp_vc` and `vc+sd-jwt` entries only. An mDoc element needs a digest of its own. |
 | An identity QR code of a schema without identity claims | Claim 169 names identity attributes only. The adapter asks for no code, and `Issue` returns none. |
 
@@ -579,7 +579,7 @@ earlier release moves into the ring at the first start.
 | A copy of the store gives codes or keys | The store keeps the SHA-256 of each code, state, and `jti`. The token key sits under AES-256-GCM with the pair session key. |
 | A token key leaks | `vca dpg rotate-authz-key inji --now` replaces it without a restart. The rotation needs a token derived from the pair session key, and the proxy does not publish it. |
 | A token reaches another service | `aud` names the credential endpoint of one Certify. The token lives five minutes and carries the scope `vca_credential` only. |
-| A token for one credential asks for another type | The template of every configuration renders only a row of that configuration (ADR-056 decision 1). A farmer row gives no medical licence. |
+| A token for one credential asks for another type | The template of every configuration renders only a row of that configuration (ADR-056 decision 1). A row of one type gives no credential of another type. |
 | A mix up of servers | The redirect carries `iss` (RFC 9207). |
 | A wallet that follows RFC 8414 finds no server | The proxy publishes the metadata at the inserted and the appended paths, for both well-known names. |
 
@@ -613,10 +613,9 @@ with the Claim 169 decoder of `core/ingest` and returns it in
 `claim169_qr`. The issuance service prints it on a document for the
 channel `CHANNEL_CLAIM169_QR`.
 
-The key names of the stack sample differ from the mapper in one place.
-The sample writes `Date Of Birth`, and the mapper knows
-`Date of Birth`. The adapter uses the mapper name, so the date gets the
-key 8.
+Some Claim 169 writers spell the date key `Date Of Birth`. The mapper
+knows `Date of Birth`. The adapter uses the mapper name, so the date
+gets the key 8.
 
 ## The holder role through Mimoto
 
@@ -743,6 +742,14 @@ build.
 The contract set targets a real Inji deployment. It carries the build
 tag `contract_inji`. It skips itself when the variables hold no value.
 
+`hack/contract-tests.sh` makes a test holder and writes claims rows. So
+it runs against a test deployment only. It refuses to run unless the
+deploy root holds `contract.env` with the line
+`VCA_CONTRACT_DEPLOYMENT=test`. Write that file on a test deployment
+only. The script also refuses a deploy root with the example
+identities of an old release, or with their identity system.
+`hack/contract-tests_test.sh` tests both refusals.
+
 The holder case signs a test holder in at the holder realm of the stack
 Keycloak. `hack/contract-tests.sh` makes that holder when the job gives
 none. It signs in to the Keycloak admin API as the administrator of
@@ -757,7 +764,7 @@ the test run. A variable that the job gives wins over the file.
 
 | Variable | Default |
 | --- | --- |
-| `VCA_CONTRACT_DEPLOY_DIR` | `deploy/vca` of the repository |
+| `VCA_CONTRACT_DEPLOY_DIR` | `deploy/vca` of the repository. It must hold `contract.env`. |
 | `VCA_CONTRACT_KEYCLOAK_URL` | `http://127.0.0.1:17080`, the host port of the stack Keycloak |
 | `VCA_CONTRACT_PREPARE_ONLY` | empty; `1` makes the holder and runs no test |
 

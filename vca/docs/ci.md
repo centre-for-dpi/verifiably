@@ -96,7 +96,7 @@ All services get the same version per release (ADR-006 decision 4).
 | Job | What it does | Script |
 | --- | --- | --- |
 | make test | Full unit suite and the coverage gate | `make test`, `make cover` |
-| contract tests (real DPGs) | Runs contract tests against real DPG containers named in the repository variable `VCA_CONTRACT_DPGS`. With no names, prints a message and passes. | `vca/hack/contract-tests.sh` |
+| contract tests (real DPGs) | Runs contract tests against real DPG containers named in the repository variable `VCA_CONTRACT_DPGS`. With no names, prints a message and passes. The job writes the marker of a test deployment first. | `vca/hack/contract-tests.sh` |
 | helm render + kind deploy | Creates a kind cluster, lints, renders and installs every chart under `deploy/vca/helm/*`, and waits for the deployments. With no charts, prints a notice and passes. | `vca/hack/k8s-smoke.sh` |
 
 A nightly failure does not block a merge. It shows on the Actions page.
@@ -115,6 +115,7 @@ exact release. Do not use `@master` or `@main`.
 | `coverage.sh <floor>` | Fails when a package is below the floor; `core/...` must be 100 |
 | `check-commits.sh <range>` | Validates commit subjects in a git range |
 | `check-commits_test.sh` | Tests `check-commits.sh` with good and bad subjects |
+| `contract-tests_test.sh` | Tests that `contract-tests.sh` refuses a deployment without the marker or with sample data |
 | `release-notes.sh <from> <to> [version]` | Writes a CHANGELOG section from Conventional Commits |
-| `contract-tests.sh` | Runs contract tests for the DPGs in `VCA_CONTRACT_DPGS`, and makes the Inji test holder when the job gives none |
+| `contract-tests.sh` | Runs contract tests for the DPGs in `VCA_CONTRACT_DPGS`, and makes the Inji test holder when the job gives none. It runs only on a test deployment whose deploy root holds `contract.env` |
 | `k8s-smoke.sh` | Deploys the Helm charts into the current cluster and waits |
