@@ -503,7 +503,7 @@ func documentText(s jsonschema.Schema, key string) string {
 
 // TypeFromTitle turns a title into a credential type: each word with a
 // capital, joined, with every character that is not a letter or a
-// digit dropped. "Farmer credential" gives FarmerCredential.
+// digit dropped. "Residence permit" gives ResidencePermit.
 func TypeFromTitle(title string) string {
 	var b strings.Builder
 	upper := true

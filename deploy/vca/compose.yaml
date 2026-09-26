@@ -193,6 +193,7 @@ services:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18101}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
       - issuer-inji-dpg-adapter-inji-data:/data
+      - inji-claims:/vca/claims
   issuer-inji-issuance:
     <<: *vca-service
     image: ghcr.io/centre-for-dpi/vca-issuance:${VCA_VERSION:-latest}

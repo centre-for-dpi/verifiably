@@ -73,6 +73,11 @@ message IssueRequest {
   // service accepts it only for an OID4VCI channel on a stack whose
   // adapter lists FEATURE_PRESENTATION_DURING_ISSUANCE.
   bool require_presentation = 10;
+  // The holder of an offer with require_presentation: the identity claim
+  // of the presented credential and its value. The stack issues
+  // subject_data only to the holder who presents that value (ADR-051
+  // decision 5).
+  vca.backend.v1.PresentationSubject presentation_subject = 11;
 }
 
 // Offer is the state of one issuance.

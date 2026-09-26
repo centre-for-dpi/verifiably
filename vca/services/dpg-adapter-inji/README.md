@@ -63,7 +63,10 @@ Set at least one Inji URL. Each URL turns on one role.
 | `VCA_INJI_MDOC_KEY_APP_ID` | The Certify key application of mDocs. The default is `CERTIFY_VC_SIGN_EC_R1`. |
 | `VCA_INJI_MDOC_KEY_REF_ID` | The Certify key reference of mDocs. The default is `EC_SECP256R1_SIGN`. |
 | `VCA_INJI_MDOC_SIGNATURE_ALGO` | The COSE signature algorithm of mDocs. The default is `ES256`. |
-| `VCA_INJI_CERTIFY_PLUGINS` | The plugins of the Certify deployment, comma separated. The DPG information lists them. The default is `PreAuthDataProviderPlugin,MockCSVDataProviderPlugin,LoggerAuditService`, the plugins of the stack file. |
+| `VCA_INJI_CERTIFY_PLUGINS` | The plugins of the Certify deployment, comma separated. The DPG information lists them. The default is `PostgresDataProviderPlugin,LoggerAuditService`, the plugins of the stack file. |
+| `VCA_INJI_CLAIMS_DIR` | The directory of the VCA claims store that Certify reads through `file_fdw` (ADR-051). Empty means no store, so the issuer role stages no subject. |
+| `VCA_INJI_CLAIMS_SWEEP` | The interval of the sweep of expired rows. Default `1m`. |
+| `VCA_INJI_IAR_IDENTITY_CLAIMS` | The claims of a presented credential that name the holder of a presentation during issuance, comma separated. Default `vcaSubject`. |
 | `VCA_INJI_CA_DOMAIN` | The partner domain of an uploaded CA certificate. The default is `DEVICE`. |
 | `VCA_INJI_RENDERING_TEMPLATE_ID` | The SVG template id of the Certify deployment. A registered `ldp_vc` configuration names it as its render method. |
 | `VCA_INJI_PRESENTATION_DURING_ISSUANCE` | Set `true` once Certify reaches Inji Verify and holds a presentation definition. An offer can then ask the holder to present a credential first. The default is `false`. |

@@ -8,14 +8,12 @@ the MPL-2.0 licence, and so do the files derived from them.
 
 | File | Source | Change |
 | --- | --- | --- |
-| `certify-default.properties` | https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/certify-default.properties | The database, the key store password, Inji Verify, and the nginx of the stack, and the readiness probe of the health check. No authorization server in the base, no Redis password, and a key certificate subject from `vca setup` (ADR-055). Each change carries a `VCA:` comment. |
-| `certify-csvdp-farmer.properties` | https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/certify-csvdp-farmer.properties | The address of `inji-certify-esignet`, eSignet of the stack as the authorization server, the audiences of the Mimoto and VCA client `vca-inji`, the mock identity of the stack, and the DID of the stack. Each change carries a `VCA:` comment. |
-| `certify-preauth.properties` | The block "Use below properties to use certify as authorization server" and the `PreAuthDataProviderPlugin` line of https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/resources/application-local.properties, with the plugin block of `certify-csvdp-farmer.properties` above | VCA wrote the file from those lines. |
-| `certify_init.sql` | https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/certify_init.sql | None |
-| `farmer_identity_data.csv` | https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/farmer_identity_data.csv | None |
-| `certify-nginx.conf` | https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/certify-nginx.conf | One server per Certify container, names resolved per request, and the presentation definition at the root. |
-| `vca_certify_did.sql` | none | VCA wrote it. It names the DID of the stack in the sample configuration. |
-| `vp_request_config.json` | https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/vp_request_config.json | None |
+| `certify-default.properties` | https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/certify-default.properties | The database, the key store password, Inji Verify, the definition URL of the adapter, and the readiness probe of the health check. No authorization server in the base, no Redis password, and a key certificate subject from `vca setup` (ADR-055). Each change carries a `VCA:` comment. |
+| `certify-vca-store.properties` | The plugin block of https://raw.githubusercontent.com/inji/inji-config/release-0.14.x/certify-postgres-landregistry.properties and the block "Use below properties to use certify as authorization server" of https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/resources/application-local.properties | VCA wrote the file from those lines. The query reads the VCA claims store, and the scope is `vca_credential` (ADR-051). |
+| `certify-authcode.properties` | none | VCA wrote it. The address of `inji-certify-authcode` and the holder authorization server of the adapter (ADR-052). |
+| `certify_init.sql` | https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/certify_init.sql | The insert of the credential configuration of the release is gone. The schema and the key policies stay (ADR-050). |
+| `certify-nginx.conf` | https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/certify-nginx.conf | One server per Certify container, and names resolved per request. |
+| `vca_claims.sql` | none | VCA wrote it. It makes the foreign table of the VCA claims store (ADR-051). |
 | `../verify/init.sql` | https://raw.githubusercontent.com/mosip/inji-verify/v0.16.0/docker-compose/db-init/init.sql | None |
 
 ## Facts the Certify containers rely on
@@ -24,7 +22,7 @@ the MPL-2.0 licence, and so do the files derived from them.
   `injistack/inji-certify-with-plugins:0.14.0` as root with
   `container_user=mosip`, `SPRING_CONFIG_NAME=certify`,
   `SPRING_CONFIG_LOCATION=/home/mosip/config/`,
-  `active_profile_env=default, csvdp-farmer`, and the key store under
+  a profile of its own after `default`, and the key store under
   `/home/mosip/CERTIFY_PKCS12`. Its Postgres runs `certify_init.sql`:
   https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/docker-compose.yaml
 - The access token filter checks one issuer
@@ -40,8 +38,29 @@ the MPL-2.0 licence, and so do the files derived from them.
 - The credential comes from the one data provider of the deployment,
   which reads the claims of the token:
   https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/CertifyIssuanceServiceImpl.java
-- The CSV data provider looks the subject up in the identifier column:
-  https://raw.githubusercontent.com/inji/digital-credential-plugins/release-0.5.x/mock-certify-plugin/src/main/java/io.mosip.certify.mock.integration/service/MockCSVDataProviderPlugin.java
+- The image bundles the digital credential plugins 0.6.0, among them
+  `postgres-dataprovider-plugin.jar`:
+  https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service-with-plugins/pom.xml
+- `PostgresDataProviderPlugin` loads when
+  `mosip.certify.integration.data-provider-plugin` names it. It reads
+  `sub` and `scope` of the token, takes the query of the scope from
+  `mosip.certify.data-provider-plugin.postgres.scope-query-mapping`, runs
+  it as a native query with `:id` set to `sub`, and returns the first row
+  with the column names as keys. No row is an error:
+  https://raw.githubusercontent.com/inji/digital-credential-plugins/v0.6.0/postgres-dataprovider-plugin/src/main/java/io/mosip/certify/postgresdataprovider/integration/service/PostgresDataProviderPlugin.java
+  and https://raw.githubusercontent.com/inji/digital-credential-plugins/v0.6.0/postgres-dataprovider-plugin/src/main/java/io/mosip/certify/postgresdataprovider/integration/repository/DataProviderRepositoryImpl.java
+- The scan package of the plugin is
+  `io.mosip.certify.postgresdataprovider.integration`, and the table sits
+  in the database of Certify:
+  https://raw.githubusercontent.com/inji/inji-config/release-0.14.x/certify-postgres-landregistry.properties
+  and https://raw.githubusercontent.com/inji/digital-credential-plugins/v0.6.0/postgres-dataprovider-plugin/README.md
+- The staging call checks every staged claim against the claims of the
+  configuration. A claim with no `mandatory` member is optional:
+  https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/PreAuthorizedCodeService.java
+  (lines 134 to 208).
+- The Postgres image `postgres:15.8` ships the contrib module
+  `file_fdw`. Its `program` option reads the output of a command as a
+  table: https://www.postgresql.org/docs/15/file-fdw.html
 - The issuer metadata names `mosip.certify.authorization.url` in
   `authorization_servers` and `mosip.certify.domain.url` as the
   credential issuer:
@@ -65,9 +84,16 @@ the MPL-2.0 licence, and so do the files derived from them.
   `mosip.certify.vp-request.config-file-url`:
   https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/certify-default.properties
 - Certify reads the definition with a `RestTemplate`, so the file needs
-  an HTTP server. The injistack compose file serves it from
-  `certify-nginx`:
+  an HTTP server. The injistack compose file serves a fixed file from
+  `certify-nginx`. VCA serves the definition that the issuer set from
+  the Inji adapter instead (ADR-051 decision 6). Its shape follows the
+  file of the release, a `presentation_definition` object:
   https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/docker-compose.yaml
+  and https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/vp_request_config.json
+- Certify takes the subject of the token of a presentation during
+  issuance from the first claim of the presented credential that
+  `mosip.certify.iar.identity-data` names:
+  https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/IarPresentationService.java
 - Inji Verify listens on 8080 and its UI on 8000. Its settings are
   `DATABASE_*` and `INJI_*`:
   https://raw.githubusercontent.com/mosip/inji-verify/v0.16.0/docker-compose/docker-compose.yml,

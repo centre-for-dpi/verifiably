@@ -416,6 +416,18 @@ func (p *Pages) renderDelivery(pg page, w wizard) error {
 				{Value: "", Text: msg.T("issuer.issue.presentation.none.label")},
 				{Value: presentationYes, Text: msg.T("issuer.issue.presentation.yes.label"), Selected: w.form.Get("presentation") == presentationYes},
 			}}))
+		// The stack issues these claims to the holder whose presented
+		// credential carries the value of the chosen claim (ADR-051
+		// decision 5).
+		claim := w.form.Get("presentation_claim")
+		if claim == "" {
+			claim = defaultIdentityClaim
+		}
+		parts = append(parts,
+			b.add("field", components.Field{ID: "presentation_claim", Label: msg.T("issuer.issue.presentation_subject.claim.label"),
+				Value: claim, Hint: msg.T("issuer.issue.presentation_subject.claim.hint")}),
+			b.add("field", components.Field{ID: "presentation_source", Label: msg.T("issuer.issue.presentation_subject.source.label"),
+				Type: "select", Hint: msg.T("issuer.issue.presentation_subject.source.hint"), Options: w.claims.sourceOptions(w.form.Get("presentation_source"))}))
 	}
 	if fs := formatsOn(w.schema, w.caps); len(fs) > 1 {
 		opts := make([]components.Option, 0, len(fs))
@@ -484,7 +496,33 @@ func (p *Pages) review(pg page) error {
 		w.toasts = []components.Toast{{Level: "bad", Text: msg.T("issuer.issue.error.presentation")}}
 		return p.renderDelivery(pg, w)
 	}
+	if askPresentation(w) && presentationSubject(w) == nil {
+		return p.badSubject(pg, w)
+	}
 	return p.renderReview(pg, w)
+}
+
+// defaultIdentityClaim is the identity claim of the stack default
+// (VCA_INJI_IAR_IDENTITY_CLAIMS).
+const defaultIdentityClaim = "vcaSubject"
+
+// presentationSubject returns the holder of a presentation first: the
+// identity claim that the issuer typed and the value of the chosen claim
+// of this credential. It returns nil when either is empty.
+func presentationSubject(w wizard) *backendv1.PresentationSubject {
+	claim := strings.TrimSpace(w.form.Get("presentation_claim"))
+	value, ok := w.values.claims[w.form.Get("presentation_source")].(string)
+	if claim == "" || !ok || strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return &backendv1.PresentationSubject{Claim: claim, Value: strings.TrimSpace(value)}
+}
+
+// badSubject sends a form without a holder back to the delivery step.
+func (p *Pages) badSubject(pg page, w wizard) error {
+	w.step = stepDelivery
+	w.toasts = []components.Toast{{Level: "bad", Text: msg.T("issuer.issue.error.presentation_subject")}}
+	return p.renderDelivery(pg, w)
 }
 
 // presentationYes is the form value of the option "Ask the holder to
@@ -538,10 +576,15 @@ func (p *Pages) renderReview(pg page, w wizard) error {
 	}
 	if askPresentation(w) {
 		rows = append(rows, components.Row{{Text: msg.T("issuer.issue.presentation.label")}, {Text: msg.T("issuer.issue.presentation.yes.label")}})
+		if holder := presentationSubject(w); holder != nil {
+			rows = append(rows, components.Row{{Text: msg.T("issuer.issue.presentation_subject.review.label")},
+				{Text: msg.T("issuer.issue.presentation_subject.review.text", holder.GetClaim(), holder.GetValue())}})
+		}
 	}
 	rows = append(rows, w.claims.rows(w.values.claims)...)
 	hidden := template.HTML(hiddenInput("channel", w.form.Get("channel")) + hiddenInput("format", w.form.Get("format")) + //nolint:gosec // the inputs are escaped
-		hiddenInput("presentation", w.form.Get("presentation")))
+		hiddenInput("presentation", w.form.Get("presentation")) + hiddenInput("presentation_claim", w.form.Get("presentation_claim")) +
+		hiddenInput("presentation_source", w.form.Get("presentation_source")))
 	body := p.postForm(pg, IssueOffersPath, w, components.Join(
 		hidden,
 		b.add("block", components.Block{ID: "review", Title: msg.T("issuer.issue.review.title.label"), Lead: msg.T("issuer.issue.review.lead"),
@@ -571,6 +614,13 @@ func (p *Pages) create(pg page) error {
 	if p.opts.Issuance == nil {
 		return connect.NewError(connect.CodeNotFound, errors.New("no issuance service"))
 	}
+	ask := askPresentation(w) && oid4vci(channel)
+	var holder *backendv1.PresentationSubject
+	if ask {
+		if holder = presentationSubject(w); holder == nil {
+			return p.badSubject(pg, w)
+		}
+	}
 	data, err := json.Marshal(w.values.claims)
 	if err != nil {
 		return err
@@ -579,7 +629,7 @@ func (p *Pages) create(pg page) error {
 	res, err := p.opts.Issuance.Issue(ctx, staffshell.AsActor(ctx, &issuancev1.IssueRequest{
 		SchemaId: w.schema.GetId(), SchemaVersion: w.schema.GetVersion(), SubjectData: string(data),
 		Format: pickFormat(w), Delivery: &issuancev1.Delivery{Channel: channel, Locale: "en"},
-		RequirePresentation: askPresentation(w) && oid4vci(channel),
+		RequirePresentation: ask, PresentationSubject: holder,
 	}))
 	if err != nil {
 		text := msg.T("issuer.issue.error.stack")

@@ -268,7 +268,10 @@ type Config struct {
 	// decision 3). The key manager puts it in the subject of every key
 	// certificate it makes. Only an issuer or a holder pair of a stack
 	// with a key manager needs it.
-	Organisation  *Config_Organisation `protobuf:"bytes,15,opt,name=organisation,proto3" json:"organisation,omitempty"`
+	Organisation *Config_Organisation `protobuf:"bytes,15,opt,name=organisation,proto3" json:"organisation,omitempty"`
+	// The Inji issuer settings (ADR-051). Only an Inji issuer pair needs
+	// them.
+	Inji          *Config_Inji `protobuf:"bytes,16,opt,name=inji,proto3" json:"inji,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -404,6 +407,13 @@ func (x *Config) GetThemeFile() string {
 func (x *Config) GetOrganisation() *Config_Organisation {
 	if x != nil {
 		return x.Organisation
+	}
+	return nil
+}
+
+func (x *Config) GetInji() *Config_Inji {
+	if x != nil {
+		return x.Inji
 	}
 	return nil
 }
@@ -729,6 +739,55 @@ func (x *Config_Organisation) GetUnit() string {
 	return ""
 }
 
+// Inji holds the settings of the Inji issuer pair.
+type Config_Inji struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The claims of a presented credential that name the holder of a
+	// presentation during issuance. Certify takes the first one it
+	// finds as the subject of the token. The adapter writes the row of
+	// an offer under the value of one of them (ADR-051 decision 5).
+	IarIdentityClaims string `protobuf:"bytes,1,opt,name=iar_identity_claims,json=iarIdentityClaims,proto3" json:"iar_identity_claims,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *Config_Inji) Reset() {
+	*x = Config_Inji{}
+	mi := &file_vca_config_v1_config_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Config_Inji) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Config_Inji) ProtoMessage() {}
+
+func (x *Config_Inji) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_config_v1_config_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Config_Inji.ProtoReflect.Descriptor instead.
+func (*Config_Inji) Descriptor() ([]byte, []int) {
+	return file_vca_config_v1_config_proto_rawDescGZIP(), []int{1, 4}
+}
+
+func (x *Config_Inji) GetIarIdentityClaims() string {
+	if x != nil {
+		return x.IarIdentityClaims
+	}
+	return ""
+}
+
 var file_vca_config_v1_config_proto_extTypes = []protoimpl.ExtensionInfo{
 	{
 		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
@@ -764,7 +823,7 @@ const file_vca_config_v1_config_proto_rawDesc = "" +
 	"\n" +
 	"validation\x18\b \x01(\tR\n" +
 	"validation\x12\x16\n" +
-	"\x06prompt\x18\t \x01(\bR\x06prompt\"\xca+\n" +
+	"\x06prompt\x18\t \x01(\bR\x06prompt\"\xb2.\n" +
 	"\x06Config\x12x\n" +
 	"\x04role\x18\x01 \x01(\x0e2\x13.vca.common.v1.RoleBO\xd2\xf3\x18K\n" +
 	"\x14The deployment role.\x12\bVCA_ROLE8\x01B'One of issuer, holder, verifier, admin.R\x04role\x12~\n" +
@@ -798,7 +857,9 @@ const file_vca_config_v1_config_proto_rawDesc = "" +
 	"theme_file\x18\x0e \x01(\tB\xc4\x01\xd2\xf3\x18\xbf\x01\n" +
 	"MThe theme file inside the container. Empty selects the embedded default look.\x12\x0eVCA_THEME_FILEB^A file path inside the container. Compose mounts deploy/vca/theme.yaml at /etc/vca/theme.yaml.R\tthemeFile\x12\xa4\x01\n" +
 	"\forganisation\x18\x0f \x01(\v2\".vca.config.v1.Config.OrganisationB\\\xd2\xf3\x18X\n" +
-	"=The organisation that the key certificates of the stack name.\x12\x10VCA_ORGANISATION*\x02\x01\x022\x01\x02R\forganisation\x1a\xdc\b\n" +
+	"=The organisation that the key certificates of the stack name.\x12\x10VCA_ORGANISATION*\x02\x01\x022\x01\x02R\forganisation\x12f\n" +
+	"\x04inji\x18\x10 \x01(\v2\x1a.vca.config.v1.Config.InjiB6\xd2\xf3\x182\n" +
+	" The settings of the Inji issuer.\x12\bVCA_INJI*\x01\x012\x01\x02R\x04inji\x1a\xdc\b\n" +
 	"\x04Oidc\x12\xd6\x01\n" +
 	"\rdiscovery_url\x18\x01 \x01(\tB\xb0\x01\xd2\xf3\x18\xab\x01\n" +
 	"NThe OIDC discovery URL of the provider. Defaults to the Keycloak of the stack.\x12\x16VCA_OIDC_DISCOVERY_URL8\x01B?An absolute http or https URL that serves a discovery document.R\fdiscoveryUrl\x12\xa7\x01\n" +
@@ -842,7 +903,11 @@ const file_vca_config_v1_config_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tB\xb2\x01\xd2\xf3\x18\xad\x01\n" +
 	"OThe organisation name on the key certificates. Leave blank for the public host.\x12\x15VCA_ORGANISATION_NAMEBAFree text of 64 characters or fewer. Defaults to the public host.H\x01R\x04name\x12\xbb\x01\n" +
 	"\x04unit\x18\x02 \x01(\tB\xa6\x01\xd2\xf3\x18\xa1\x01\n" +
-	"JThe organisational unit on the key certificates. Leave blank for the role.\x12\x15VCA_ORGANISATION_UNITB:Free text of 64 characters or fewer. Defaults to the role.H\x01R\x04unit*I\n" +
+	"JThe organisational unit on the key certificates. Leave blank for the role.\x12\x15VCA_ORGANISATION_UNITB:Free text of 64 characters or fewer. Defaults to the role.H\x01R\x04unit\x1a\xfd\x01\n" +
+	"\x04Inji\x12\xf4\x01\n" +
+	"\x13iar_identity_claims\x18\x01 \x01(\tB\xc3\x01\xd2\xf3\x18\xbe\x01\n" +
+	":The claims of a presented credential that name the holder.\x12\x1cVCA_INJI_IAR_IDENTITY_CLAIMS\x1a\n" +
+	"vcaSubjectBVClaim names separated by commas. A change needs vca deploy for the Certify containers.R\x11iarIdentityClaims*I\n" +
 	"\x03Dpg\x12\x13\n" +
 	"\x0fDPG_UNSPECIFIED\x10\x00\x12\x0e\n" +
 	"\n" +
@@ -865,7 +930,7 @@ func file_vca_config_v1_config_proto_rawDescGZIP() []byte {
 }
 
 var file_vca_config_v1_config_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_vca_config_v1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_vca_config_v1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_vca_config_v1_config_proto_goTypes = []any{
 	(Dpg)(0),                          // 0: vca.config.v1.Dpg
 	(*Setting)(nil),                   // 1: vca.config.v1.Setting
@@ -874,33 +939,35 @@ var file_vca_config_v1_config_proto_goTypes = []any{
 	(*Config_Secrets)(nil),            // 4: vca.config.v1.Config.Secrets
 	(*Config_Ports)(nil),              // 5: vca.config.v1.Config.Ports
 	(*Config_Organisation)(nil),       // 6: vca.config.v1.Config.Organisation
-	nil,                               // 7: vca.config.v1.Config.Ports.ServicesEntry
-	(v1.Role)(0),                      // 8: vca.common.v1.Role
-	(*v1.SecretRef)(nil),              // 9: vca.common.v1.SecretRef
-	(*descriptorpb.FieldOptions)(nil), // 10: google.protobuf.FieldOptions
+	(*Config_Inji)(nil),               // 7: vca.config.v1.Config.Inji
+	nil,                               // 8: vca.config.v1.Config.Ports.ServicesEntry
+	(v1.Role)(0),                      // 9: vca.common.v1.Role
+	(*v1.SecretRef)(nil),              // 10: vca.common.v1.SecretRef
+	(*descriptorpb.FieldOptions)(nil), // 11: google.protobuf.FieldOptions
 }
 var file_vca_config_v1_config_proto_depIdxs = []int32{
-	8,  // 0: vca.config.v1.Setting.roles:type_name -> vca.common.v1.Role
+	9,  // 0: vca.config.v1.Setting.roles:type_name -> vca.common.v1.Role
 	0,  // 1: vca.config.v1.Setting.dpgs:type_name -> vca.config.v1.Dpg
-	8,  // 2: vca.config.v1.Config.role:type_name -> vca.common.v1.Role
+	9,  // 2: vca.config.v1.Config.role:type_name -> vca.common.v1.Role
 	0,  // 3: vca.config.v1.Config.dpg:type_name -> vca.config.v1.Dpg
 	3,  // 4: vca.config.v1.Config.oidc:type_name -> vca.config.v1.Config.Oidc
 	4,  // 5: vca.config.v1.Config.secrets:type_name -> vca.config.v1.Config.Secrets
 	5,  // 6: vca.config.v1.Config.ports:type_name -> vca.config.v1.Config.Ports
 	6,  // 7: vca.config.v1.Config.organisation:type_name -> vca.config.v1.Config.Organisation
-	9,  // 8: vca.config.v1.Config.Oidc.client_secret:type_name -> vca.common.v1.SecretRef
-	9,  // 9: vca.config.v1.Config.Secrets.signing_key:type_name -> vca.common.v1.SecretRef
-	9,  // 10: vca.config.v1.Config.Secrets.session_key:type_name -> vca.common.v1.SecretRef
-	9,  // 11: vca.config.v1.Config.Secrets.bootstrap_token:type_name -> vca.common.v1.SecretRef
-	9,  // 12: vca.config.v1.Config.Secrets.dpg_api_key:type_name -> vca.common.v1.SecretRef
-	7,  // 13: vca.config.v1.Config.Ports.services:type_name -> vca.config.v1.Config.Ports.ServicesEntry
-	10, // 14: vca.config.v1.setting:extendee -> google.protobuf.FieldOptions
-	1,  // 15: vca.config.v1.setting:type_name -> vca.config.v1.Setting
-	16, // [16:16] is the sub-list for method output_type
-	16, // [16:16] is the sub-list for method input_type
-	15, // [15:16] is the sub-list for extension type_name
-	14, // [14:15] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	7,  // 8: vca.config.v1.Config.inji:type_name -> vca.config.v1.Config.Inji
+	10, // 9: vca.config.v1.Config.Oidc.client_secret:type_name -> vca.common.v1.SecretRef
+	10, // 10: vca.config.v1.Config.Secrets.signing_key:type_name -> vca.common.v1.SecretRef
+	10, // 11: vca.config.v1.Config.Secrets.session_key:type_name -> vca.common.v1.SecretRef
+	10, // 12: vca.config.v1.Config.Secrets.bootstrap_token:type_name -> vca.common.v1.SecretRef
+	10, // 13: vca.config.v1.Config.Secrets.dpg_api_key:type_name -> vca.common.v1.SecretRef
+	8,  // 14: vca.config.v1.Config.Ports.services:type_name -> vca.config.v1.Config.Ports.ServicesEntry
+	11, // 15: vca.config.v1.setting:extendee -> google.protobuf.FieldOptions
+	1,  // 16: vca.config.v1.setting:type_name -> vca.config.v1.Setting
+	17, // [17:17] is the sub-list for method output_type
+	17, // [17:17] is the sub-list for method input_type
+	16, // [16:17] is the sub-list for extension type_name
+	15, // [15:16] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_vca_config_v1_config_proto_init() }
@@ -914,7 +981,7 @@ func file_vca_config_v1_config_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_config_v1_config_proto_rawDesc), len(file_vca_config_v1_config_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   7,
+			NumMessages:   8,
 			NumExtensions: 1,
 			NumServices:   0,
 		},

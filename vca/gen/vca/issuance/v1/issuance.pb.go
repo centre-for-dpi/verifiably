@@ -194,6 +194,11 @@ type IssueRequest struct {
 	// service accepts it only for an OID4VCI channel on a stack whose
 	// adapter lists FEATURE_PRESENTATION_DURING_ISSUANCE.
 	RequirePresentation bool `protobuf:"varint,10,opt,name=require_presentation,json=requirePresentation,proto3" json:"require_presentation,omitempty"`
+	// The holder of an offer with require_presentation: the identity claim
+	// of the presented credential and its value. The stack issues
+	// subject_data only to the holder who presents that value (ADR-051
+	// decision 5).
+	PresentationSubject *v1.PresentationSubject `protobuf:"bytes,11,opt,name=presentation_subject,json=presentationSubject,proto3" json:"presentation_subject,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -296,6 +301,13 @@ func (x *IssueRequest) GetRequirePresentation() bool {
 		return x.RequirePresentation
 	}
 	return false
+}
+
+func (x *IssueRequest) GetPresentationSubject() *v1.PresentationSubject {
+	if x != nil {
+		return x.PresentationSubject
+	}
+	return nil
 }
 
 // Offer is the state of one issuance.
@@ -1179,7 +1191,7 @@ const file_vca_issuance_v1_issuance_proto_rawDesc = "" +
 	"\achannel\x18\x01 \x01(\x0e2\x17.vca.backend.v1.ChannelR\achannel\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12\x14\n" +
 	"\x05phone\x18\x03 \x01(\tR\x05phone\x12\x16\n" +
-	"\x06locale\x18\x04 \x01(\tR\x06locale\"\xcc\x03\n" +
+	"\x06locale\x18\x04 \x01(\tR\x06locale\"\xa4\x04\n" +
 	"\fIssueRequest\x12\x1b\n" +
 	"\tschema_id\x18\x01 \x01(\tR\bschemaId\x12%\n" +
 	"\x0eschema_version\x18\x02 \x01(\x05R\rschemaVersion\x12!\n" +
@@ -1191,7 +1203,8 @@ const file_vca_issuance_v1_issuance_proto_rawDesc = "" +
 	"\x0estatus_purpose\x18\b \x01(\tR\rstatusPurpose\x12(\n" +
 	"\x10holder_key_proof\x18\t \x01(\tR\x0eholderKeyProof\x121\n" +
 	"\x14require_presentation\x18\n" +
-	" \x01(\bR\x13requirePresentation\"\xf0\x05\n" +
+	" \x01(\bR\x13requirePresentation\x12V\n" +
+	"\x14presentation_subject\x18\v \x01(\v2#.vca.backend.v1.PresentationSubjectR\x13presentationSubject\"\xf0\x05\n" +
 	"\x05Offer\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x121\n" +
 	"\achannel\x18\x02 \x01(\x0e2\x17.vca.backend.v1.ChannelR\achannel\x122\n" +
@@ -1309,11 +1322,12 @@ var file_vca_issuance_v1_issuance_proto_goTypes = []any{
 	(*v11.Subject)(nil),            // 16: vca.common.v1.Subject
 	(v11.Format)(0),                // 17: vca.common.v1.Format
 	(*v11.ValidityWindow)(nil),     // 18: vca.common.v1.ValidityWindow
-	(*v11.Credential)(nil),         // 19: vca.common.v1.Credential
-	(*timestamppb.Timestamp)(nil),  // 20: google.protobuf.Timestamp
-	(*v11.Error)(nil),              // 21: vca.common.v1.Error
-	(*v11.Pagination)(nil),         // 22: vca.common.v1.Pagination
-	(*v11.PageResult)(nil),         // 23: vca.common.v1.PageResult
+	(*v1.PresentationSubject)(nil), // 19: vca.backend.v1.PresentationSubject
+	(*v11.Credential)(nil),         // 20: vca.common.v1.Credential
+	(*timestamppb.Timestamp)(nil),  // 21: google.protobuf.Timestamp
+	(*v11.Error)(nil),              // 22: vca.common.v1.Error
+	(*v11.Pagination)(nil),         // 23: vca.common.v1.Pagination
+	(*v11.PageResult)(nil),         // 24: vca.common.v1.PageResult
 }
 var file_vca_issuance_v1_issuance_proto_depIdxs = []int32{
 	15, // 0: vca.issuance.v1.Delivery.channel:type_name -> vca.backend.v1.Channel
@@ -1321,40 +1335,41 @@ var file_vca_issuance_v1_issuance_proto_depIdxs = []int32{
 	17, // 2: vca.issuance.v1.IssueRequest.format:type_name -> vca.common.v1.Format
 	1,  // 3: vca.issuance.v1.IssueRequest.delivery:type_name -> vca.issuance.v1.Delivery
 	18, // 4: vca.issuance.v1.IssueRequest.validity:type_name -> vca.common.v1.ValidityWindow
-	15, // 5: vca.issuance.v1.Offer.channel:type_name -> vca.backend.v1.Channel
-	0,  // 6: vca.issuance.v1.Offer.state:type_name -> vca.issuance.v1.Offer.State
-	19, // 7: vca.issuance.v1.Offer.credential:type_name -> vca.common.v1.Credential
-	20, // 8: vca.issuance.v1.Offer.created_at:type_name -> google.protobuf.Timestamp
-	20, // 9: vca.issuance.v1.Offer.expires_at:type_name -> google.protobuf.Timestamp
-	20, // 10: vca.issuance.v1.Offer.claimed_at:type_name -> google.protobuf.Timestamp
-	3,  // 11: vca.issuance.v1.IssueResponse.offer:type_name -> vca.issuance.v1.Offer
-	17, // 12: vca.issuance.v1.IssueBatchRequest.format:type_name -> vca.common.v1.Format
-	15, // 13: vca.issuance.v1.IssueBatchRequest.channel:type_name -> vca.backend.v1.Channel
-	14, // 14: vca.issuance.v1.IssueBatchRequest.items:type_name -> vca.issuance.v1.IssueBatchRequest.Item
-	3,  // 15: vca.issuance.v1.BatchRow.offer:type_name -> vca.issuance.v1.Offer
-	21, // 16: vca.issuance.v1.BatchRow.error:type_name -> vca.common.v1.Error
-	3,  // 17: vca.issuance.v1.DeferredResponse.offer:type_name -> vca.issuance.v1.Offer
-	3,  // 18: vca.issuance.v1.GetOfferResponse.offer:type_name -> vca.issuance.v1.Offer
-	22, // 19: vca.issuance.v1.GetBatchRequest.page:type_name -> vca.common.v1.Pagination
-	7,  // 20: vca.issuance.v1.GetBatchResponse.rows:type_name -> vca.issuance.v1.BatchRow
-	23, // 21: vca.issuance.v1.GetBatchResponse.page:type_name -> vca.common.v1.PageResult
-	6,  // 22: vca.issuance.v1.GetBatchResponse.progress:type_name -> vca.issuance.v1.IssueBatchResponse
-	1,  // 23: vca.issuance.v1.IssueBatchRequest.Item.delivery:type_name -> vca.issuance.v1.Delivery
-	2,  // 24: vca.issuance.v1.IssuanceService.Issue:input_type -> vca.issuance.v1.IssueRequest
-	5,  // 25: vca.issuance.v1.IssuanceService.IssueBatch:input_type -> vca.issuance.v1.IssueBatchRequest
-	8,  // 26: vca.issuance.v1.IssuanceService.Deferred:input_type -> vca.issuance.v1.DeferredRequest
-	10, // 27: vca.issuance.v1.IssuanceService.GetOffer:input_type -> vca.issuance.v1.GetOfferRequest
-	12, // 28: vca.issuance.v1.IssuanceService.GetBatch:input_type -> vca.issuance.v1.GetBatchRequest
-	4,  // 29: vca.issuance.v1.IssuanceService.Issue:output_type -> vca.issuance.v1.IssueResponse
-	6,  // 30: vca.issuance.v1.IssuanceService.IssueBatch:output_type -> vca.issuance.v1.IssueBatchResponse
-	9,  // 31: vca.issuance.v1.IssuanceService.Deferred:output_type -> vca.issuance.v1.DeferredResponse
-	11, // 32: vca.issuance.v1.IssuanceService.GetOffer:output_type -> vca.issuance.v1.GetOfferResponse
-	13, // 33: vca.issuance.v1.IssuanceService.GetBatch:output_type -> vca.issuance.v1.GetBatchResponse
-	29, // [29:34] is the sub-list for method output_type
-	24, // [24:29] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	19, // 5: vca.issuance.v1.IssueRequest.presentation_subject:type_name -> vca.backend.v1.PresentationSubject
+	15, // 6: vca.issuance.v1.Offer.channel:type_name -> vca.backend.v1.Channel
+	0,  // 7: vca.issuance.v1.Offer.state:type_name -> vca.issuance.v1.Offer.State
+	20, // 8: vca.issuance.v1.Offer.credential:type_name -> vca.common.v1.Credential
+	21, // 9: vca.issuance.v1.Offer.created_at:type_name -> google.protobuf.Timestamp
+	21, // 10: vca.issuance.v1.Offer.expires_at:type_name -> google.protobuf.Timestamp
+	21, // 11: vca.issuance.v1.Offer.claimed_at:type_name -> google.protobuf.Timestamp
+	3,  // 12: vca.issuance.v1.IssueResponse.offer:type_name -> vca.issuance.v1.Offer
+	17, // 13: vca.issuance.v1.IssueBatchRequest.format:type_name -> vca.common.v1.Format
+	15, // 14: vca.issuance.v1.IssueBatchRequest.channel:type_name -> vca.backend.v1.Channel
+	14, // 15: vca.issuance.v1.IssueBatchRequest.items:type_name -> vca.issuance.v1.IssueBatchRequest.Item
+	3,  // 16: vca.issuance.v1.BatchRow.offer:type_name -> vca.issuance.v1.Offer
+	22, // 17: vca.issuance.v1.BatchRow.error:type_name -> vca.common.v1.Error
+	3,  // 18: vca.issuance.v1.DeferredResponse.offer:type_name -> vca.issuance.v1.Offer
+	3,  // 19: vca.issuance.v1.GetOfferResponse.offer:type_name -> vca.issuance.v1.Offer
+	23, // 20: vca.issuance.v1.GetBatchRequest.page:type_name -> vca.common.v1.Pagination
+	7,  // 21: vca.issuance.v1.GetBatchResponse.rows:type_name -> vca.issuance.v1.BatchRow
+	24, // 22: vca.issuance.v1.GetBatchResponse.page:type_name -> vca.common.v1.PageResult
+	6,  // 23: vca.issuance.v1.GetBatchResponse.progress:type_name -> vca.issuance.v1.IssueBatchResponse
+	1,  // 24: vca.issuance.v1.IssueBatchRequest.Item.delivery:type_name -> vca.issuance.v1.Delivery
+	2,  // 25: vca.issuance.v1.IssuanceService.Issue:input_type -> vca.issuance.v1.IssueRequest
+	5,  // 26: vca.issuance.v1.IssuanceService.IssueBatch:input_type -> vca.issuance.v1.IssueBatchRequest
+	8,  // 27: vca.issuance.v1.IssuanceService.Deferred:input_type -> vca.issuance.v1.DeferredRequest
+	10, // 28: vca.issuance.v1.IssuanceService.GetOffer:input_type -> vca.issuance.v1.GetOfferRequest
+	12, // 29: vca.issuance.v1.IssuanceService.GetBatch:input_type -> vca.issuance.v1.GetBatchRequest
+	4,  // 30: vca.issuance.v1.IssuanceService.Issue:output_type -> vca.issuance.v1.IssueResponse
+	6,  // 31: vca.issuance.v1.IssuanceService.IssueBatch:output_type -> vca.issuance.v1.IssueBatchResponse
+	9,  // 32: vca.issuance.v1.IssuanceService.Deferred:output_type -> vca.issuance.v1.DeferredResponse
+	11, // 33: vca.issuance.v1.IssuanceService.GetOffer:output_type -> vca.issuance.v1.GetOfferResponse
+	13, // 34: vca.issuance.v1.IssuanceService.GetBatch:output_type -> vca.issuance.v1.GetBatchResponse
+	30, // [30:35] is the sub-list for method output_type
+	25, // [25:30] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_vca_issuance_v1_issuance_proto_init() }

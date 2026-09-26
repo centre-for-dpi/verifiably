@@ -3,8 +3,10 @@
 package app_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -232,4 +234,106 @@ func TestHolderPinPathOverConnect(t *testing.T) {
 	if err != nil || len(list.Msg.GetCredentials()) != 3 {
 		t.Fatalf("ListCredentials = %v %v", list, err)
 	}
+}
+
+// get reads one path of the plain HTTP handler.
+func get(t *testing.T, srv *httptest.Server, path string) (int, string) {
+	t.Helper()
+	resp, err := srv.Client().Get(srv.URL + path) //nolint:noctx // a test call
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Error(cerr)
+		}
+	}()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, string(raw)
+}
+
+// TestPresentationDefinitionAbsentIs404: before the issuer names the
+// credential to present, Certify finds no definition.
+func TestPresentationDefinitionAbsentIs404(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	srv := httptest.NewServer(build(t, f, func(c *config.Config) { c.PresentationDuringIssuance = true }).Mux)
+	defer srv.Close()
+	if status, _ := get(t, srv, "/iar/presentation-definition.json"); status != http.StatusNotFound {
+		t.Errorf("status = %d", status)
+	}
+}
+
+// TestPresentationDefinitionServedFromSetting: the handler serves the
+// definition of SetPresentationRequirement, the file Certify reads.
+func TestPresentationDefinitionServedFromSetting(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	a := build(t, f, func(c *config.Config) {
+		c.PresentationDuringIssuance = true
+		c.IARIdentityClaims = "vcaSubject"
+	})
+	srv := httptest.NewServer(a.Mux)
+	defer srv.Close()
+	client := backendv1connect.NewIssuerBackendServiceClient(srv.Client(), srv.URL)
+	set, err := client.SetPresentationRequirement(t.Context(), connect.NewRequest(&backendv1.SetPresentationRequirementRequest{
+		CredentialType: "NationalIdentityCredential", RequiredClaims: []string{"vcaSubject"},
+	}))
+	if err != nil {
+		t.Fatalf("SetPresentationRequirement: %v", err)
+	}
+	status, body := get(t, srv, "/iar/presentation-definition.json")
+	if status != http.StatusOK || body != set.Msg.GetDefinitionJson() || !strings.Contains(body, "NationalIdentityCredential") {
+		t.Errorf("status %d body %s", status, body)
+	}
+	if got := set.Msg.GetIdentityClaims(); len(got) != 1 || got[0] != "vcaSubject" {
+		t.Errorf("identity claims = %v", got)
+	}
+}
+
+// TestSweepRemovesExpiredRows: the sweep of the app runs until its
+// context ends, and an app with no claims store returns at once.
+func TestSweepRemovesExpiredRows(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	dir := t.TempDir()
+	a := build(t, f, func(c *config.Config) {
+		c.ClaimsDir = dir
+		c.ClaimsSweep = time.Millisecond
+	})
+	if a.Claims == nil || a.Claims.Dir != dir {
+		t.Fatalf("claims = %+v", a.Claims)
+	}
+	stale := filepath.Join(dir, "stale.csv")
+	if err := os.WriteFile(stale, []byte("not a row\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() {
+		a.Sweep(ctx, slog.Default())
+		close(done)
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(stale); os.IsNotExist(err) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the sweep did not run")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// A store that is gone logs and goes on.
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	cancel()
+	<-done
+	none := build(t, f, nil)
+	none.Sweep(t.Context(), slog.Default())
 }

@@ -191,7 +191,7 @@ func TestPluginsDefaultIsTheStackFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"PreAuthDataProviderPlugin", "MockCSVDataProviderPlugin", "LoggerAuditService"}
+	want := []string{"PostgresDataProviderPlugin", "LoggerAuditService"}
 	if got := cfg.Plugins(); !slices.Equal(got, want) {
 		t.Fatalf("plugins = %v, want %v", got, want)
 	}

@@ -189,6 +189,14 @@ message Config {
     roles: ROLE_HOLDER
     dpgs: DPG_INJI
   }];
+  // The Inji issuer settings (ADR-051). Only an Inji issuer pair needs
+  // them.
+  Inji inji = 16 [(setting) = {
+    description: "The settings of the Inji issuer."
+    env: "VCA_INJI"
+    roles: ROLE_ISSUER
+    dpgs: DPG_INJI
+  }];
 
   // Oidc describes one OpenID Connect provider.
   message Oidc {
@@ -347,6 +355,20 @@ message Config {
       env: "VCA_ORGANISATION_UNIT"
       prompt: true
       validation: "Free text of 64 characters or fewer. Defaults to the role."
+    }];
+  }
+
+  // Inji holds the settings of the Inji issuer pair.
+  message Inji {
+    // The claims of a presented credential that name the holder of a
+    // presentation during issuance. Certify takes the first one it
+    // finds as the subject of the token. The adapter writes the row of
+    // an offer under the value of one of them (ADR-051 decision 5).
+    string iar_identity_claims = 1 [(setting) = {
+      description: "The claims of a presented credential that name the holder."
+      env: "VCA_INJI_IAR_IDENTITY_CLAIMS"
+      default: "vcaSubject"
+      validation: "Claim names separated by commas. A change needs vca deploy for the Certify containers."
     }];
   }
 }

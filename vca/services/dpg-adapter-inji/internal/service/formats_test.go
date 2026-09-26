@@ -66,7 +66,7 @@ func TestIssueMdocConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{`"docType": "org.iso.18013.5.1.mDL"`, `"org.iso.18013.5.1": [`, `"elementIdentifier": "family_name"`,
-		`"elementValue": "${family_name}"`, `"validFrom": "${_validFrom}"`} {
+		`"elementValue": "${c1}"`, `"validFrom": "${_validFrom}"`} {
 		if !strings.Contains(tmpl, want) {
 			t.Errorf("the template lacks %s:\n%s", want, tmpl)
 		}

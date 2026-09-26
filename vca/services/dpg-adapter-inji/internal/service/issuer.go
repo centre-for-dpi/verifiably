@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/claims"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/inji"
 )
 
@@ -78,16 +80,18 @@ func (s *Service) CreateOffer(
 	}
 }
 
-// preAuthorizedOffer stages the claims and returns the offer of Inji.
+// preAuthorizedOffer writes the row of the subject into the claims store
+// and stages its staging id at Certify (ADR-051 decision 5). Certify puts
+// the JSON text of the staged map into the subject of the token, and the
+// data provider reads the row back by it.
 func (s *Service) preAuthorizedOffer(ctx context.Context, spec *backendv1.IssueSpec) (
 	*connect.Response[backendv1.CreateOfferResponse], error,
 ) {
-	cfg, claims, err := s.stagedClaims(ctx, spec)
-	if err != nil {
+	stagingID := s.newID()
+	if _, err := s.stageRow(ctx, spec, claims.Key(stagingID)); err != nil {
 		return nil, err
 	}
-	_ = cfg
-	offerURI, serr := s.certify.Stage(ctx, spec.GetConfigurationId(), claims)
+	offerURI, serr := s.certify.Stage(ctx, spec.GetConfigurationId(), map[string]any{inji.StagingClaim: stagingID})
 	if serr != nil {
 		return nil, failed("stage the claims", serr)
 	}
@@ -104,7 +108,8 @@ func (s *Service) preAuthorizedOffer(ctx context.Context, spec *backendv1.IssueS
 // presents the credential the deployment asks for there, and Certify
 // gives the code only after Inji Verify accepts the presentation
 // (Certify 0.14.0, presentation during issuance). The claims then come
-// from the data provider of Certify for the presented identity.
+// from the claims store: the row whose subject is the value of the
+// identity claim that the holder presents (ADR-051 decision 5).
 func (s *Service) presentationOffer(ctx context.Context, spec *backendv1.IssueSpec, channel backendv1.Channel) (
 	*connect.Response[backendv1.CreateOfferResponse], error,
 ) {
@@ -115,6 +120,20 @@ func (s *Service) presentationOffer(ctx context.Context, spec *backendv1.IssueSp
 	if channel != backendv1.Channel_CHANNEL_OID4VCI_PREAUTH && channel != backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("a presentation during issuance needs an OID4VCI channel, not %s", channel))
+	}
+	if _, ok := s.PresentationDefinition(ctx); !ok {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			errors.New("configure the credential to present first"))
+	}
+	subject := spec.GetPresentationSubject()
+	value := strings.TrimSpace(subject.GetValue())
+	if value == "" || !slices.Contains(s.iarIdentity, subject.GetClaim()) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
+			"name the holder: presentation_subject needs a value and one of the identity claims %s",
+			strings.Join(s.iarIdentity, ", ")))
+	}
+	if _, err := s.stageRow(ctx, spec, value); err != nil {
+		return nil, err
 	}
 	server, err := s.certify.InteractiveServer(ctx)
 	if err != nil {
@@ -226,48 +245,71 @@ func offerIDOf(offerURI string) string {
 	return trimmed
 }
 
-// stagedClaims reads the configuration of the spec and builds the claim
-// map of the staging call.
-func (s *Service) stagedClaims(ctx context.Context, spec *backendv1.IssueSpec) (
-	inji.Configuration, map[string]any, error,
-) {
+// stageRow reads the configuration of the spec and writes the row of
+// its subject into the claims store under the key (ADR-051 decision 2).
+// The row lives as long as the offer.
+func (s *Service) stageRow(ctx context.Context, spec *backendv1.IssueSpec, key string) (inji.Configuration, error) {
+	if s.claims == nil {
+		return inji.Configuration{}, connect.NewError(connect.CodeFailedPrecondition, errors.New(
+			"this adapter has no claims store; set VCA_INJI_CLAIMS_DIR to the directory that Certify reads"))
+	}
 	meta, err := s.certify.Metadata(ctx)
 	if err != nil {
-		return inji.Configuration{}, nil, failed("read the issuer metadata", err)
+		return inji.Configuration{}, failed("read the issuer metadata", err)
 	}
 	cfg, ok := meta.Configurations[spec.GetConfigurationId()]
 	if !ok {
-		return inji.Configuration{}, nil, connect.NewError(connect.CodeNotFound, fmt.Errorf(
+		return inji.Configuration{}, connect.NewError(connect.CodeNotFound, fmt.Errorf(
 			"the configuration %q is not advertised by Inji Certify", spec.GetConfigurationId()))
 	}
 	subject := map[string]any{}
 	if raw := strings.TrimSpace(spec.GetSubjectData()); raw != "" {
-		if err := json.Unmarshal([]byte(raw), &subject); err != nil {
-			return inji.Configuration{}, nil, connect.NewError(connect.CodeInvalidArgument,
-				fmt.Errorf("subject_data is not a JSON object: %w", err))
+		dec := json.NewDecoder(strings.NewReader(raw))
+		dec.UseNumber()
+		if errErr := dec.Decode(&subject); errErr != nil {
+			return inji.Configuration{}, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("subject_data is not a JSON object: %w", errErr))
 		}
 	}
 	if len(subject) == 0 {
-		return inji.Configuration{}, nil, connect.NewError(connect.CodeInvalidArgument,
+		return inji.Configuration{}, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("the claim set is empty, and Inji Certify rejects it"))
 	}
-	status := inji.StatusEntry{}
-	if b := spec.GetStatus(); b != nil {
-		status = inji.StatusEntry{Index: b.GetIndex(), URL: b.GetPublishUrl()}
+	names, err := s.columns(ctx, spec.GetConfigurationId())
+	if err != nil {
+		return inji.Configuration{}, err
 	}
-	validity := inji.Validity{}
-	withValidity := false
+	row, err := inji.ClaimsRow(key, spec.GetConfigurationId(), names, subject, cfg.Format,
+		statusOf(spec), validityOf(spec), s.now().UTC().Add(s.offerTTL))
+	if err != nil {
+		return inji.Configuration{}, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if err := s.claims.Put(row); err != nil {
+		return inji.Configuration{}, connect.NewError(connect.CodeUnavailable, fmt.Errorf("write the claims row: %w", err))
+	}
+	return cfg, nil
+}
+
+// statusOf returns the status entry of a spec.
+func statusOf(spec *backendv1.IssueSpec) inji.StatusEntry {
+	if b := spec.GetStatus(); b != nil {
+		return inji.StatusEntry{Index: b.GetIndex(), URL: b.GetPublishUrl()}
+	}
+	return inji.StatusEntry{}
+}
+
+// validityOf returns the validity window of a spec.
+func validityOf(spec *backendv1.IssueSpec) inji.Validity {
+	out := inji.Validity{}
 	if v := spec.GetValidity(); v != nil {
 		if from := v.GetValidFrom(); from != nil {
-			validity.From = from.AsTime()
-			withValidity = true
+			out.From = from.AsTime()
 		}
 		if until := v.GetValidUntil(); until != nil {
-			validity.Until = until.AsTime()
-			withValidity = true
+			out.Until = until.AsTime()
 		}
 	}
-	return cfg, inji.Claims(subject, cfg.Format, status, validity, withValidity), nil
+	return out
 }
 
 // Issue produces one credential without a wallet.
@@ -314,11 +356,12 @@ func identityQR(credential []byte) string {
 
 // issueOne runs the pre-authorized flow for one subject.
 func (s *Service) issueOne(ctx context.Context, spec *backendv1.IssueSpec) (*commonv1.Credential, error) {
-	cfg, claims, err := s.stagedClaims(ctx, spec)
+	stagingID := s.newID()
+	cfg, err := s.stageRow(ctx, spec, claims.Key(stagingID))
 	if err != nil {
 		return nil, err
 	}
-	offerURI, serr := s.certify.Stage(ctx, spec.GetConfigurationId(), claims)
+	offerURI, serr := s.certify.Stage(ctx, spec.GetConfigurationId(), map[string]any{inji.StagingClaim: stagingID})
 	if serr != nil {
 		return nil, failed("stage the claims", serr)
 	}

@@ -47,6 +47,11 @@ func contractEnv(t *testing.T) config.Config {
 		Retries:        1,
 		MaxBytes:       8 << 20,
 		OfferTTL:       15 * time.Minute,
+		// The host path of the volume inji-claims, which the Postgres of
+		// Certify reads (ADR-051).
+		ClaimsDir:         os.Getenv("VCA_INJI_CONTRACT_CLAIMS_DIR"),
+		ClaimsSweep:       time.Minute,
+		IARIdentityClaims: envOr("VCA_INJI_CONTRACT_IAR_IDENTITY_CLAIMS", "vcaSubject"),
 	}
 }
 
@@ -85,25 +90,38 @@ func TestContractIssuerMetadata(t *testing.T) {
 	}
 }
 
+// TestContractIssueThroughThePreAuthorizedFlow registers a configuration,
+// writes a row into the claims store, and issues through the
+// pre-authorized code. The credential subject must hold the staged
+// claims, which proves that the Postgres data provider read the row of
+// the staging id (ADR-051). It needs writes and the claims directory.
 func TestContractIssueThroughThePreAuthorizedFlow(t *testing.T) {
-	cfg := contractEnv(t)
-	if cfg.CertifyURL == "" {
-		t.Skip("set VCA_INJI_CONTRACT_CERTIFY_URL to run the issuer contract test")
-	}
-	configurationID := os.Getenv("VCA_INJI_CONTRACT_CONFIGURATION_ID")
-	subject := os.Getenv("VCA_INJI_CONTRACT_SUBJECT_DATA")
-	if configurationID == "" || subject == "" {
-		t.Skip("set VCA_INJI_CONTRACT_CONFIGURATION_ID and VCA_INJI_CONTRACT_SUBJECT_DATA")
-	}
+	storeEnv(t)
 	a := newContractApp(t)
-	resp, err := a.Service.Issue(context.Background(), connect.NewRequest(&backendv1.IssueRequest{
-		Spec: &backendv1.IssueSpec{ConfigurationId: configurationID, SubjectData: subject},
+	ctx := context.Background()
+	id := "VcaContractStore" + time.Now().UTC().Format("20060102150405")
+	if _, err := a.Service.RegisterCredentialConfiguration(ctx, connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{
+		Configuration: &backendv1.CredentialConfiguration{
+			Id: id, Format: commonv1.Format_FORMAT_LDP_VC, Type: id,
+			JsonSchema: `{"type":"object","properties":{"fullName":{"type":"string"},"memberNumber":{"type":"string"}}}`,
+		},
+	})); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	resp, err := a.Service.Issue(ctx, connect.NewRequest(&backendv1.IssueRequest{
+		Spec: &backendv1.IssueSpec{ConfigurationId: id, SubjectData: `{"fullName":"Wanjiku Njeri","memberNumber":"M-2231"}`},
 	}))
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
-	if len(resp.Msg.GetCredential().GetPayload()) == 0 {
-		t.Fatal("the real issuer returned no credential")
+	var credential struct {
+		Subject map[string]any `json:"credentialSubject"`
+	}
+	if err := json.Unmarshal(resp.Msg.GetCredential().GetPayload(), &credential); err != nil {
+		t.Fatalf("the credential is not JSON: %v", err)
+	}
+	if credential.Subject["fullName"] != "Wanjiku Njeri" || credential.Subject["memberNumber"] != "M-2231" {
+		t.Fatalf("credentialSubject = %v, want the staged claims", credential.Subject)
 	}
 }
 
@@ -144,6 +162,17 @@ func writeEnv(t *testing.T) config.Config {
 	cfg := contractEnv(t)
 	if cfg.CertifyURL == "" || os.Getenv("VCA_INJI_CONTRACT_WRITE") == "" {
 		t.Skip("set VCA_INJI_CONTRACT_CERTIFY_URL and VCA_INJI_CONTRACT_WRITE to run a contract case that writes")
+	}
+	return cfg
+}
+
+// storeEnv skips a contract case that issues unless it may write and
+// knows the host path of the claims store.
+func storeEnv(t *testing.T) config.Config {
+	t.Helper()
+	cfg := writeEnv(t)
+	if cfg.ClaimsDir == "" {
+		t.Skip("set VCA_INJI_CONTRACT_CLAIMS_DIR to the host path of the volume inji-claims")
 	}
 	return cfg
 }
@@ -234,7 +263,7 @@ func TestContractRevokeLedgerCredential(t *testing.T) {
 // TestContractIssueMdoc registers an mDL configuration and issues one
 // credential of it. It needs writes.
 func TestContractIssueMdoc(t *testing.T) {
-	writeEnv(t)
+	storeEnv(t)
 	a := newContractApp(t)
 	ctx := context.Background()
 	id := "VcaContractMdl" + time.Now().UTC().Format("20060102150405")
@@ -312,7 +341,7 @@ func TestContractProvisionIdentity(t *testing.T) {
 // the QR code specification 1.1.0, and the ingest decoder reads it. It
 // needs writes.
 func TestContractIdentityQR(t *testing.T) {
-	writeEnv(t)
+	storeEnv(t)
 	a := newContractApp(t)
 	ctx := context.Background()
 	id := "VcaContractIdentity" + time.Now().UTC().Format("20060102150405")
@@ -341,14 +370,15 @@ func TestContractIdentityQR(t *testing.T) {
 
 // TestContractPresentationDuringIssuance builds an offer that asks for a
 // presentation first and sends the first interactive authorization
-// request of a wallet. Certify answers with the presentation request of
-// the deployment. It needs VCA_INJI_CONTRACT_PRESENTATION and a public
-// URL.
+// request of a wallet. Certify answers with the presentation request
+// that it read from the adapter of the deployment, so the issuer of that
+// deployment must have set the credential to present. It needs
+// VCA_INJI_CONTRACT_PRESENTATION, writes, the claims directory, and a
+// public URL.
 func TestContractPresentationDuringIssuance(t *testing.T) {
-	cfg := contractEnv(t)
-	configurationID := os.Getenv("VCA_INJI_CONTRACT_CONFIGURATION_ID")
-	if cfg.CertifyURL == "" || cfg.PublicURL == "" || configurationID == "" || os.Getenv("VCA_INJI_CONTRACT_PRESENTATION") == "" {
-		t.Skip("set VCA_INJI_CONTRACT_PRESENTATION, _PUBLIC_URL, and _CONFIGURATION_ID to run the presentation case")
+	cfg := storeEnv(t)
+	if cfg.PublicURL == "" || os.Getenv("VCA_INJI_CONTRACT_PRESENTATION") == "" {
+		t.Skip("set VCA_INJI_CONTRACT_PRESENTATION and _PUBLIC_URL to run the presentation case")
 	}
 	cfg.PresentationDuringIssuance = true
 	a, err := app.Build(cfg, app.Deps{HTTP: &http.Client{Timeout: 30 * time.Second}})
@@ -356,8 +386,29 @@ func TestContractPresentationDuringIssuance(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
+	configurationID := "VcaContractPresent" + time.Now().UTC().Format("20060102150405")
+	if _, err := a.Service.RegisterCredentialConfiguration(ctx, connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{
+		Configuration: &backendv1.CredentialConfiguration{
+			Id: configurationID, Format: commonv1.Format_FORMAT_LDP_VC, Type: configurationID,
+			JsonSchema: `{"type":"object","properties":{"fullName":{"type":"string"}}}`,
+		},
+	})); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	// This process keeps its own copy of the definition, so the offer
+	// passes the check of the adapter.
+	if _, err := a.Service.SetPresentationRequirement(ctx, connect.NewRequest(&backendv1.SetPresentationRequirementRequest{
+		CredentialType: envOr("VCA_INJI_CONTRACT_PRESENT_TYPE", "VerifiableCredential"), Format: commonv1.Format_FORMAT_LDP_VC,
+		RequiredClaims: cfg.IdentityClaims()[:1], Purpose: "The issuer checks who you are before it issues.",
+	})); err != nil {
+		t.Fatalf("SetPresentationRequirement: %v", err)
+	}
 	offer, err := a.Service.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
-		Spec: &backendv1.IssueSpec{ConfigurationId: configurationID}, RequirePresentation: true,
+		Spec: &backendv1.IssueSpec{
+			ConfigurationId: configurationID, SubjectData: `{"fullName":"Wanjiku Njeri"}`,
+			PresentationSubject: &backendv1.PresentationSubject{Claim: cfg.IdentityClaims()[0], Value: "vca-contract-holder"},
+		},
+		RequirePresentation: true,
 	}))
 	if err != nil {
 		t.Fatalf("CreateOffer: %v", err)

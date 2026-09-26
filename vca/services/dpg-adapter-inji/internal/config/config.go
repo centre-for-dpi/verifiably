@@ -105,10 +105,22 @@ type Config struct {
 	RenderingTemplateID string `env:"RENDERING_TEMPLATE_ID"`
 	// CertifyPlugins names the plugins of the Certify deployment, comma
 	// separated, as its properties set them. The DPG information lists
-	// them. The default is the plugin set of the stack file: the
-	// pre-authorized data provider of inji-certify, the CSV data
-	// provider of inji-certify-esignet, and the audit logger.
-	CertifyPlugins string `env:"CERTIFY_PLUGINS" default:"PreAuthDataProviderPlugin,MockCSVDataProviderPlugin,LoggerAuditService"`
+	// them. The default is the plugin set of the stack file: both Certify
+	// containers read the VCA claims store through the Postgres data
+	// provider, and log the audit (ADR-051 decision 1).
+	CertifyPlugins string `env:"CERTIFY_PLUGINS" default:"PostgresDataProviderPlugin,LoggerAuditService"`
+	// ClaimsDir is the directory of the VCA claims store. The stack file
+	// mounts it in the adapter and, read only, in the Postgres of
+	// Certify, where file_fdw reads every file (ADR-051 decision 2).
+	// Empty means no store, so the issuer role stages no subject.
+	ClaimsDir string `env:"CLAIMS_DIR"`
+	// ClaimsSweep is the interval of the sweep of expired rows.
+	ClaimsSweep time.Duration `env:"CLAIMS_SWEEP" default:"1m"`
+	// IARIdentityClaims lists the claims of a presented credential that
+	// Certify takes as the subject of a presentation during issuance,
+	// comma separated. The stack sets the same list in
+	// mosip.certify.iar.identity-data.
+	IARIdentityClaims string `env:"IAR_IDENTITY_CLAIMS" default:"vcaSubject"`
 	// CADomain is the partner domain of an uploaded CA certificate.
 	CADomain string `env:"CA_DOMAIN" default:"DEVICE"`
 	// PresentationDuringIssuance says that Certify reaches Inji Verify
@@ -118,9 +130,15 @@ type Config struct {
 }
 
 // Plugins returns the plugin names of CertifyPlugins.
-func (c Config) Plugins() []string {
+func (c Config) Plugins() []string { return list(c.CertifyPlugins) }
+
+// IdentityClaims returns the claim names of IARIdentityClaims.
+func (c Config) IdentityClaims() []string { return list(c.IARIdentityClaims) }
+
+// list splits a comma separated value and drops the empty items.
+func list(value string) []string {
 	var out []string
-	for _, p := range strings.Split(c.CertifyPlugins, ",") {
+	for _, p := range strings.Split(value, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			out = append(out, p)
 		}
@@ -142,6 +160,9 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if c.OfferTTL <= 0 {
 		return Config{}, fmt.Errorf("config: %sOFFER_TTL must be a positive duration", Prefix)
+	}
+	if c.ClaimsSweep <= 0 {
+		return Config{}, fmt.Errorf("config: %sCLAIMS_SWEEP must be a positive duration", Prefix)
 	}
 	if c.MaxBytes <= 0 {
 		return Config{}, fmt.Errorf("config: %sMAX_BYTES must be a positive number", Prefix)

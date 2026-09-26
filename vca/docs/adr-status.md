@@ -533,8 +533,8 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-049 | 1 Two Certify containers on one database and one key store | Done | `deploy/vca/dpg/inji.yaml` | The volume `inji-certify-keys` holds the key store of both. |
-| ADR-049 | 2 `inji-certify` is its own authorization server | Done | `deploy/vca/dpg/inji/certify/certify-preauth.properties` | Superseded by ADR-051. The data provider becomes the VCA claims store. |
-| ADR-049 | 3 `inji-certify-esignet` takes eSignet tokens | Done | `deploy/vca/dpg/inji/certify/certify-csvdp-farmer.properties`, `vca/services/dpg-adapter-inji` | Superseded by ADR-051. The second container takes the tokens of the holder authorization server. |
+| ADR-049 | 2 `inji-certify` is its own authorization server | Done | `deploy/vca/dpg/inji/certify/certify-vca-store.properties` | Superseded by ADR-051. The data provider becomes the VCA claims store. |
+| ADR-049 | 3 `inji-certify-esignet` takes eSignet tokens | Done | `deploy/vca/dpg/inji/certify/certify-authcode.properties`, `vca/services/dpg-adapter-inji` | Superseded by ADR-051. The second container takes the tokens of the holder authorization server. |
 | ADR-049 | 4 The second container waits for the keys | Done | `deploy/vca/dpg/inji.yaml` | It waits for the readiness check of `inji-certify`. |
 | ADR-049 | 5 The doctor names a floor above the target | Done | `vca/internal/cli/dpgconfig.go`, `vca/internal/cli/doctor.go` | The floor report marks `issuer-inji` and `holder-inji`. |
 
@@ -542,7 +542,7 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-050 | 1 No mock artefact or sample data set ships | Partial | `vca/`, `deploy/` | `vca dpg bootstrap inji` adds no identity. The Inji stack still runs the mock identity system and the farmer sample. The pending list of `nomock_test.go` names each one. |
+| ADR-050 | 1 No mock artefact or sample data set ships | Partial | `vca/`, `deploy/` | `vca dpg bootstrap inji` adds no identity. The Inji stack still runs the mock identity system of eSignet. The pending list of `nomock_test.go` names each one. |
 | ADR-050 | 2 A configurable workflow replaces each artefact | Partial | `vca/services`, `vca/internal/cli` | Setup generates the stack secrets and asks for the certificate subject (ADR-055). ADR-051 to ADR-054 wait. |
 | ADR-050 | 3 Test doubles stay in test paths | Done | `vca/internal/cli/nomock_test.go` | `TestNoDeploymentReachesTestdata` and `TestNoBinaryImportsAFakePackage` keep test doubles out of every deployment. |
 | ADR-050 | 4 A guard test scans the tree | Done | `vca/internal/cli/nomock_test.go` | The allowlist gives a reason per entry. The pending list shrinks with each unit and fails on an entry that matches nothing. |
@@ -552,12 +552,12 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-051 | 1 Certify reads `certify.vca_claims` | Not started | `deploy/vca/dpg/inji/certify` | Both containers still run on the release plugins. |
-| ADR-051 | 2 The adapter writes one file per subject | Not started | `vca/services/dpg-adapter-inji` | No claims package exists yet. |
-| ADR-051 | 3 One scope for every configuration | Not started | `vca/services/dpg-adapter-inji/internal/inji/configs.go` | The scope is the configuration id today. |
-| ADR-051 | 4 Templates read the columns `c1` to `c64` | Not started | `vca/services/dpg-adapter-inji/internal/inji/configs.go` | Templates read claim names today. |
-| ADR-051 | 5 The subject key per flow | Not started | `vca/services/dpg-adapter-inji/internal/service/issuer.go` | The pre-authorized offer stages the full claims today. |
-| ADR-051 | 6 The adapter serves the presentation definition | Not started | `vca/services/dpg-adapter-inji/internal/service` | The stack serves a fixed file today. |
+| ADR-051 | 1 Certify reads `certify.vca_claims` | Done | `deploy/vca/dpg/inji/certify/vca_claims.sql`, `deploy/vca/dpg/inji/certify/certify-vca-store.properties` | Both containers run `PostgresDataProviderPlugin` on the foreign table. `TestInjiStackRunsCertifyOnTheVcaStore` pins it. The nightly contract run confirms it against a running Certify. |
+| ADR-051 | 2 The adapter writes one file per subject | Done | `vca/services/dpg-adapter-inji/internal/claims` | The volume `inji-claims` sits in memory. The adapter renames each finished file and sweeps expired rows. |
+| ADR-051 | 3 One scope for every configuration | Done | `vca/services/dpg-adapter-inji/internal/inji/configs.go` | Every configuration has the scope `vca_credential`. |
+| ADR-051 | 4 Templates read the columns `c1` to `c64` | Done | `vca/services/dpg-adapter-inji/internal/inji/configs.go`, `vca/services/dpg-adapter-inji/internal/service/configs.go` | The adapter keeps the claim order with the registration. |
+| ADR-051 | 5 The subject key per flow | Partial | `vca/services/dpg-adapter-inji/internal/service/issuer.go` | The pre-authorized code stages the staging id, and a presentation during issuance names its holder. The holder authorization server of ADR-052 waits. |
+| ADR-051 | 6 The adapter serves the presentation definition | Done | `vca/services/dpg-adapter-inji/internal/service/iar.go` | `SetPresentationRequirement` stores it. The issuer settings card waits for a later unit. |
 
 ## ADR-052: The holder authorization server of the Inji adapter
 

@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -48,6 +49,16 @@ func (s *Service) RegisterCredentialConfiguration(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	// The template reads the claims from the columns of the claims store
+	// in schema order. The adapter keeps that order to write each row
+	// (ADR-051 decision 4).
+	names, err := inji.ClaimNames(in.JSONSchema)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if errErr := s.putColumns(ctx, cfg.GetId(), names); errErr != nil {
+		return nil, connect.NewError(connect.CodeInternal, errErr)
+	}
 	var out inji.ConfigResponse
 	_, gerr := s.certify.GetConfiguration(ctx, cfg.GetId())
 	switch {
@@ -62,6 +73,35 @@ func (s *Service) RegisterCredentialConfiguration(
 		return nil, configError("write the credential configuration", err)
 	}
 	return connect.NewResponse(&backendv1.RegisterCredentialConfigurationResponse{Id: out.ID}), nil
+}
+
+// columnsKey returns the store key of the claim order of one
+// configuration. A configuration id can hold characters a store key
+// cannot, such as the + of vc+sd-jwt, so the key holds its hex form.
+func columnsKey(id string) string { return "columns/" + hex.EncodeToString([]byte(id)) }
+
+// putColumns keeps the claim order of one configuration.
+func (s *Service) putColumns(ctx context.Context, id string, names []string) error {
+	raw, err := json.Marshal(names)
+	if err != nil {
+		return err
+	}
+	return s.store.Put(ctx, columnsKey(id), raw)
+}
+
+// columns returns the claim order of one configuration. A configuration
+// that this adapter did not register has none.
+func (s *Service) columns(ctx context.Context, id string) ([]string, error) {
+	raw, err := s.store.Get(ctx, columnsKey(id))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+			"the configuration %q has no claim order in this adapter; publish the schema again to register it", id))
+	}
+	var names []string
+	if err := json.Unmarshal(raw, &names); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("read the claim order of %q: %w", id, err))
+	}
+	return names, nil
 }
 
 // configError maps a refusal of the configuration API onto a Connect

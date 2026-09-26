@@ -86,6 +86,9 @@ type Server struct {
 	challenge string
 	// mimoto is the wallet state of the holder role.
 	mimoto mimoto
+	// claimsDir is the VCA claims store the credential endpoint reads.
+	// Empty serves the recorded credential.
+	claimsDir string
 }
 
 // New starts a fake Inji deployment.
@@ -205,6 +208,9 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case path == "/v1/certify/oauth/token":
 		f.send(w, "token.json")
 	case path == "/v1/certify/issuance/credential":
+		if f.fromStore(w, body) {
+			return
+		}
 		f.send(w, f.identityAnswer(credentialAnswer(body, credential)))
 	case strings.HasPrefix(path, "/v1/certify/rendering-template/"):
 		f.renderingTemplate(w, strings.TrimPrefix(path, "/v1/certify/rendering-template/"))

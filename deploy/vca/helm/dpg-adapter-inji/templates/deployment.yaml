@@ -71,6 +71,12 @@ spec:
             - name: data
               mountPath: {{ .Values.persistence.mountPath }}
             {{- end }}
+            {{- range .Values.stackMounts }}
+            {{- if .existingClaim }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+            {{- end }}
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
@@ -82,4 +88,11 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- end }}
+        {{- range .Values.stackMounts }}
+        {{- if .existingClaim }}
+        - name: {{ .name }}
+          persistentVolumeClaim:
+            claimName: {{ .existingClaim }}
+        {{- end }}
         {{- end }}

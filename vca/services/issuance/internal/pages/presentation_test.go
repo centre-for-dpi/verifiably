@@ -4,6 +4,7 @@ package pages_test
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -27,16 +28,25 @@ func TestOptionOnlyWithFeature(t *testing.T) {
 	doc = body(t, h.post(t, "/issue/delivery", goodClaims()))
 	a11ytest.AssertPage(t, doc)
 	for _, want := range []string{`<select id="presentation" name="presentation"`, "Before the stack issues",
-		"Presentation first", "Issue at once"} {
+		"Presentation first", "Issue at once", `id="presentation_claim"`, `value="vcaSubject"`, "Identity claim to present",
+		`<select id="presentation_source" name="presentation_source"`, "Claim with that value", `<option value="farmerID">`} {
 		if !strings.Contains(doc, want) {
 			t.Errorf("delivery lacks %q", want)
 		}
 	}
-	form := with(goodClaims(), "channel", "CHANNEL_OID4VCI_PREAUTH", "presentation", "yes")
+	// Only a text claim can hold the value.
+	if strings.Contains(doc, `<option value="hectares">`) || strings.Contains(doc, `<option value="organic">`) {
+		t.Error("the holder list offers a claim that is not text")
+	}
+	form := with(goodClaims(), "channel", "CHANNEL_OID4VCI_PREAUTH", "presentation", "yes",
+		"presentation_claim", "vcaSubject", "presentation_source", "farmerID")
 	doc = body(t, h.post(t, "/issue/review", form))
 	a11ytest.AssertPage(t, doc)
-	if !strings.Contains(doc, `<input type="hidden" name="presentation" value="yes">`) || !strings.Contains(doc, "Presentation first") {
-		t.Errorf("the review does not carry the option\n%s", doc)
+	for _, want := range []string{`<input type="hidden" name="presentation" value="yes">`, "Presentation first",
+		`<input type="hidden" name="presentation_source" value="farmerID">`, "vcaSubject equals FM-0042."} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("the review lacks %q\n%s", want, doc)
+		}
 	}
 	h.issuance.next = &issuancev1.Offer{Id: "offer-p"}
 	if rec := h.post(t, "/issue/offers", form); rec.Code != http.StatusSeeOther {
@@ -44,6 +54,25 @@ func TestOptionOnlyWithFeature(t *testing.T) {
 	}
 	if !h.issuance.requests[0].GetRequirePresentation() {
 		t.Fatal("the request lacks the option")
+	}
+	if got := h.issuance.requests[0].GetPresentationSubject(); got.GetClaim() != "vcaSubject" || got.GetValue() != "FM-0042" {
+		t.Fatalf("the request names the holder %v", got)
+	}
+	// Without a claim with a value the page asks again, on the review
+	// and on the last post.
+	for _, path := range []string{"/issue/review", "/issue/offers"} {
+		for _, bad := range []url.Values{
+			with(form, "presentation_source", "email"),
+			with(form, "presentation_claim", " "),
+		} {
+			doc = body(t, h.post(t, path, bad))
+			if currentStep(t, doc) != "Delivery" || !strings.Contains(doc, "A presentation first needs the identity claim and a claim with a value.") {
+				t.Errorf("%s accepts a form without a holder", path)
+			}
+		}
+	}
+	if len(h.issuance.requests) != 1 {
+		t.Fatalf("a form without a holder reached the service: %d requests", len(h.issuance.requests))
 	}
 	// The document channel cannot ask for a presentation.
 	doc = body(t, h.post(t, "/issue/review", with(goodClaims(), "channel", "CHANNEL_PDF", "presentation", "yes")))
@@ -53,7 +82,7 @@ func TestOptionOnlyWithFeature(t *testing.T) {
 	// Without the feature the posted option does nothing.
 	h.caps.caps.Features = nil
 	h.post(t, "/issue/offers", form)
-	if h.issuance.requests[1].GetRequirePresentation() {
+	if h.issuance.requests[1].GetRequirePresentation() || h.issuance.requests[1].GetPresentationSubject() != nil {
 		t.Fatal("the option reached the service on a stack that lacks it")
 	}
 }

@@ -15,6 +15,7 @@ import (
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/claims"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/fake"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/inji"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/service"
@@ -83,6 +84,12 @@ func newServiceWith(t *testing.T, r roles, change func(*serviceOptions)) (*servi
 			return "id-" + string(rune('0'+ids))
 		},
 	}
+	// The claims store of the test. The seeded configuration of the fake
+	// came from no registration, so the test gives its claim order.
+	opts.Claims = &claims.Writer{Dir: t.TempDir(), Now: func() time.Time { return fixedTime }}
+	f.SetClaimsDir("")
+	seedColumns(t, opts.Store, fake.SeededConfiguration, "fullName", "farmerID", "district")
+	seedColumns(t, opts.Store, "IdentityCredential", "given_name", "family_name", "birth_date")
 	if change != nil {
 		change(&opts)
 	}
@@ -91,6 +98,19 @@ func newServiceWith(t *testing.T, r roles, change func(*serviceOptions)) (*servi
 		t.Fatalf("service.New: %v", err)
 	}
 	return svc, f
+}
+
+// seedColumns stores the claim order of a configuration that the test
+// did not register through the adapter.
+func seedColumns(t *testing.T, kv store.KeyValue, id string, names ...string) {
+	t.Helper()
+	raw, err := json.Marshal(names)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := kv.Put(context.Background(), service.ColumnsKey(id), raw); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // wantCode fails when err does not carry the Connect code.
@@ -264,8 +284,12 @@ func farmerSpec() *backendv1.IssueSpec {
 	}
 }
 
-func TestCreateOfferStagesTheClaimsAndTheMarkers(t *testing.T) {
-	svc, f := newService(t, both)
+// TestPreAuthorizedOfferStagesTheStagingIdOnly: Certify gets the staging
+// id and nothing else, and the claims store holds the values under the
+// subject that Certify will put in the token (ADR-051 decision 5).
+func TestPreAuthorizedOfferStagesTheStagingIdOnly(t *testing.T) {
+	var dir string
+	svc, f := newServiceWith(t, both, func(o *serviceOptions) { dir = o.Claims.Dir })
 	resp, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
 		Spec: farmerSpec(),
 	}))
@@ -275,34 +299,98 @@ func TestCreateOfferStagesTheClaimsAndTheMarkers(t *testing.T) {
 	if !strings.HasPrefix(resp.Msg.GetOfferUri(), "openid-credential-offer://") {
 		t.Fatalf("offer URI = %q", resp.Msg.GetOfferUri())
 	}
-	if resp.Msg.GetChannel() != backendv1.Channel_CHANNEL_OID4VCI_PREAUTH {
-		t.Fatalf("channel = %v", resp.Msg.GetChannel())
-	}
-	if resp.Msg.GetOfferId() == "" {
-		t.Fatal("the offer has no id")
-	}
-	if resp.Msg.GetExpiresAt() == nil {
-		t.Fatal("the offer has no end time")
+	if resp.Msg.GetChannel() != backendv1.Channel_CHANNEL_OID4VCI_PREAUTH || resp.Msg.GetOfferId() == "" ||
+		resp.Msg.GetExpiresAt() == nil {
+		t.Fatalf("offer = %+v", resp.Msg)
 	}
 	var body struct {
-		ConfigurationID string         `json:"credential_configuration_id"`
-		Claims          map[string]any `json:"claims"`
+		ConfigurationID string            `json:"credential_configuration_id"`
+		Claims          map[string]string `json:"claims"`
 	}
-	if err := f.RequestJSON("/v1/certify/pre-authorized-data", &body); err != nil {
-		t.Fatalf("read the staging request: %v", err)
+	if errErr := f.RequestJSON("/v1/certify/pre-authorized-data", &body); errErr != nil {
+		t.Fatalf("read the staging request: %v", errErr)
 	}
-	if body.ConfigurationID != "FarmerCredential" {
-		t.Fatalf("configuration = %q", body.ConfigurationID)
+	if body.ConfigurationID != "FarmerCredential" || len(body.Claims) != 1 || body.Claims["id"] == "" {
+		t.Fatalf("staged = %+v", body)
 	}
-	if body.Claims["statusIdx"] != "12" || body.Claims["statusUri"] != "https://status.example.org/bitstring/1" {
-		t.Fatalf("claims = %v; the markers keep the template resolvable", body.Claims)
+	row, ok, err := claims.Writer{Dir: dir}.Find(claims.Key(body.Claims["id"]))
+	if err != nil || !ok {
+		t.Fatalf("no row for the staging id: %v", err)
 	}
-	if body.Claims["validFrom"] != "2026-01-01T00:00:00Z" {
-		t.Fatalf("claims = %v", body.Claims)
+	if got := row.Map([]string{"fullName", "farmerID", "district"}); got["fullName"] != "Ada Lovelace" || got["district"] != "Nakuru" {
+		t.Errorf("row claims = %v", got)
 	}
-	if body.Claims["fullName"] != "Ada Lovelace" {
-		t.Fatalf("claims = %v", body.Claims)
+	if row.StatusIndex != "12" || row.StatusURI != "https://status.example.org/bitstring/1" ||
+		row.ValidFrom != "2026-01-01T00:00:00Z" || !row.ExpiresAt.Equal(fixedTime.Add(15*time.Minute)) {
+		t.Errorf("reserved columns = %+v", row)
 	}
+}
+
+// TestIssueReadsTheClaimsBackFromTheRow: end to end through the fake,
+// which reads the row as the Postgres data provider does and fills the
+// template of the configuration the adapter registered.
+func TestIssueReadsTheClaimsBackFromTheRow(t *testing.T) {
+	var dir string
+	svc, f := newServiceWith(t, both, func(o *serviceOptions) { dir = o.Claims.Dir })
+	f.SetClaimsDir(dir)
+	ctx := context.Background()
+	schema := `{"type":"object","properties":{"fullName":{"type":"string"},"credits":{"type":"integer"}}}`
+	if _, err := svc.RegisterCredentialConfiguration(ctx, connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{
+		Configuration: &backendv1.CredentialConfiguration{
+			Id: "vca-residence-ldp", Type: "ResidencePermitCredential", Format: commonv1.Format_FORMAT_LDP_VC, JsonSchema: schema,
+		},
+	})); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	spec := farmerSpec()
+	spec.ConfigurationId = "vca-residence-ldp"
+	spec.SubjectData = `{"fullName":"Amina Wanjiru","credits":42}`
+	resp, err := svc.Issue(ctx, connect.NewRequest(&backendv1.IssueRequest{Spec: spec}))
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	var doc struct {
+		Subject map[string]any `json:"credentialSubject"`
+		Status  map[string]any `json:"credentialStatus"`
+		From    string         `json:"validFrom"`
+	}
+	if errErr := json.Unmarshal(resp.Msg.GetCredential().GetPayload(), &doc); errErr != nil {
+		t.Fatalf("payload: %v\n%s", errErr, resp.Msg.GetCredential().GetPayload())
+	}
+	if doc.Subject["fullName"] != "Amina Wanjiru" || doc.Subject["credits"] != float64(42) {
+		t.Errorf("subject = %v", doc.Subject)
+	}
+	if doc.Status["statusListIndex"] != "12" || doc.From != "2026-01-01T00:00:00Z" {
+		t.Errorf("status = %v, from = %q", doc.Status, doc.From)
+	}
+	// A claim the configuration does not declare fails before Certify.
+	spec.SubjectData = `{"fullName":"A","unknown":"x"}`
+	_, err = svc.Issue(ctx, connect.NewRequest(&backendv1.IssueRequest{Spec: spec}))
+	wantCode(t, err, connect.CodeInvalidArgument)
+	// A configuration with no claim order asks for a new registration.
+	if errErr := f.RequestJSON("/v1/certify/pre-authorized-data", &struct{}{}); errErr != nil {
+		t.Fatal(errErr)
+	}
+	spec.ConfigurationId = "IdentityCredential"
+	spec.SubjectData = `{"given_name":"Ada"}`
+	svc, _ = newServiceWith(t, both, func(o *serviceOptions) { o.Store = store.Memory() })
+	_, err = svc.Issue(ctx, connect.NewRequest(&backendv1.IssueRequest{Spec: spec}))
+	wantCode(t, err, connect.CodeFailedPrecondition)
+}
+
+// TestIssueWithoutAClaimsStore: an issuer adapter with no claims
+// directory names the setting.
+func TestIssueWithoutAClaimsStore(t *testing.T) {
+	svc, _ := newServiceWith(t, both, func(o *serviceOptions) { o.Claims = nil })
+	_, err := svc.Issue(context.Background(), connect.NewRequest(&backendv1.IssueRequest{Spec: farmerSpec()}))
+	wantCode(t, err, connect.CodeFailedPrecondition)
+	if !strings.Contains(err.Error(), "VCA_INJI_CLAIMS_DIR") {
+		t.Errorf("err = %v", err)
+	}
+	// A directory that is gone is an outage.
+	svc, _ = newServiceWith(t, both, func(o *serviceOptions) { o.Claims = &claims.Writer{Dir: "/nonexistent/claims"} })
+	_, err = svc.Issue(context.Background(), connect.NewRequest(&backendv1.IssueRequest{Spec: farmerSpec()}))
+	wantCode(t, err, connect.CodeUnavailable)
 }
 
 func TestCreateOfferChecksItsInput(t *testing.T) {

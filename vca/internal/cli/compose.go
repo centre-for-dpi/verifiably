@@ -143,11 +143,17 @@ func renderComposeService(b *strings.Builder, p Pair, a PortAssignment) []string
 	if a.Service.Stateful {
 		volumes = append(volumes, name+"-data")
 	}
-	if a.Service.Stateful || a.Service.UI {
+	mounts := a.Service.MountsFor(p)
+	if a.Service.Stateful || a.Service.UI || len(mounts) > 0 {
 		b.WriteString("    volumes:\n")
 	}
 	for _, v := range volumes {
 		fmt.Fprintf(b, "      - %s:/data\n", v)
+	}
+	// A volume of a stack file: the stack file declares it, so it stays
+	// out of the volumes of this file.
+	for _, m := range mounts {
+		fmt.Fprintf(b, "      - %s:%s\n", m.Volume, m.Path)
 	}
 	if a.Service.UI {
 		fmt.Fprintf(b, "      - ${%s:-%s}:%s:ro\n", ThemeHostFileEnv, themeHostDefault, ThemeMountPath)

@@ -54,6 +54,10 @@ service IssuerBackendService {
   // only when it lists FEATURE_ISSUER_IDENTITY_IMPORT_DID or
   // FEATURE_ISSUER_IDENTITY_IMPORT_X509.
   rpc ImportIssuerIdentity(ImportIssuerIdentityRequest) returns (ImportIssuerIdentityResponse);
+  // SetPresentationRequirement names the credential a holder presents
+  // before the DPG issues (ADR-051 decision 6). An adapter serves it only
+  // when it lists FEATURE_PRESENTATION_DURING_ISSUANCE.
+  rpc SetPresentationRequirement(SetPresentationRequirementRequest) returns (SetPresentationRequirementResponse);
 }
 
 // HolderBackendService drives the wallet side of a DPG.
@@ -419,6 +423,19 @@ message IssueSpec {
   // A full credential body to use as is, as a JSON string. When set, the
   // adapter ignores subject_data. Only VCDM formats honour this field.
   string credential_data = 8;
+  // The holder of an offer with a presentation during issuance: the
+  // identity claim of the presented credential and its value. The DPG
+  // issues subject_data to the holder who presents that value
+  // (ADR-051 decision 5).
+  PresentationSubject presentation_subject = 9;
+}
+
+// PresentationSubject names the holder of a presentation during issuance.
+message PresentationSubject {
+  // The claim of the presented credential that identifies the holder.
+  string claim = 1;
+  // The value of that claim for this holder.
+  string value = 2;
 }
 
 // CreateOfferRequest asks for an OID4VCI credential offer.
@@ -706,6 +723,32 @@ message ImportIssuerIdentityRequest {
 message ImportIssuerIdentityResponse {
   // The identity the DPG signs with from now on.
   IssuerIdentity identity = 1;
+}
+
+// SetPresentationRequirementRequest names the credential to present.
+message SetPresentationRequirementRequest {
+  // The type of the credential to present: a type name for a W3C
+  // credential or the vct of an SD-JWT VC.
+  string credential_type = 1;
+  // The wire format of the credential to present.
+  vca.common.v1.Format format = 2;
+  // The claims the presented credential must carry. The identity claim
+  // of the offers belongs here.
+  repeated string required_claims = 3;
+  // Why the issuer asks. The wallet shows it to the holder.
+  string purpose = 4;
+  // Remove the stored credential to present. The other fields are then ignored.
+  bool clear = 5;
+}
+
+// SetPresentationRequirementResponse carries the stored definition.
+message SetPresentationRequirementResponse {
+  // The presentation definition the DPG reads, as a JSON string. Empty
+  // after a clear.
+  string definition_json = 1;
+  // The claims of a presented credential that can identify a holder.
+  // An offer names one of them in presentation_subject.
+  repeated string identity_claims = 2;
 }
 
 // RegisterRequest creates a wallet for one citizen.

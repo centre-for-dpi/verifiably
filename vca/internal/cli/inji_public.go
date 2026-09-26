@@ -45,6 +45,13 @@ const (
 	// InjiVerifyUIPublicURLEnv is the address of the Inji Verify page.
 	// The trusted verifiers of Mimoto name it as the client.
 	InjiVerifyUIPublicURLEnv = "INJI_VERIFY_UI_PUBLIC_URL"
+	// InjiCertifyDIDEnv is the issuer DID of both Certify containers:
+	// did:web of the public host of the issuer pair.
+	InjiCertifyDIDEnv = "INJI_CERTIFY_DID"
+	// InjiAdapterURLEnv is the Inji adapter of the issuer pair on the
+	// compose network. Certify reads the presentation definition and the
+	// key set of the holder authorization server there.
+	InjiAdapterURLEnv = "INJI_ADAPTER_URL"
 )
 
 // The containers of the Inji stack that a browser or a wallet opens,
@@ -76,6 +83,14 @@ func InjiPublicValues(p Pair, values map[string]string, domain string, peers Pee
 		return out
 	}
 	public := values["VCA_PUBLIC_URL"]
+	if p.Role == commonv1.Role_ROLE_ISSUER {
+		if host := didWebHost(public); host != "" {
+			out[InjiCertifyDIDEnv] = "did:web:" + host
+		}
+		if adapter, ok := serviceURL(p, "dpg-adapter-inji"); ok {
+			out[InjiAdapterURLEnv] = adapter
+		}
+	}
 	if runsEsignet(p) {
 		esignet := esignetPublicURL(p, values, domain, peers)
 		out[EsignetPublicURLEnv] = esignet
@@ -185,9 +200,9 @@ const (
 	MimotoIssuersFile = "mimoto-issuers-config.json"
 	// MimotoVerifiersFile is the list of verifiers that Mimoto trusts.
 	MimotoVerifiersFile = "mimoto-trusted-verifiers.json"
-	// injiCertifyEsignetURL is the root of inji-certify-esignet on the
+	// injiCertifyAuthcodeURL is the root of inji-certify-authcode on the
 	// compose network, where Mimoto reads the issuer metadata.
-	injiCertifyEsignetURL = "http://inji-certify-nginx:8091"
+	injiCertifyAuthcodeURL = "http://inji-certify-nginx:8091"
 	// esignetInternalURL is eSignet on the compose network.
 	esignetInternalURL = "http://inji-esignet:8088"
 	// mimotoIssuerID names the Certify of the stack in Inji Web.
@@ -253,12 +268,12 @@ func mimotoFiles(values map[string]string, domain string, peers PeerOverrides) (
 	issuers := map[string][]mimotoIssuer{"issuers": {{
 		IssuerID: mimotoIssuerID, CredentialIssuer: mimotoIssuerID, Display: []mimotoDisplay{display},
 		Protocol: "OpenId4VCI", ClientID: EsignetClientID, ClientAlias: EsignetClientID,
-		WellknownEndpoint:     injiCertifyEsignetURL + "/.well-known/openid-credential-issuer",
+		WellknownEndpoint:     injiCertifyAuthcodeURL + "/.well-known/openid-credential-issuer",
 		RedirectURI:           web + "/redirect",
 		AuthorizationAudience: esignet + esignetPath + "/oauth/v2/token",
 		TokenEndpoint:         web + "/v1/mimoto/get-token/" + mimotoIssuerID,
 		ProxyTokenEndpoint:    esignetInternalURL + esignetPath + "/oauth/v2/token",
-		QRCodeType:            "EmbeddedVC", CredentialIssuerHost: injiCertifyEsignetURL, Enabled: "true",
+		QRCodeType:            "EmbeddedVC", CredentialIssuerHost: injiCertifyAuthcodeURL, Enabled: "true",
 	}}}
 	public := values["VCA_PUBLIC_URL"]
 	service := verifyPublicURL(InjiVerifyPublicURLEnv, injiVerifyPort, domain, public, peers)

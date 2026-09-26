@@ -10,3 +10,8 @@ data:
   {{- range $name, $value := .Values.config }}
   {{ $name }}: {{ $value | quote }}
   {{- end }}
+  {{- range .Values.stackMounts }}
+  {{- if .existingClaim }}
+  {{ .env }}: {{ .mountPath | quote }}
+  {{- end }}
+  {{- end }}

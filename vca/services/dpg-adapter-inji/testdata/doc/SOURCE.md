@@ -178,6 +178,20 @@ Facts the adapter relies on:
   (`IarVpRequestService` uses a `RestTemplate`):
   https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/IarVpRequestService.java
 
+## Postgres data provider (digital credential plugins 0.6.0)
+
+| File | Source |
+| --- | --- |
+| `postgres-provider-row.json` | The map that `PostgresDataProviderPlugin.fetchData` returns for one row of `certify.vca_claims`: the first row of the query as a JSON object with the column aliases as keys. https://raw.githubusercontent.com/inji/digital-credential-plugins/release-0.6.x/postgres-dataprovider-plugin/src/main/java/io/mosip/certify/postgresdataprovider/integration/service/PostgresDataProviderPlugin.java and `repository/DataProviderRepositoryImpl.java` of the same folder. The columns follow `deploy/vca/dpg/inji/certify/vca_claims.sql`. The values are neutral. |
+
+Facts the adapter relies on:
+
+- The plugin reads `sub` and `scope` of the access token. It runs the
+  query of `mosip.certify.data-provider-plugin.postgres.scope-query-mapping`
+  for that scope with `:id` set to `sub`.
+- The template of a configuration reads each column under its name, so
+  a claim reads `${c1}` and the validity reads `${v_valid_from}`.
+
 ## Mimoto 0.21.0, the backend of Inji Web 0.16.0
 
 The spike P6-I7a read these sources.

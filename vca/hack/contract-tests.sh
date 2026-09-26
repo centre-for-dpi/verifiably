@@ -147,6 +147,16 @@ for dpg in $dpgs; do
     else
       echo "contract-tests: inji holder case skipped; set VCA_INJI_CONTRACT_HOLDER_USER and _PASSWORD"
     fi
+    # The issuing cases write rows into the claims store that the
+    # Postgres of Certify reads (ADR-051). The host path of the volume
+    # comes from Docker when the job gives none.
+    if [[ -z "${VCA_INJI_CONTRACT_CLAIMS_DIR:-}" ]] && command -v docker >/dev/null 2>&1; then
+      VCA_INJI_CONTRACT_CLAIMS_DIR="$(docker volume inspect -f '{{.Mountpoint}}' vca_inji-claims 2>/dev/null || true)"
+      export VCA_INJI_CONTRACT_CLAIMS_DIR
+    fi
+    if [[ -z "${VCA_INJI_CONTRACT_CLAIMS_DIR:-}" ]]; then
+      echo "contract-tests: inji issuing cases skipped; set VCA_INJI_CONTRACT_CLAIMS_DIR"
+    fi
   fi
   if [[ "${VCA_CONTRACT_PREPARE_ONLY:-}" == "1" ]]; then
     continue

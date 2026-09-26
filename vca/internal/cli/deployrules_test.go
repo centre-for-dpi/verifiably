@@ -23,7 +23,6 @@ var cdnHosts = []string{
 // removes the line (ADR-050). TestPendingCdnEntriesStillMatch fails
 // when an entry no longer matches, so the entry goes with the fix.
 var pendingCdn = []nomockException{
-	{"deploy/vca/dpg/inji/certify/certify_init.sql", "github.io", "N4"},
 	{"deploy/vca/dpg/inji/mimoto/credential-template.html", "github.io", "N8"},
 }
 

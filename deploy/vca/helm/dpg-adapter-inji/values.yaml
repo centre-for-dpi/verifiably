@@ -28,6 +28,17 @@ persistence:
   mountPath: /data
   existingClaim: ""
 
+# Volumes that the service shares with a container of its DPG stack.
+# The Inji issuer writes the VCA claims store here, and the Postgres of
+# Inji Certify reads it through file_fdw (ADR-051). Name a claim that
+# both mount. Without one the chart mounts nothing, and the issuer
+# stages no subject.
+stackMounts:
+  - name: inji-claims
+    mountPath: /vca/claims
+    env: VCA_INJI_CLAIMS_DIR
+    existingClaim: ""
+
 resources:
   requests:
     cpu: 50m

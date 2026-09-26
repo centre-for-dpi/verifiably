@@ -49,6 +49,9 @@ type request struct {
 	// presentation asks the holder to present a credential before the
 	// stack issues.
 	presentation bool
+	// presentationSubject names the holder who may present: the identity
+	// claim of the presented credential and its value.
+	presentationSubject *backendv1.PresentationSubject
 }
 
 // Issue issues one credential to one subject.
@@ -74,6 +77,8 @@ func (s *Service) Issue(
 		statusPurpose: msg.GetStatusPurpose(),
 		holderProof:   msg.GetHolderKeyProof(),
 		presentation:  msg.GetRequirePresentation(),
+
+		presentationSubject: msg.GetPresentationSubject(),
 	})
 	if err != nil {
 		return nil, err
@@ -167,7 +172,7 @@ func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 	if serr := s.checkChannel(caps, channel); serr != nil {
 		return offers.Offer{}, serr
 	}
-	if serr := checkPresentation(caps, channel, r.presentation); serr != nil {
+	if serr := checkPresentation(caps, channel, r); serr != nil {
 		return offers.Offer{}, serr
 	}
 	binding, err := s.allocateStatus(ctx, r.statusPurpose, format)
@@ -182,6 +187,9 @@ func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 		Validity:        r.validity,
 		Status:          binding,
 		HolderKeyProof:  r.holderProof,
+	}
+	if r.presentation {
+		spec.PresentationSubject = r.presentationSubject
 	}
 	now := s.opts.Now().UTC()
 	offer := offers.Offer{
@@ -267,9 +275,9 @@ func (s *Service) checkChannel(caps clients.Capabilities, channel backendv1.Chan
 
 // checkPresentation reports whether the stack can ask the holder for a
 // presentation before it issues: only over an OID4VCI channel of an
-// adapter that lists the feature.
-func checkPresentation(caps clients.Capabilities, channel backendv1.Channel, asked bool) error {
-	if !asked {
+// adapter that lists the feature, for a named holder.
+func checkPresentation(caps clients.Capabilities, channel backendv1.Channel, r request) error {
+	if !r.presentation {
 		return nil
 	}
 	if !caps.Has(backendv1.Feature_FEATURE_PRESENTATION_DURING_ISSUANCE) {
@@ -277,6 +285,9 @@ func checkPresentation(caps clients.Capabilities, channel backendv1.Channel, ask
 	}
 	if channel != backendv1.Channel_CHANNEL_OID4VCI_PREAUTH && channel != backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE {
 		return badRequest("a presentation during issuance needs an OID4VCI channel")
+	}
+	if strings.TrimSpace(r.presentationSubject.GetClaim()) == "" || strings.TrimSpace(r.presentationSubject.GetValue()) == "" {
+		return badRequest("a presentation during issuance needs the identity claim of the holder and its value")
 	}
 	return nil
 }

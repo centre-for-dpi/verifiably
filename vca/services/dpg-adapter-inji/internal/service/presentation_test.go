@@ -18,12 +18,38 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/claims"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/fake"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/service"
 )
 
 // withPresentation turns presentation during issuance on.
-func withPresentation(o *serviceOptions) { o.PresentationDuringIssuance = true }
+func withPresentation(o *serviceOptions) {
+	o.PresentationDuringIssuance = true
+	o.IARIdentityClaims = []string{"vcaSubject", "nationalId"}
+}
+
+// setRequirement stores the credential to present.
+func setRequirement(t *testing.T, svc *service.Service) *backendv1.SetPresentationRequirementResponse {
+	t.Helper()
+	resp, err := svc.SetPresentationRequirement(context.Background(), connect.NewRequest(&backendv1.SetPresentationRequirementRequest{
+		CredentialType: "NationalIdentityCredential", Format: commonv1.Format_FORMAT_LDP_VC,
+		RequiredClaims: []string{"vcaSubject"}, Purpose: "Show your national identity credential.",
+	}))
+	if err != nil {
+		t.Fatalf("SetPresentationRequirement: %v", err)
+	}
+	return resp.Msg
+}
+
+// presentationSpec is farmerSpec for the holder who presents the value
+// NID-1001 of the identity claim.
+func presentationSpec() *backendv1.IssueSpec {
+	spec := farmerSpec()
+	spec.PresentationSubject = &backendv1.PresentationSubject{Claim: "vcaSubject", Value: "NID-1001"}
+	return spec
+}
 
 // postForm posts a form and decodes the JSON answer.
 func postForm(t *testing.T, client *http.Client, address string, form url.Values) (int, map[string]any) {
@@ -54,8 +80,9 @@ func postForm(t *testing.T, client *http.Client, address string, form url.Values
 // receives a code, and trades it for an access token.
 func TestOfferRequiresPresentation(t *testing.T) {
 	svc, f := newServiceWith(t, both, withPresentation)
+	setRequirement(t, svc)
 	resp, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
-		Spec: farmerSpec(), Channel: backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, RequirePresentation: true,
+		Spec: presentationSpec(), Channel: backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, RequirePresentation: true,
 	}))
 	if err != nil {
 		t.Fatalf("CreateOffer: %v", err)
@@ -143,15 +170,16 @@ func TestOfferRequiresPresentation(t *testing.T) {
 // the setting and when Certify names no interactive endpoint.
 func TestOfferRequiresPresentationNeedsTheStack(t *testing.T) {
 	req := func() *connect.Request[backendv1.CreateOfferRequest] {
-		return connect.NewRequest(&backendv1.CreateOfferRequest{Spec: farmerSpec(), RequirePresentation: true})
+		return connect.NewRequest(&backendv1.CreateOfferRequest{Spec: presentationSpec(), RequirePresentation: true})
 	}
 	off, _ := newService(t, both)
 	_, err := off.CreateOffer(context.Background(), req())
 	wantCode(t, err, connect.CodeFailedPrecondition)
 
 	on, f := newServiceWith(t, both, withPresentation)
+	setRequirement(t, on)
 	_, err = on.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
-		Spec: farmerSpec(), RequirePresentation: true, Channel: backendv1.Channel_CHANNEL_PDF,
+		Spec: presentationSpec(), RequirePresentation: true, Channel: backendv1.Channel_CHANNEL_PDF,
 	}))
 	wantCode(t, err, connect.CodeInvalidArgument)
 	f.SetStatus(fake.ASMetadataPath, http.StatusNotFound)
@@ -162,7 +190,131 @@ func TestOfferRequiresPresentationNeedsTheStack(t *testing.T) {
 		withPresentation(o)
 		o.PublicURL = ""
 	})
+	setRequirement(t, noURL)
 	_, err = noURL.CreateOffer(context.Background(), req())
+	wantCode(t, err, connect.CodeFailedPrecondition)
+}
+
+// TestPresentationOfferWritesTheSubjectRow: the row of an offer with a
+// presentation during issuance has the value of the identity claim as
+// its subject, which Certify takes from the presented credential
+// (ADR-051 decision 5).
+func TestPresentationOfferWritesTheSubjectRow(t *testing.T) {
+	var dir string
+	svc, _ := newServiceWith(t, both, func(o *serviceOptions) {
+		withPresentation(o)
+		dir = o.Claims.Dir
+	})
+	setRequirement(t, svc)
+	if _, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
+		Spec: presentationSpec(), RequirePresentation: true,
+	})); err != nil {
+		t.Fatalf("CreateOffer: %v", err)
+	}
+	row, ok, err := claims.Writer{Dir: dir}.Find("NID-1001")
+	if err != nil || !ok || row.Map([]string{"fullName"})["fullName"] != "Ada Lovelace" || row.ConfigID != "FarmerCredential" {
+		t.Fatalf("row = %+v %v %v", row, ok, err)
+	}
+}
+
+// TestPresentationOfferNeedsASubjectClaim: the offer names the holder by
+// one of the identity claims of the stack, and the requirement exists.
+func TestPresentationOfferNeedsASubjectClaim(t *testing.T) {
+	svc, _ := newServiceWith(t, both, withPresentation)
+	offer := func(spec *backendv1.IssueSpec) error {
+		_, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
+			Spec: spec, RequirePresentation: true,
+		}))
+		return err
+	}
+	err := offer(presentationSpec())
+	wantCode(t, err, connect.CodeFailedPrecondition)
+	if !strings.Contains(err.Error(), "configure the credential to present first") {
+		t.Errorf("err = %v", err)
+	}
+	setRequirement(t, svc)
+	for _, subject := range []*backendv1.PresentationSubject{
+		nil,
+		{Claim: "vcaSubject", Value: "  "},
+		{Claim: "email", Value: "a@b.example"},
+	} {
+		spec := farmerSpec()
+		spec.PresentationSubject = subject
+		err := offer(spec)
+		wantCode(t, err, connect.CodeInvalidArgument)
+		if !strings.Contains(err.Error(), "vcaSubject, nationalId") {
+			t.Errorf("err = %v", err)
+		}
+	}
+}
+
+// TestSetPresentationRequirement builds the definition Certify reads,
+// and a clear removes it.
+func TestSetPresentationRequirement(t *testing.T) {
+	svc, _ := newServiceWith(t, both, withPresentation)
+	got := setRequirement(t, svc)
+	if !slices.Equal(got.GetIdentityClaims(), []string{"vcaSubject", "nationalId"}) {
+		t.Errorf("identity claims = %v", got.GetIdentityClaims())
+	}
+	var doc struct {
+		Definition struct {
+			ID          string `json:"id"`
+			Purpose     string `json:"purpose"`
+			Descriptors []struct {
+				Format      map[string]map[string][]string `json:"format"`
+				Constraints struct {
+					Fields []struct {
+						Path   []string       `json:"path"`
+						Filter map[string]any `json:"filter"`
+					} `json:"fields"`
+				} `json:"constraints"`
+			} `json:"input_descriptors"`
+		} `json:"presentation_definition"`
+	}
+	if err := json.Unmarshal([]byte(got.GetDefinitionJson()), &doc); err != nil {
+		t.Fatal(err)
+	}
+	d := doc.Definition
+	if !strings.HasPrefix(d.ID, "vca-") || d.Purpose != "Show your national identity credential." || len(d.Descriptors) != 1 {
+		t.Fatalf("definition = %s", got.GetDefinitionJson())
+	}
+	fields := d.Descriptors[0].Constraints.Fields
+	if len(fields) != 2 || fields[0].Path[0] != "$.type" || fields[0].Filter["pattern"] != "NationalIdentityCredential" ||
+		fields[1].Path[0] != "$.credentialSubject.vcaSubject" {
+		t.Errorf("fields = %+v", fields)
+	}
+	if !slices.Contains(d.Descriptors[0].Format["ldp_vc"]["proof_type"], "Ed25519Signature2020") {
+		t.Errorf("format = %v", d.Descriptors[0].Format)
+	}
+	stored, ok := svc.PresentationDefinition(context.Background())
+	if !ok || string(stored) != got.GetDefinitionJson() {
+		t.Errorf("stored = %s", stored)
+	}
+	// An SD-JWT VC reads the vct and the top level claims.
+	sd, err := svc.SetPresentationRequirement(context.Background(), connect.NewRequest(&backendv1.SetPresentationRequirementRequest{
+		CredentialType: "https://id.gov.example/national", Format: commonv1.Format_FORMAT_VC_SD_JWT, RequiredClaims: []string{"nationalId", " "},
+	}))
+	if err != nil || !strings.Contains(sd.Msg.GetDefinitionJson(), `"$.vct"`) || !strings.Contains(sd.Msg.GetDefinitionJson(), `"$.nationalId"`) ||
+		!strings.Contains(sd.Msg.GetDefinitionJson(), `"vc+sd-jwt"`) {
+		t.Errorf("sd-jwt = %v %v", sd, err)
+	}
+	for _, bad := range []*backendv1.SetPresentationRequirementRequest{
+		{Format: commonv1.Format_FORMAT_LDP_VC},
+		{CredentialType: "X", Format: commonv1.Format_FORMAT_MSO_MDOC},
+		{CredentialType: "X", RequiredClaims: []string{"a.b"}},
+	} {
+		_, errErr := svc.SetPresentationRequirement(context.Background(), connect.NewRequest(bad))
+		wantCode(t, errErr, connect.CodeInvalidArgument)
+	}
+	cleared, err := svc.SetPresentationRequirement(context.Background(), connect.NewRequest(&backendv1.SetPresentationRequirementRequest{Clear: true}))
+	if err != nil || cleared.Msg.GetDefinitionJson() != "" {
+		t.Fatalf("clear = %v %v", cleared, err)
+	}
+	if _, ok := svc.PresentationDefinition(context.Background()); ok {
+		t.Error("the definition stays after a clear")
+	}
+	off, _ := newService(t, both)
+	_, err = off.SetPresentationRequirement(context.Background(), connect.NewRequest(&backendv1.SetPresentationRequirementRequest{CredentialType: "X"}))
 	wantCode(t, err, connect.CodeFailedPrecondition)
 }
 
@@ -196,10 +348,11 @@ func TestOfferIssuerFollowsTheAuthorizationServer(t *testing.T) {
 		withPresentation(o)
 		o.OfferIssuer = "http://inji-certify-nginx:8091"
 	})
+	setRequirement(t, svc)
 	issuerOf := func(requirePresentation bool) string {
 		t.Helper()
 		resp, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
-			Spec: farmerSpec(), Channel: backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE, RequirePresentation: requirePresentation,
+			Spec: presentationSpec(), Channel: backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE, RequirePresentation: requirePresentation,
 		}))
 		if err != nil {
 			t.Fatalf("CreateOffer: %v", err)

@@ -138,7 +138,7 @@ func TestMdocNamespaceAndTemplate(t *testing.T) {
 		t.Fatal(err)
 	}
 	tmpl, err := DecodeTemplate(dto.VcTemplate)
-	if err != nil || !strings.Contains(tmpl, `"elementValue": ${age}`) || !strings.Contains(tmpl, `"digestId": 1`) {
+	if err != nil || !strings.Contains(tmpl, `"elementValue": ${c2}`) || !strings.Contains(tmpl, `"digestId": 1`) {
 		t.Fatalf("template %s %v", tmpl, err)
 	}
 }

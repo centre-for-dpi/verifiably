@@ -310,17 +310,31 @@ Certify takes the code. The answer
 names the authorization code channel, also when the caller asked for
 the pre-authorized one.
 
-Certify reads the presentation definition from the deployment, not
-from the offer. It then reads the claims from its data provider for
-the identity of the presented credential. The claims of the staging
-call do not reach such a credential.
+The offer names its holder in `presentation_subject` of the
+`IssueSpec`: an identity claim of the presented credential and its
+value. The claim must be one of `VCA_INJI_IAR_IDENTITY_CLAIMS`, which
+defaults to `vcaSubject`. The adapter writes the claims of
+`subject_data` into the claims store under that value. Certify makes
+that claim of the presented credential the subject of its token. So
+the data provider finds the row (ADR-051 decision 5).
+An offer without a holder fails with `InvalidArgument`.
+
+The issuer names the credential to present with
+`SetPresentationRequirement`: a type, a format, the claims it must
+carry, and a purpose. The adapter keeps it and serves the
+presentation definition at `GET /iar/presentation-definition.json` on
+the compose network. Certify reads it there at each interactive
+authorization. Before the issuer sets one, the path answers 404, and
+an offer with `require_presentation` fails with "configure the
+credential to present first". The answer of the call lists the
+identity claims of the stack.
 
 The setting `VCA_INJI_PRESENTATION_DURING_ISSUANCE` turns the feature
 on. The stack file points Certify at Inji Verify through
-`mosip.certify.verify.service.*` and serves `vp_request_config.json`
-(P6-I4b). The issuer profile runs Inji Verify for that, so `vca setup`
-sets the value to `true` for the Inji issuer pair. A deployment outside
-the stack file sets it once its Certify reaches an Inji Verify.
+`mosip.certify.verify.service.*` (P6-I4b). The issuer profile runs
+Inji Verify for that, so `vca setup` sets the value to `true` for the
+Inji issuer pair. A deployment outside the stack file sets it once its
+Certify reaches an Inji Verify.
 
 P6-I4b read the error path in the Certify 0.14.0 sources. Certify
 answers 400 in two shapes:
@@ -337,27 +351,63 @@ when Certify gives one.
 
 Certify 0.14.0 checks every access token against one issuer and one key
 set. A deployment can take the tokens of its own authorization server
-or the tokens of eSignet, not both. So the stack file runs Certify
-twice, on one database and one key store (ADR-049, P6-I0).
+or the tokens of one other server, not both. So the stack file runs
+Certify twice, on one database and one key store (ADR-049, P6-I0).
 
-| Container | Authorization server | Data provider | What reaches it |
-| --- | --- | --- | --- |
-| `inji-certify` | Certify itself | `PreAuthDataProviderPlugin`, which reads the staged claims | Every call of the adapter: staging, `Issue`, the configuration API, the ledger, the keys, and a presentation during issuance |
-| `inji-certify-esignet` | The eSignet of the stack | `MockCSVDataProviderPlugin`, with the farmer data of the release | A claim in Inji Web, and an authorization code offer through eSignet |
-
-The holder signs in at the eSignet login page of the stack, oidc-ui
-1.5.1. The mock identity system holds the identity. `vca setup` names
-its address in `VCA_INJI_AUTHORIZATION_SERVER` of the issuer pair.
+| Container | Authorization server | What reaches it |
+| --- | --- | --- |
+| `inji-certify` | Certify itself | Every call of the adapter: staging, `Issue`, the configuration API, the ledger, the keys, and a presentation during issuance |
+| `inji-certify-authcode` | The holder authorization server of the adapter | A claim in Inji Web, and an authorization code offer |
 
 `VCA_INJI_CERTIFY_URL` names `inji-certify`. `VCA_INJI_OFFER_ISSUER`
-names `inji-certify-esignet` behind the nginx of the stack, and an
+names `inji-certify-authcode` behind the nginx of the stack, and an
 authorization code offer names it as the credential issuer. The second
 container starts after the first one is ready, so it reads the keys the
 first one made. `VCA_INJI_CERTIFY_PLUGINS` lists the plugins of both.
 
-The CSV data provider reads the claims of the identity that signed in
-at eSignet. So an authorization code offer issues the sample
-data of that identity, not the claims of the staging call.
+## The claims store
+
+Both containers issue from the VCA claims store (ADR-051). Each runs
+`PostgresDataProviderPlugin` of the digital credential plugins 0.6.0.
+The plugin reads `sub` and `scope` of the access token. It runs the
+query of that scope with `:id` set to `sub`. It returns the first row
+with the column names as keys. The one query reads the foreign table
+`certify.vca_claims`. `file_fdw` maps it onto every `*.csv` file of the
+volume `inji-claims`.
+
+The adapter writes one file per staged subject into
+`VCA_INJI_CLAIMS_DIR`. The name of the file is the SHA-256 of the
+subject, and it holds one row. The adapter writes a temporary file and
+renames it, so the database never reads half a row. A sweep at each
+write and every `VCA_INJI_CLAIMS_SWEEP` deletes a row when its offer
+expires. The adapter opens no database connection.
+
+| Column | What it holds |
+| --- | --- |
+| `subject` | The key of the row: the `sub` of the token |
+| `config_id` | The credential configuration |
+| `expires_at` | The end of the offer |
+| `v_valid_from`, `v_valid_until` | The validity window |
+| `v_status_uri`, `v_status_index` | The status list entry |
+| `c1` to `c64` | The claims, in the order of the schema |
+
+`RegisterCredentialConfiguration` keeps the claim order of each
+configuration, and its template reads the columns. Every configuration
+has the scope `vca_credential`, so one query serves every schema.
+Certify picks the configuration from the request body. A schema with
+more than 64 claims fails the registration. Every configuration
+declares the optional claim `id`.
+
+The key of a row follows the flow:
+
+| Flow | Key |
+| --- | --- |
+| Pre-authorized code | The adapter stages `{"id": "<staging id>"}`. Certify puts that JSON text in `sub`. |
+| Holder authorization server | The staging id of the row, which the adapter puts in its own token |
+| Presentation during issuance | The value of the identity claim of the presented credential |
+
+A configuration that an earlier release registered has no claim order.
+Publish the schema again, and the adapter registers it anew.
 
 ## The identity QR channel
 

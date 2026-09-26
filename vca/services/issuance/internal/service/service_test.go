@@ -872,9 +872,16 @@ func TestIssueAsksForAPresentationFirst(t *testing.T) {
 	}
 	h := newHarness(t, withFeature)
 	h.adapter.offer.Channel = backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE
-	offer := h.issue(t, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, func(r *issuancev1.IssueRequest) { r.RequirePresentation = true })
+	holder := &backendv1.PresentationSubject{Claim: "vcaSubject", Value: "NID-1001"}
+	offer := h.issue(t, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, func(r *issuancev1.IssueRequest) {
+		r.RequirePresentation = true
+		r.PresentationSubject = holder
+	})
 	if !h.adapter.presentation[0] {
 		t.Fatal("the adapter did not get the option")
+	}
+	if got := h.adapter.specs[0].GetPresentationSubject(); got.GetClaim() != "vcaSubject" || got.GetValue() != "NID-1001" {
+		t.Fatalf("the spec names the holder %v", got)
 	}
 	if offer.GetChannel() != backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE {
 		t.Fatalf("the offer keeps the flow the adapter used, got %v", offer.GetChannel())
@@ -882,15 +889,21 @@ func TestIssueAsksForAPresentationFirst(t *testing.T) {
 	ask := func(h *harness, channel backendv1.Channel) error {
 		_, err := h.service.Issue(context.Background(), connect.NewRequest(&issuancev1.IssueRequest{
 			SchemaId: "farmer", SubjectData: `{"fullName":"Ada","farmerID":"FM-1"}`, RequirePresentation: true,
-			Delivery: &issuancev1.Delivery{Channel: channel},
+			Delivery: &issuancev1.Delivery{Channel: channel}, PresentationSubject: holder,
 		}))
 		return err
 	}
 	wantCode(t, ask(h, backendv1.Channel_CHANNEL_PDF), connect.CodeInvalidArgument)
+	// The offer names the holder, or the stack cannot write the row.
+	for _, missing := range []*backendv1.PresentationSubject{nil, {Claim: "vcaSubject"}, {Value: "NID-1001"}} {
+		holder = missing
+		wantCode(t, ask(h, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH), connect.CodeInvalidArgument)
+	}
+	holder = &backendv1.PresentationSubject{Claim: "vcaSubject", Value: "NID-1001"}
 	wantCode(t, ask(newHarness(t, nil), backendv1.Channel_CHANNEL_OID4VCI_PREAUTH), connect.CodeInvalidArgument)
 	plain := newHarness(t, withFeature)
-	plain.issue(t, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, nil)
-	if plain.adapter.presentation[0] {
+	plain.issue(t, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, func(r *issuancev1.IssueRequest) { r.PresentationSubject = holder })
+	if plain.adapter.presentation[0] || plain.adapter.specs[0].GetPresentationSubject() != nil {
 		t.Fatal("the option reached the adapter without a request")
 	}
 }

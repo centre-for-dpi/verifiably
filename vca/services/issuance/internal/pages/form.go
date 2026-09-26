@@ -210,7 +210,7 @@ func (b *formBuilder) label(sub map[string]any, path []string) string {
 
 // sentenceCase keeps the capital of the first word and of an acronym,
 // and lowers the capital of every other word: "Date Of Birth" becomes
-// "Date of birth", "Farmer ID" stays.
+// "Date of birth", "Permit ID" stays.
 func sentenceCase(words string) string {
 	parts := strings.Fields(words)
 	for i := 1; i < len(parts); i++ {
@@ -617,6 +617,21 @@ func (c claimForm) hidden(form url.Values) template.HTML {
 // hiddenInput returns one escaped hidden input.
 func hiddenInput(name, value string) string {
 	return `<input type="hidden" name="` + template.HTMLEscapeString(name) + `" value="` + template.HTMLEscapeString(value) + `">`
+}
+
+// sourceOptions lists the top level claims of the form that can hold the
+// value of the identity claim of a presentation first, with none first.
+func (c claimForm) sourceOptions(selected string) []components.Option {
+	out := []components.Option{{Value: "", Text: msg.T("issuer.issue.presentation_subject.source.none.label")}}
+	for _, f := range c.fields {
+		// A text claim holds an identifier. A number, a flag, a list, or
+		// an object does not.
+		if f.kind != kindText {
+			continue
+		}
+		out = append(out, components.Option{Value: f.key, Text: f.label, Selected: f.key == selected})
+	}
+	return out
 }
 
 // rows returns the review rows of the claims: the label path and the

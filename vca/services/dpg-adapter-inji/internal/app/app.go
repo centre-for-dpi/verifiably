@@ -4,10 +4,13 @@
 package app
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/claims"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/inji"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/service"
@@ -21,6 +24,32 @@ type App struct {
 	Mux *http.ServeMux
 	// Service holds the RPC implementation.
 	Service *service.Service
+	// Claims writes the VCA claims store. Nil when the configuration
+	// names no directory.
+	Claims *claims.Writer
+	// ClaimsSweep is the interval of Sweep.
+	ClaimsSweep time.Duration
+}
+
+// Sweep deletes the expired rows of the claims store every interval
+// until ctx ends. A write sweeps too, so a row never outlives its offer
+// by more than one interval.
+func (a *App) Sweep(ctx context.Context, log *slog.Logger) {
+	if a.Claims == nil {
+		return
+	}
+	ticker := time.NewTicker(a.ClaimsSweep)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if _, err := a.Claims.Sweep(); err != nil {
+				log.Warn("the sweep of the claims store failed", "error", err)
+			}
+		}
+	}
 }
 
 // Deps are the side effects the wiring needs. Tests inject fakes.
@@ -46,6 +75,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		}
 	}
 	certify := inji.NewCertify(dpgClient(cfg, deps, cfg.CertifyURL), cfg.MetadataPath)
+	var writer *claims.Writer
+	if cfg.ClaimsDir != "" {
+		writer = &claims.Writer{Dir: cfg.ClaimsDir}
+	}
 	verify := inji.NewVerify(dpgClient(cfg, deps, cfg.VerifyURL), cfg.VerifyClientID, cfg.VerifyURL)
 	svc, err := service.New(service.Options{
 		Certify:             certify,
@@ -65,6 +98,9 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Plugins:             cfg.Plugins(),
 		CADomain:            cfg.CADomain,
 
+		Claims:            writer,
+		IARIdentityClaims: cfg.IdentityClaims(),
+
 		PresentationDuringIssuance: cfg.PresentationDuringIssuance,
 	})
 	if err != nil {
@@ -81,9 +117,17 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	// The credential offer endpoint is standards defined, so it stays a
 	// plain HTTP handler (ADR-003 decision 7).
 	mux.HandleFunc("GET /offers/{id}", offerHandler(svc))
+	// Certify reads the presentation definition of a presentation during
+	// issuance over HTTP on the compose network (ADR-051 decision 6).
+	// The proxy does not publish it.
+	mux.HandleFunc("GET /iar/presentation-definition.json", definitionHandler(svc))
 	if cfg.CertifyURL != "" && cfg.PublicURL == "" {
 		deps.Log.Warn("no public URL, so the authorization code channel is off",
 			"setting", config.Prefix+"PUBLIC_URL")
+	}
+	if cfg.CertifyURL != "" && cfg.ClaimsDir == "" {
+		deps.Log.Warn("no claims store, so Inji Certify has no subject to issue",
+			"setting", config.Prefix+"CLAIMS_DIR")
 	}
 	if cfg.MimotoURL != "" && cfg.StoreFile == "" {
 		deps.Log.Warn("no store file, so a restart forgets the Mimoto sessions and every holder signs in again",
@@ -91,7 +135,24 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	}
 	deps.Log.Info("Inji adapter ready",
 		"certify", cfg.CertifyURL != "", "verify", cfg.VerifyURL != "", "mimoto", cfg.MimotoURL != "")
-	return &App{Mux: mux, Service: svc}, nil
+	return &App{Mux: mux, Service: svc, Claims: writer, ClaimsSweep: cfg.ClaimsSweep}, nil
+}
+
+// definitionHandler serves the presentation definition that the issuer
+// set, or 404 before one exists.
+func definitionHandler(svc *service.Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		definition, ok := svc.PresentationDefinition(r.Context())
+		if !ok {
+			http.Error(w, "no credential to present is configured", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		if _, err := w.Write(definition); err != nil {
+			return
+		}
+	}
 }
 
 // offerHandler serves one hosted credential offer to a wallet.

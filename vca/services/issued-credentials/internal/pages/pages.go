@@ -307,7 +307,7 @@ func shortID(id string) string {
 	return id
 }
 
-// schemaText names a schema version, for example "farmer v2".
+// schemaText names a schema version, for example "residence v2".
 func schemaText(id string, version int32) string {
 	return msg.T("issuer.issued.schema.value.label", vc.TypeTitle(id), strconv.Itoa(int(version)))
 }

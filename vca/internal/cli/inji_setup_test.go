@@ -249,3 +249,40 @@ func TestSetupWritesTheInjiVerifyAddress(t *testing.T) {
 		t.Error("the holder profile runs no Inji Verify")
 	}
 }
+
+// TestSetupWritesTheCertifyDIDAndTheAdapter: the issuer pair gets
+// did:web of its public host as the issuer DID of both Certify
+// containers, and the address of its adapter on the compose network,
+// where Certify reads the presentation definition (ADR-051). Another
+// pair runs no Certify and gets neither.
+func TestSetupWritesTheCertifyDIDAndTheAdapter(t *testing.T) {
+	flags := withFlag(baseFlags(), "VCA_PUBLIC_URL", "https://issue.gov.example")
+	values := planEnv(t, SetupRequest{Pair: injiPair(commonv1.Role_ROLE_ISSUER), Flags: flags})
+	if values[InjiCertifyDIDEnv] != "did:web:issue.gov.example" {
+		t.Errorf("DID = %q", values[InjiCertifyDIDEnv])
+	}
+	if values[InjiAdapterURLEnv] != "http://issuer-inji-dpg-adapter-inji:"+values["VCA_PORTS_ADAPTER"] || values["VCA_PORTS_ADAPTER"] == "" {
+		t.Errorf("adapter = %q (port %q)", values[InjiAdapterURLEnv], values["VCA_PORTS_ADAPTER"])
+	}
+	if values["VCA_INJI_IAR_IDENTITY_CLAIMS"] != "vcaSubject" || values["VCA_INJI_CLAIMS_DIR"] != InjiClaimsPath {
+		t.Errorf("identity claims %q, claims dir %q", values["VCA_INJI_IAR_IDENTITY_CLAIMS"], values["VCA_INJI_CLAIMS_DIR"])
+	}
+	local := planEnv(t, SetupRequest{Pair: injiPair(commonv1.Role_ROLE_ISSUER)})
+	if local[InjiCertifyDIDEnv] != "did:web:localhost%3A"+strings.TrimPrefix(hostPortOf(local["VCA_PUBLIC_URL"]), ":") {
+		t.Errorf("local DID = %q for %s", local[InjiCertifyDIDEnv], local["VCA_PUBLIC_URL"])
+	}
+	for _, role := range []commonv1.Role{commonv1.Role_ROLE_HOLDER, commonv1.Role_ROLE_VERIFIER} {
+		v := planEnv(t, SetupRequest{Pair: injiPair(role)})
+		if v[InjiCertifyDIDEnv] != "" || v[InjiAdapterURLEnv] != "" || v["VCA_INJI_CLAIMS_DIR"] != "" {
+			t.Errorf("%s writes %q %q %q", role, v[InjiCertifyDIDEnv], v[InjiAdapterURLEnv], v["VCA_INJI_CLAIMS_DIR"])
+		}
+	}
+}
+
+// hostPortOf returns the :port of an address, or "".
+func hostPortOf(raw string) string {
+	if i := strings.LastIndex(raw, ":"); i > len("https:") {
+		return raw[i:]
+	}
+	return ""
+}

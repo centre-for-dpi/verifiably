@@ -8,3 +8,7 @@ package service
 func LegacyHolderKeys(subject, walletID string) []string {
 	return []string{subjectKey(subject), walletKey(walletID)}
 }
+
+// ColumnsKey returns the store key of the claim order of one
+// configuration.
+func ColumnsKey(id string) string { return columnsKey(id) }

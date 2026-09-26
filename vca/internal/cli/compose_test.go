@@ -11,6 +11,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
@@ -367,5 +368,49 @@ func TestLandingRunsOnceForEveryProfile(t *testing.T) {
 	// The build override file builds the landing too.
 	if !strings.Contains(RenderComposeBuild(), "  vca-landing:\n    build:\n      context: "+BuildContext+"\n      dockerfile: services/landing/Dockerfile\n") {
 		t.Errorf("the build override file does not build the landing:\n%s", RenderComposeBuild())
+	}
+}
+
+// TestMountsRender: a volume of a stack file that a VCA service shares
+// with a stack container renders under the service of the pairs of its
+// roles, and stays out of the volumes that this file declares. The Inji
+// adapter of the issuer pair writes the claims store (ADR-051 decision 2).
+func TestMountsRender(t *testing.T) {
+	out := RenderCompose()
+	block := func(name string) string {
+		t.Helper()
+		lines := strings.Split(out, "\n")
+		for i, line := range lines {
+			if line != "  "+name+":" {
+				continue
+			}
+			var b strings.Builder
+			for _, next := range lines[i+1:] {
+				if !strings.HasPrefix(next, "    ") {
+					break
+				}
+				b.WriteString(next + "\n")
+			}
+			return b.String()
+		}
+		t.Fatalf("no service %s", name)
+		return ""
+	}
+	issuer := block("issuer-inji-dpg-adapter-inji")
+	if !strings.Contains(issuer, "      - "+InjiClaimsVolume+":"+InjiClaimsPath+"\n") || !strings.Contains(issuer, ":/data\n") {
+		t.Errorf("the issuer adapter mounts no claims store:\n%s", issuer)
+	}
+	for _, name := range []string{"holder-inji-dpg-adapter-inji", "verifier-inji-dpg-adapter-inji"} {
+		if strings.Contains(block(name), InjiClaimsVolume) {
+			t.Errorf("%s mounts the claims store", name)
+		}
+	}
+	top := out[strings.LastIndex(out, "\nvolumes:\n"):]
+	if strings.Contains(top, InjiClaimsVolume) {
+		t.Error("the main file declares the volume of the stack file")
+	}
+	s := Service{Mounts: []Mount{{Volume: "a", Path: "/a"}, {Volume: "b", Path: "/b", Roles: []commonv1.Role{commonv1.Role_ROLE_HOLDER}}}}
+	if got := s.MountsFor(issuerPair()); len(got) != 1 || got[0].Volume != "a" {
+		t.Errorf("MountsFor = %v", got)
 	}
 }

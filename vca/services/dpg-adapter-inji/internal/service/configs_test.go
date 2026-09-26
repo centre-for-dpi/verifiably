@@ -72,13 +72,13 @@ func TestRegisterCreatesConfiguration(t *testing.T) {
 	if !slices.Equal(ldp.ContextURLs, wantContexts) || !slices.Equal(ldp.CredentialTypes, []string{"VerifiableCredential", "UniversityDegree"}) {
 		t.Fatalf("contexts %v, types %v", ldp.ContextURLs, ldp.CredentialTypes)
 	}
-	if ldp.KeyManagerAppID != "CERTIFY_VC_SIGN_ED25519" || ldp.SignatureCryptoSuite != "Ed25519Signature2020" || ldp.Scope != id {
+	if ldp.KeyManagerAppID != "CERTIFY_VC_SIGN_ED25519" || ldp.SignatureCryptoSuite != "Ed25519Signature2020" || ldp.Scope != inji.SharedScope {
 		t.Fatalf("signing %+v", ldp)
 	}
 	if len(ldp.MetaDataDisplay) != 1 || ldp.MetaDataDisplay[0].Logo == nil || ldp.MetaDataDisplay[0].Logo.URL != "https://u.example/logo.png" {
 		t.Fatalf("display %+v", ldp.MetaDataDisplay)
 	}
-	for _, name := range []string{"name", "credits", inji.StatusIndexClaim, inji.StatusURIClaim, inji.ValidFromClaim} {
+	for _, name := range []string{"name", "credits", inji.StagingClaim} {
 		if _, ok := ldp.CredentialSubjectDefinition[name]; !ok {
 			t.Errorf("the entry does not declare %s", name)
 		}
@@ -90,7 +90,7 @@ func TestRegisterCreatesConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"name": "${name}"`, `"credits": ${credits}`, `"issuer": "${_issuer}"`, "BitstringStatusListEntry", "#if($statusUri"} {
+	for _, want := range []string{`"name": "${c1}"`, `"credits": ${c2}`, `"issuer": "${_issuer}"`, "BitstringStatusListEntry", "#if($v_status_uri"} {
 		if !strings.Contains(tmpl, want) {
 			t.Errorf("the template lacks %s:\n%s", want, tmpl)
 		}

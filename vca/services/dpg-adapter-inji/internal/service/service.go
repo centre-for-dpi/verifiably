@@ -20,6 +20,7 @@ import (
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/claims"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/inji"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/dpgclient"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
@@ -87,6 +88,14 @@ type Options struct {
 	// Versions maps each stack component onto its pinned version for
 	// the capability answer. The configuration supplies it.
 	Versions map[string]string
+	// Claims writes the VCA claims store that the data provider of
+	// Certify reads (ADR-051). Nil means no store, so the issuer role
+	// stages no subject.
+	Claims *claims.Writer
+	// IARIdentityClaims lists the claims of a presented credential that
+	// Certify takes as the subject of a presentation during issuance
+	// (mosip.certify.iar.identity-data of the stack).
+	IARIdentityClaims []string
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// NewID returns a new random identifier. Nil uses crypto/rand.
@@ -114,6 +123,8 @@ type Service struct {
 	plugins             []string
 	caDomain            string
 	presentation        bool
+	claims              *claims.Writer
+	iarIdentity         []string
 	now                 func() time.Time
 	newID               func() string
 }
@@ -173,6 +184,8 @@ func New(opts Options) (*Service, error) {
 		plugins:             opts.Plugins,
 		caDomain:            opts.CADomain,
 		presentation:        opts.PresentationDuringIssuance,
+		claims:              opts.Claims,
+		iarIdentity:         opts.IARIdentityClaims,
 		now:                 opts.Now,
 		newID:               opts.NewID,
 	}, nil

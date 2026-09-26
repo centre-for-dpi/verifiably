@@ -437,3 +437,57 @@ func TestPackageChartIsDeterministicAndNamed(t *testing.T) {
 		t.Error("garbage read as a chart")
 	}
 }
+
+// stackMountValues is the stackMounts part of a service chart's
+// values.yaml.
+type stackMountValues struct {
+	StackMounts []struct {
+		Name          string `yaml:"name"`
+		MountPath     string `yaml:"mountPath"`
+		Env           string `yaml:"env"`
+		ExistingClaim string `yaml:"existingClaim"`
+	} `yaml:"stackMounts"`
+}
+
+// TestChartsMountTheStackVolumes checks the Kubernetes form of the
+// volumes a service shares with its DPG stack (ADR-051 decision 2). The
+// chart lists each mount of the catalog with its path, mounts it only
+// when the operator names a claim that the stack reads too, and then
+// sets the variable of its path. Compose shares the named volume.
+func TestChartsMountTheStackVolumes(t *testing.T) {
+	root := repoRoot()
+	for _, s := range Catalog() {
+		dir := HelmChartDir(root, s.Name)
+		var values stackMountValues
+		readYaml(t, filepath.Join(dir, "values.yaml"), &values)
+		if len(values.StackMounts) != len(s.Mounts) {
+			t.Errorf("%s chart lists %d stack mounts, the catalog %d", s.Name, len(values.StackMounts), len(s.Mounts))
+			continue
+		}
+		for i, m := range s.Mounts {
+			got := values.StackMounts[i]
+			if got.Name != m.Volume || got.MountPath != m.Path || got.Env == "" || got.ExistingClaim != "" {
+				t.Errorf("%s stack mount %d = %+v, want %s at %s with a variable and no claim", s.Name, i, got, m.Volume, m.Path)
+			}
+			found := false
+			for _, e := range s.Fixed {
+				found = found || (e.Env == got.Env && e.Value == m.Path)
+			}
+			if !found {
+				t.Errorf("%s stack mount %s names %s, which the catalog does not set to %s", s.Name, m.Volume, got.Env, m.Path)
+			}
+		}
+		if len(s.Mounts) == 0 {
+			continue
+		}
+		for _, name := range []string{"deployment.yaml", "configmap.yaml"} {
+			data, err := os.ReadFile(filepath.Join(dir, "templates", name)) // #nosec G304 -- a fixed test path
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(data), "range .Values.stackMounts") || !strings.Contains(string(data), "if .existingClaim") {
+				t.Errorf("%s %s does not render the stack mounts", s.Name, name)
+			}
+		}
+	}
+}

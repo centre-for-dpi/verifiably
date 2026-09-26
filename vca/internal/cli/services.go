@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,7 +47,43 @@ type Service struct {
 	// Scope says whether the service runs once per pair or once per
 	// deployment. The zero value is ScopePair.
 	Scope Scope
+	// Mounts lists the volumes of a DPG stack file that the service
+	// shares with a container of the stack.
+	Mounts []Mount
 }
+
+// Mount is one named volume of a stack file in a VCA service. The stack
+// file declares the volume, and the main compose file includes it.
+type Mount struct {
+	// Volume is the name of the volume in the stack file.
+	Volume string
+	// Path is the mount path in the container.
+	Path string
+	// Roles limits the mount to the pairs of these roles. Empty means
+	// every role.
+	Roles []commonv1.Role
+}
+
+// MountsFor returns the mounts of a service in one pair.
+func (s Service) MountsFor(p Pair) []Mount {
+	var out []Mount
+	for _, m := range s.Mounts {
+		if len(m.Roles) == 0 || slices.Contains(m.Roles, p.Role) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// The VCA claims store of the Inji stack (ADR-051). The stack file
+// declares the volume. The Inji adapter of the issuer pair writes it, and
+// the Postgres of Certify reads it.
+const (
+	// InjiClaimsVolume is the volume of the claims store.
+	InjiClaimsVolume = "inji-claims"
+	// InjiClaimsPath is its mount path in the adapter and the Postgres.
+	InjiClaimsPath = "/vca/claims"
+)
 
 // Scope says how many copies of a service a deployment runs.
 type Scope int
@@ -276,11 +313,16 @@ func Catalog() []Service {
 				// works (P6-I4b).
 				{Env: "VCA_INJI_PRESENTATION_DURING_ISSUANCE", Value: "true", Roles: issuer},
 				// Certify checks every token against one issuer, so the
-				// issuer profile runs a second Certify that takes eSignet
-				// tokens, behind the second server of inji-certify-nginx.
-				// An authorization code offer names it (P6-I0).
+				// issuer profile runs a second Certify, inji-certify-authcode,
+				// behind the second server of inji-certify-nginx. It takes
+				// the tokens of the holder authorization server. An
+				// authorization code offer names it (P6-I0, ADR-052).
 				{Env: "VCA_INJI_OFFER_ISSUER", Value: "http://inji-certify-nginx:8091", Roles: issuer},
+				// The VCA claims store that both Certify containers read
+				// (ADR-051 decision 2).
+				{Env: "VCA_INJI_CLAIMS_DIR", Value: InjiClaimsPath, Roles: issuer},
 			},
+			Mounts: []Mount{{Volume: InjiClaimsVolume, Path: InjiClaimsPath, Roles: issuer}},
 			// The credential offer of the authorization code channel lives
 			// under the public URL of the adapter. The Connect services of
 			// every adapter stay on the compose network (ADR-047).

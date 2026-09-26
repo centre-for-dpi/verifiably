@@ -51,8 +51,12 @@ services:
   #   - inji-certify is its own authorization server. It serves the
   #     adapter: the pre-authorized code, the presentation during
   #     issuance, the configuration API, the ledger, and the keys.
-  #   - inji-certify-esignet takes the tokens of the stack eSignet. It
-  #     serves a claim in Inji Web and an authorization code offer.
+  #   - inji-certify-authcode takes the tokens of the holder
+  #     authorization server of the adapter. It serves a claim in Inji
+  #     Web and an authorization code offer (ADR-052).
+  # Both issue from the VCA claims store: the foreign table
+  # certify.vca_claims over the files of the volume inji-claims, which the
+  # adapter of the issuer pair writes (ADR-051).
   inji-certify-postgres:
     # certify_init.sql names the locale en_US.UTF-8, so the image is the
     # Debian one.
@@ -63,12 +67,13 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${INJI_DB_PASSWORD:?set by vca setup}
-      # vca_certify_did.sql names this DID in the sample configuration.
-      INJI_CERTIFY_DID: ${INJI_CERTIFY_DID:-did:web:inji-certify-nginx}
     volumes:
       - inji-certify-db:/var/lib/postgresql/data
       - ./dpg/inji/certify/certify_init.sql:/docker-entrypoint-initdb.d/certify_init.sql:ro
-      - ./dpg/inji/certify/vca_certify_did.sql:/docker-entrypoint-initdb.d/vca_certify_did.sql:ro
+      # The VCA claims store: file_fdw reads the rows that the adapter
+      # writes into the shared volume (ADR-051 decision 1).
+      - ./dpg/inji/certify/vca_claims.sql:/docker-entrypoint-initdb.d/vca_claims.sql:ro
+      - inji-claims:/vca/claims:ro
     networks:
       - vca
     healthcheck:
@@ -94,7 +99,7 @@ services:
         condition: service_started
     environment: &certify-environment
       container_user: mosip
-      active_profile_env: default,preauth
+      active_profile_env: default,vca-store
       SPRING_CONFIG_NAME: certify
       SPRING_CONFIG_LOCATION: /home/mosip/config/
       enable_certify_artifactory: "false"
@@ -108,9 +113,17 @@ services:
       INJI_KEY_CERT_CN: ${INJI_KEY_CERT_CN:-}
       INJI_KEY_CERT_O: ${INJI_KEY_CERT_O:-}
       INJI_KEY_CERT_OU: ${INJI_KEY_CERT_OU:-}
-      INJI_CERTIFY_DID: ${INJI_CERTIFY_DID:-did:web:inji-certify-nginx}
-      # The browser address of the stack eSignet. Its tokens carry it.
-      INJI_ESIGNET_PUBLIC_URL: ${INJI_ESIGNET_PUBLIC_URL:-http://localhost:17089}
+      # The issuer DID: did:web of the public host of the issuer pair,
+      # which vca setup writes to the .env of the pair. Another pair
+      # runs no Certify, so the value stays empty there.
+      INJI_CERTIFY_DID: ${INJI_CERTIFY_DID:-}
+      # The claims of a presented credential that name the holder of a
+      # presentation during issuance (ADR-051 decision 5).
+      INJI_IAR_IDENTITY_CLAIMS: ${VCA_INJI_IAR_IDENTITY_CLAIMS:-vcaSubject}
+      # The holder authorization server of the adapter and its address on
+      # the compose network. inji-certify-authcode trusts its tokens.
+      VCA_INJI_AUTHZ_ISSUER: ${VCA_INJI_AUTHZ_ISSUER:-}
+      INJI_ADAPTER_URL: ${INJI_ADAPTER_URL:-}
       # Presentation during issuance (P6-I4b). Certify asks Inji Verify
       # of this stack for the presentation it wants before it issues,
       # and reads the definition over HTTP. The names are the
@@ -120,11 +133,12 @@ services:
       MOSIP_CERTIFY_VERIFY_SERVICE_VP_REQUEST_ENDPOINT: http://inji-verify-service:8080/v1/verify/vp-request
       MOSIP_CERTIFY_VERIFY_SERVICE_VP_RESULT_ENDPOINT: http://inji-verify-service:8080/v1/verify/vp-result
       MOSIP_CERTIFY_VERIFY_SERVICE_VERIFIER_CLIENT_ID: certify-verifier-client
-      MOSIP_CERTIFY_VP_REQUEST_CONFIG_FILE_URL: http://inji-certify-nginx/vp_request_config.json
+      # The adapter serves the definition that the issuer set (ADR-051
+      # decision 6).
+      MOSIP_CERTIFY_VP_REQUEST_CONFIG_FILE_URL: ${INJI_ADAPTER_URL:-}/iar/presentation-definition.json
     volumes:
       - ./dpg/inji/certify/certify-default.properties:/home/mosip/config/certify-default.properties:ro
-      - ./dpg/inji/certify/certify-preauth.properties:/home/mosip/config/certify-preauth.properties:ro
-      - ./dpg/inji/certify/vp_request_config.json:/home/mosip/config/vp_request_config.json:ro
+      - ./dpg/inji/certify/certify-vca-store.properties:/home/mosip/config/certify-vca-store.properties:ro
       # The key manager keeps its PKCS #12 store here. Both Certify
       # containers sign with its keys.
       - inji-certify-keys:/home/mosip/CERTIFY_PKCS12
@@ -141,32 +155,28 @@ services:
       retries: 20
       start_period: 120s
 
-  inji-certify-esignet:
+  inji-certify-authcode:
     image: injistack/inji-certify-with-plugins:0.14.0
     profiles: [issuer-inji]
-    container_name: inji-certify-esignet
+    container_name: inji-certify-authcode
     restart: unless-stopped
     user: root
     depends_on:
       inji-certify:
         condition: service_healthy
-      inji-esignet:
-        condition: service_started
     environment:
       <<: *certify-environment
-      active_profile_env: default,csvdp-farmer
+      active_profile_env: default,vca-store,authcode
     volumes:
       - ./dpg/inji/certify/certify-default.properties:/home/mosip/config/certify-default.properties:ro
-      - ./dpg/inji/certify/certify-csvdp-farmer.properties:/home/mosip/config/certify-csvdp-farmer.properties:ro
-      - ./dpg/inji/certify/farmer_identity_data.csv:/home/mosip/config/farmer_identity_data.csv:ro
-      - ./dpg/inji/certify/vp_request_config.json:/home/mosip/config/vp_request_config.json:ro
+      - ./dpg/inji/certify/certify-vca-store.properties:/home/mosip/config/certify-vca-store.properties:ro
+      - ./dpg/inji/certify/certify-authcode.properties:/home/mosip/config/certify-authcode.properties:ro
       - inji-certify-keys:/home/mosip/CERTIFY_PKCS12
     networks:
       - vca
 
-  # The presentation definition of the interactive authorization, served
-  # over HTTP as the certify-nginx of the injistack compose file does,
-  # and the root of each Certify, where OID4VCI puts the issuer metadata.
+  # The root of each Certify, where OID4VCI puts the issuer metadata, as
+  # the certify-nginx of the injistack compose file serves it.
   inji-certify-nginx:
     image: nginx:1.27.2-alpine
     profiles: [issuer-inji]
@@ -174,7 +184,6 @@ services:
     restart: unless-stopped
     volumes:
       - ./dpg/inji/certify/certify-nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./dpg/inji/certify/vp_request_config.json:/usr/share/nginx/html/vp_request_config.json:ro
     networks:
       - vca
 
@@ -247,8 +256,8 @@ services:
       # The key set of a pair host belongs to its auth service, so eSignet
       # names the path of its own service.
       MOSIP_ESIGNET_JWKS_URI: ${INJI_ESIGNET_PUBLIC_URL:-http://localhost:17089}/v1/esignet/oauth/.well-known/jwks.json
-      # The credential scope of the farmer sample. Its token names the
-      # credential endpoint of inji-certify-esignet as the audience.
+      # The credential scope eSignet signs for. Its token names the
+      # credential endpoint of inji-certify-authcode as the audience.
       MOSIP_ESIGNET_SUPPORTED_CREDENTIAL_SCOPES: "{'mock_identity_vc_ldp'}"
       MOSIP_ESIGNET_CREDENTIAL_SCOPE_RESOURCE_MAPPING: "{'mock_identity_vc_ldp': 'http://inji-certify-nginx:8091/v1/certify/issuance/credential'}"
     ports:
@@ -497,6 +506,15 @@ services:
 volumes:
   inji-certify-db:
   inji-certify-keys:
+  # The VCA claims store (ADR-051). The rows live as long as their offer,
+  # so the volume sits in memory, and the adapter user 65532 owns it.
+  # The Postgres of Certify reads it read only.
+  inji-claims:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=64m,uid=65532,gid=65532,mode=0755"
   inji-esignet-db:
   inji-verify-db:
   inji-mimoto-db:

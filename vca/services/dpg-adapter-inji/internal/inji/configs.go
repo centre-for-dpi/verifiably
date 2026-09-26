@@ -11,10 +11,12 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/centre-for-dpi/vc-adapters/core/jsonschema"
+	claimstore "github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/claims"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/dpgclient"
 )
 
@@ -100,7 +102,10 @@ type DisplayURI struct {
 
 // ClaimDisplay names one claim for a wallet.
 type ClaimDisplay struct {
-	Display []ClaimLabel `json:"display"`
+	Display []ClaimLabel `json:"display,omitempty"`
+	// Mandatory tells the staging check of Certify whether the claim
+	// must be staged. Nil leaves it out, which Certify reads as false.
+	Mandatory *bool `json:"mandatory,omitempty"`
 }
 
 // ClaimLabel is the name of a claim in one locale.
@@ -311,10 +316,32 @@ func MdocNamespace(doctype string) string {
 // templateName is a claim name that a Velocity template can read.
 var templateName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*$`)
 
-// markers are the template variables the adapter stages beside the
-// claims. A configuration the adapter registers declares them, so the
-// staging call passes the claim check of Certify.
-var markers = []string{StatusIndexClaim, StatusURIClaim, ValidFromClaim, ValidUntilClaim}
+// TemplateName reports whether a claim name is one a template and a
+// JSON path can read.
+func TemplateName(name string) bool { return templateName.MatchString(name) }
+
+// ProofSuites lists the Linked Data proof suites of Certify 0.14.0 in
+// name order.
+func ProofSuites() []string {
+	out := make([]string, 0, len(suiteContexts))
+	for name := range suiteContexts {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// SharedScope is the scope of every configuration the adapter registers
+// (ADR-051 decision 3). The data provider of the stack maps this one
+// scope onto the query of the VCA claims store, and Certify picks the
+// configuration of a request from its body. So a new schema needs no
+// restart of Certify.
+const SharedScope = "vca_credential"
+
+// StagingClaim is the one claim the pre-authorized code stages: the
+// staging id of the row in the claims store. Every configuration
+// declares it as optional, so the staging check of Certify takes it.
+const StagingClaim = "id"
 
 // BuildConfiguration returns the Certify entry of one configuration. The
 // entry carries a Velocity template that places the claims and the
@@ -332,7 +359,7 @@ func BuildConfiguration(in ConfigInput, p Profiles) (ConfigurationDTO, error) {
 		DidURL:                p.DidURL,
 		MetaDataDisplay:       display,
 		DisplayOrder:          names(claims),
-		Scope:                 in.ID,
+		Scope:                 SharedScope,
 	}
 	switch in.Format {
 	case "ldp_vc":
@@ -340,7 +367,7 @@ func BuildConfiguration(in ConfigInput, p Profiles) (ConfigurationDTO, error) {
 		dto.CredentialTypes = []string{"VerifiableCredential", in.Type}
 		dto.KeyManagerAppID, dto.KeyManagerRefID = p.Ldp.AppID, p.Ldp.RefID
 		dto.SignatureAlgo, dto.SignatureCryptoSuite = p.Ldp.Algorithm, p.Ldp.CryptoSuite
-		dto.CredentialSubjectDefinition = claimDisplays(claims, locales, markers)
+		dto.CredentialSubjectDefinition = claimDisplays(claims, locales)
 		dto.QrSettings = qrSettings(claims)
 		if dto.QrSettings != nil {
 			dto.QrSignatureAlgo = p.Ldp.Algorithm
@@ -351,7 +378,7 @@ func BuildConfiguration(in ConfigInput, p Profiles) (ConfigurationDTO, error) {
 		dto.KeyManagerAppID, dto.KeyManagerRefID = p.SdJwt.AppID, p.SdJwt.RefID
 		dto.SignatureAlgo = p.SdJwt.Algorithm
 		dto.SdClaim = strings.Join(in.SDClaims, ",")
-		dto.SdJwtClaims = claimDisplays(claims, locales, []string{StatusIndexClaim, StatusURIClaim})
+		dto.SdJwtClaims = claimDisplays(claims, locales)
 		dto.QrSettings = qrSettings(claims)
 		if dto.QrSettings != nil {
 			dto.QrSignatureAlgo = p.SdJwt.Algorithm
@@ -362,7 +389,12 @@ func BuildConfiguration(in ConfigInput, p Profiles) (ConfigurationDTO, error) {
 		dto.DocType = in.Type
 		dto.KeyManagerAppID, dto.KeyManagerRefID = p.Mdoc.AppID, p.Mdoc.RefID
 		dto.SignatureAlgo, dto.SignatureCryptoSuite = p.Mdoc.Algorithm, p.Mdoc.CryptoSuite
-		dto.MsoMdocClaims = map[string]map[string]ClaimDisplay{ns: claimDisplays(claims, locales, nil)}
+		dto.MsoMdocClaims = map[string]map[string]ClaimDisplay{ns: claimDisplays(claims, locales)}
+		// Certify checks staged claims against the top level of an mDoc
+		// entry: the namespaces. An empty map is an optional claim.
+		if _, taken := dto.MsoMdocClaims[StagingClaim]; !taken {
+			dto.MsoMdocClaims[StagingClaim] = map[string]ClaimDisplay{}
+		}
 		dto.VcTemplate = encodeTemplate(mdocTemplate(in.Type, ns, claims))
 	default:
 		return ConfigurationDTO{}, fmt.Errorf("%w, not %q", ErrUnsupportedFormat, in.Format)
@@ -374,9 +406,26 @@ func BuildConfiguration(in ConfigInput, p Profiles) (ConfigurationDTO, error) {
 type claim struct {
 	name  string
 	title string
+	// column is the column of the claims store that holds the value:
+	// c1 for the first claim (ADR-051 decision 4).
+	column string
 	// quoted is true for a string claim. A number, a boolean, an
 	// object, or an array goes into the template as JSON.
 	quoted bool
+}
+
+// MaxClaims is the number of claim columns of the VCA claims store.
+const MaxClaims = claimstore.MaxClaims
+
+// ClaimNames returns the claim names of a schema in column order: the
+// value of the first name goes into c1. The adapter keeps the list with
+// the registration and writes each row in that order.
+func ClaimNames(doc string) ([]string, error) {
+	list, err := schemaClaims(doc)
+	if err != nil {
+		return nil, err
+	}
+	return names(list), nil
 }
 
 // schemaClaims reads the top level properties of the schema in order.
@@ -390,7 +439,7 @@ func schemaClaims(doc string) ([]claim, error) {
 		if !templateName.MatchString(name) {
 			return nil, fmt.Errorf("inji: the claim name %q is not a template variable name", name)
 		}
-		c := claim{name: name, title: name, quoted: true}
+		c := claim{name: name, title: name, quoted: true, column: claimstore.ColumnName(len(out))}
 		if sub, ok := parsed.Property(name); ok {
 			if t, ok := sub["title"].(string); ok && t != "" {
 				c.title = t
@@ -404,6 +453,10 @@ func schemaClaims(doc string) ([]claim, error) {
 	}
 	if len(out) == 0 {
 		return nil, errors.New("inji: the JSON Schema has no property, so the credential would carry no claim")
+	}
+	if len(out) > MaxClaims {
+		return nil, fmt.Errorf("inji: the schema has %d claims; the claims store of Inji Certify holds %d, so split the schema",
+			len(out), MaxClaims)
 	}
 	return out, nil
 }
@@ -470,9 +523,10 @@ func localesOf(list []Display) []string {
 	return out
 }
 
-// claimDisplays names each claim and each marker in every locale.
-func claimDisplays(claims []claim, locales, extra []string) map[string]ClaimDisplay {
-	out := make(map[string]ClaimDisplay, len(claims)+len(extra))
+// claimDisplays names each claim in every locale and declares the
+// optional staging claim.
+func claimDisplays(claims []claim, locales []string) map[string]ClaimDisplay {
+	out := make(map[string]ClaimDisplay, len(claims)+1)
 	label := func(name string) ClaimDisplay {
 		d := ClaimDisplay{}
 		for _, l := range locales {
@@ -483,10 +537,9 @@ func claimDisplays(claims []claim, locales, extra []string) map[string]ClaimDisp
 	for _, c := range claims {
 		out[c.name] = label(c.title)
 	}
-	for _, m := range extra {
-		if _, taken := out[m]; !taken {
-			out[m] = label(m)
-		}
+	if _, taken := out[StagingClaim]; !taken {
+		optional := false
+		out[StagingClaim] = ClaimDisplay{Mandatory: &optional}
 	}
 	return out
 }
@@ -515,17 +568,18 @@ func quote(s string) string {
 	return string(raw)
 }
 
-// placeholder returns the template value of one claim.
+// placeholder returns the template value of one claim: its column of
+// the claims store.
 func placeholder(c claim) string {
 	if c.quoted {
-		return `"${` + c.name + `}"`
+		return `"${` + c.column + `}"`
 	}
-	return "${" + c.name + "}"
+	return "${" + c.column + "}"
 }
 
-// statusGuard opens the part of a template that only a staged status
-// address fills.
-const statusGuard = `#if($` + StatusURIClaim + ` && $` + StatusURIClaim + ` != "")`
+// statusGuard opens the part of a template that only a status address
+// in the row fills.
+const statusGuard = `#if($` + claimstore.StatusURIColumn + ` && $` + claimstore.StatusURIColumn + ` != "")`
 
 // ldpTemplate returns the Velocity template of a JSON-LD credential. It
 // follows the sample template of the Certify stack, with the data model
@@ -543,15 +597,15 @@ func ldpTemplate(contexts []string, in ConfigInput, claims []claim, qr []map[str
 	b.WriteString("],\n")
 	b.WriteString("  \"type\": [\"VerifiableCredential\", " + quote(in.Type) + "],\n")
 	b.WriteString("  \"issuer\": \"${_issuer}\",\n")
-	b.WriteString("  \"validFrom\": \"${" + ValidFromClaim + "}\",\n")
-	b.WriteString("  \"validUntil\": \"${" + ValidUntilClaim + "}\",\n")
+	b.WriteString("  \"validFrom\": \"${" + claimstore.ValidFromColumn + "}\",\n")
+	b.WriteString("  \"validUntil\": \"${" + claimstore.ValidUntilColumn + "}\",\n")
 	b.WriteString(statusGuard + "\n")
 	b.WriteString("  \"credentialStatus\": {\n")
-	b.WriteString("    \"id\": \"${" + StatusURIClaim + "}#${" + StatusIndexClaim + "}\",\n")
+	b.WriteString("    \"id\": \"${" + claimstore.StatusURIColumn + "}#${" + claimstore.StatusIndexColumn + "}\",\n")
 	b.WriteString("    \"type\": \"BitstringStatusListEntry\",\n")
 	b.WriteString("    \"statusPurpose\": \"revocation\",\n")
-	b.WriteString("    \"statusListIndex\": \"${" + StatusIndexClaim + "}\",\n")
-	b.WriteString("    \"statusListCredential\": \"${" + StatusURIClaim + "}\"\n")
+	b.WriteString("    \"statusListIndex\": \"${" + claimstore.StatusIndexColumn + "}\",\n")
+	b.WriteString("    \"statusListCredential\": \"${" + claimstore.StatusURIColumn + "}\"\n")
 	b.WriteString("  },\n#end\n")
 	if in.RenderURL != "" {
 		b.WriteString("  \"renderMethod\": [{\"id\": " + quote(in.RenderURL) +
@@ -574,8 +628,8 @@ func sdJwtTemplate(claims []claim, qr []map[string]string) string {
 	var b strings.Builder
 	b.WriteString("{\n")
 	b.WriteString(statusGuard + "\n")
-	b.WriteString("  \"status\": {\"status_list\": {\"idx\": ${" + StatusIndexClaim +
-		"}, \"uri\": \"${" + StatusURIClaim + "}\"}},\n#end\n")
+	b.WriteString("  \"status\": {\"status_list\": {\"idx\": ${" + claimstore.StatusIndexColumn +
+		"}, \"uri\": \"${" + claimstore.StatusURIColumn + "}\"}},\n#end\n")
 	for i, c := range claims {
 		if i > 0 {
 			b.WriteString(",\n")

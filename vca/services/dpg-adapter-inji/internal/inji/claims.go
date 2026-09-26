@@ -3,14 +3,18 @@
 package inji
 
 import (
+	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
+
+	claimstore "github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/claims"
 )
 
-// The marker names of the Inji Certify credential template. The
-// pre-authorized data provider puts the value of each marker into the
-// template of the credential. A marker the template never declared is an
-// unknown claim, and Inji rejects the whole request.
+// The marker names of the status and validity values of a subject. The
+// claims store keeps them in its reserved columns, and the template of a
+// configuration reads them there.
 const (
 	// StatusIndexClaim carries the index of the credential in the status
 	// list.
@@ -47,30 +51,46 @@ func StatusMarkers(format string) bool {
 	return format == "vc+sd-jwt" || format == "dc+sd-jwt" || format == "ldp_vc"
 }
 
-// Claims returns the claim map of one subject for the staging call.
-//
-// The map always carries the two status markers when the format uses
-// them. An empty status entry gives the index 0 and an empty address. A
-// missing marker would leave the placeholder in the template unresolved,
-// and Inji then answers with a bad request.
-func Claims(subject map[string]any, format string, status StatusEntry, v Validity, withValidity bool) map[string]any {
-	out := make(map[string]any, len(subject)+4)
-	for k, val := range subject {
-		out[k] = val
+// ClaimsRow returns the row of the claims store for one subject
+// (ADR-051 decision 4). names holds the claim names in column order, as
+// ClaimNames gives them. A claim of the subject that the configuration
+// does not declare is an error, as it was for the staging check of
+// Certify. The status columns stay empty for a format without a status
+// entry.
+func ClaimsRow(key, configID string, names []string, subject map[string]any, format string,
+	status StatusEntry, v Validity, expires time.Time,
+) (claimstore.Row, error) {
+	if len(names) > claimstore.MaxClaims {
+		return claimstore.Row{}, fmt.Errorf("inji: %d claims, the claims store holds %d", len(names), claimstore.MaxClaims)
 	}
+	known := make(map[string]bool, len(names))
+	values := make([]string, len(names))
+	for i, name := range names {
+		known[name] = true
+		values[i] = claimstore.Value(subject[name])
+	}
+	var unknown []string
+	for name := range subject {
+		if !known[name] {
+			unknown = append(unknown, name)
+		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		return claimstore.Row{}, fmt.Errorf("inji: the configuration %s declares no claim %s", configID, strings.Join(unknown, ", "))
+	}
+	row := claimstore.Row{Subject: key, ConfigID: configID, ExpiresAt: expires, Claims: values}
 	if StatusMarkers(format) {
-		out[StatusIndexClaim] = strconv.FormatInt(status.Index, 10)
-		out[StatusURIClaim] = status.URL
+		row.StatusIndex = strconv.FormatInt(status.Index, 10)
+		row.StatusURI = status.URL
 	}
-	if withValidity {
-		if !v.From.IsZero() {
-			out[ValidFromClaim] = v.From.UTC().Format(time.RFC3339)
-		}
-		if !v.Until.IsZero() {
-			out[ValidUntilClaim] = v.Until.UTC().Format(time.RFC3339)
-		}
+	if !v.From.IsZero() {
+		row.ValidFrom = v.From.UTC().Format(time.RFC3339)
 	}
-	return out
+	if !v.Until.IsZero() {
+		row.ValidUntil = v.Until.UTC().Format(time.RFC3339)
+	}
+	return row, nil
 }
 
 // AuthorizationCodeOffer returns the credential offer document of the

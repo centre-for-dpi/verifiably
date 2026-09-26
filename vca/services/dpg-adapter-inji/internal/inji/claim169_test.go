@@ -32,8 +32,8 @@ func TestBuildConfigurationSignsAnIdentityQR(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := map[string]string{"Full Name": "${fullName}", "Date of Birth": "${dateOfBirth}",
-			"Gender": "${gender}", "Phone Number": "${mobileNumber}"}
+		want := map[string]string{"Full Name": "${c1}", "Date of Birth": "${c2}",
+			"Gender": "${c3}", "Phone Number": "${c4}"}
 		if len(dto.QrSettings) != 1 || !sameMap(dto.QrSettings[0], want) {
 			t.Fatalf("%s qrSettings = %v", tc.format, dto.QrSettings)
 		}

@@ -89,6 +89,9 @@ const (
 	// IssuerBackendServiceImportIssuerIdentityProcedure is the fully-qualified name of the
 	// IssuerBackendService's ImportIssuerIdentity RPC.
 	IssuerBackendServiceImportIssuerIdentityProcedure = "/vca.backend.v1.IssuerBackendService/ImportIssuerIdentity"
+	// IssuerBackendServiceSetPresentationRequirementProcedure is the fully-qualified name of the
+	// IssuerBackendService's SetPresentationRequirement RPC.
+	IssuerBackendServiceSetPresentationRequirementProcedure = "/vca.backend.v1.IssuerBackendService/SetPresentationRequirement"
 	// HolderBackendServiceRegisterProcedure is the fully-qualified name of the HolderBackendService's
 	// Register RPC.
 	HolderBackendServiceRegisterProcedure = "/vca.backend.v1.HolderBackendService/Register"
@@ -288,6 +291,10 @@ type IssuerBackendServiceClient interface {
 	// only when it lists FEATURE_ISSUER_IDENTITY_IMPORT_DID or
 	// FEATURE_ISSUER_IDENTITY_IMPORT_X509.
 	ImportIssuerIdentity(context.Context, *connect.Request[v1.ImportIssuerIdentityRequest]) (*connect.Response[v1.ImportIssuerIdentityResponse], error)
+	// SetPresentationRequirement names the credential a holder presents
+	// before the DPG issues (ADR-051 decision 6). An adapter serves it only
+	// when it lists FEATURE_PRESENTATION_DURING_ISSUANCE.
+	SetPresentationRequirement(context.Context, *connect.Request[v1.SetPresentationRequirementRequest]) (*connect.Response[v1.SetPresentationRequirementResponse], error)
 }
 
 // NewIssuerBackendServiceClient constructs a client for the vca.backend.v1.IssuerBackendService
@@ -367,6 +374,12 @@ func NewIssuerBackendServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(issuerBackendServiceMethods.ByName("ImportIssuerIdentity")),
 			connect.WithClientOptions(opts...),
 		),
+		setPresentationRequirement: connect.NewClient[v1.SetPresentationRequirementRequest, v1.SetPresentationRequirementResponse](
+			httpClient,
+			baseURL+IssuerBackendServiceSetPresentationRequirementProcedure,
+			connect.WithSchema(issuerBackendServiceMethods.ByName("SetPresentationRequirement")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -383,6 +396,7 @@ type issuerBackendServiceClient struct {
 	getIssuerIdentity               *connect.Client[v1.GetIssuerIdentityRequest, v1.GetIssuerIdentityResponse]
 	provisionIssuerIdentity         *connect.Client[v1.ProvisionIssuerIdentityRequest, v1.ProvisionIssuerIdentityResponse]
 	importIssuerIdentity            *connect.Client[v1.ImportIssuerIdentityRequest, v1.ImportIssuerIdentityResponse]
+	setPresentationRequirement      *connect.Client[v1.SetPresentationRequirementRequest, v1.SetPresentationRequirementResponse]
 }
 
 // RegisterCredentialConfiguration calls
@@ -441,6 +455,11 @@ func (c *issuerBackendServiceClient) ImportIssuerIdentity(ctx context.Context, r
 	return c.importIssuerIdentity.CallUnary(ctx, req)
 }
 
+// SetPresentationRequirement calls vca.backend.v1.IssuerBackendService.SetPresentationRequirement.
+func (c *issuerBackendServiceClient) SetPresentationRequirement(ctx context.Context, req *connect.Request[v1.SetPresentationRequirementRequest]) (*connect.Response[v1.SetPresentationRequirementResponse], error) {
+	return c.setPresentationRequirement.CallUnary(ctx, req)
+}
+
 // IssuerBackendServiceHandler is an implementation of the vca.backend.v1.IssuerBackendService
 // service.
 type IssuerBackendServiceHandler interface {
@@ -476,6 +495,10 @@ type IssuerBackendServiceHandler interface {
 	// only when it lists FEATURE_ISSUER_IDENTITY_IMPORT_DID or
 	// FEATURE_ISSUER_IDENTITY_IMPORT_X509.
 	ImportIssuerIdentity(context.Context, *connect.Request[v1.ImportIssuerIdentityRequest]) (*connect.Response[v1.ImportIssuerIdentityResponse], error)
+	// SetPresentationRequirement names the credential a holder presents
+	// before the DPG issues (ADR-051 decision 6). An adapter serves it only
+	// when it lists FEATURE_PRESENTATION_DURING_ISSUANCE.
+	SetPresentationRequirement(context.Context, *connect.Request[v1.SetPresentationRequirementRequest]) (*connect.Response[v1.SetPresentationRequirementResponse], error)
 }
 
 // NewIssuerBackendServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -551,6 +574,12 @@ func NewIssuerBackendServiceHandler(svc IssuerBackendServiceHandler, opts ...con
 		connect.WithSchema(issuerBackendServiceMethods.ByName("ImportIssuerIdentity")),
 		connect.WithHandlerOptions(opts...),
 	)
+	issuerBackendServiceSetPresentationRequirementHandler := connect.NewUnaryHandler(
+		IssuerBackendServiceSetPresentationRequirementProcedure,
+		svc.SetPresentationRequirement,
+		connect.WithSchema(issuerBackendServiceMethods.ByName("SetPresentationRequirement")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.backend.v1.IssuerBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case IssuerBackendServiceRegisterCredentialConfigurationProcedure:
@@ -575,6 +604,8 @@ func NewIssuerBackendServiceHandler(svc IssuerBackendServiceHandler, opts ...con
 			issuerBackendServiceProvisionIssuerIdentityHandler.ServeHTTP(w, r)
 		case IssuerBackendServiceImportIssuerIdentityProcedure:
 			issuerBackendServiceImportIssuerIdentityHandler.ServeHTTP(w, r)
+		case IssuerBackendServiceSetPresentationRequirementProcedure:
+			issuerBackendServiceSetPresentationRequirementHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -626,6 +657,10 @@ func (UnimplementedIssuerBackendServiceHandler) ProvisionIssuerIdentity(context.
 
 func (UnimplementedIssuerBackendServiceHandler) ImportIssuerIdentity(context.Context, *connect.Request[v1.ImportIssuerIdentityRequest]) (*connect.Response[v1.ImportIssuerIdentityResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.IssuerBackendService.ImportIssuerIdentity is not implemented"))
+}
+
+func (UnimplementedIssuerBackendServiceHandler) SetPresentationRequirement(context.Context, *connect.Request[v1.SetPresentationRequirementRequest]) (*connect.Response[v1.SetPresentationRequirementResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.IssuerBackendService.SetPresentationRequirement is not implemented"))
 }
 
 // HolderBackendServiceClient is a client for the vca.backend.v1.HolderBackendService service.

@@ -74,7 +74,7 @@ func qrSettings(claims []claim) []map[string]string {
 			continue
 		}
 		if _, taken := entry[attr]; !taken {
-			entry[attr] = "${" + c.name + "}"
+			entry[attr] = "${" + c.column + "}"
 		}
 	}
 	if len(entry) == 0 {
