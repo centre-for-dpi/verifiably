@@ -138,9 +138,16 @@ func (s *Service) CreateOffer(
 	if channel == backendv1.Channel_CHANNEL_UNSPECIFIED {
 		channel = backendv1.Channel_CHANNEL_OID4VCI_PREAUTH
 	}
+	if isDidcommChannel(channel) {
+		return s.didcommOffer(ctx, req.Msg, channel)
+	}
 	if channel != backendv1.Channel_CHANNEL_OID4VCI_PREAUTH {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
-			"CREDEBL builds a pre-authorized code offer only, not the channel %s", channel))
+			"CREDEBL builds a pre-authorized code offer or a DIDComm offer, not the channel %s", channel))
+	}
+	if isDidcommFormat(spec.GetFormat()) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
+			"CREDEBL issues %s over DIDComm only; use CHANNEL_DIDCOMM_OOB", spec.GetFormat()))
 	}
 	if hasWindow(spec.GetValidity()) {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New(

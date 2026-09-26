@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -174,7 +175,7 @@ func TestNoUpstreamCredeblCredentialSurvives(t *testing.T) {
 	doc, _ := readCredeblStack(t)
 	seed := doc.Services["credebl-seed"]
 	mount := "../" + CredeblMasterTableFile + ":" + CredeblMasterTableMount + ":ro"
-	if len(seed.Volumes) != 1 || seed.Volumes[0] != mount {
+	if !slices.Contains(seed.Volumes, mount) {
 		t.Errorf("credebl-seed volumes = %v, want %s", seed.Volumes, mount)
 	}
 	if seed.User != "root" {

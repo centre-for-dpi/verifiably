@@ -275,3 +275,39 @@ func TestFakeServesTheOfferSessions(t *testing.T) {
 		}
 	}
 }
+
+// TestFakeServesTheDidcommCalls covers the DIDComm issuance answers of
+// P6-C3 and the switches of the tests.
+func TestFakeServesTheDidcommCalls(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	for path, want := range map[string]string{
+		"/v1/orgs/org-1/credentials/oob/offer?credentialType=indy": "invitationUrl",
+		"/v1/orgs/org-1/credentials/offer?credentialType=indy":     "offer-sent",
+		"/v1/orgs/org-1/credentials/oob/email?credentialType=indy": "true",
+	} {
+		if body := post(t, f, path, "{}"); !strings.Contains(body, want) {
+			t.Errorf("%s returned %q", path, body)
+		}
+	}
+	if q := f.Query("/v1/orgs/org-1/credentials/oob/email"); q != "credentialType=indy" {
+		t.Errorf("query = %q", q)
+	}
+	if body := get(t, f, "/v1/orgs/org-1/connections"); !strings.Contains(body, "theirLabel") {
+		t.Errorf("connections = %q", body)
+	}
+	f.SetConnections(fake.NoConnections)
+	if body := get(t, f, "/v1/orgs/org-1/connections"); strings.Contains(body, "theirLabel") {
+		t.Errorf("no connections = %q", body)
+	}
+	if body := get(t, f, "/v1/orgs/org-1/credentials/rec-1"); !strings.Contains(body, "offer-sent") {
+		t.Errorf("record = %q", body)
+	}
+	f.SetCredentialRecord(fake.RecordDone)
+	if body := get(t, f, "/v1/orgs/org-1/credentials/rec-1"); !strings.Contains(body, `"done"`) {
+		t.Errorf("record = %q", body)
+	}
+	if body := get(t, f, "/v1/orgs/org-1/credentials/rec-1/unknown"); strings.Contains(body, "state") {
+		t.Errorf("an unknown path = %q", body)
+	}
+}

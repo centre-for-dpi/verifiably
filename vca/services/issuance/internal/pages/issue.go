@@ -68,6 +68,8 @@ var channels = []struct {
 	{backendv1.Channel_CHANNEL_DC_API, "issuer.issue.dc_api"},
 	{backendv1.Channel_CHANNEL_PDF, "issuer.issue.pdf"},
 	{backendv1.Channel_CHANNEL_CLAIM169_QR, "issuer.issue.claim169"},
+	{backendv1.Channel_CHANNEL_DIDCOMM_OOB, "issuer.issue.didcomm"},
+	{backendv1.Channel_CHANNEL_EMAIL, "issuer.issue.email"},
 }
 
 // maxSchemas caps the published schemas the issue page lists.
@@ -362,16 +364,68 @@ func (p *Pages) delivery(pg page) error {
 // stack (ADR-043 decision 2). The document channel works on every
 // stack. The Digital Credentials API channel hands the pre-authorized
 // offer of the stack to the browser.
-func offered(caps *backendv1.GetCapabilitiesResponse) []backendv1.Channel {
+//
+// A channel of the adapter that carries only some formats shows only
+// for a schema with such a format (ADR-059 decision 2).
+func offered(caps *backendv1.GetCapabilitiesResponse, formats []commonv1.Format) []backendv1.Channel {
 	var out []backendv1.Channel
 	for _, c := range channels {
 		switch {
 		case c.channel == backendv1.Channel_CHANNEL_PDF, offers(caps, c.channel),
 			c.channel == backendv1.Channel_CHANNEL_DC_API && offers(caps, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH):
-			out = append(out, c.channel)
+			if carriesAny(caps, carrierOf(caps, c.channel), formats) {
+				out = append(out, c.channel)
+			}
 		}
 	}
 	return out
+}
+
+// carrierOf returns the channel of the adapter that carries a card: the
+// document and the browser ride on a pre-authorized offer, unless the
+// stack signs a document itself.
+func carrierOf(caps *backendv1.GetCapabilitiesResponse, c backendv1.Channel) backendv1.Channel {
+	switch c {
+	case backendv1.Channel_CHANNEL_DC_API:
+		return backendv1.Channel_CHANNEL_OID4VCI_PREAUTH
+	case backendv1.Channel_CHANNEL_PDF:
+		if offers(caps, c) {
+			return c
+		}
+		return backendv1.Channel_CHANNEL_OID4VCI_PREAUTH
+	}
+	return c
+}
+
+// carried returns the formats a channel of the adapter carries, and
+// false when the adapter names no limit for it.
+func carried(caps *backendv1.GetCapabilitiesResponse, c backendv1.Channel) ([]commonv1.Format, bool) {
+	for _, cf := range caps.GetChannelFormats() {
+		if cf.GetChannel() == c {
+			return cf.GetFormats(), true
+		}
+	}
+	return nil, false
+}
+
+// carriesAny reports whether a channel of the adapter carries one of the
+// formats of a schema.
+func carriesAny(caps *backendv1.GetCapabilitiesResponse, c backendv1.Channel, formats []commonv1.Format) bool {
+	list, limited := carried(caps, c)
+	if !limited {
+		return true
+	}
+	for _, f := range formats {
+		if slices.Contains(list, f) {
+			return true
+		}
+	}
+	return false
+}
+
+// carriesFormat reports whether a card carries one format.
+func carriesFormat(caps *backendv1.GetCapabilitiesResponse, c backendv1.Channel, f commonv1.Format) bool {
+	return f == commonv1.Format_FORMAT_UNSPECIFIED || carriesAny(caps, carrierOf(caps, c), []commonv1.Format{f})
 }
 
 // channelKey returns the catalogue key of a channel.
@@ -386,9 +440,9 @@ func channelKey(c backendv1.Channel) string {
 
 // pickChannel reads the channel of a form. ok is false when the pair
 // does not offer it.
-func pickChannel(caps *backendv1.GetCapabilitiesResponse, form url.Values) (backendv1.Channel, bool) {
+func pickChannel(caps *backendv1.GetCapabilitiesResponse, form url.Values, formats []commonv1.Format) (backendv1.Channel, bool) {
 	c := backendv1.Channel(backendv1.Channel_value[form.Get("channel")])
-	for _, o := range offered(caps) {
+	for _, o := range offered(caps, formats) {
 		if o == c {
 			return c, true
 		}
@@ -399,8 +453,8 @@ func pickChannel(caps *backendv1.GetCapabilitiesResponse, form url.Values) (back
 // renderDelivery draws the channel cards.
 func (p *Pages) renderDelivery(pg page, w wizard) error {
 	b := p.blocks()
-	current, _ := pickChannel(w.caps, w.form)
-	list := offered(w.caps)
+	current, _ := pickChannel(w.caps, w.form, w.schema.GetFormats())
+	list := offered(w.caps, w.schema.GetFormats())
 	options := make([]components.ChoiceOption, 0, len(list))
 	for i, c := range list {
 		key := channelKey(c)
@@ -434,6 +488,7 @@ func (p *Pages) renderDelivery(pg page, w wizard) error {
 	if offers(w.caps, backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE) {
 		parts = append(parts, p.bindingFields(b, w)...)
 	}
+	parts = append(parts, p.didcommFields(pg, b, w, list)...)
 	if fs := formatsOn(w.schema, w.caps); len(fs) > 1 {
 		opts := make([]components.Option, 0, len(fs))
 		for _, f := range fs {
@@ -492,9 +547,12 @@ func (p *Pages) review(pg page) error {
 	if !ok {
 		return err
 	}
-	channel, ok := pickChannel(w.caps, w.form)
+	channel, ok := pickChannel(w.caps, w.form, w.schema.GetFormats())
 	if !ok {
 		return p.badChannel(pg, w)
+	}
+	if problem := deliveryProblem(w, channel); problem != "" {
+		return p.badDelivery(pg, w, problem)
 	}
 	if askPresentation(w) && !oid4vci(channel) {
 		w.step = stepDelivery
@@ -644,7 +702,7 @@ func (p *Pages) badChannel(pg page, w wizard) error {
 // renderReview draws the review table and the issue button.
 func (p *Pages) renderReview(pg page, w wizard) error {
 	b := p.blocks()
-	channel, _ := pickChannel(w.caps, w.form)
+	channel, _ := pickChannel(w.caps, w.form, w.schema.GetFormats())
 	format := pickFormat(w)
 	formatText := formats(w.schema.GetFormats())
 	if format != commonv1.Format_FORMAT_UNSPECIFIED {
@@ -663,7 +721,8 @@ func (p *Pages) renderReview(pg page, w wizard) error {
 				{Text: msg.T("issuer.issue.presentation_subject.review.text", holder.GetClaim(), holder.GetValue())}})
 		}
 	}
-	if channel, _ := pickChannel(w.caps, w.form); needsBinding(w, channel) {
+	rows = append(rows, p.didcommRows(pg, w, channel)...)
+	if needsBinding(w, channel) {
 		if rule := bindingRule(w); rule != nil {
 			rows = append(rows, components.Row{{Text: msg.T("issuer.issue.binding.review.label")},
 				{Text: msg.T("issuer.issue.binding.review.text", rule.GetTokenClaim(), rule.GetSubjectClaim())}})
@@ -677,7 +736,8 @@ func (p *Pages) renderReview(pg page, w wizard) error {
 	hidden := template.HTML(hiddenInput("channel", w.form.Get("channel")) + hiddenInput("format", w.form.Get("format")) + //nolint:gosec // the inputs are escaped
 		hiddenInput("presentation", w.form.Get("presentation")) + hiddenInput("presentation_claim", w.form.Get("presentation_claim")) +
 		hiddenInput("presentation_source", w.form.Get("presentation_source")) + hiddenInput("binding_token", w.form.Get("binding_token")) +
-		hiddenInput("binding_token_other", w.form.Get("binding_token_other")) + hiddenInput("binding_subject", w.form.Get("binding_subject")))
+		hiddenInput("binding_token_other", w.form.Get("binding_token_other")) + hiddenInput("binding_subject", w.form.Get("binding_subject")) +
+		hiddenInput("connection", w.form.Get("connection")) + hiddenInput("holder_email", w.form.Get("holder_email")))
 	body := p.postForm(pg, IssueOffersPath, w, components.Join(
 		hidden,
 		b.add("block", components.Block{ID: "review", Title: msg.T("issuer.issue.review.title.label"), Lead: msg.T("issuer.issue.review.lead"),
@@ -700,9 +760,12 @@ func (p *Pages) create(pg page) error {
 	if !ok {
 		return err
 	}
-	channel, ok := pickChannel(w.caps, w.form)
+	channel, ok := pickChannel(w.caps, w.form, w.schema.GetFormats())
 	if !ok {
 		return p.badChannel(pg, w)
+	}
+	if problem := deliveryProblem(w, channel); problem != "" {
+		return p.badDelivery(pg, w, problem)
 	}
 	if p.opts.Issuance == nil {
 		return connect.NewError(connect.CodeNotFound, errors.New("no issuance service"))
@@ -727,7 +790,7 @@ func (p *Pages) create(pg page) error {
 	ctx := pg.r.Context()
 	res, err := p.opts.Issuance.Issue(ctx, staffshell.AsActor(ctx, &issuancev1.IssueRequest{
 		SchemaId: w.schema.GetId(), SchemaVersion: w.schema.GetVersion(), SubjectData: string(data),
-		Format: pickFormat(w), Delivery: &issuancev1.Delivery{Channel: channel, Locale: "en"},
+		Format: pickFormat(w), Delivery: deliveryOf(w, channel),
 		RequirePresentation: ask, PresentationSubject: holder, BindingRule: rule,
 	}))
 	if err != nil {

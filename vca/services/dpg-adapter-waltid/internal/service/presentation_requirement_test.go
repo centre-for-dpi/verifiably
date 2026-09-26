@@ -36,3 +36,11 @@ func TestSignInAndRequirementReadsAreUnimplemented(t *testing.T) {
 		t.Errorf("set source code = %v", connect.CodeOf(err))
 	}
 }
+
+func TestListConnectionsIsUnimplemented(t *testing.T) {
+	var s *Service
+	_, err := s.ListConnections(context.Background(), connect.NewRequest(&backendv1.ListConnectionsRequest{}))
+	if connect.CodeOf(err) != connect.CodeUnimplemented {
+		t.Errorf("code = %v", connect.CodeOf(err))
+	}
+}

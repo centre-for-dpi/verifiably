@@ -233,3 +233,25 @@ func TestConnectRecorderReachesAServer(t *testing.T) {
 		t.Fatal("the recorder passed an unreachable service")
 	}
 }
+
+// TestCapabilitiesNameTheFormatsOfEachChannel is ADR-059 decision 2: a
+// channel carries every format unless the adapter names its formats.
+func TestCapabilitiesNameTheFormatsOfEachChannel(t *testing.T) {
+	a := answer()
+	a.ChannelFormats = []*backendv1.ChannelFormats{{
+		Channel: backendv1.Channel_CHANNEL_DIDCOMM_OOB, Formats: []commonv1.Format{commonv1.Format_FORMAT_ANONCREDS},
+	}}
+	cache := clients.NewCapabilityCache(&fakeCapability{answer: a}, time.Minute, nil)
+	c, err := cache.Get(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Carries(backendv1.Channel_CHANNEL_DIDCOMM_OOB, commonv1.Format_FORMAT_ANONCREDS) ||
+		c.Carries(backendv1.Channel_CHANNEL_DIDCOMM_OOB, commonv1.Format_FORMAT_VC_SD_JWT) {
+		t.Errorf("the DIDComm channel carries %v", c.ChannelFormats)
+	}
+	if !c.Carries(backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, commonv1.Format_FORMAT_VC_SD_JWT) ||
+		!c.Carries(backendv1.Channel_CHANNEL_DIDCOMM_OOB, commonv1.Format_FORMAT_UNSPECIFIED) {
+		t.Error("a channel without a list carries every format")
+	}
+}

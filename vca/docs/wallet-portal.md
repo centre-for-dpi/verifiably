@@ -187,12 +187,20 @@ claims nothing. Decline ends the step and posts nothing. The browser
 store claims no offer, so it runs no such step.
 
 A scan or a paste goes through the `detect` package first. The package
-reads three kinds of text:
+reads four kinds of text:
 
 1. A credential offer, as an `openid-credential-offer` URI or as the
    offer object.
 2. A presentation request, as an `openid4vp` URI.
 3. A credential, in SD-JWT, JWT, or JSON-LD form.
+4. A DIDComm invitation, in the query parameter `oob`, `c_i` or `d_m`
+   (ADR-059 decision 5).
+
+A DIDComm invitation gets a page of its own. It names the issuer and
+says whether the invitation carries a credential offer. It shows the
+invitation and a link that a DIDComm wallet on the device opens. This
+wallet keeps OID4VCI credentials only, so it keeps nothing of the
+invitation.
 
 The service keeps the offer or the request for the time in
 `PENDING_TTL`. A pending record holds no credential content.

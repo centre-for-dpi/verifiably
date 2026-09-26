@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-058, one row per decision.
+ADR-059, one row per decision.
 
 The status values are:
 
@@ -631,12 +631,23 @@ A row that is not `Done` carries a note.
 | ADR-058 | 3 The bootstrap run creates a missing platform realm | Done | `vca/internal/cli/credebl_realm.go` | `TestBootstrapCredeblCreatesThePlatformRealm` pins it. |
 | ADR-058 | 4 The shared agent sends its events to the gateway | Done | `vca/internal/cli/credebl_webhook.go`, `deploy/vca/dpg/credebl.yaml` | `TestBootstrapCredeblPointsTheAgentWebhook` pins it. |
 
+## ADR-059: DIDComm issuance channels and the formats each channel carries
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-059 | 1 DIDComm offers, out of band and over a connection | Done | `vca/services/dpg-adapter-credebl/internal/service/didcomm.go` | `TestOobOfferGivesInvitation` and `TestConnectionOfferNamesTheRecord` pin it. |
+| ADR-059 | 2 The formats of each channel | Done | `vca/services/issuance/internal/service/issue.go`, `vca/services/issuance/internal/pages/issue.go` | `TestIssueRefusesAFormatTheChannelDoesNotCarry` and `TestDeliveryCardsFollowTheDidcommChannels` pin it. |
+| ADR-059 | 3 A stack that mails its own offers | Done | `vca/services/issuance/internal/service/issue.go` | `TestIssueByEmailThroughTheStack` pins it. |
+| ADR-059 | 4 The configuration of a DIDComm format, and no status entry | Done | `vca/services/issuance/internal/service/issue.go` | `TestIssueOverTheDidcommChannel` pins it. |
+| ADR-059 | 5 The wallet portal names a DIDComm invitation | Done | `vca/services/wallet-portal/internal/detect/didcomm.go`, `vca/services/wallet-portal/internal/portal/didcomm.go` | `TestWalletDetectsOobInvitation` pins it. |
+| ADR-059 | 6 The file volume, the mail provider, and the values of the operator | Done | `deploy/vca/dpg/credebl.yaml`, `vca/internal/cli/stackenv.go` | `TestCredeblStackKeepsFilesOnAVolume` and `TestStackEnvKeepsTheValuesOfTheOperator` pin it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 270 |
+| Done | 276 |
 | Partial | 25 |
 | Deferred | 3 |
 | Not started | 26 |
-| Total | 324 |
+| Total | 330 |

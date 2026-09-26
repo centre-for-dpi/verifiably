@@ -8,8 +8,9 @@ decision 1. The vendor name appears in this service and nowhere else.
 
 CREDEBL is the largest of the three DPGs. It runs about twenty services
 behind one api gateway. This adapter gives the rest of VCA one small
-contract instead. It issues through the OID4VCI pre-authorized code
-flow, and it checks presentations with DCQL queries.
+contract instead. It issues SD-JWT credentials through the OID4VCI
+pre-authorized code flow, and AnonCreds and W3C JSON-LD credentials
+over DIDComm. It checks presentations with DCQL queries.
 
 ## What it serves
 
@@ -46,6 +47,11 @@ flow, and it checks presentations with DCQL queries.
 | `GET /v1/platform/ledgers` | Reads the names of the ledgers. |
 | `GET /v1/orgs/{org}/oid4vc/credential-offer/{id}` | Reads the issuance session of one offer. |
 | `GET /v1/orgs/{org}/oid4vc/credential-offer` | Lists the issuance sessions, for the issued list. |
+| `POST /v1/orgs/{org}/credentials/oob/offer` | Makes an out of band invitation that carries a DIDComm offer. |
+| `POST /v1/orgs/{org}/credentials/offer` | Sends a DIDComm offer over a connection of the organisation. |
+| `POST /v1/orgs/{org}/credentials/oob/email` | Has the platform mail an out of band invitation with a QR code. |
+| `GET /v1/orgs/{org}/connections` | Lists the DIDComm connections. The platform answers not found for none. |
+| `GET /v1/orgs/{org}/credentials/{id}` | Reads the credential exchange of one DIDComm offer. |
 | `POST /v1/orgs/{org}/oid4vp/verifier` | Creates the OID4VP verifier. |
 | `POST /v1/orgs/{org}/oid4vp/presentation` | Starts an OID4VP transaction. |
 | `GET /v1/orgs/{org}/oid4vp/verifier-presentation` | Reads the answer of a transaction. |
@@ -56,9 +62,9 @@ The answer of `GetCapabilities` reports what the platform supports.
 
 | Item | Value |
 | --- | --- |
-| Formats | `dc+sd-jwt`, `vc+sd-jwt` |
-| Channels | OID4VCI pre-authorized code |
-| Protocols | OID4VCI, OID4VP, OID4VP with DCQL |
+| Formats | `dc+sd-jwt`, `vc+sd-jwt`, AnonCreds, W3C JSON-LD |
+| Channels | OID4VCI pre-authorized code for SD-JWT. A DIDComm invitation for AnonCreds and W3C JSON-LD. An email from the stack for the same two, when the stack names a mail provider. |
+| Protocols | OID4VCI, OID4VP, OID4VP with DCQL, DIDComm issue credential 2.0 |
 | Roles | Issuer and verifier |
 | Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUANCE_STATUS`, `FEATURE_ISSUED_LEDGER` |
 | DID methods | `did:key` |
@@ -89,7 +95,6 @@ CREDEBL is the only one of the three DPGs that reads DCQL.
 | Every client credential RPC | The adapter makes no client credential of an organisation yet. The admin pages offer no stack credential. |
 | `CreateTenant` with a dedicated agent | The platform starts a dedicated agent through the Docker socket. The stack file mounts none, so every tenant gets the shared agent. |
 | `ImportIssuerIdentity` | The agent keeps every key and takes no key reference. Set another primary DID in the platform. |
-| Issuing AnonCreds or W3C JSON-LD | The platform issues those formats over DIDComm. The adapter lists them as schema formats only. |
 | A revocable credential definition | The adapter writes every credential definition without a revocation registry. |
 | `ProvisionIssuerIdentity` for `did:indy` and `did:web` | The agent takes the private key in the request for those methods. The adapter never holds a key, so it makes `did:key` only. |
 | Every webhook RPC | The adapter sets no organisation webhook. |
@@ -212,6 +217,25 @@ session is pending until its end, and expired after it.
 sessions of a credential type, oldest first. A session matches when its
 offer carries each attribute of the query with the same value. An entry
 carries the session id, the type and the issue time, and no claim value.
+
+**AnonCreds and W3C JSON-LD travel over DIDComm.** The adapter lists
+`CHANNEL_DIDCOMM_OOB` with the formats it carries in `channel_formats`.
+An offer on that channel is an out of band invitation that carries the
+offer. With a connection it goes over that connection instead.
+`ListConnections` lists the connections of the platform. The platform
+learns them from the webhook of the agent. The offer id is `didcomm:` and the id of the
+credential exchange. `GetIssuanceStatus` reads that exchange: `done`
+reads as issued, and `abandoned` or `declined` as failed. An AnonCreds
+offer carries each claim as text and no validity window. A W3C JSON-LD
+offer carries the credential with the context of its schema. The
+primary DID of the organisation is the issuer, with Ed25519 proof
+options. A DIDComm credential carries no status entry of VCA.
+
+**The platform mails an offer only with a mail provider.** The offer by
+email needs `EMAIL_PROVIDER` and the values of that provider in the stack
+`.env`. Setup then sets `VCA_CREDEBL_MAIL_OFFERS`, and the adapter lists
+`CHANNEL_EMAIL`. The platform keeps the invitation of the email on the
+volume `credebl-files`, and the link of the email names `PLATFORM_URL`.
 
 **The adapter creates the verifier once.** It creates the OID4VP
 verifier at the first request. It then stores the identifier. After a

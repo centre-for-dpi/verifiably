@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -129,6 +130,29 @@ func stackBootstrapNames(d configv1.Dpg) []string {
 	return nil
 }
 
+// operatorValues returns the names of the values of a stack .env that
+// setup neither generates nor writes itself, in name order.
+func operatorValues(d configv1.Dpg, existing map[string]string) []string {
+	known := map[string]bool{StackSecretsSinceEnv: true, SchemaFileServerTokenEnv: true}
+	for _, name := range stackSecretNames(d) {
+		known[name] = true
+	}
+	for _, k := range stackKeys(d) {
+		known[k.name] = true
+	}
+	for _, name := range append(stackBootstrapNames(d), stackSettingNames(d)...) {
+		known[name] = true
+	}
+	var out []string
+	for name, value := range existing {
+		if !known[name] && value != "" {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // StackSettings returns the values of the operator that one pair puts in
 // the .env of its stack, keyed by DPG. A value the run left empty is
 // left out, so an earlier value stays.
@@ -230,6 +254,14 @@ func StackEnv(d configv1.Dpg, existing map[string]string, random io.Reader, now 
 	if len(settings) > 0 {
 		b.WriteString("# The settings of the operator for the containers of the stack.\n")
 		b.WriteString(strings.Join(settings, ""))
+	}
+	// A value the operator added, such as the mail provider of CREDEBL,
+	// stays as it is.
+	if own := operatorValues(d, existing); len(own) > 0 {
+		b.WriteString("# The values of the operator. A later run keeps them.\n")
+		for _, name := range own {
+			b.WriteString(name + "=" + quoteValue(existing[name]) + "\n")
+		}
 	}
 	since := existing[StackSecretsSinceEnv]
 	if since == "" {

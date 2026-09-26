@@ -163,11 +163,6 @@ func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 	if serr := checkClaims(schema, r.instance()); serr != nil {
 		return offers.Offer{}, serr
 	}
-	format := formatOf(r.format, schema.GetFormats(), caps)
-	if !caps.SupportsFormat(format) {
-		return offers.Offer{}, badRequest(fmt.Sprintf(
-			"the DPG adapter cannot issue the format %s", format))
-	}
 	channel := r.channel
 	if channel == backendv1.Channel_CHANNEL_UNSPECIFIED {
 		channel = backendv1.Channel_CHANNEL_OID4VCI_PREAUTH
@@ -175,15 +170,32 @@ func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 	if serr := s.checkChannel(caps, channel); serr != nil {
 		return offers.Offer{}, serr
 	}
+	// The channel of the adapter decides the formats (ADR-059): a DIDComm
+	// channel carries AnonCreds and JSON-LD on a stack that says so.
+	carrier := carrierOf(caps, channel)
+	format := formatFor(r.format, schema.GetFormats(), caps, carrier)
+	if !caps.SupportsFormat(format) {
+		return offers.Offer{}, badRequest(fmt.Sprintf(
+			"the DPG adapter cannot issue the format %s", format))
+	}
+	if !caps.Carries(carrier, format) {
+		return offers.Offer{}, badRequest(fmt.Sprintf(
+			"the channel %s of the DPG adapter does not carry the format %s", carrier, format))
+	}
 	if serr := checkPresentation(caps, channel, r); serr != nil {
 		return offers.Offer{}, serr
 	}
-	binding, err := s.allocateStatus(ctx, r.statusPurpose, format)
+	statusPurpose := r.statusPurpose
+	if isDidcomm(carrier) {
+		// A DIDComm credential carries no status entry of VCA.
+		statusPurpose = "none"
+	}
+	binding, err := s.allocateStatus(ctx, statusPurpose, format)
 	if err != nil {
 		return offers.Offer{}, err
 	}
 	spec := &backendv1.IssueSpec{
-		ConfigurationId: configurationOf(schema),
+		ConfigurationId: configurationFor(schema, format),
 		Format:          format,
 		SubjectData:     r.subjectData(),
 		Subject:         r.subject,
@@ -253,10 +265,20 @@ func (s *Service) checkChannel(caps clients.Capabilities, channel backendv1.Chan
 			!caps.SupportsChannel(backendv1.Channel_CHANNEL_OID4VCI_PREAUTH) {
 			return badRequest("the DPG adapter can return neither a credential nor an offer, so the document channel is off")
 		}
-	case backendv1.Channel_CHANNEL_EMAIL, backendv1.Channel_CHANNEL_SMS,
-		backendv1.Channel_CHANNEL_OID4VCI_PREAUTH:
+	case backendv1.Channel_CHANNEL_EMAIL:
+		// A stack that mails its own offers takes the address. Else VCA
+		// mails a pre-authorized offer (ADR-059 decision 3).
+		if !caps.SupportsChannel(backendv1.Channel_CHANNEL_EMAIL) &&
+			!caps.SupportsChannel(backendv1.Channel_CHANNEL_OID4VCI_PREAUTH) {
+			return badRequest("the DPG adapter cannot build a pre-authorized offer")
+		}
+	case backendv1.Channel_CHANNEL_SMS, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH:
 		if !caps.SupportsChannel(backendv1.Channel_CHANNEL_OID4VCI_PREAUTH) {
 			return badRequest("the DPG adapter cannot build a pre-authorized offer")
+		}
+	case backendv1.Channel_CHANNEL_DIDCOMM_OOB:
+		if !caps.SupportsChannel(channel) {
+			return badRequest("the DPG adapter issues nothing over DIDComm")
 		}
 	case backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE:
 		if !caps.SupportsChannel(channel) {
@@ -303,15 +325,24 @@ func checkPresentation(caps clients.Capabilities, channel backendv1.Channel, r r
 func (s *Service) issueOffer(ctx context.Context, offer *offers.Offer,
 	spec *backendv1.IssueSpec, channel backendv1.Channel, r request,
 ) error {
-	adapterChannel := channel
-	switch channel {
-	case backendv1.Channel_CHANNEL_EMAIL, backendv1.Channel_CHANNEL_SMS, backendv1.Channel_CHANNEL_DC_API:
-		// The message and the browser carry a pre-authorized offer.
-		adapterChannel = backendv1.Channel_CHANNEL_OID4VCI_PREAUTH
+	caps, err := s.opts.Capabilities.Get(ctx)
+	if err != nil {
+		return connect.NewError(connect.CodeUnavailable, err)
 	}
-	resp, err := s.opts.Issuer.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
-		Spec: spec, Channel: adapterChannel, RequirePresentation: r.presentation,
-	}))
+	// The message and the browser carry a pre-authorized offer, unless
+	// the stack mails its own offers.
+	adapterChannel := carrierOf(caps, channel)
+	req := &backendv1.CreateOfferRequest{Spec: spec, Channel: adapterChannel, RequirePresentation: r.presentation}
+	switch adapterChannel {
+	case backendv1.Channel_CHANNEL_EMAIL:
+		req.Email = strings.TrimSpace(r.delivery.GetEmail())
+		if req.Email == "" {
+			return badRequest("the email channel needs the address of the holder")
+		}
+	case backendv1.Channel_CHANNEL_DIDCOMM_OOB:
+		req.ConnectionId = strings.TrimSpace(r.delivery.GetConnectionId())
+	}
+	resp, err := s.opts.Issuer.CreateOffer(ctx, connect.NewRequest(req))
 	if err != nil {
 		offer.State = offers.StateFailed
 		offer.Error = err.Error()
@@ -327,6 +358,11 @@ func (s *Service) issueOffer(ctx context.Context, offer *offers.Offer,
 	offer.DPGOfferID = resp.Msg.GetOfferId()
 	if expires := resp.Msg.GetExpiresAt(); expires != nil {
 		offer.ExpiresAt = expires.AsTime()
+	}
+	if adapterChannel == backendv1.Channel_CHANNEL_EMAIL {
+		// The stack mailed the offer.
+		offer.State = offers.StateDelivered
+		return nil
 	}
 	if channel == backendv1.Channel_CHANNEL_EMAIL || channel == backendv1.Channel_CHANNEL_SMS {
 		message := delivery.Message{
@@ -580,6 +616,54 @@ func checkClaims(schema *schemav1.Schema, instance map[string]any) error {
 		texts = append(texts, p.Error())
 	}
 	return badRequest("the claims do not match the schema: " + strings.Join(texts, "; "))
+}
+
+// configurationKeys maps a format onto the key of the configuration ids
+// of a schema, as the schema registry names it.
+var configurationKeys = map[commonv1.Format]string{
+	commonv1.Format_FORMAT_ANONCREDS: "anoncreds",
+	commonv1.Format_FORMAT_LDP_VC:    "ldp_vc",
+}
+
+// configurationFor returns the configuration id of the stack for one
+// format of a schema. The registry keeps the id that the adapter gave at
+// the publication, such as the credential definition of an AnonCreds
+// schema. Any other format uses the type of the schema.
+func configurationFor(schema *schemav1.Schema, format commonv1.Format) string {
+	if key, ok := configurationKeys[format]; ok {
+		if id := strings.TrimSpace(schema.GetConfigurationIds()[key]); id != "" {
+			return id
+		}
+	}
+	return configurationOf(schema)
+}
+
+// carrierOf returns the channel of the adapter that carries a delivery
+// channel. An email, an SMS and the browser carry a pre-authorized offer,
+// unless the stack mails its own offers. A document carries a credential
+// of the stack, or else a pre-authorized offer.
+func carrierOf(caps clients.Capabilities, channel backendv1.Channel) backendv1.Channel {
+	switch channel {
+	case backendv1.Channel_CHANNEL_EMAIL:
+		if caps.SupportsChannel(channel) {
+			return channel
+		}
+		return backendv1.Channel_CHANNEL_OID4VCI_PREAUTH
+	case backendv1.Channel_CHANNEL_SMS, backendv1.Channel_CHANNEL_DC_API:
+		return backendv1.Channel_CHANNEL_OID4VCI_PREAUTH
+	case backendv1.Channel_CHANNEL_PDF, backendv1.Channel_CHANNEL_LINK:
+		if caps.SupportsChannel(backendv1.Channel_CHANNEL_PDF) {
+			return backendv1.Channel_CHANNEL_PDF
+		}
+		return backendv1.Channel_CHANNEL_OID4VCI_PREAUTH
+	}
+	return channel
+}
+
+// isDidcomm reports whether a channel of the adapter carries a DIDComm
+// offer: an out of band invitation, or one that the stack mails.
+func isDidcomm(carrier backendv1.Channel) bool {
+	return carrier == backendv1.Channel_CHANNEL_DIDCOMM_OOB || carrier == backendv1.Channel_CHANNEL_EMAIL
 }
 
 // configurationOf returns the credential configuration id of a schema.

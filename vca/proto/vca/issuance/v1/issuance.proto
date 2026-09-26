@@ -45,6 +45,9 @@ message Delivery {
   string phone = 3;
   // The BCP 47 language tag of the message text.
   string locale = 4;
+  // The DIDComm connection of the holder for CHANNEL_DIDCOMM_OOB. Empty
+  // makes an out of band invitation.
+  string connection_id = 5;
 }
 
 // IssueRequest asks for one credential.

@@ -57,6 +57,10 @@ type Config struct {
 	Retries int `env:"RETRIES" default:"2"`
 	// MaxBytes bounds a response body from CREDEBL.
 	MaxBytes int64 `env:"MAX_BYTES" default:"8388608"`
+	// MailOffers reports that the stack names a mail provider, so the
+	// platform mails an out of band offer. vca setup sets it when the
+	// stack .env names EMAIL_PROVIDER.
+	MailOffers bool `env:"MAIL_OFFERS" default:"false"`
 	// StoreFile keeps the verifier id between restarts. Empty keeps it
 	// in memory.
 	StoreFile string `env:"STORE_FILE"`

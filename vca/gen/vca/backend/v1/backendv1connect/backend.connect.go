@@ -101,6 +101,9 @@ const (
 	// IssuerBackendServiceSetHolderSignInSourceProcedure is the fully-qualified name of the
 	// IssuerBackendService's SetHolderSignInSource RPC.
 	IssuerBackendServiceSetHolderSignInSourceProcedure = "/vca.backend.v1.IssuerBackendService/SetHolderSignInSource"
+	// IssuerBackendServiceListConnectionsProcedure is the fully-qualified name of the
+	// IssuerBackendService's ListConnections RPC.
+	IssuerBackendServiceListConnectionsProcedure = "/vca.backend.v1.IssuerBackendService/ListConnections"
 	// HolderBackendServiceRegisterProcedure is the fully-qualified name of the HolderBackendService's
 	// Register RPC.
 	HolderBackendServiceRegisterProcedure = "/vca.backend.v1.HolderBackendService/Register"
@@ -317,6 +320,11 @@ type IssuerBackendServiceClient interface {
 	// configurations of one schema. An adapter serves it only when it
 	// lists FEATURE_HOLDER_SIGN_IN_SOURCE.
 	SetHolderSignInSource(context.Context, *connect.Request[v1.SetHolderSignInSourceRequest]) (*connect.Response[v1.SetHolderSignInSourceResponse], error)
+	// ListConnections returns the DIDComm connections of the issuer. An
+	// offer of CHANNEL_DIDCOMM_OOB can go to a wallet that connected
+	// before. An adapter serves it only when it lists
+	// PROTOCOL_DIDCOMM_ISSUE_V2.
+	ListConnections(context.Context, *connect.Request[v1.ListConnectionsRequest]) (*connect.Response[v1.ListConnectionsResponse], error)
 }
 
 // NewIssuerBackendServiceClient constructs a client for the vca.backend.v1.IssuerBackendService
@@ -420,6 +428,12 @@ func NewIssuerBackendServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(issuerBackendServiceMethods.ByName("SetHolderSignInSource")),
 			connect.WithClientOptions(opts...),
 		),
+		listConnections: connect.NewClient[v1.ListConnectionsRequest, v1.ListConnectionsResponse](
+			httpClient,
+			baseURL+IssuerBackendServiceListConnectionsProcedure,
+			connect.WithSchema(issuerBackendServiceMethods.ByName("ListConnections")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -440,6 +454,7 @@ type issuerBackendServiceClient struct {
 	getPresentationRequirement      *connect.Client[v1.GetPresentationRequirementRequest, v1.GetPresentationRequirementResponse]
 	getHolderSignInSource           *connect.Client[v1.GetHolderSignInSourceRequest, v1.GetHolderSignInSourceResponse]
 	setHolderSignInSource           *connect.Client[v1.SetHolderSignInSourceRequest, v1.SetHolderSignInSourceResponse]
+	listConnections                 *connect.Client[v1.ListConnectionsRequest, v1.ListConnectionsResponse]
 }
 
 // RegisterCredentialConfiguration calls
@@ -518,6 +533,11 @@ func (c *issuerBackendServiceClient) SetHolderSignInSource(ctx context.Context, 
 	return c.setHolderSignInSource.CallUnary(ctx, req)
 }
 
+// ListConnections calls vca.backend.v1.IssuerBackendService.ListConnections.
+func (c *issuerBackendServiceClient) ListConnections(ctx context.Context, req *connect.Request[v1.ListConnectionsRequest]) (*connect.Response[v1.ListConnectionsResponse], error) {
+	return c.listConnections.CallUnary(ctx, req)
+}
+
 // IssuerBackendServiceHandler is an implementation of the vca.backend.v1.IssuerBackendService
 // service.
 type IssuerBackendServiceHandler interface {
@@ -570,6 +590,11 @@ type IssuerBackendServiceHandler interface {
 	// configurations of one schema. An adapter serves it only when it
 	// lists FEATURE_HOLDER_SIGN_IN_SOURCE.
 	SetHolderSignInSource(context.Context, *connect.Request[v1.SetHolderSignInSourceRequest]) (*connect.Response[v1.SetHolderSignInSourceResponse], error)
+	// ListConnections returns the DIDComm connections of the issuer. An
+	// offer of CHANNEL_DIDCOMM_OOB can go to a wallet that connected
+	// before. An adapter serves it only when it lists
+	// PROTOCOL_DIDCOMM_ISSUE_V2.
+	ListConnections(context.Context, *connect.Request[v1.ListConnectionsRequest]) (*connect.Response[v1.ListConnectionsResponse], error)
 }
 
 // NewIssuerBackendServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -669,6 +694,12 @@ func NewIssuerBackendServiceHandler(svc IssuerBackendServiceHandler, opts ...con
 		connect.WithSchema(issuerBackendServiceMethods.ByName("SetHolderSignInSource")),
 		connect.WithHandlerOptions(opts...),
 	)
+	issuerBackendServiceListConnectionsHandler := connect.NewUnaryHandler(
+		IssuerBackendServiceListConnectionsProcedure,
+		svc.ListConnections,
+		connect.WithSchema(issuerBackendServiceMethods.ByName("ListConnections")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.backend.v1.IssuerBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case IssuerBackendServiceRegisterCredentialConfigurationProcedure:
@@ -701,6 +732,8 @@ func NewIssuerBackendServiceHandler(svc IssuerBackendServiceHandler, opts ...con
 			issuerBackendServiceGetHolderSignInSourceHandler.ServeHTTP(w, r)
 		case IssuerBackendServiceSetHolderSignInSourceProcedure:
 			issuerBackendServiceSetHolderSignInSourceHandler.ServeHTTP(w, r)
+		case IssuerBackendServiceListConnectionsProcedure:
+			issuerBackendServiceListConnectionsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -768,6 +801,10 @@ func (UnimplementedIssuerBackendServiceHandler) GetHolderSignInSource(context.Co
 
 func (UnimplementedIssuerBackendServiceHandler) SetHolderSignInSource(context.Context, *connect.Request[v1.SetHolderSignInSourceRequest]) (*connect.Response[v1.SetHolderSignInSourceResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.IssuerBackendService.SetHolderSignInSource is not implemented"))
+}
+
+func (UnimplementedIssuerBackendServiceHandler) ListConnections(context.Context, *connect.Request[v1.ListConnectionsRequest]) (*connect.Response[v1.ListConnectionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.IssuerBackendService.ListConnections is not implemented"))
 }
 
 // HolderBackendServiceClient is a client for the vca.backend.v1.HolderBackendService service.

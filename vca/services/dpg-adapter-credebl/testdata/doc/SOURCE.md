@@ -53,3 +53,19 @@ The payload needs a description that is not empty. The gateway strips
 a member that the DTO does not name, such as `orgId`.
 `TestCreateSchemaSendsTheSchemaTypeOfThePlatform` checks the body
 against these values.
+
+## DIDComm issuance
+
+These files were written on 2026-09-27 from the same sources.
+
+| File | Call | Source |
+| --- | --- | --- |
+| `oob-offer-created.json` | `POST /v1/orgs/{org}/credentials/oob/offer` | [issuance.controller.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/issuance/issuance.controller.ts) `createOOBCredentialOffer`, body `OOBIssueCredentialDto` of [issuance.dto.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/issuance/dtos/issuance.dto.ts), `sendCredentialOutOfBand` of [issuance.service.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/issuance/src/issuance.service.ts), and `createOfferOob` of the agent [CredentialController.ts](https://raw.githubusercontent.com/credebl/agent-controller/main/src/controllers/didcomm/credentials/CredentialController.ts) |
+| `connection-offer-created.json` | `POST /v1/orgs/{org}/credentials/offer` | the same controller `sendCredential`, body [multi-connection.dto.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/issuance/dtos/multi-connection.dto.ts), and `sendCredentialCreateOffer` of the service |
+| `oob-email-sent.json` | `POST /v1/orgs/{org}/credentials/oob/email` | the same controller `outOfBandCredentialOffer`, body `OOBCredentialDtoWithEmail`, and `sendEmailForCredentialOffer` of the service |
+| `connections.json` | `GET /v1/orgs/{org}/connections` | [connection.controller.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/connection/connection.controller.ts) `getConnections`, and `getConnections` of [connection.service.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/connection/src/connection.service.ts) |
+| `credential-record-offer-sent.json`, `credential-record-done.json`, `credential-record-abandoned.json` | `GET /v1/orgs/{org}/credentials/{id}` | the issuance controller `getIssueCredentialsbyCredentialRecordId`, which answers with the credential exchange record of the agent |
+
+The query parameter `credentialType` is `indy` or `jsonld`
+(`IssueCredentialType` of enum.ts). The invitation of
+`oob-offer-created.json` is base64url of an out of band invitation 1.1.

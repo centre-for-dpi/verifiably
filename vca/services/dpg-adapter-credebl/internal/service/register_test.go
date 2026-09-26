@@ -184,10 +184,14 @@ func TestLedgersListed(t *testing.T) {
 	if got := caps.Msg.GetSchemaFormats(); len(got) != 2 || got[0] != commonv1.Format_FORMAT_ANONCREDS || got[1] != commonv1.Format_FORMAT_LDP_VC {
 		t.Errorf("schema formats = %v", got)
 	}
+	// The adapter issues both over DIDComm (P6-C3), so they are issue
+	// formats too.
+	issue := map[commonv1.Format]bool{}
 	for _, fm := range caps.Msg.GetFormats() {
-		if fm == commonv1.Format_FORMAT_ANONCREDS || fm == commonv1.Format_FORMAT_LDP_VC {
-			t.Errorf("the adapter lists %v as an issue format before it issues over DIDComm", fm)
-		}
+		issue[fm] = true
+	}
+	if !issue[commonv1.Format_FORMAT_ANONCREDS] || !issue[commonv1.Format_FORMAT_LDP_VC] {
+		t.Errorf("issue formats = %v", caps.Msg.GetFormats())
 	}
 	if _, againErr := svc.GetCapabilities(ctx, connect.NewRequest(&backendv1.GetCapabilitiesRequest{})); againErr != nil {
 		t.Fatal(againErr)

@@ -58,7 +58,6 @@ x-credebl-platform: &credebl-platform
     API_GATEWAY_HOST: 0.0.0.0
     API_GATEWAY_PORT: "5000"
     API_ENDPOINT: credebl-api-gateway:5000
-    PLATFORM_URL: http://credebl-api-gateway:5000
     # The agents keep their wallets in the platform database server.
     WALLET_STORAGE_HOST: credebl-postgres
     WALLET_STORAGE_PORT: "5432"
@@ -72,6 +71,23 @@ x-credebl-platform: &credebl-platform
     # The platform reads its secrets from this environment, not from an
     # external secret store.
     ENABLE_BAO: "false"
+    # The platform keeps files on the volume credebl-files, not in an
+    # object store: the invitation of an offer by email, and the CSV
+    # files of a bulk issuance. The api gateway serves the invitations
+    # under /uploadedFiles/demo-shortening-url.
+    FILE_STORAGE_TYPE: local
+    STOREOBJECT_BUCKET: demo-shortening-url
+    FILE_SHARING_BUCKET: import
+    # An email names the api gateway in its link. Set CREDEBL_PLATFORM_URL
+    # to the public address of the api gateway on a public host.
+    PLATFORM_URL: ${CREDEBL_PLATFORM_URL:-http://credebl-api-gateway:5000}
+    PLATFORM_NAME: ${CREDEBL_PLATFORM_NAME:-CREDEBL}
+    DEEPLINK_DOMAIN: ${CREDEBL_DEEPLINK_DOMAIN:-}
+    # The mail provider of an offer by email comes from ../credebl/.env:
+    # EMAIL_PROVIDER and the values of that provider. No provider, no
+    # email offer.
+  volumes:
+    - credebl-files:/app/uploadedFiles
   networks:
     - vca
 
@@ -168,6 +184,10 @@ services:
     container_name: credebl-seed
     restart: "no"
     user: root
+    # The platform services run as the user 1001 of the images, so the
+    # initialisation gives them the file volume first. Then it runs the
+    # command of the image.
+    command: ["sh", "-c", "chown 1001:1001 /app/uploadedFiles && cd libs/prisma-service && npx prisma migrate deploy && npx prisma db seed"]
     environment:
       <<: *credebl-environment
       # The scripts of the release that load the country list and store
@@ -175,6 +195,7 @@ services:
       GEO_LOCATION_MASTER_DATA_IMPORT_SCRIPT: /prisma/scripts/geo_location_data_import.sh
       UPDATE_CLIENT_CREDENTIAL_SCRIPT: /prisma/scripts/update_client_credential_data.sh
     volumes:
+      - credebl-files:/app/uploadedFiles
       - ../credebl/credebl-master-table.json:/app/libs/prisma-service/prisma/data/credebl-master-table/credebl-master-table.json:ro
     depends_on:
       credebl-postgres:
@@ -370,3 +391,4 @@ volumes:
   credebl-db:
   credebl-cache:
   credebl-schemas:
+  credebl-files:

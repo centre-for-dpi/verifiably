@@ -263,6 +263,10 @@ func mountPages(mux *http.ServeMux, wr wiring) error {
 		// The same client sets the credential to present on the adapter.
 		opts.Presentation = backendv1connect.NewIssuerBackendServiceClient(httpClient, cfg.AdapterURL)
 	}
+	if opts.Connections == nil {
+		// The same client lists the DIDComm connections (ADR-059).
+		opts.Connections = backendv1connect.NewIssuerBackendServiceClient(httpClient, cfg.AdapterURL)
+	}
 	if opts.Trust == nil {
 		opts.Trust = func(url string) pages.Trust { return trustv1connect.NewTrustServiceClient(httpClient, url) }
 	}

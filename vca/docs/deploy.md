@@ -543,6 +543,25 @@ The rows without a credential stay as the release has them.
 The bootstrap run and the adapter sign in with the generated password.
 Set `VCA_BOOTSTRAP_ADMIN_PASSWORD` only to sign in with another password.
 
+### CREDEBL mail and files
+
+The CREDEBL platform mails an out of band offer with a QR code (ADR-059
+decision 6).
+Add `EMAIL_PROVIDER` and the values of that provider to `deploy/credebl/.env`.
+The provider is one of `resend`, `sendgrid`, `ses` and `smtp`.
+The SMTP provider reads `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER` and `SMTP_PASS`.
+Setup keeps every value that you add to a stack `.env`.
+Run setup again for each CREDEBL pair.
+It then sets `VCA_CREDEBL_MAIL_OFFERS`, and the issue page offers the email card.
+Without a provider the adapter lists no email channel.
+
+The platform keeps the invitation of each email, and the files of a bulk
+issuance, on the volume `credebl-files`.
+The initialisation gives that volume to the user of the platform images.
+The link of an email names the api gateway.
+Set `CREDEBL_PLATFORM_URL` to the public address of the gateway on a public host.
+`CREDEBL_PLATFORM_NAME` names the platform in the subject of the email.
+
 ### CREDEBL platform realm
 
 The CREDEBL platform signs its users in at its own realm, `credebl-platform`,

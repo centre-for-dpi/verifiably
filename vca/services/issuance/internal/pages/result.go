@@ -173,6 +173,12 @@ func (p *Pages) offerBlock(b *blocks, offer *issuancev1.Offer, schema, issuer st
 	if offer.GetPin() != "" {
 		lead = append(lead, msg.T("issuer.issue.result.pin.text"))
 	}
+	switch offer.GetChannel() {
+	case backendv1.Channel_CHANNEL_DIDCOMM_OOB:
+		lead = append(lead, msg.T("issuer.issue.result.didcomm"))
+	case backendv1.Channel_CHANNEL_EMAIL:
+		lead = append(lead, msg.T("issuer.issue.result.mailed"))
+	}
 	content := components.Join(body...)
 	if len(qrPart) > 0 {
 		// The QR code sits beside the codes and the links on a wide screen.

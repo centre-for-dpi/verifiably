@@ -71,6 +71,11 @@ service IssuerBackendService {
   // configurations of one schema. An adapter serves it only when it
   // lists FEATURE_HOLDER_SIGN_IN_SOURCE.
   rpc SetHolderSignInSource(SetHolderSignInSourceRequest) returns (SetHolderSignInSourceResponse);
+  // ListConnections returns the DIDComm connections of the issuer. An
+  // offer of CHANNEL_DIDCOMM_OOB can go to a wallet that connected
+  // before. An adapter serves it only when it lists
+  // PROTOCOL_DIDCOMM_ISSUE_V2.
+  rpc ListConnections(ListConnectionsRequest) returns (ListConnectionsResponse);
 }
 
 // HolderBackendService drives the wallet side of a DPG.
@@ -332,6 +337,45 @@ message GetCapabilitiesResponse {
   // ledgers and a W3C JSON-LD schema. The DPG keeps the schema. The
   // adapter issues in these formats only when formats lists them too.
   repeated vca.common.v1.Format schema_formats = 16;
+  // The formats each channel carries, for a channel that carries only
+  // some of formats. A channel that the list leaves out carries every
+  // format of formats.
+  repeated ChannelFormats channel_formats = 17;
+}
+
+// ChannelFormats names the formats one delivery channel carries.
+message ChannelFormats {
+  // The channel.
+  Channel channel = 1;
+  // The formats the channel carries.
+  repeated vca.common.v1.Format formats = 2;
+}
+
+// ListConnectionsRequest asks for one page of the DIDComm connections.
+message ListConnectionsRequest {
+  // The page to read.
+  vca.common.v1.Pagination page = 1;
+}
+
+// ListConnectionsResponse carries one page of DIDComm connections.
+message ListConnectionsResponse {
+  // The connections, newest first.
+  repeated DidcommConnection connections = 1;
+  // The paging state.
+  vca.common.v1.PageResult page = 2;
+}
+
+// DidcommConnection is one DIDComm connection between the issuer and a
+// wallet.
+message DidcommConnection {
+  // The id of the connection in the DPG.
+  string id = 1;
+  // The label the wallet gave itself.
+  string label = 2;
+  // The state of the connection, such as completed.
+  string state = 3;
+  // When the connection began.
+  google.protobuf.Timestamp created_at = 4;
 }
 
 // Ledger is one verifiable data registry a DPG writes schemas on.
@@ -504,6 +548,13 @@ message CreateOfferRequest {
   // authorization code flow of a server with an interactive
   // authorization endpoint. The DPG names the credential it asks for.
   bool require_presentation = 3;
+  // The address the DPG sends the offer to, for CHANNEL_EMAIL on an
+  // adapter that lists that channel. The DPG sends the message itself.
+  string email = 4;
+  // The DIDComm connection of the holder, for CHANNEL_DIDCOMM_OOB. The
+  // DPG then sends the offer over that connection. Empty makes an out of
+  // band invitation that carries the offer.
+  string connection_id = 5;
 }
 
 // CreateOfferResponse describes the credential offer.

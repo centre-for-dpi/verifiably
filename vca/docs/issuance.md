@@ -107,7 +107,9 @@ No claim reaches a URL.
 
 The delivery step offers the channels that the adapter of the pair
 lists. It also offers the document channel on every stack (ADR-043
-decision 2). The pages call `IssuanceService.Issue` in process. The
+decision 2). The adapter can limit a channel to some formats in
+`channel_formats`. Such a channel shows only for a schema with such a
+format (ADR-059 decision 2). The pages call `IssuanceService.Issue` in process. The
 call names the staff member in the `X-Vca-Actor` header. The proxy
 publishes no Connect service of the issuance service (ADR-047).
 
@@ -160,6 +162,25 @@ claims, and a purpose. The identity claim is one of the names that the
 stack accepts. A save calls `SetPresentationRequirement`, and "Stop the
 presentation" clears it. An issuer operator or admin can change it. The audit log records
 `issuance.SetPresentationRequirement`.
+
+### The DIDComm and email channels
+
+A stack that issues over DIDComm lists `CHANNEL_DIDCOMM_OOB` (ADR-059).
+The card "DIDComm invitation" makes an out of band invitation that a
+DIDComm wallet scans. A select lists the wallets that connected before,
+from `ListConnections`. With one picked, the stack sends the offer over
+that connection, and the result shows no QR code. The review names the
+connection or "A new invitation".
+
+A stack that mails its own offers lists `CHANNEL_EMAIL`. The card "Email
+from the stack" needs the address of the holder. The email claim of the
+credential fills it. The review names the address. The stack sends the
+message, and VCA sends none. On any other
+stack the email channel stays a pre-authorized offer that VCA mails.
+
+The service picks the format that the channel carries. It passes the
+configuration of that format, such as the credential definition of an
+AnonCreds schema. A DIDComm credential gets no status list entry.
 
 ### The identity QR channel
 
@@ -224,7 +245,8 @@ Digital Credentials API and the identity QR code.
 | `dc_api` | The same offer, which the browser hands to the wallet of the device. |
 | `pdf` | An A4 page with a QR code. |
 | `claim169_qr` | An A4 page with the identity QR code the stack signed. |
-| `email` | A message with a link to the page. |
+| `didcomm_oob` | A DIDComm invitation, or an offer over a connection. |
+| `email` | A message with a link to the page, or the email of the stack. |
 | `sms` | A short message with the link. |
 | `link` | The link alone. |
 

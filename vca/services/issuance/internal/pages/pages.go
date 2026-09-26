@@ -100,6 +100,10 @@ type Options struct {
 	// Identity reads and changes the issuer identity of the adapter. Nil
 	// shows the identity as kept by the stack.
 	Identity Identity
+	// Connections lists the DIDComm connections of the adapter, so a
+	// DIDComm offer can go to a wallet that connected before. Nil lists
+	// none.
+	Connections Connections
 	// Presentation reads and sets the credential a holder presents
 	// before the stack issues. Nil hides the card.
 	Presentation Presentation

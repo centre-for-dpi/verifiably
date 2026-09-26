@@ -330,6 +330,12 @@ const (
 	CredeblAdapterEmailEnv = "VCA_CREDEBL_EMAIL" //nolint:gosec // G101: this is a variable name, not a credential.
 	// CredeblAdapterPasswordEnv holds the password of the platform admin.
 	CredeblAdapterPasswordEnv = "VCA_CREDEBL_PASSWORD" //nolint:gosec // G101: this is a variable name, not a credential.
+	// CredeblMailOffersEnv turns the email channel of the adapter on
+	// (P6-C3).
+	CredeblMailOffersEnv = "VCA_CREDEBL_MAIL_OFFERS" //nolint:gosec // G101: this is a variable name, not a credential.
+	// credeblMailProviderEnv names the mail provider of the platform in
+	// the stack .env: resend, sendgrid, ses or smtp.
+	credeblMailProviderEnv = "EMAIL_PROVIDER"
 	// CredeblAdapterCryptoKeyEnv holds CRYPTO_PRIVATE_KEY of the stack.
 	CredeblAdapterCryptoKeyEnv = "VCA_CREDEBL_CRYPTO_KEY" //nolint:gosec // G101: this is a variable name, not a credential.
 )
@@ -352,6 +358,11 @@ func CredeblAdapterValues(p Pair, stack map[string]string) map[string]string {
 		if value := strings.TrimSpace(stack[from]); value != "" {
 			out[name] = value
 		}
+	}
+	// The platform mails an out of band offer through the provider that
+	// the operator names in the stack .env.
+	if strings.TrimSpace(stack[credeblMailProviderEnv]) != "" {
+		out[CredeblMailOffersEnv] = "true"
 	}
 	return out
 }

@@ -71,6 +71,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		InternalURL:  cfg.InternalURL,
 		DefaultPin:   cfg.DefaultPin,
 		Versions:     cfg.Versions(),
+		MailOffers:   cfg.MailOffers,
 	})
 	if err != nil {
 		return nil, err

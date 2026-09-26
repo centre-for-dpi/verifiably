@@ -104,7 +104,10 @@ type Delivery struct {
 	// The phone number in E.164 form for CHANNEL_SMS.
 	Phone string `protobuf:"bytes,3,opt,name=phone,proto3" json:"phone,omitempty"`
 	// The BCP 47 language tag of the message text.
-	Locale        string `protobuf:"bytes,4,opt,name=locale,proto3" json:"locale,omitempty"`
+	Locale string `protobuf:"bytes,4,opt,name=locale,proto3" json:"locale,omitempty"`
+	// The DIDComm connection of the holder for CHANNEL_DIDCOMM_OOB. Empty
+	// makes an out of band invitation.
+	ConnectionId  string `protobuf:"bytes,5,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -163,6 +166,13 @@ func (x *Delivery) GetPhone() string {
 func (x *Delivery) GetLocale() string {
 	if x != nil {
 		return x.Locale
+	}
+	return ""
+}
+
+func (x *Delivery) GetConnectionId() string {
+	if x != nil {
+		return x.ConnectionId
 	}
 	return ""
 }
@@ -1197,12 +1207,13 @@ var File_vca_issuance_v1_issuance_proto protoreflect.FileDescriptor
 
 const file_vca_issuance_v1_issuance_proto_rawDesc = "" +
 	"\n" +
-	"\x1evca/issuance/v1/issuance.proto\x12\x0fvca.issuance.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cvca/backend/v1/backend.proto\x1a\x1avca/common/v1/common.proto\"\x81\x01\n" +
+	"\x1evca/issuance/v1/issuance.proto\x12\x0fvca.issuance.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cvca/backend/v1/backend.proto\x1a\x1avca/common/v1/common.proto\"\xa6\x01\n" +
 	"\bDelivery\x121\n" +
 	"\achannel\x18\x01 \x01(\x0e2\x17.vca.backend.v1.ChannelR\achannel\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x12\x14\n" +
 	"\x05phone\x18\x03 \x01(\tR\x05phone\x12\x16\n" +
-	"\x06locale\x18\x04 \x01(\tR\x06locale\"\xe4\x04\n" +
+	"\x06locale\x18\x04 \x01(\tR\x06locale\x12#\n" +
+	"\rconnection_id\x18\x05 \x01(\tR\fconnectionId\"\xe4\x04\n" +
 	"\fIssueRequest\x12\x1b\n" +
 	"\tschema_id\x18\x01 \x01(\tR\bschemaId\x12%\n" +
 	"\x0eschema_version\x18\x02 \x01(\x05R\rschemaVersion\x12!\n" +

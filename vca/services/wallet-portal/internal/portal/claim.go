@@ -284,6 +284,8 @@ func (p *Portal) claimOffer(w http.ResponseWriter, r *http.Request) error {
 	case walletportalv1.Detected_KIND_CREDENTIAL:
 		http.Redirect(w, r, p.opts.Prefix+"/", http.StatusSeeOther)
 		return nil
+	case walletportalv1.Detected_KIND_DIDCOMM_INVITATION:
+		return p.invitationPage(w, r, found.GetInvitation())
 	}
 	return p.renderClaim(w, r, text, found.GetError().GetMessage())
 }
@@ -309,6 +311,8 @@ func (p *Portal) scan(w http.ResponseWriter, r *http.Request) error {
 	case walletportalv1.Detected_KIND_CREDENTIAL:
 		http.Redirect(w, r, p.opts.Prefix+"/", http.StatusSeeOther)
 		return nil
+	case walletportalv1.Detected_KIND_DIDCOMM_INVITATION:
+		return p.invitationPage(w, r, found.GetInvitation())
 	}
 	return p.renderClaim(w, r, text, found.GetError().GetMessage())
 }
@@ -346,6 +350,14 @@ func (p *Portal) scanRead(w http.ResponseWriter, r *http.Request) error {
 		next = p.opts.Prefix + "/present?id=" + url.QueryEscape(found.GetPresentationId()) + "#request"
 	case walletportalv1.Detected_KIND_CREDENTIAL:
 		next = p.opts.Prefix + "/"
+	case walletportalv1.Detected_KIND_DIDCOMM_INVITATION:
+		card := p.invitationCard(b, found.GetInvitation())
+		if b.err != nil {
+			return b.err
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, werr := w.Write([]byte(card))
+		return werr
 	default:
 		return say(found.GetError().GetMessage())
 	}

@@ -1,0 +1,36 @@
+{
+  "statusCode": 201,
+  "message": "Credential offer created successfully.",
+  "data": {
+    "invitationUrl": "http://credebl-agent.vca.internal:9001?oob=eyJAdHlwZSI6Imh0dHBzOi8vZGlkY29tbS5vcmcvb3V0LW9mLWJhbmQvMS4xL2ludml0YXRpb24iLCJAaWQiOiI1YjRhN2YxYy0yZDNlLTRmNjAtOGE5Yi0wYzFkMmUzZjRhNWIiLCJsYWJlbCI6IltvcmdhbmlzYXRpb25dIiwiYWNjZXB0IjpbImRpZGNvbW0vYWlwMSIsImRpZGNvbW0vYWlwMjtlbnY9cmZjMTkiXSwiaGFuZHNoYWtlX3Byb3RvY29scyI6WyJodHRwczovL2RpZGNvbW0ub3JnL2RpZGV4Y2hhbmdlLzEuMSIsImh0dHBzOi8vZGlkY29tbS5vcmcvY29ubmVjdGlvbnMvMS4wIl0sInNlcnZpY2VzIjpbImRpZDpwZWVyOjIuRXo2TFNxZEsyeWZWVWJrMXhtZkJ4Slo1VDVTZFJ0dDdlNERwUzFWWXFmTWtFQ1JrTS5WejZNa3dwQ2kzSHU2RVp0Y2JXVHJLNEdXRnh0Z2Y0WnZ5bkNqaEV0RnFHakJWNVhpLlNleUowSWpvaVpHMGlMQ0p6SWpvaWFIUjBjRG92TDJOeVpXUmxZbXd0WVdkbGJuUXVkbU5oTG1sdWRHVnlibUZzT2prd01ERWlMQ0p5SWpwYlhTd2lZU0k2V3lKa2FXUmpiMjF0TDJGcGNESWlMQ0prYVdSamIyMXRMMkZwY0RJN1pXNTJQWEptWXpFNUlsMTkiXSwicmVxdWVzdHN-YXR0YWNoIjpbeyJAaWQiOiI5YzhkN2U2Zi01YTRiLTRjM2QtOWUyZi0xYTBiOWM4ZDdlNmYiLCJtaW1lLXR5cGUiOiJhcHBsaWNhdGlvbi9qc29uIiwiZGF0YSI6eyJiYXNlNjQiOiJleUpBZEhsd1pTSTZJbWgwZEhCek9pOHZaR2xrWTI5dGJTNXZjbWN2YVhOemRXVXRZM0psWkdWdWRHbGhiQzh5TGpBdmIyWm1aWEl0WTNKbFpHVnVkR2xoYkNKOSJ9fV19",
+    "invitation": {
+      "@type": "https://didcomm.org/out-of-band/1.1/invitation",
+      "@id": "5b4a7f1c-2d3e-4f60-8a9b-0c1d2e3f4a5b",
+      "label": "[organisation]",
+      "accept": [
+        "didcomm/aip1",
+        "didcomm/aip2;env=rfc19"
+      ],
+      "handshake_protocols": [
+        "https://didcomm.org/didexchange/1.1",
+        "https://didcomm.org/connections/1.0"
+      ],
+      "services": [
+        "did:peer:2.Ez6LSqdK2yfVUbk1xmfBxJZ5T5SdRtt7e4DpS1VYqfMkECRkM.Vz6MkwpCi3Hu6EZtcbWTrK4GWFxtgf4ZvynCjhEtFqGjBV5Xi.SeyJ0IjoiZG0iLCJzIjoiaHR0cDovL2NyZWRlYmwtYWdlbnQudmNhLmludGVybmFsOjkwMDEiLCJyIjpbXSwiYSI6WyJkaWRjb21tL2FpcDIiLCJkaWRjb21tL2FpcDI7ZW52PXJmYzE5Il19"
+      ],
+      "requests~attach": [
+        {
+          "@id": "9c8d7e6f-5a4b-4c3d-9e2f-1a0b9c8d7e6f",
+          "mime-type": "application/json",
+          "data": {
+            "base64": "eyJAdHlwZSI6Imh0dHBzOi8vZGlkY29tbS5vcmcvaXNzdWUtY3JlZGVudGlhbC8yLjAvb2ZmZXItY3JlZGVudGlhbCJ9"
+          }
+        }
+      ]
+    },
+    "outOfBandRecordId": "f1e2d3c4-b5a6-4978-8a6b-5c4d3e2f1a0b",
+    "credentialExchangeRecordId": "0a1b2c3d-4e5f-4a6b-9c7d-8e9f0a1b2c3d",
+    "credentialRequestThId": "9c8d7e6f-5a4b-4c3d-9e2f-1a0b9c8d7e6f",
+    "invitationDid": "did:peer:2.Ez6LSqdK2yfVUbk1xmfBxJZ5T5SdRtt7e4DpS1VYqfMkECRkM"
+  }
+}

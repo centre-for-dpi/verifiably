@@ -44,6 +44,17 @@ const (
 	OfferCompleted Answer = "doc/offer-session-completed.json"
 	// OfferError is an issuance session the agent ended in error.
 	OfferError Answer = "doc/offer-session-error.json"
+	// Connections is the list of the DIDComm connections.
+	Connections Answer = "doc/connections.json"
+	// NoConnections makes the list of connections answer the status not
+	// found, as the platform does for an empty list.
+	NoConnections Answer = ""
+	// RecordOfferSent is a DIDComm exchange no wallet answered.
+	RecordOfferSent Answer = "doc/credential-record-offer-sent.json"
+	// RecordDone is a DIDComm exchange that issued.
+	RecordDone Answer = "doc/credential-record-done.json"
+	// RecordAbandoned is a DIDComm exchange the holder declined.
+	RecordAbandoned Answer = "doc/credential-record-abandoned.json"
 )
 
 // Server is a running fake CREDEBL platform.
@@ -64,6 +75,12 @@ type Server struct {
 	orgs Answer
 	// offer selects the answer of one issuance session.
 	offer Answer
+	// connections selects the listing of the DIDComm connections.
+	connections Answer
+	// record selects the answer of one DIDComm credential exchange.
+	record Answer
+	// queries records the query of every call by path.
+	queries map[string]string
 	// deleted holds the organisations the fake deleted.
 	deleted map[string]bool
 	// calls records the method and path of every call, in order.
@@ -78,14 +95,17 @@ type Server struct {
 // New starts a fake CREDEBL platform.
 func New(dir string) *Server {
 	f := &Server{
-		dir:       dir,
-		session:   SessionPending,
-		templates: Templates,
-		orgs:      OrgList,
-		offer:     OfferPending,
-		deleted:   map[string]bool{},
-		requests:  map[string][]byte{},
-		status:    map[string][]int{},
+		dir:         dir,
+		session:     SessionPending,
+		templates:   Templates,
+		orgs:        OrgList,
+		offer:       OfferPending,
+		connections: Connections,
+		record:      RecordOfferSent,
+		queries:     map[string]string{},
+		deleted:     map[string]bool{},
+		requests:    map[string][]byte{},
+		status:      map[string][]int{},
 	}
 	f.Server = httptest.NewServer(http.HandlerFunc(f.serve))
 	return f
@@ -126,6 +146,27 @@ func (f *Server) SetOfferSession(a Answer) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.offer = a
+}
+
+// SetConnections selects the listing of the DIDComm connections.
+func (f *Server) SetConnections(a Answer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.connections = a
+}
+
+// SetCredentialRecord selects the answer of one DIDComm exchange.
+func (f *Server) SetCredentialRecord(a Answer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.record = a
+}
+
+// Query returns the query of the last call to the path.
+func (f *Server) Query(path string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.queries[path]
 }
 
 // Calls returns the method and path of every call, in order.
@@ -182,9 +223,11 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	_ = ignored
 	f.mu.Lock()
 	f.requests[r.URL.Path] = body
+	f.queries[r.URL.Path] = r.URL.RawQuery
 	f.calls = append(f.calls, r.Method+" "+r.URL.Path)
 	forced := f.take(r.URL.Path)
 	session, templates, orgs, offer := f.session, f.templates, f.orgs, f.offer
+	connections, record := f.connections, f.record
 	if r.URL.Path == "/v1/auth/signin" {
 		f.signins++
 	}
@@ -194,6 +237,9 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := r.URL.Path
+	if f.serveDidcomm(w, r, connections, record) {
+		return
+	}
 	if f.serveOrgs(w, r, orgs) {
 		return
 	}
@@ -271,6 +317,36 @@ func (f *Server) serveOrgs(w http.ResponseWriter, r *http.Request, orgs Answer) 
 		f.sendStatus(w, http.StatusCreated, "doc/wallet-created.json")
 	case len(parts) == 5 && parts[3] == "agents" && parts[4] == "did" && r.Method == http.MethodPost:
 		f.sendStatus(w, http.StatusCreated, "doc/did-created.json")
+	default:
+		return false
+	}
+	return true
+}
+
+// serveDidcomm answers the DIDComm issuance calls of P6-C3 from the
+// answers written from the platform sources (testdata/doc). It reports
+// whether it answered.
+func (f *Server) serveDidcomm(w http.ResponseWriter, r *http.Request, connections, record Answer) bool {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 4 || parts[0] != "v1" || parts[1] != "orgs" {
+		return false
+	}
+	tail := strings.Join(parts[3:], "/")
+	switch {
+	case tail == "credentials/oob/offer" && r.Method == http.MethodPost:
+		f.sendStatus(w, http.StatusCreated, "doc/oob-offer-created.json")
+	case tail == "credentials/offer" && r.Method == http.MethodPost:
+		f.sendStatus(w, http.StatusCreated, "doc/connection-offer-created.json")
+	case tail == "credentials/oob/email" && r.Method == http.MethodPost:
+		f.sendStatus(w, http.StatusCreated, "doc/oob-email-sent.json")
+	case tail == "connections" && r.Method == http.MethodGet:
+		if connections == NoConnections {
+			http.NotFound(w, r)
+			return true
+		}
+		f.send(w, string(connections))
+	case len(parts) == 5 && parts[3] == "credentials" && r.Method == http.MethodGet:
+		f.send(w, string(record))
 	default:
 		return false
 	}

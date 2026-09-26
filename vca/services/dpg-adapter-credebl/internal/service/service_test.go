@@ -106,8 +106,10 @@ func TestGetCapabilitiesReportsTheDcqlSupport(t *testing.T) {
 	if !hasProtocol(msg.GetProtocols(), backendv1.Protocol_PROTOCOL_OID4VP_DCQL) {
 		t.Fatal("CREDEBL reads DCQL, which the answer must list")
 	}
-	if len(msg.GetChannels()) != 1 ||
-		msg.GetChannels()[0] != backendv1.Channel_CHANNEL_OID4VCI_PREAUTH {
+	// A pre-authorized code offer, and a DIDComm offer (P6-C3). The
+	// email channel needs a mail provider.
+	if len(msg.GetChannels()) != 2 || msg.GetChannels()[0] != backendv1.Channel_CHANNEL_OID4VCI_PREAUTH ||
+		msg.GetChannels()[1] != backendv1.Channel_CHANNEL_DIDCOMM_OOB {
 		t.Fatalf("channels = %v", msg.GetChannels())
 	}
 	if len(msg.GetRoles()) != 2 {

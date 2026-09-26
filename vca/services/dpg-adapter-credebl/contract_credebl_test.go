@@ -236,3 +236,36 @@ func TestContractOfferStateAndIssuedList(t *testing.T) {
 		t.Fatalf("ListIssuedCredentials: %v", listErr)
 	}
 }
+
+// TestContractDidcommOffers makes an out of band offer of the AnonCreds
+// credential definition that VCA_CREDEBL_CONTRACT_CRED_DEF names, reads
+// the state of its exchange, and lists the connections (P6-C3).
+func TestContractDidcommOffers(t *testing.T) {
+	a := newContractApp(t)
+	credDef := os.Getenv("VCA_CREDEBL_CONTRACT_CRED_DEF")
+	if credDef == "" {
+		t.Skip("set VCA_CREDEBL_CONTRACT_CRED_DEF to run the DIDComm offer contract test")
+	}
+	ctx := context.Background()
+	claims := os.Getenv("VCA_CREDEBL_CONTRACT_CRED_DEF_CLAIMS")
+	if claims == "" {
+		t.Skip("set VCA_CREDEBL_CONTRACT_CRED_DEF_CLAIMS to the claims of the credential definition as JSON")
+	}
+	offer, err := a.Service.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
+		Spec:    &backendv1.IssueSpec{ConfigurationId: credDef, Format: commonv1.Format_FORMAT_ANONCREDS, SubjectData: claims},
+		Channel: backendv1.Channel_CHANNEL_DIDCOMM_OOB,
+	}))
+	if err != nil {
+		t.Fatalf("CreateOffer: %v", err)
+	}
+	if !strings.Contains(offer.Msg.GetOfferUri(), "oob=") {
+		t.Fatalf("offer = %v", offer.Msg)
+	}
+	state, err := a.Service.GetIssuanceStatus(ctx, connect.NewRequest(&backendv1.GetIssuanceStatusRequest{OfferId: offer.Msg.GetOfferId()}))
+	if err != nil || state.Msg.GetState() != backendv1.GetIssuanceStatusResponse_STATE_PENDING {
+		t.Fatalf("state = %v, %v", state, err)
+	}
+	if _, err := a.Service.ListConnections(ctx, connect.NewRequest(&backendv1.ListConnectionsRequest{})); err != nil {
+		t.Fatalf("ListConnections: %v", err)
+	}
+}

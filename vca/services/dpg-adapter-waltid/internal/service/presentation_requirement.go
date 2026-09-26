@@ -41,3 +41,11 @@ func (s *Service) SetHolderSignInSource(
 ) (*connect.Response[backendv1.SetHolderSignInSourceResponse], error) {
 	return nil, unimplemented("this DPG issues no credential after a holder sign in without an offer")
 }
+
+// ListConnections is not available. walt.id speaks OID4VCI and OID4VP,
+// not DIDComm, so it keeps no connection.
+func (s *Service) ListConnections(
+	context.Context, *connect.Request[backendv1.ListConnectionsRequest],
+) (*connect.Response[backendv1.ListConnectionsResponse], error) {
+	return nil, unimplemented("this DPG speaks no DIDComm, so it keeps no connection")
+}

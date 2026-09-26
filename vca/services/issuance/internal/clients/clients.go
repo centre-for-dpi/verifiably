@@ -84,6 +84,24 @@ type Capabilities struct {
 	DpgVersion string
 	// Features are the optional RPCs the adapter implements.
 	Features []backendv1.Feature
+	// ChannelFormats names the formats of a channel that carries only
+	// some of Formats. A channel it leaves out carries every format.
+	ChannelFormats map[backendv1.Channel][]commonv1.Format
+}
+
+// Carries reports whether a channel carries a format. An unspecified
+// format always passes.
+func (c Capabilities) Carries(ch backendv1.Channel, f commonv1.Format) bool {
+	formats, ok := c.ChannelFormats[ch]
+	if !ok || f == commonv1.Format_FORMAT_UNSPECIFIED {
+		return true
+	}
+	for _, item := range formats {
+		if item == f {
+			return true
+		}
+	}
+	return false
 }
 
 // Has reports whether the adapter lists a feature.
@@ -178,6 +196,12 @@ func (c *CapabilityCache) Get(ctx context.Context) (Capabilities, error) {
 		Adapter:    resp.Msg.GetAdapter(),
 		DpgVersion: resp.Msg.GetDpgVersion(),
 		Features:   resp.Msg.GetFeatures(),
+	}
+	if list := resp.Msg.GetChannelFormats(); len(list) > 0 {
+		value.ChannelFormats = make(map[backendv1.Channel][]commonv1.Format, len(list))
+		for _, cf := range list {
+			value.ChannelFormats[cf.GetChannel()] = cf.GetFormats()
+		}
 	}
 	c.mu.Lock()
 	c.value, c.expires, c.loaded = value, c.now().Add(c.ttl), true

@@ -31,6 +31,9 @@ func (s *Service) GetIssuanceStatus(
 	if id == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the request needs the offer id"))
 	}
+	if record, ok := strings.CutPrefix(id, DidcommOfferPrefix); ok {
+		return s.didcommStatus(ctx, record)
+	}
 	session, err := s.client.OfferSession(ctx, id)
 	if err != nil {
 		return nil, failed("read the issuance session", err)

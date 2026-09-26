@@ -252,6 +252,21 @@ func label(claims map[string]string) string {
 	return strings.TrimSpace(claims[best])
 }
 
+// formatFor returns the format of a request on one channel of the
+// adapter: the requested one, or else the first format of the schema
+// that the adapter issues and the channel carries.
+func formatFor(requested commonv1.Format, schemaFormats []commonv1.Format, caps clients.Capabilities, carrier backendv1.Channel) commonv1.Format {
+	if requested != commonv1.Format_FORMAT_UNSPECIFIED {
+		return requested
+	}
+	for _, f := range schemaFormats {
+		if caps.SupportsFormat(f) && caps.Carries(carrier, f) {
+			return f
+		}
+	}
+	return formatOf(requested, schemaFormats, caps)
+}
+
 // formatOf reads the format of the request, of the schema, or of the
 // adapter, in that order.
 func formatOf(requested commonv1.Format, schemaFormats []commonv1.Format, caps clients.Capabilities) commonv1.Format {

@@ -56,6 +56,9 @@ type Options struct {
 	Versions map[string]string
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
+	// MailOffers reports that the stack names a mail provider, so the
+	// platform mails an out of band offer (CHANNEL_EMAIL).
+	MailOffers bool
 }
 
 // Service implements every vca.backend.v1 service of this adapter.
@@ -71,6 +74,7 @@ type Service struct {
 	pageSizeMax  int
 	versions     map[string]string
 	now          func() time.Time
+	mailOffers   bool
 
 	// ledgerMu guards ledgers, the ledgers of the capability answer.
 	ledgerMu sync.Mutex
@@ -106,6 +110,7 @@ func New(opts Options) (*Service, error) {
 		pageSizeMax:  opts.PageSizeMax,
 		versions:     opts.Versions,
 		now:          opts.Now,
+		mailOffers:   opts.MailOffers,
 	}, nil
 }
 
@@ -146,17 +151,23 @@ func (s *Service) GetCapabilities(
 		SchemaFormats: schemaFormats,
 		Adapter:       AdapterName,
 		DpgVersion:    s.dpgVersion,
+		// SD-JWT over OID4VCI, and AnonCreds and W3C JSON-LD over
+		// DIDComm (P6-C3). channel_formats names the formats of each
+		// channel.
 		Formats: []commonv1.Format{
 			commonv1.Format_FORMAT_DC_SD_JWT,
 			commonv1.Format_FORMAT_VC_SD_JWT,
+			commonv1.Format_FORMAT_ANONCREDS,
+			commonv1.Format_FORMAT_LDP_VC,
 		},
-		// CREDEBL builds a pre-authorized code offer only.
-		Channels: []backendv1.Channel{backendv1.Channel_CHANNEL_OID4VCI_PREAUTH},
-		Roles:    []commonv1.Role{commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_VERIFIER},
+		Channels:       s.channels(),
+		ChannelFormats: s.channelFormats(),
+		Roles:          []commonv1.Role{commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_VERIFIER},
 		Protocols: []backendv1.Protocol{
 			backendv1.Protocol_PROTOCOL_OID4VCI,
 			backendv1.Protocol_PROTOCOL_OID4VP,
 			backendv1.Protocol_PROTOCOL_OID4VP_DCQL,
+			backendv1.Protocol_PROTOCOL_DIDCOMM_ISSUE_V2,
 		},
 		// RegisterCredentialConfiguration writes a schema and a template
 		// to the platform. The organisations of the platform are the

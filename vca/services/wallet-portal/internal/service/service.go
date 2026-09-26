@@ -428,6 +428,14 @@ func (s *Service) read(ctx context.Context, text string) (*walletportalv1.Detect
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}
 		return &walletportalv1.Detected{Kind: walletportalv1.Detected_KIND_CREDENTIAL, OfferId: id}, nil
+	case detect.Invitation:
+		// A DIDComm wallet opens it; this wallet keeps nothing of it.
+		return &walletportalv1.Detected{
+			Kind: walletportalv1.Detected_KIND_DIDCOMM_INVITATION,
+			Invitation: &walletportalv1.DidcommInvitation{
+				Uri: got.Invitation.URI, Label: got.Invitation.Label, CarriesOffer: got.Invitation.CarriesOffer,
+			},
+		}, nil
 	}
 	return &walletportalv1.Detected{
 		Kind: walletportalv1.Detected_KIND_UNKNOWN,

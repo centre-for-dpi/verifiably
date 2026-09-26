@@ -31,6 +31,8 @@ const (
 	Request
 	// Credential is a credential in a supported format.
 	Credential
+	// Invitation is a DIDComm invitation, which a DIDComm wallet opens.
+	Invitation
 )
 
 // SchemeOffer is the URI scheme of an OID4VCI credential offer.
@@ -58,6 +60,8 @@ type Result struct {
 	Credential []byte
 	// Format is the wire format of Credential.
 	Format commonv1.Format
+	// Invitation holds the DIDComm invitation, when Kind is Invitation.
+	Invitation DidcommInvitation
 }
 
 // Offering is the content of a credential offer, as OID4VCI 1.0
@@ -92,6 +96,9 @@ func Text(raw string, limit int64) (Result, error) {
 		return r, nil
 	}
 	if r, ok := requestOf(text); ok {
+		return r, nil
+	}
+	if r, ok := invitationOf(text); ok {
 		return r, nil
 	}
 	if r, ok := credentialOf(text); ok {
@@ -221,6 +228,11 @@ func Explain(r Result) string {
 		return "This code asks you to show a credential. Read the list before you agree."
 	case Credential:
 		return "This text holds a credential. The wallet can store it."
+	case Invitation:
+		if r.Invitation.CarriesOffer {
+			return "This code is a DIDComm invitation with a credential offer. Open it in a DIDComm wallet."
+		}
+		return "This code is a DIDComm invitation. Open it in a DIDComm wallet."
 	case Unknown:
 		return "The wallet does not know this text. Scan the code again."
 	}

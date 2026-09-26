@@ -217,6 +217,8 @@ message Detected {
   string presentation_id = 4;
   // The error, when the text is not usable.
   vca.common.v1.Error error = 5;
+  // The DIDComm invitation, for KIND_DIDCOMM_INVITATION.
+  DidcommInvitation invitation = 6;
 
   // Kind names the type of a scanned text.
   enum Kind {
@@ -229,7 +231,19 @@ message Detected {
     KIND_CREDENTIAL = 3;
     // Text the wallet does not understand.
     KIND_UNKNOWN = 4;
+    // A DIDComm invitation, which a DIDComm wallet opens.
+    KIND_DIDCOMM_INVITATION = 5;
   }
+}
+
+// DidcommInvitation is what the wallet reads in a DIDComm invitation.
+message DidcommInvitation {
+  // The invitation as the holder scanned it.
+  string uri = 1;
+  // The name the issuer gave its agent.
+  string label = 2;
+  // True when the invitation carries a credential offer.
+  bool carries_offer = 3;
 }
 
 // OfferSummary is what the wallet shows before the citizen accepts.
