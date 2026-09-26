@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-057, one row per decision.
+ADR-058, one row per decision.
 
 The status values are:
 
@@ -622,12 +622,21 @@ A row that is not `Done` carries a note.
 | ADR-057 | 5 The SQL kind filters in the database | Done | `vca/services/data-source/internal/sqlsrc/sqlsrc.go` | `TestLookupSqlWrapsTheQuery` records the statement and its argument. |
 | ADR-057 | 6 Only a vouched claim names a source | Done | `vca/services/dpg-adapter-inji/internal/service/signin.go` | `TestHolderSignInSourceNeedsAVouchedClaim` pins it. The server checks the claim again at each claim. |
 
+## ADR-058: The CREDEBL platform runs on generated credentials, its own realm, and the webhook of its gateway
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-058 | 1 Setup writes the master table of the initialisation | Done | `vca/internal/cli/credebl_master.go`, `deploy/vca/dpg/credebl.yaml` | `TestNoUpstreamCredeblCredentialSurvives` pins it. |
+| ADR-058 | 2 The platform realm in the Keycloak of the stack | Done | `vca/internal/cli/credebl_realm.go`, `deploy/vca/dpg/credebl.yaml` | `TestSetupWritesTheCredeblPlatformRealm` pins it. |
+| ADR-058 | 3 The bootstrap run creates a missing platform realm | Done | `vca/internal/cli/credebl_realm.go` | `TestBootstrapCredeblCreatesThePlatformRealm` pins it. |
+| ADR-058 | 4 The shared agent sends its events to the gateway | Not started | | P6-C0c adds it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 264 |
-| Partial | 27 |
+| Done | 269 |
+| Partial | 25 |
 | Deferred | 3 |
-| Not started | 26 |
-| Total | 320 |
+| Not started | 27 |
+| Total | 324 |

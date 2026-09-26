@@ -100,6 +100,9 @@ func stackKeys(d configv1.Dpg) []stackKey {
 			{SharedAgentWalletKeyEnv, stackSecretLength},
 			{SharedAgentAPIKeyEnv, stackSecretLength},
 			{SchemaFileServerSecretEnv, stackSecretLength},
+			// The two clients of the platform realm (P6-C0b).
+			{CredeblAdminClientSecretEnv, stackSecretLength},
+			{CredeblManagementClientSecretEnv, stackSecretLength},
 		}
 	}
 	return nil

@@ -504,7 +504,7 @@ A later run keeps that time.
 |---|---|
 | `deploy/waltid/.env` | `WALTID_DB_PASSWORD` and the four `WALTID_WALLET_*` keys |
 | `deploy/inji/.env` | `INJI_DB_PASSWORD`, `INJI_CERTIFY_KEYSTORE_PASSWORD`, `INJI_ESIGNET_DB_PASSWORD`, `INJI_MIMOTO_DB_PASSWORD`, `INJI_MIMOTO_KEYSTORE_PASSWORD`, `INJI_VERIFY_DB_PASSWORD` |
-| `deploy/credebl/.env` | `CREDEBL_DB_PASSWORD`, `CRYPTO_PRIVATE_KEY`, `CREDEBL_PLATFORM_ADMIN_PASSWORD`, `PLATFORM_WALLET_PASSWORD`, `PLATFORM_SEED`, `CREDEBL_AGENT_WALLET_KEY`, `CREDEBL_AGENT_API_KEY`, `CREDEBL_SCHEMA_FILE_SERVER_SECRET`, `CREDEBL_SCHEMA_FILE_SERVER_TOKEN` |
+| `deploy/credebl/.env` | `CREDEBL_DB_PASSWORD`, `CRYPTO_PRIVATE_KEY`, `CREDEBL_PLATFORM_ADMIN_PASSWORD`, `PLATFORM_WALLET_PASSWORD`, `PLATFORM_SEED`, `CREDEBL_AGENT_WALLET_KEY`, `CREDEBL_AGENT_API_KEY`, `CREDEBL_SCHEMA_FILE_SERVER_SECRET`, `CREDEBL_ADMIN_KEYCLOAK_SECRET`, `CREDEBL_KEYCLOAK_MANAGEMENT_CLIENT_SECRET`, `CREDEBL_SCHEMA_FILE_SERVER_TOKEN` |
 | `deploy/credebl/credebl-master-table.json` | The master table of the CREDEBL initialisation, with the platform admin password of the `.env` |
 
 A database volume keeps the password of its first start.
@@ -534,6 +534,32 @@ So no deployment signs in with a published password.
 The rows without a credential stay as the release has them.
 The bootstrap run and the adapter sign in with the generated password.
 Set `VCA_BOOTSTRAP_ADMIN_PASSWORD` only to sign in with another password.
+
+### CREDEBL platform realm
+
+The CREDEBL platform signs its users in at its own realm, `credebl-platform`,
+in the Keycloak of the stack (ADR-058 decision 2).
+The realm has two confidential clients.
+The platform signs the platform admin in with `adminClient`.
+It manages users and the client of each organisation with `credeblClient`.
+Setup writes `deploy/keycloak-credebl/credebl-platform-realm.json` beside the
+realms of the VCA roles.
+The file names each client secret as a placeholder, such as
+`${CREDEBL_ADMIN_KEYCLOAK_SECRET}`.
+Keycloak fills the placeholders from its environment when it imports the realm.
+Setup generates both secrets into `deploy/credebl/.env`.
+The realms of the VCA roles stay as before, and no VCA service signs in at
+the platform realm.
+
+Keycloak imports a realm file only at its first start.
+So `vca dpg bootstrap credebl` creates the realm when the Keycloak of the stack
+lacks it.
+A later run sets the client secrets of the `.env` again.
+The run signs in with the administrator of `deploy/keycloak-credebl/.env`.
+It reaches that Keycloak on `127.0.0.1` and port 17180.
+Set `VCA_CREDEBL_KEYCLOAK_ADMIN_URL` to reach it on another address.
+The realm comes before the initialisation, because the initialisation makes
+the Keycloak user of the platform admin there.
 
 ### walt.id configuration
 

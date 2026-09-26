@@ -43,6 +43,17 @@ x-credebl-platform: &credebl-platform
     # The platform builds realm URLs as <domain>realms/<realm>, so the
     # domain ends with a slash.
     KEYCLOAK_DOMAIN: ${CREDEBL_KEYCLOAK_URL:-http://credebl-keycloak:8080/}
+    KEYCLOAK_ADMIN_URL: http://credebl-keycloak:8080
+    KEYCLOAK_MASTER_REALM: master
+    # The realm of the platform and its two clients. vca setup writes
+    # the realm beside the realms of the VCA roles, and the secrets into
+    # ../credebl/.env. The platform signs the platform admin in with the
+    # admin client and manages users with the management client.
+    KEYCLOAK_REALM: credebl-platform
+    KEYCLOAK_MANAGEMENT_CLIENT_ID: credeblClient
+    KEYCLOAK_MANAGEMENT_CLIENT_SECRET: ${CREDEBL_KEYCLOAK_MANAGEMENT_CLIENT_SECRET:?set by vca setup}
+    ADMIN_KEYCLOAK_ID: adminClient
+    ADMIN_KEYCLOAK_SECRET: ${CREDEBL_ADMIN_KEYCLOAK_SECRET:?set by vca setup}
     API_GATEWAY_PROTOCOL: http
     API_GATEWAY_HOST: 0.0.0.0
     API_GATEWAY_PORT: "5000"
@@ -83,9 +94,14 @@ services:
       # headers. Keycloak builds its URLs from them, so the login page
       # works behind TLS.
       KC_PROXY_HEADERS: xforwarded
+      # The realm of the platform names its client secrets as
+      # placeholders. Keycloak fills them from here at the import.
+      CREDEBL_KEYCLOAK_MANAGEMENT_CLIENT_SECRET: ${CREDEBL_KEYCLOAK_MANAGEMENT_CLIENT_SECRET:?set by vca setup}
+      CREDEBL_ADMIN_KEYCLOAK_SECRET: ${CREDEBL_ADMIN_KEYCLOAK_SECRET:?set by vca setup}
     volumes:
       # The stack directory holds one realm per role, vca-<role>-realm.json,
-      # which vca setup writes (ADR-035 decision 1). Keycloak imports every
+      # which vca setup writes (ADR-035 decision 1), and the realm of the
+      # platform, credebl-platform-realm.json. Keycloak imports every
       # JSON file of the directory at its first start and skips the .env.
       - ../keycloak-credebl:/opt/keycloak/data/import:ro
     ports:

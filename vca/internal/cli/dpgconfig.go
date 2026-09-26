@@ -434,10 +434,20 @@ func KeycloakFiles(p Pair, values, existing map[string]string, random io.Reader)
 	if err != nil {
 		return nil, err
 	}
-	return []File{
+	files := []File{
 		{Name: RealmFileOf(p), Data: append(realmBody, '\n'), Mode: 0o644},
 		{Name: KeycloakEnvFile(p.Dpg), Data: []byte(env), Mode: 0o600},
-	}, nil
+	}
+	if p.Dpg == configv1.Dpg_DPG_CREDEBL {
+		// The realm of the platform itself, with a placeholder of each
+		// client secret (P6-C0b). It is no realm of a VCA role.
+		platform, perr := CredeblPlatformRealmJSON(nil)
+		if perr != nil {
+			return nil, perr
+		}
+		files = append(files, File{Name: CredeblPlatformRealmFile, Data: append(platform, '\n'), Mode: 0o644})
+	}
+	return files, nil
 }
 
 // KeycloakEnv renders the .env of the Keycloak of one stack. The

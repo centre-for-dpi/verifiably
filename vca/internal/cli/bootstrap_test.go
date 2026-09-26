@@ -581,7 +581,21 @@ type credeblState struct {
 	// wallets holds the body of each shared agent wallet by
 	// organisation, with the same conflict rule.
 	wallets map[string]map[string]string
+	// The Keycloak of the stack: the password of the last token call,
+	// the body of the created platform realm, the number of creates, the
+	// bodies of the client updates, and every path the run called.
+	adminToken    string
+	realm         []byte
+	realmPosts    int
+	clientPuts    [][]byte
+	keycloakPaths []string
+	// onRealm runs when the run creates the platform realm.
+	onRealm func()
 }
+
+// credeblKeycloakAdminPassword is the administrator password of the
+// Keycloak .env of the tests.
+const credeblKeycloakAdminPassword = "the-generated-keycloak-password"
 
 // credeblPlatformOrgID is the id of the platform admin organisation of
 // the fake.
@@ -612,6 +626,11 @@ func fakeCredebl(t *testing.T, state *credeblState) *httptest.Server {
 	}
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if strings.HasPrefix(r.URL.Path, "/realms/") || strings.HasPrefix(r.URL.Path, "/admin/") {
+			state.keycloakPaths = append(state.keycloakPaths, r.URL.Path)
+			fakePlatformRealm(t, state, w, r)
+			return
+		}
 		switch {
 		case r.URL.Path == "/v1/auth/signin":
 			if err := json.NewDecoder(r.Body).Decode(&state.signin); err != nil {
@@ -658,6 +677,57 @@ func fakeCredebl(t *testing.T, state *credeblState) *httptest.Server {
 	}))
 }
 
+// fakePlatformRealm answers the calls of the bootstrap run at the
+// Keycloak of the stack: the token of the master realm, the platform
+// realm, and its clients.
+func fakePlatformRealm(t *testing.T, state *credeblState, w http.ResponseWriter, r *http.Request) {
+	t.Helper()
+	realmPath := "/admin/realms/" + CredeblPlatformRealm
+	switch {
+	case r.URL.Path == "/realms/master/protocol/openid-connect/token":
+		if err := r.ParseForm(); err != nil {
+			t.Errorf("parse the token form: %v", err)
+		}
+		state.adminToken = r.PostForm.Get("password")
+		anyval.DiscardWrite(io.WriteString(w, `{"access_token":"an-admin-token"}`))
+	case r.URL.Path == realmPath && r.Method == http.MethodGet:
+		if state.realm == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		anyval.DiscardWrite(w.Write(state.realm))
+	case r.URL.Path == "/admin/realms" && r.Method == http.MethodPost:
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read the realm: %v", err)
+		}
+		state.realm = body
+		state.realmPosts++
+		if state.onRealm != nil {
+			state.onRealm()
+		}
+		w.WriteHeader(http.StatusCreated)
+	case r.URL.Path == realmPath+"/clients" && r.Method == http.MethodGet:
+		id := r.URL.Query().Get("clientId")
+		anyval.DiscardWrite(io.WriteString(w, `[{"id":"uuid-`+id+`"}]`))
+	case strings.HasPrefix(r.URL.Path, realmPath+"/clients/uuid-") && r.Method == http.MethodPut:
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read the client: %v", err)
+		}
+		state.clientPuts = append(state.clientPuts, body)
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+// removeKeycloakEnv removes the Keycloak .env of the deploy root of a
+// run.
+func removeKeycloakEnv(opts BootstrapOptions) error {
+	return os.Remove(filepath.Join(filepath.Dir(opts.Dir), KeycloakEnvFile(configv1.Dpg_DPG_CREDEBL)))
+}
+
 // credeblAdmin is the platform admin that the setup of the tests names.
 const credeblAdmin = "platform.admin@registry.gov.test"
 
@@ -669,12 +739,21 @@ func credeblOptions(t *testing.T, base string, out io.Writer) BootstrapOptions {
 	root := t.TempDir()
 	deploy := filepath.Join(root, "deploy")
 	writeStackEnvAt(t, deploy, configv1.Dpg_DPG_CREDEBL, secretsTime, map[string]string{PlatformAdminEmailEnv: credeblAdmin})
+	keycloak := filepath.Join(deploy, KeycloakEnvFile(configv1.Dpg_DPG_CREDEBL))
+	if err := os.MkdirAll(filepath.Dir(keycloak), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	env := KeycloakAdminEnv + "=admin\n" + KeycloakAdminPasswordEnv + "=" + credeblKeycloakAdminPassword + "\n"
+	if err := os.WriteFile(keycloak, []byte(env), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	pair := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_CREDEBL}
 	return BootstrapOptions{
 		Pair: pair,
 		Dir:  OutputDir(deploy, pair),
 		Values: map[string]string{
 			"VCA_DPG_URL": base, "VCA_PUBLIC_URL": "https://issuer.example",
+			CredeblKeycloakURLSetting: base,
 		},
 		Out: out,
 		Run: func(context.Context, string, []string) error { return nil },
@@ -686,7 +765,12 @@ func credeblOptions(t *testing.T, base string, out io.Writer) BootstrapOptions {
 // decision 4).
 func TestBootstrapCredeblNeedsThePlatformAdmin(t *testing.T) {
 	var signedIn map[string]string
+	realm := &credeblState{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/realms/") || strings.HasPrefix(r.URL.Path, "/admin/") {
+			fakePlatformRealm(t, realm, w, r)
+			return
+		}
 		if r.URL.Path == "/v1/auth/signin" {
 			if err := json.NewDecoder(r.Body).Decode(&signedIn); err != nil {
 				t.Errorf("decode the sign in: %v", err)
@@ -739,7 +823,7 @@ func TestBootstrapCredeblNeedsThePlatformAdmin(t *testing.T) {
 	}
 	// The environment of the run still names another password.
 	named := opts
-	named.Values = map[string]string{"VCA_DPG_URL": server.URL, EnvBootstrapSecret: "an-operator-password"}
+	named.Values = map[string]string{"VCA_DPG_URL": server.URL, CredeblKeycloakURLSetting: server.URL, EnvBootstrapSecret: "an-operator-password"}
 	signedIn = nil
 	if _, berr := BootstrapCredebl(context.Background(), named); berr == nil {
 		t.Error("a refused sign in passed")

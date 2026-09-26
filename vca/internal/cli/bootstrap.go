@@ -361,10 +361,16 @@ func keycloakToken(ctx context.Context, opts BootstrapOptions, base string) (str
 		return "", fmt.Errorf("get an administrator token: set %s, or run vca setup so %s holds %s",
 			EnvBootstrapSecret, KeycloakEnvFile(opts.Pair.Dpg), KeycloakAdminPasswordEnv)
 	}
+	return keycloakAdminToken(ctx, opts.client(), base, opts.value(EnvBootstrapUser, keycloakAdminUser), password)
+}
+
+// keycloakAdminToken gets a token of an administrator of the master
+// realm with the password grant of admin-cli.
+func keycloakAdminToken(ctx context.Context, c *http.Client, base, user, password string) (string, error) {
 	form := url.Values{
 		"grant_type": {"password"},
 		"client_id":  {"admin-cli"},
-		"username":   {opts.value(EnvBootstrapUser, keycloakAdminUser)},
+		"username":   {user},
 		"password":   {password},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
@@ -373,7 +379,7 @@ func keycloakToken(ctx context.Context, opts BootstrapOptions, base string) (str
 		return "", fmt.Errorf("build the token request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	body, err := send(opts.client(), req)
+	body, err := send(c, req)
 	if err != nil {
 		return "", fmt.Errorf("get an administrator token: %w", err)
 	}
@@ -423,6 +429,11 @@ func BootstrapCredebl(ctx context.Context, opts BootstrapOptions) (BootstrapResu
 	}
 	if strings.TrimSpace(stack["CRYPTO_PRIVATE_KEY"]) == "" {
 		return result, fmt.Errorf("CREDEBL sign in: CRYPTO_PRIVATE_KEY is missing from %s; run vca setup", StackEnvFile(configv1.Dpg_DPG_CREDEBL))
+	}
+	// The initialisation makes the Keycloak user of the platform admin in
+	// the platform realm, so the realm comes first (P6-C0b).
+	if realmErr := ensureCredeblPlatformRealm(ctx, opts, stack, &result); realmErr != nil {
+		return result, realmErr
 	}
 	if initErr := initCredebl(ctx, opts, &result); initErr != nil {
 		return result, initErr

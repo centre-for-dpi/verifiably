@@ -127,6 +127,13 @@ script hands the plain text to Keycloak as it is. The mail key stays
 empty, and the user id is random. Setup writes the same password into
 `VCA_CREDEBL_PASSWORD` of each CREDEBL pair.
 
+**The platform has a realm of its own.** The platform signs the platform
+admin in at the realm `credebl-platform` of the Keycloak of the stack.
+It uses the password grant of the client `adminClient` there. Setup
+writes that realm with the client `credeblClient` for the management
+calls of the platform. The secrets of both clients live in the stack
+`.env`. The realms of the VCA roles stay as ADR-035 makes them.
+
 **The token comes back once and lasts.** The adapter caches the token
 until one minute before its end. A call that gets the status
 unauthorized signs in again once and then gives up.
