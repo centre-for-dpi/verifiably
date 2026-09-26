@@ -168,6 +168,25 @@ Facts the adapter relies on:
   fixture uses the OAuth fields `error` and `error_description`. The
   nightly contract run confirms it.
 
+## Mimoto 0.21.0, the backend of Inji Web 0.16.0
+
+The spike P6-I7a read these sources.
+
+- The wallet API and its session attributes:
+  https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/src/main/java/io/mosip/mimoto/controller/WalletsController.java
+- The held credentials, the PDF, the delete, and the download body:
+  https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/src/main/java/io/mosip/mimoto/controller/WalletCredentialsController.java,
+  https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/src/main/java/io/mosip/mimoto/dto/VerifiableCredentialRequestDTO.java,
+  and https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/src/main/java/io/mosip/mimoto/dto/mimoto/VerifiableCredentialResponseDTO.java
+- The presentation calls:
+  https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/src/main/java/io/mosip/mimoto/controller/WalletPresentationsController.java
+- The token login and its provider beans:
+  https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/src/main/java/io/mosip/mimoto/controller/TokenAuthController.java,
+  https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/src/main/java/io/mosip/mimoto/service/TokenServiceFactory.java,
+  and https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/src/main/java/io/mosip/mimoto/service/impl/GoogleTokenService.java
+- The session store, the Google registration, and the PIN rule:
+  https://raw.githubusercontent.com/mosip/mimoto/v0.21.0/src/main/resources/application-default.properties
+
 ## eSignet 1.5.1 as the authorization server and a login provider
 
 The eSignet facts steer `vca dpg bootstrap` and the authorization code

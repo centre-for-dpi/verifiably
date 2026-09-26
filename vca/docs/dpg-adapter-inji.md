@@ -334,6 +334,57 @@ The sample writes `Date Of Birth`, and the mapper knows
 `Date of Birth`. The adapter uses the mapper name, so the date gets the
 key 8.
 
+## The holder role through Mimoto
+
+Spike P6-I7a read the session model of Mimoto 0.21.0, the backend of
+Inji Web 0.16.0. This section records what it found and the decision
+that P6-I7b builds.
+
+### What Mimoto does
+
+| Topic | Mimoto 0.21.0 |
+| --- | --- |
+| Session | A servlet session in Redis (`spring.session.store-type=redis`), 30 minutes idle. Every wallet endpoint reads the user and the wallet key from it. |
+| Browser login | OAuth2 login with Google, then the session cookie. |
+| Login with a token | `POST /v1/mimoto/auth/{provider}/token-login` with `Authorization: Bearer` and an ID token. The provider is a bean of the code, `google` in this release. It checks the issuer of `google.issuer`, the client id of the Google registration, and the key set of `spring.security.oauth2.client.provider.google.jwk-set-uri`. The answer sets the session cookie. |
+| Wallet | `POST /wallets` makes a wallet with a PIN of six digits. `POST /wallets/{id}/unlock` puts the wallet key in the session. |
+| Held credentials | `GET /wallets/{id}/credentials` lists the issuer name, the type name, the logos, and the id. It returns no credential bytes. |
+| PDF | `GET /wallets/{id}/credentials/{credentialId}` with `Accept: application/pdf`. |
+| Delete | `DELETE /wallets/{id}/credentials/{credentialId}`. |
+| Present | `POST /wallets/{id}/presentations` with `authorizationRequestUrl`, then `GET .../{presentationId}/credentials`, then `PATCH .../{presentationId}` with `selectedCredentials`. |
+| Download | `POST /wallets/{id}/credentials` with an issuer of the Mimoto registry, a configuration id, and the `code`, `grantType`, `redirectUri`, and `codeVerifier` of an authorization code flow. The flow runs in the browser with the client of Mimoto and the Inji Web redirect page. |
+
+### Decision
+
+1. A server can drive Mimoto. The token login gives a session without
+   a browser, so the adapter drives the holder role server side. The
+   default of open question G.10 applies only to the download.
+2. `Register` logs in with the ID token of the holder login. The
+   wallet authentication service passes it on every login (ADR-020
+   decision 3). The adapter keeps the session cookie per wallet. It
+   makes one Mimoto wallet with a random PIN on the first login and
+   unlocks it in each session. The PIN stays in the adapter store with
+   mode 0600, like the walt.id wallet session.
+3. `ListCredentials`, `Present`, and `DeleteCredential` call Mimoto
+   with that session. A listed credential carries the names only,
+   because Mimoto returns no credential bytes.
+4. The PDF of Mimoto reaches the wallet portal through a holder RPC
+   for the document of a credential.
+5. `AcceptOffer` answers `unimplemented`. Mimoto downloads only through
+   an authorization code flow of its own client in the browser. The
+   VCA wallet links the holder to Inji Web for a claim, and the
+   credential then shows in the list.
+6. The operator points the token login of Mimoto at the identity
+   provider of the holder realm. Without that setting Mimoto refuses
+   the token, `Register` fails, and the wallet keeps the browser store.
+
+### What P6-I7b tests
+
+`TestRegisterCreatesMimotoWallet`, `TestListCredentials`,
+`TestAcceptOfferPointsAtInjiWeb`, `TestPresentThroughMimoto`,
+`TestDelete`, and `TestCapabilitiesListHolderRole`. The spike adds them
+as skipped tests.
+
 ## The paper document channel
 
 The `Issue` RPC returns the signed credential without a wallet. The
