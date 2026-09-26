@@ -282,7 +282,10 @@ Every run also writes `deploy/<dpg>/.env` for each of the three stacks.
 It holds the database and key store passwords of the stack file
 (ADR-055 decision 1). The CREDEBL file also holds the platform admin of
 `VCA_CREDEBL_PLATFORM_ADMIN_EMAIL`, and the generated
-`CRYPTO_PRIVATE_KEY`, `PLATFORM_WALLET_PASSWORD` and `PLATFORM_SEED`.
+`CRYPTO_PRIVATE_KEY`, `CREDEBL_PLATFORM_ADMIN_PASSWORD`,
+`PLATFORM_WALLET_PASSWORD` and `PLATFORM_SEED`. It holds the secrets of
+the two clients of the platform realm, `CREDEBL_ADMIN_KEYCLOAK_SECRET`
+and `CREDEBL_KEYCLOAK_MANAGEMENT_CLIENT_SECRET`.
 It holds the wallet key and the API key of the shared Credo agent,
 `CREDEBL_AGENT_WALLET_KEY` and `CREDEBL_AGENT_API_KEY`. It holds the
 secret of the schema file server, `CREDEBL_SCHEMA_FILE_SERVER_SECRET`.
@@ -407,14 +410,16 @@ vca dpg bootstrap <dpg> --role <role>
 ```
 
 The command calls the HTTP API of the DPG (ADR-008 decision 4).
-It writes into no DPG database and it restarts no container.
+It writes into no DPG database. Only the `credebl` run restarts a
+container: the shared agent and the adapter, after a new value of their
+`.env` files.
 A terminal run with no DPG name and no `--role` asks for both.
 
 | DPG | What the command does |
 |---|---|
 | `waltid` | Asks the walt.id adapter of the issuer pair for its identity. The adapter provisions a `did:web` of the host and a key, and keeps the key. |
 | `inji` | Creates or updates the realm of the role in Keycloak. An issuer or a holder pair with an eSignet authenticator then registers the VCA client in eSignet. The run adds no identity anywhere. |
-| `credebl` | Initialises the CREDEBL database once and signs in as the platform admin of setup. Creates the organisation of the deployment. Binds the shared agent and gives the organisation a wallet in it. |
+| `credebl` | Creates the platform realm when Keycloak lacks it. Initialises the CREDEBL database once and signs in as the platform admin of setup. Creates the organisation of the deployment. Binds the shared agent and gives the organisation a wallet in it. Points the webhook of the agent at the gateway and writes the organisation into the `.env` of the pair. |
 
 Each run checks first, so a second run changes nothing.
 The command reads the `.env` file of the pair.
@@ -476,7 +481,15 @@ token answers 401. The run then names `VCA_BOOTSTRAP_ESIGNET_TOKEN`.
 The `inji` run adds no identity anywhere. The people who claim a
 credential come from the systems of the operator (ADR-050).
 
-The `credebl` run starts with the database initialisation of the
+The `credebl` run starts with the realm `credebl-platform` of the
+platform in the Keycloak of the stack (ADR-058 decision 3). It creates
+the realm when Keycloak lacks it, with the client secrets of
+`deploy/credebl/.env`. A later run sets the client secrets again. It
+signs in with the administrator of `deploy/keycloak-credebl/.env` at
+`http://127.0.0.1:17180`. `VCA_CREDEBL_KEYCLOAK_ADMIN_URL` changes the
+address.
+
+The run then starts the database initialisation of the
 CREDEBL release (ADR-055 decision 4). The API gateway runs the
 migrations only. So the run starts the initialisation image of the
 release once with `docker compose run`, in the profile `credebl-init`.
@@ -489,9 +502,10 @@ A failed run writes no such file.
 
 The run then signs in as the platform admin. The name comes from
 `VCA_BOOTSTRAP_ADMIN_USER`, else from `PLATFORM_ADMIN_EMAIL`. The
-password comes from `VCA_BOOTSTRAP_ADMIN_PASSWORD` only. Set it to the
-password that the platform admin has in the Keycloak of CREDEBL. No
-default user and no default password exist. The run never signs in as
+password comes from `VCA_BOOTSTRAP_ADMIN_PASSWORD`, else from the
+generated `CREDEBL_PLATFORM_ADMIN_PASSWORD` of `deploy/credebl/.env`.
+The master table of the initialisation carries that password (ADR-058
+decision 1). No default user and no default password exist. The run never signs in as
 the administrator of the Keycloak of the stack. The platform decrypts
 the password of a sign in with `CRYPTO_PRIVATE_KEY`, so the run sends
 it encrypted with that key.
@@ -506,6 +520,15 @@ organisation of the deployment a wallet in the shared agent with
 `POST /v1/orgs/{org}/agents/wallet`. The platform answers a second
 binding and a second wallet with the status conflict. The run then
 reports each as present.
+
+The shared agent sends each event to the api gateway at
+`/wh/<organisation>`, with the id of `Platform-admin` (ADR-058
+decision 4). The run writes that address into `deploy/credebl/.env` as
+`CREDEBL_AGENT_WEBHOOK_URL`, with the id as `CREDEBL_PLATFORM_ORG_ID`.
+It writes the id of the organisation of the deployment into the `.env`
+of the pair as `VCA_CREDEBL_ORG_ID`. It then recreates the agent and the
+adapter of the pair with `docker compose up -d --no-deps`. A run that
+finds both values restarts nothing. A later setup run keeps them.
 
 Seven more variables steer the run:
 

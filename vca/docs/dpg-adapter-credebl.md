@@ -134,6 +134,13 @@ writes that realm with the client `credeblClient` for the management
 calls of the platform. The secrets of both clients live in the stack
 `.env`. The realms of the VCA roles stay as ADR-035 makes them.
 
+**The platform learns each exchange from the agent.** The shared agent
+posts each event to `/wh/<organisation>/<topic>` of the api gateway,
+with the organisation `Platform-admin`. The gateway finds the
+organisation of a tenant wallet from the context of the event. So the
+platform records the state of each DIDComm and OID4VC exchange of every
+organisation. `vca dpg bootstrap credebl` sets the address.
+
 **The token comes back once and lasts.** The adapter caches the token
 until one minute before its end. A call that gets the status
 unauthorized signs in again once and then gives up.

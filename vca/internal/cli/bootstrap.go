@@ -491,13 +491,31 @@ func BootstrapCredebl(ctx context.Context, opts BootstrapOptions) (BootstrapResu
 		org = credeblOrg{ID: made.Data.ID, Name: name}
 		result.step(opts.Out, "CREDEBL organisation created: %s", name)
 	}
-	if err := bindSharedAgent(ctx, opts, base, token, stack, &result); err != nil {
+	platform, err := bindSharedAgent(ctx, opts, base, token, stack, &result)
+	if err != nil {
 		return result, err
 	}
-	if err := createOrgWallet(ctx, opts, base, token, org, &result); err != nil {
+	if walletErr := createOrgWallet(ctx, opts, base, token, org, &result); walletErr != nil {
+		return result, walletErr
+	}
+	// The shared agent sends its events to the gateway, and the adapter
+	// works in the organisation of the deployment (ADR-058 decision 4).
+	var restart []string
+	webhook, err := pointAgentWebhook(opts, platform.ID, &result)
+	if err != nil {
 		return result, err
 	}
-	return result, nil
+	if webhook {
+		restart = append(restart, credeblAgentService)
+	}
+	adapter, err := setAdapterOrg(opts, org, &result)
+	if err != nil {
+		return result, err
+	}
+	if adapter {
+		restart = append(restart, opts.Pair.Name()+"-dpg-adapter-credebl")
+	}
+	return result, restartCredebl(ctx, opts, restart)
 }
 
 // doJSON sends one JSON request and returns the answer body.

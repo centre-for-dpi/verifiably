@@ -252,7 +252,8 @@ Setup writes the sign in of the CREDEBL adapter into the `.env` file of a
 CREDEBL pair from `deploy/credebl/.env`: `VCA_CREDEBL_EMAIL`,
 `VCA_CREDEBL_PASSWORD` and `VCA_CREDEBL_CRYPTO_KEY`.
 A `--set` value still wins.
-The adapter also needs `VCA_CREDEBL_ORG_ID`.
+`vca dpg bootstrap credebl` writes `VCA_CREDEBL_ORG_ID`, the organisation
+it makes for the deployment.
 
 Each role and DPG pair owns a block of one hundred host ports.
 The first block starts at 18000.
@@ -478,6 +479,12 @@ So the agent has the network alias `credebl-agent.vca.internal`.
 The agent reads its transports and Indy ledgers from `dpg/credebl-agent.json`.
 Its keys come from `deploy/credebl/.env`.
 Set `CREDEBL_AGENT_ENDPOINT` to the public address of its port 9001 on a public host.
+The agent sends each DIDComm and OID4VC event to the api gateway at
+`/wh/<organisation>`, with the organisation `Platform-admin`.
+The gateway finds the organisation of a tenant wallet from the event.
+`vca dpg bootstrap credebl` writes that address into `deploy/credebl/.env`
+and recreates the agent (ADR-058 decision 4).
+Before that run the agent sends no event.
 The host port is 17182, and `CREDEBL_AGENT_HOST_PORT` changes it.
 
 A VCA service never needs a DPG rebuild.
@@ -505,6 +512,7 @@ A later run keeps that time.
 | `deploy/waltid/.env` | `WALTID_DB_PASSWORD` and the four `WALTID_WALLET_*` keys |
 | `deploy/inji/.env` | `INJI_DB_PASSWORD`, `INJI_CERTIFY_KEYSTORE_PASSWORD`, `INJI_ESIGNET_DB_PASSWORD`, `INJI_MIMOTO_DB_PASSWORD`, `INJI_MIMOTO_KEYSTORE_PASSWORD`, `INJI_VERIFY_DB_PASSWORD` |
 | `deploy/credebl/.env` | `CREDEBL_DB_PASSWORD`, `CRYPTO_PRIVATE_KEY`, `CREDEBL_PLATFORM_ADMIN_PASSWORD`, `PLATFORM_WALLET_PASSWORD`, `PLATFORM_SEED`, `CREDEBL_AGENT_WALLET_KEY`, `CREDEBL_AGENT_API_KEY`, `CREDEBL_SCHEMA_FILE_SERVER_SECRET`, `CREDEBL_ADMIN_KEYCLOAK_SECRET`, `CREDEBL_KEYCLOAK_MANAGEMENT_CLIENT_SECRET`, `CREDEBL_SCHEMA_FILE_SERVER_TOKEN` |
+| `deploy/credebl/.env`, written by `vca dpg bootstrap credebl` | `CREDEBL_PLATFORM_ORG_ID` and `CREDEBL_AGENT_WEBHOOK_URL`, which a later setup run keeps |
 | `deploy/credebl/credebl-master-table.json` | The master table of the CREDEBL initialisation, with the platform admin password of the `.env` |
 
 A database volume keeps the password of its first start.

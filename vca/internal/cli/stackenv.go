@@ -119,6 +119,16 @@ func stackSettingNames(d configv1.Dpg) []string {
 	return nil
 }
 
+// stackBootstrapNames returns the values of a stack .env that the
+// bootstrap run writes, such as the webhook address of the shared agent
+// of CREDEBL (ADR-058 decision 4). Setup keeps them.
+func stackBootstrapNames(d configv1.Dpg) []string {
+	if d == configv1.Dpg_DPG_CREDEBL {
+		return []string{CredeblPlatformOrgIDEnv, CredeblAgentWebhookEnv}
+	}
+	return nil
+}
+
 // StackSettings returns the values of the operator that one pair puts in
 // the .env of its stack, keyed by DPG. A value the run left empty is
 // left out, so an earlier value stays.
@@ -200,6 +210,16 @@ func StackEnv(d configv1.Dpg, existing map[string]string, random io.Reader, now 
 			token = schemaFileServerToken(keys[SchemaFileServerSecretEnv], now)
 		}
 		b.WriteString(SchemaFileServerTokenEnv + "=" + quoteValue(token) + "\n")
+	}
+	var written []string
+	for _, name := range stackBootstrapNames(d) {
+		if value := existing[name]; value != "" {
+			written = append(written, name+"="+quoteValue(value)+"\n")
+		}
+	}
+	if len(written) > 0 {
+		b.WriteString("# The values that vca dpg bootstrap wrote. A later run keeps them.\n")
+		b.WriteString(strings.Join(written, ""))
 	}
 	var settings []string
 	for _, name := range stackSettingNames(d) {

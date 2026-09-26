@@ -629,14 +629,14 @@ A row that is not `Done` carries a note.
 | ADR-058 | 1 Setup writes the master table of the initialisation | Done | `vca/internal/cli/credebl_master.go`, `deploy/vca/dpg/credebl.yaml` | `TestNoUpstreamCredeblCredentialSurvives` pins it. |
 | ADR-058 | 2 The platform realm in the Keycloak of the stack | Done | `vca/internal/cli/credebl_realm.go`, `deploy/vca/dpg/credebl.yaml` | `TestSetupWritesTheCredeblPlatformRealm` pins it. |
 | ADR-058 | 3 The bootstrap run creates a missing platform realm | Done | `vca/internal/cli/credebl_realm.go` | `TestBootstrapCredeblCreatesThePlatformRealm` pins it. |
-| ADR-058 | 4 The shared agent sends its events to the gateway | Not started | | P6-C0c adds it. |
+| ADR-058 | 4 The shared agent sends its events to the gateway | Done | `vca/internal/cli/credebl_webhook.go`, `deploy/vca/dpg/credebl.yaml` | `TestBootstrapCredeblPointsTheAgentWebhook` pins it. |
 
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 269 |
+| Done | 270 |
 | Partial | 25 |
 | Deferred | 3 |
-| Not started | 27 |
+| Not started | 26 |
 | Total | 324 |

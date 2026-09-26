@@ -110,6 +110,11 @@ func quoteValue(v string) string {
 // to one value. It replaces the line that holds the variable, or it adds
 // the line at the end. The function is pure, so a test needs no file.
 func ApplyEnvLine(text, name, value string) string {
+	return ApplyEnvLineWith(text, name, value, "The vca images build command set this tag.")
+}
+
+// ApplyEnvLineWith is ApplyEnvLine with the comment of a new line.
+func ApplyEnvLineWith(text, name, value, comment string) string {
 	lines := strings.Split(text, "\n")
 	want := name + "="
 	found := false
@@ -128,18 +133,23 @@ func ApplyEnvLine(text, name, value string) string {
 	if !strings.HasSuffix(out, "\n") {
 		out += "\n"
 	}
-	return out + "\n# The vca images build command set this tag.\n" +
+	return out + "\n# " + comment + "\n" +
 		name + "=" + quoteValue(value) + "\n"
 }
 
 // SetEnvValue sets one variable in a dotenv file on the disk. The file
 // keeps mode 0600, because it holds secrets (ADR-007 decision 5).
 func SetEnvValue(path, name, value string) error {
+	return SetEnvValueWith(path, name, value, "The vca images build command set this tag.")
+}
+
+// SetEnvValueWith is SetEnvValue with the comment of a new line.
+func SetEnvValueWith(path, name, value, comment string) error {
 	data, err := os.ReadFile(path) // #nosec G304 -- the path comes from the pair name
 	if err != nil {
 		return fmt.Errorf("read %s: %w", path, err)
 	}
-	next := ApplyEnvLine(string(data), name, value)
+	next := ApplyEnvLineWith(string(data), name, value, comment)
 	if err := os.WriteFile(path, []byte(next), 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}

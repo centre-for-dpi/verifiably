@@ -177,8 +177,10 @@ func TestBootstrapCredeblCreatesThePlatformRealm(t *testing.T) {
 	var out bytes.Buffer
 	opts := credeblOptions(t, server.URL, &out)
 	var order []string
-	opts.Run = func(context.Context, string, []string) error {
-		order = append(order, "initialisation")
+	opts.Run = func(_ context.Context, _ string, args []string) error {
+		if slices.Contains(args, "run") {
+			order = append(order, "initialisation")
+		}
 		return nil
 	}
 	state.onRealm = func() { order = append(order, "realm") }

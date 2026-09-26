@@ -189,17 +189,17 @@ func credeblCreated(status int, answer []byte, action string) (bool, error) {
 // bindSharedAgent binds the shared agent of the stack file to the
 // platform admin organisation. A second run gets the status conflict and
 // reports the agent present.
-func bindSharedAgent(ctx context.Context, opts BootstrapOptions, base, token string, stack map[string]string, result *BootstrapResult) error {
+func bindSharedAgent(ctx context.Context, opts BootstrapOptions, base, token string, stack map[string]string, result *BootstrapResult) (credeblOrg, error) {
 	platform, err := findCredeblOrg(ctx, opts, base, token, PlatformOrgName)
 	if err != nil {
-		return err
+		return credeblOrg{}, err
 	}
 	if platform.ID == "" {
-		return fmt.Errorf("CREDEBL shared agent: the organisation %s is missing; the database initialisation makes it", PlatformOrgName)
+		return credeblOrg{}, fmt.Errorf("CREDEBL shared agent: the organisation %s is missing; the database initialisation makes it", PlatformOrgName)
 	}
 	key := strings.TrimSpace(stack[SharedAgentAPIKeyEnv])
 	if key == "" {
-		return fmt.Errorf("CREDEBL shared agent: %s is missing from %s; run vca setup", SharedAgentAPIKeyEnv, StackEnvFile(configv1.Dpg_DPG_CREDEBL))
+		return credeblOrg{}, fmt.Errorf("CREDEBL shared agent: %s is missing from %s; run vca setup", SharedAgentAPIKeyEnv, StackEnvFile(configv1.Dpg_DPG_CREDEBL))
 	}
 	body, err := json.Marshal(map[string]string{
 		"walletName":    credeblAgentWallet,
@@ -207,23 +207,23 @@ func bindSharedAgent(ctx context.Context, opts BootstrapOptions, base, token str
 		"apiKey":        key,
 	})
 	if err != nil {
-		return fmt.Errorf("build the agent request: %w", err)
+		return credeblOrg{}, fmt.Errorf("build the agent request: %w", err)
 	}
 	status, answer, err := doStatus(ctx, opts.client(), http.MethodPost,
 		base+"/v1/orgs/"+url.PathEscape(platform.ID)+"/agents/configure", token, body)
 	if err != nil {
-		return fmt.Errorf("CREDEBL shared agent: %w", err)
+		return credeblOrg{}, fmt.Errorf("CREDEBL shared agent: %w", err)
 	}
 	created, err := credeblCreated(status, answer, "CREDEBL shared agent")
 	if err != nil {
-		return err
+		return credeblOrg{}, err
 	}
 	if created {
 		result.step(opts.Out, "CREDEBL shared agent bound to %s", PlatformOrgName)
 	} else {
 		result.step(opts.Out, "CREDEBL shared agent present")
 	}
-	return nil
+	return platform, nil
 }
 
 // createOrgWallet gives one organisation a tenant wallet in the shared

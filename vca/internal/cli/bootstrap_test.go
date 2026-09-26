@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -748,6 +749,12 @@ func credeblOptions(t *testing.T, base string, out io.Writer) BootstrapOptions {
 		t.Fatal(err)
 	}
 	pair := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_CREDEBL}
+	if err := os.MkdirAll(OutputDir(deploy, pair), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(OutputDir(deploy, pair), EnvFileName), []byte("VCA_DPG_URL="+base+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	return BootstrapOptions{
 		Pair: pair,
 		Dir:  OutputDir(deploy, pair),
@@ -848,7 +855,10 @@ func TestBootstrapCredeblRunsTheSeedOnce(t *testing.T) {
 	opts := credeblOptions(t, server.URL, &out)
 	var runs [][]string
 	opts.Run = func(_ context.Context, name string, args []string) error {
-		runs = append(runs, append([]string{name}, args...))
+		// The restart after the webhook step is no seed.
+		if !slices.Contains(args, "up") {
+			runs = append(runs, append([]string{name}, args...))
+		}
 		return nil
 	}
 	if _, err := BootstrapCredebl(context.Background(), opts); err != nil {

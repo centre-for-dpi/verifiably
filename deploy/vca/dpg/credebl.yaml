@@ -351,6 +351,12 @@ services:
       # address of port 9001 on a public host.
       AFJ_REST_ENDPOINT: ${CREDEBL_AGENT_ENDPOINT:-http://credebl-agent.vca.internal:9001}
       AFJ_REST_SCHEMA_FILE_SERVER_URL: http://credebl-schema-file-server:4000/schemas/
+      # The agent posts each DIDComm and OID4VC event to
+      # /wh/<organisation>/<topic> of the api gateway, with the
+      # organisation of the platform admin. vca dpg bootstrap credebl
+      # writes the address into ../credebl/.env and restarts the agent.
+      # Before that run the agent sends no event.
+      AFJ_REST_WEBHOOK_URL: ${CREDEBL_AGENT_WEBHOOK_URL:-}
     volumes:
       - ./dpg/credebl-agent.json:/config/agent.json:ro
     ports:
