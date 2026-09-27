@@ -251,6 +251,8 @@ env file when its name starts with `VCA_`.
 Setup writes the sign in of the CREDEBL adapter into the `.env` file of a
 CREDEBL pair from `deploy/credebl/.env`: `VCA_CREDEBL_EMAIL`,
 `VCA_CREDEBL_PASSWORD` and `VCA_CREDEBL_CRYPTO_KEY`.
+A CREDEBL holder pair also gets `VCA_CREDEBL_AGENT_API_KEY` for its
+wallets (ADR-062).
 A `--set` value still wins.
 `vca dpg bootstrap credebl` writes `VCA_CREDEBL_ORG_ID`, the organisation
 it makes for the deployment.
