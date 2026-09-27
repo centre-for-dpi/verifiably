@@ -13,7 +13,11 @@ import (
 	"net/http"
 	"time"
 
+	"connectrpc.com/connect"
+
 	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
+	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
@@ -110,7 +114,11 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Role: commonv1.Role_ROLE_VERIFIER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.BaseURL,
 		SignOut: cfg.PortalPrefix + "/signout", Prober: deps.Prober, Client: &http.Client{Timeout: cfg.TrustTimeout}, Now: deps.Now,
 	})
-	pages, portalErr := portal.New(portal.Options{Client: svc, Prefix: cfg.PortalPrefix, Kit: kit, Shell: shell, SignOut: signOut})
+	stackClient := &http.Client{Timeout: cfg.TrustTimeout}
+	pages, portalErr := portal.New(portal.Options{Client: svc, Prefix: cfg.PortalPrefix, Kit: kit, Shell: shell, SignOut: signOut,
+		ProofSchemas: ProofSchemasOf(shell, func(adapterURL string) backendv1connect.VerifierBackendServiceClient {
+			return backendv1connect.NewVerifierBackendServiceClient(stackClient, adapterURL)
+		})})
 	guard, guardErr := staffsession.Build(cfg.Auth, staffsession.VerifierRealm(), config.Prefix, staffsession.Deps{
 		Keys: deps.SessionKeys, Now: deps.Now, Log: deps.Log, MaxFormBytes: portal.MaxFormBytes,
 	})
@@ -130,6 +138,47 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		"base_url", cfg.BaseURL, "trust_url", cfg.TrustURL, "portal", pages.Prefix(),
 		"crawl_interval", cfg.CrawlInterval.String(), "cache_ttl", cfg.CacheTTL.String())
 	return &App{Mux: mux, Service: svc, Crawler: crawler, Config: cfg}, nil
+}
+
+// proofSchemaPage is the page size the builder reads the AnonCreds
+// schemas of a stack with.
+const proofSchemaPage = 100
+
+// ProofSchemasOf returns the AnonCreds schemas of each live verifier
+// stack of the probe whose adapter lists FEATURE_ANONCREDS_PROOF
+// (ADR-061 decision 4). A stack that does not answer adds none.
+func ProofSchemasOf(shell *staffshell.Shell, client func(adapterURL string) backendv1connect.VerifierBackendServiceClient) func(context.Context) []portal.StackSchemas {
+	return func(ctx context.Context) []portal.StackSchemas {
+		if shell == nil {
+			return nil
+		}
+		f := shell.Frame(ctx)
+		var out []portal.StackSchemas
+		for _, st := range f.Live(commonv1.Role_ROLE_VERIFIER) {
+			adapter := st.Peer.Adapter()
+			if adapter == "" || !hasFeature(st.Capabilities.GetFeatures(), backendv1.Feature_FEATURE_ANONCREDS_PROOF) {
+				continue
+			}
+			resp, err := client(adapter).ListProofSchemas(ctx, connect.NewRequest(&backendv1.ListProofSchemasRequest{
+				Page: &commonv1.Pagination{PageSize: proofSchemaPage},
+			}))
+			if err != nil {
+				continue
+			}
+			out = append(out, portal.StackSchemas{Stack: f.Snapshot().StackName(st.Peer.Dpg), Schemas: resp.Msg.GetSchemas()})
+		}
+		return out
+	}
+}
+
+// hasFeature reports whether a feature list holds one feature.
+func hasFeature(list []backendv1.Feature, want backendv1.Feature) bool {
+	for _, f := range list {
+		if f == want {
+			return true
+		}
+	}
+	return false
 }
 
 // Crawl runs a crawl every CrawlInterval until ctx ends. A zero interval

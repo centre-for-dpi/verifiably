@@ -23,6 +23,9 @@
 //	GET  /dcql/                 the DCQL builder (dcql.go)
 //	POST /dcql/                 draw the preview again, or save the query
 //	POST /dcql/preview          the preview fragment for htmx
+//	GET  /anoncreds/            the AnonCreds proof request builder (anoncreds.go)
+//	POST /anoncreds/            draw the preview again, or save the query
+//	POST /anoncreds/preview     the preview fragment for htmx
 //	POST /signout               end the session at verifier-auth
 //
 // With a shell the pages sit in the verifier frame of
@@ -78,6 +81,10 @@ type Options struct {
 	Shell *staffshell.Shell
 	// SignOut ends the session. Nil answers the sign out form with 404.
 	SignOut http.Handler
+	// ProofSchemas reads the AnonCreds schemas of each live verifier
+	// stack that lists FEATURE_ANONCREDS_PROOF. Nil, or no such stack,
+	// hides the AnonCreds builder (ADR-061 decision 4).
+	ProofSchemas func(ctx context.Context) []StackSchemas
 }
 
 // Portal serves the verifier pages.
@@ -125,6 +132,9 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/dcql/{$}", p.handle(p.dcqlPage))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/dcql/{$}", p.handle(p.dcqlPage))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/dcql/preview", p.handle(p.dcqlPreview))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/anoncreds/{$}", p.handle(p.anonPage))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/anoncreds/{$}", p.handle(p.anonPage))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/anoncreds/preview", p.handle(p.anonPreviewPost))
 	if p.opts.SignOut != nil {
 		mux.Handle("POST "+p.opts.Prefix+"/signout", p.opts.SignOut)
 	}
@@ -555,8 +565,13 @@ func (p *Portal) templateDetail(w http.ResponseWriter, r *http.Request) error {
 	})
 	claims := p.claimsTable(b, t)
 	rules := rulesTable(b, t)
-	query := b.add("json", components.JSON{ID: "dcql", Summary: "DCQL query the wallet receives", Open: true, Data: rawJSON(t.GetDcql())})
-	exchange := p.presentationExchange(b, t)
+	var query, exchange template.HTML
+	if t.GetKind() == discoveryv1.TemplateKind_TEMPLATE_KIND_NATIVE {
+		query = p.anonCredsBlock(r.Context(), b, t)
+	} else {
+		query = b.add("json", components.JSON{ID: "dcql", Summary: "DCQL query the wallet receives", Open: true, Data: rawJSON(t.GetDcql())})
+		exchange = p.presentationExchange(b, t)
+	}
 	remove := b.add("button", components.Button{Text: "Delete template", Type: "submit", Variant: "danger"})
 	if b.err != nil {
 		return b.err

@@ -93,7 +93,7 @@ func (p *Portal) exchangeList(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	b := p.blocks()
-	parts := []template.HTML{p.peTabs(b), template.HTML(`<div class="form-actions">`) +
+	parts := []template.HTML{p.peTabs(r, b), template.HTML(`<div class="form-actions">`) +
 		b.add("button", components.Button{Text: msg.T("verifier.pe.new.label"), Href: p.pePath() + "new", Variant: "primary"}) +
 		template.HTML(`</div>`)}
 	if names, ok := p.needsPE(r); ok {
@@ -217,12 +217,9 @@ func paragraph(text string) template.HTML {
 	return template.HTML(`<p>` + template.HTMLEscapeString(text) + `</p>`) //nolint:gosec // the text is escaped
 }
 
-// peTabs renders the tabs between the two query languages.
-func (p *Portal) peTabs(b *blocks) template.HTML {
-	return b.add("tabs", components.Tabs{Label: msg.T("verifier.dcql.tabs.label"), Links: []components.Link{
-		{Href: p.dcqlPath(), Text: msg.T("verifier.dcql.tab.dcql.label")},
-		{Href: p.pePath(), Text: msg.T("verifier.dcql.tab.pe.label"), Current: true},
-	}})
+// peTabs renders the tabs between the query languages.
+func (p *Portal) peTabs(r *http.Request, b *blocks) template.HTML {
+	return p.queryTabs(r.Context(), b, "pe")
 }
 
 // peNew renders the editor of a new definition. ?from=<id> loads the PE
@@ -440,7 +437,7 @@ func (p *Portal) peEditor(w http.ResponseWriter, r *http.Request, st peState, ou
 	}
 	return p.render(w, r, "templates", components.Page{
 		Title: title, Lead: msg.T("verifier.pe.editor.lead"), Description: msg.T("verifier.pe.editor.lead"),
-		Content: components.Join(p.peTabs(b), form), Toasts: notice(r.URL.Query().Get("notice")),
+		Content: components.Join(p.peTabs(r, b), form), Toasts: notice(r.URL.Query().Get("notice")),
 	})
 }
 

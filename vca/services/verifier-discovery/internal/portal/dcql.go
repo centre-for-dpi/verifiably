@@ -244,10 +244,7 @@ func (p *Portal) dcqlPage(w http.ResponseWriter, r *http.Request) error {
 	}
 	b := p.blocks()
 	st.shown = st.pick
-	tabs := b.add("tabs", components.Tabs{Label: msg.T("verifier.dcql.tabs.label"), Links: []components.Link{
-		{Href: p.dcqlPath(), Text: msg.T("verifier.dcql.tab.dcql.label"), Current: true},
-		{Href: p.opts.Prefix + "/pe/", Text: msg.T("verifier.dcql.tab.pe.label")},
-	}})
+	tabs := p.queryTabs(r.Context(), b, "dcql")
 	query := p.queryCard(b, st, types.Msg.GetTypes())
 	claims := template.HTML(`<div id="dcql-claims">`) + p.claimsCard(b, st, fields) + template.HTML(`</div>`)
 	trust := p.trustCard(b, st)

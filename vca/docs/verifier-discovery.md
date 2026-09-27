@@ -91,7 +91,9 @@ the reader, the writer, and the rules of OpenID4VP 1.0.
 | `credential_sets` | Each option names a credential query id the query defines, each id once. |
 
 A template has a kind (ADR-042 decision 1). The service stores DCQL
-templates and PE templates. The native kind waits for its page.
+templates, PE templates, and native templates. A native template holds
+an AnonCreds proof request (ADR-061 decision 4). It has no DCQL form and
+no PE form.
 
 ## The DCQL builder
 
@@ -167,6 +169,27 @@ as a DCQL query. The editor
 of a saved query at `/discovery/pe/edit/{id}` saves a new version. Every
 action is a plain form post, so the editor works without JavaScript.
 
+## The AnonCreds proof request builder
+
+The page at `/discovery/anoncreds/` builds an AnonCreds proof request
+for a DIDComm wallet (ADR-061 decision 4). It shows only when a live
+verifier stack lists `FEATURE_ANONCREDS_PROOF`. The page then reads the
+AnonCreds schemas of each such stack through `ListProofSchemas`.
+
+Staff pick a schema and tick the attributes that the holder reveals. An
+attribute can take a predicate instead: an operator and a whole number.
+The holder then proves the comparison and keeps the value. A select
+limits the request to one credential definition of the schema. The
+trust rule asks the policy service to check the issuer against the
+trust list. The stack checks the proof itself.
+
+The preview shows the proof request of the AnonCreds specification that
+the wallet receives. It names each attribute group `attr1` and on, and
+each predicate `pred1` and on. The package `core/anoncreds` checks the
+request. An attribute appears once, because an agent refuses a name in
+both lists. `?from=<id>` opens a saved request, and a save stores its
+next version. The page works without JavaScript.
+
 ## Versions
 
 A template version never changes (ADR-022 decision 4).
@@ -194,7 +217,7 @@ structural WCAG 2.2 checks of `ui/a11ytest`.
 | `GET /portal/types` | The credential type list with the search box, the issuer filter, and the format filter. |
 | `GET /portal/fields` | The claims of one type. Each claim has a tick box. The form below them saves a template. |
 | `GET /portal/templates` | The template list. |
-| `GET /portal/templates/{id}` | One template with its claims, its DCQL query, the generated older definition, and the delete action. |
+| `GET /portal/templates/{id}` | One template with its claims, its DCQL query, the generated older definition, and the delete action. A native template shows its AnonCreds proof request instead. |
 | `GET /portal/dcql/` | The DCQL builder with the live query preview. |
 | `POST /portal/dcql/` | Draw the preview again, or save the query. |
 | `POST /portal/dcql/preview` | The preview fragment for htmx. |
@@ -203,6 +226,9 @@ structural WCAG 2.2 checks of `ui/a11ytest`.
 | `POST /portal/pe/new` | Import a file, check, convert, save as a PE query, or save as a DCQL query. |
 | `GET /portal/pe/edit/{id}` | The PE editor of a saved PE query. |
 | `POST /portal/pe/edit/{id}` | The same actions. Save stores a new version. |
+| `GET /portal/anoncreds/` | The AnonCreds proof request builder. `?schema=<id>` picks a schema, and `?from=<id>` opens a saved request. |
+| `POST /portal/anoncreds/` | Draw the preview again, or save the request. |
+| `POST /portal/anoncreds/preview` | The preview fragment for htmx. |
 | `POST /portal/signout` | The sign out form of the user menu. |
 
 A pair sets the prefix to `/discovery`. The pages then sit in the

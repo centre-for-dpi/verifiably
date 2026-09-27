@@ -17,6 +17,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anoncreds"
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/dcql"
 	"github.com/centre-for-dpi/vc-adapters/core/pex"
@@ -69,6 +70,9 @@ type Template struct {
 	// PresentationDefinition is the Presentation Exchange 2.0
 	// definition of a PE template, as a JSON string (ADR-042 decision 4).
 	PresentationDefinition string `json:"presentation_definition,omitempty"`
+	// AnonCreds is the AnonCreds proof request of a native template
+	// (ADR-061 decision 4).
+	AnonCreds *anoncreds.Request `json:"anoncreds,omitempty"`
 }
 
 // The kinds of a template.
@@ -165,8 +169,15 @@ func IDFrom(name string) string {
 // Build fills the DCQL of a template from its queries, or reads the DCQL
 // the caller sent. A PE template holds a definition instead: Build
 // validates it and fills the DCQL from it when the conversion loses
-// nothing. Build validates the result and the rules.
+// nothing. A native template holds an AnonCreds proof request. Build
+// validates the result and the rules.
 func Build(t Template) (Template, error) {
+	if t.Kind == KindNative {
+		return buildNative(t)
+	}
+	if t.AnonCreds != nil {
+		return Template{}, errors.New("template: only a native template holds an AnonCreds request")
+	}
 	if t.Kind == KindPE {
 		pe, err := buildPE(t)
 		if err != nil {
@@ -211,6 +222,65 @@ func Build(t Template) (Template, error) {
 	}
 	return t, nil
 }
+
+// buildNative validates the AnonCreds request of a native template. The
+// request takes the name of the template when it names none. The queries
+// name each schema with the attributes the request asks for. A native
+// template has no DCQL and no PE form, and no date rule, because the
+// request holds predicates of its own.
+func buildNative(t Template) (Template, error) {
+	if strings.TrimSpace(t.DisplayName) == "" {
+		return Template{}, errors.New("template: the display name is required")
+	}
+	if len(t.DisplayName) > MaxNameLength || len(t.Purpose) > MaxNameLength {
+		return Template{}, fmt.Errorf("template: the display name and the purpose hold at most %d characters", MaxNameLength)
+	}
+	if t.AnonCreds == nil {
+		return Template{}, errors.New("template: a native template needs an AnonCreds proof request")
+	}
+	if len(t.Predicates) > 0 {
+		return Template{}, errors.New("template: a native template holds its predicates in the AnonCreds request")
+	}
+	req := *t.AnonCreds
+	if strings.TrimSpace(req.Name) == "" {
+		req.Name = t.DisplayName
+	}
+	req = req.Normal()
+	if err := req.Check(); err != nil {
+		return Template{}, fmt.Errorf("template: %w", err)
+	}
+	t.AnonCreds, t.DCQL, t.PresentationDefinition = &req, "", ""
+	t.Queries = anonCredsQueries(req)
+	return t, nil
+}
+
+// anonCredsQueries returns one query per schema of an AnonCreds request,
+// with the attributes each schema answers. A part without a schema goes
+// to a query with no type.
+func anonCredsQueries(req anoncreds.Request) []Query {
+	var out []Query
+	index := map[string]int{}
+	add := func(schema string, names ...string) {
+		i, ok := index[schema]
+		if !ok {
+			i = len(out)
+			index[schema] = i
+			out = append(out, Query{QueryID: "anoncreds-" + strconv.Itoa(i+1), Type: schema, Format: FormatAnonCreds})
+		}
+		out[i].Claims = append(out[i].Claims, names...)
+	}
+	for _, a := range req.Attributes {
+		add(a.Restriction.SchemaID, a.Names...)
+	}
+	for _, p := range req.Predicates {
+		add(p.Restriction.SchemaID, p.Name)
+	}
+	return out
+}
+
+// FormatAnonCreds is the format word of the queries of a native
+// template.
+const FormatAnonCreds = "anoncreds"
 
 // buildPE validates the definition of a PE template and stores it in a
 // compact form. The name and the purpose of the definition fill empty
@@ -380,6 +450,9 @@ func QueriesOf(q dcql.Query) []Query {
 // definition of a template: the stored one of a PE template, or one
 // generated from the DCQL.
 func (t Template) PresentationExchange() ([]byte, error) {
+	if t.Kind == KindNative {
+		return nil, errors.New("template: an AnonCreds request has no PE form")
+	}
 	if t.Kind == KindPE {
 		return []byte(t.PresentationDefinition), nil
 	}
@@ -416,6 +489,10 @@ func FromProto(m *discoveryv1.PresentationTemplate) Template {
 		PolicySetID:            m.GetPolicySetId(),
 		PresentationDefinition: m.GetPresentationDefinition(),
 	}
+	if m.GetAnoncreds() != nil {
+		req := anoncreds.FromProto(m.GetAnoncreds())
+		t.AnonCreds = &req
+	}
 	for _, q := range m.GetQueries() {
 		item := Query{
 			QueryID: q.GetQueryId(), Type: q.GetType(), Format: formatName(q.GetFormat()),
@@ -442,6 +519,9 @@ func (t Template) ToProto() *discoveryv1.PresentationTemplate {
 		Purpose: t.Purpose, TenantId: t.TenantID, CreatedBy: t.CreatedBy, Kind: kindOf(t.Kind),
 		RequireTrustedIssuer: t.RequireTrustedIssuer, RequireStatus: t.RequireStatus, PolicySetId: t.PolicySetID,
 		PresentationDefinition: t.PresentationDefinition,
+	}
+	if t.AnonCreds != nil {
+		out.Anoncreds = t.AnonCreds.ToProto()
 	}
 	for _, p := range t.Predicates {
 		out.Predicates = append(out.Predicates, &discoveryv1.PresentationTemplate_ClaimPredicate{
@@ -537,6 +617,8 @@ func formatOf(name string) commonv1.Format {
 		return commonv1.Format_FORMAT_LDP_VC
 	case "mso_mdoc":
 		return commonv1.Format_FORMAT_MSO_MDOC
+	case FormatAnonCreds:
+		return commonv1.Format_FORMAT_ANONCREDS
 	}
 	return commonv1.Format_FORMAT_UNSPECIFIED
 }
@@ -554,6 +636,8 @@ func formatName(f commonv1.Format) string {
 		return "ldp_vc"
 	case commonv1.Format_FORMAT_MSO_MDOC:
 		return "mso_mdoc"
+	case commonv1.Format_FORMAT_ANONCREDS:
+		return FormatAnonCreds
 	}
 	return ""
 }
