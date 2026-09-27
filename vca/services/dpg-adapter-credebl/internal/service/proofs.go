@@ -4,9 +4,13 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +21,7 @@ import (
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/credebl"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
 // DIDComm proof requests (P6-C6, ADR-061). The platform asks a wallet
@@ -90,6 +95,11 @@ func parseAnonCreds(raw string) (anonCredsRequest, error) {
 		return req, err
 	}
 	req.Attributes = split
+	for _, name := range req.names() {
+		if err := askable(name); err != nil {
+			return req, err
+		}
+	}
 	for ref, p := range req.Predicates {
 		if strings.TrimSpace(p.Name) == "" || !predicateOps[p.Type] {
 			return req, fmt.Errorf("the predicate %q needs an attribute and one of >=, >, <=, <", ref)
@@ -108,6 +118,29 @@ func parseAnonCreds(raw string) (anonCredsRequest, error) {
 		req.Predicates = map[string]anonCredsPredicate{}
 	}
 	return req, nil
+}
+
+// askable refuses an attribute name that the platform drops from the
+// revealed values: it writes the source of each value under the names
+// schemaId, credDefId and certificateTemplate.
+func askable(name string) error {
+	if credebl.DroppedName(name) {
+		return fmt.Errorf("the platform drops an attribute named %q from the result; rename it in the schema", name)
+	}
+	return nil
+}
+
+// names returns the attribute names of the request: the attributes,
+// then the predicates, each in referent order.
+func (r anonCredsRequest) names() []string {
+	var out []string
+	for _, ref := range sortedKeys(r.Attributes) {
+		out = append(out, strings.TrimSpace(r.Attributes[ref].Name))
+	}
+	for _, ref := range sortedKeys(r.Predicates) {
+		out = append(out, strings.TrimSpace(r.Predicates[ref].Name))
+	}
+	return out
 }
 
 // oneNameEach turns each group of names into one referent per name,
@@ -181,56 +214,105 @@ func (r anonCredsRequest) attributes() []credebl.ProofAttribute {
 	return out
 }
 
-// proofRequestOf reads the proof request of a CreateRequest call.
-func proofRequestOf(msg *backendv1.CreateRequestRequest, connection bool) (credebl.ProofRequest, error) {
+// proofRequestOf reads the proof request of a CreateRequest call. It
+// returns the request and the record the adapter keeps of it.
+func proofRequestOf(msg *backendv1.CreateRequestRequest, connection bool) (credebl.ProofRequest, proofRecord, error) {
 	if raw := strings.TrimSpace(msg.GetAnoncredsRequest()); raw != "" {
 		req, err := parseAnonCreds(raw)
 		if err != nil {
-			return credebl.ProofRequest{}, err
+			return credebl.ProofRequest{}, proofRecord{}, err
 		}
 		out := credebl.ProofRequest{Type: credebl.ProofTypeIndy, Comment: proofComment}
+		record := proofRecord{Names: req.names()}
 		if connection {
 			out.Attributes = req.attributes()
-			return out, nil
+			return out, record, nil
 		}
 		// The request decoded from JSON, so it encodes again.
 		out.Indy = anyval.Must(json.Marshal(req))
-		return out, nil
+		return out, record, nil
 	}
 	if strings.TrimSpace(msg.GetPresentationDefinition()) == "" {
-		return credebl.ProofRequest{}, errors.New("a DIDComm proof request needs an AnonCreds request or a presentation definition")
+		return credebl.ProofRequest{}, proofRecord{}, errors.New("a DIDComm proof request needs an AnonCreds request or a presentation definition")
 	}
-	definition, err := platformDefinition(msg.GetPresentationDefinition())
+	definition, names, err := platformDefinition(msg.GetPresentationDefinition())
 	if err != nil {
-		return credebl.ProofRequest{}, err
+		return credebl.ProofRequest{}, proofRecord{}, err
 	}
-	return credebl.ProofRequest{Type: credebl.ProofTypePE, Definition: definition, Comment: proofComment}, nil
+	return credebl.ProofRequest{Type: credebl.ProofTypePE, Definition: definition, Comment: proofComment}, proofRecord{Names: names}, nil
+}
+
+// proofRecord is what the adapter keeps of a DIDComm proof request it
+// made, under the id of the proof exchange.
+type proofRecord struct {
+	// Names are the attribute names of the request, in request order.
+	// The result reads each value by its name.
+	Names []string `json:"names"`
+}
+
+// proofKey is the store key of the record of a proof exchange.
+func proofKey(id string) string {
+	sum := sha256.Sum256([]byte(id))
+	return "proof/" + hex.EncodeToString(sum[:])
+}
+
+// keepProof stores the record of a proof exchange.
+func (s *Service) keepProof(ctx context.Context, id string, rec proofRecord) error {
+	if err := s.store.Put(ctx, proofKey(id), anyval.Must(json.Marshal(rec))); err != nil {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("keep the record of the proof request: %w", err))
+	}
+	return nil
+}
+
+// proofOf reads the record of a proof exchange. A request that the
+// adapter did not record, such as one from before an upgrade, gives
+// false.
+func (s *Service) proofOf(ctx context.Context, id string) (proofRecord, bool, error) {
+	raw, err := s.store.Get(ctx, proofKey(id))
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return proofRecord{}, false, nil
+	case err != nil:
+		return proofRecord{}, false, connect.NewError(connect.CodeInternal, fmt.Errorf("read the record of the proof request: %w", err))
+	}
+	var rec proofRecord
+	if json.Unmarshal(raw, &rec) != nil {
+		return proofRecord{}, false, connect.NewError(connect.CodeInternal, errors.New("the record of the proof request is damaged"))
+	}
+	return rec, true, nil
 }
 
 // platformDefinition turns a Presentation Exchange definition into the
 // form the platform takes: each input descriptor names the schema of the
 // credential, which the adapter reads from the type filter of the
 // descriptor when it has none.
-func platformDefinition(raw string) (json.RawMessage, error) {
+func platformDefinition(raw string) (json.RawMessage, []string, error) {
 	var def map[string]any
 	if err := json.Unmarshal([]byte(raw), &def); err != nil {
-		return nil, fmt.Errorf("read the presentation definition: %w", err)
+		return nil, nil, fmt.Errorf("read the presentation definition: %w", err)
 	}
 	descriptors, ok := def["input_descriptors"].([]any)
 	if !ok || len(descriptors) == 0 {
-		return nil, errors.New("the presentation definition has no input descriptor")
+		return nil, nil, errors.New("the presentation definition has no input descriptor")
 	}
+	var names []string
 	for _, item := range descriptors {
 		d, isObject := item.(map[string]any)
 		if !isObject {
-			return nil, errors.New("an input descriptor is not an object")
+			return nil, nil, errors.New("an input descriptor is not an object")
+		}
+		for _, name := range claimNames(d) {
+			if err := askable(name); err != nil {
+				return nil, nil, err
+			}
+			names = append(names, name)
 		}
 		if _, has := d["schema"]; has {
 			continue
 		}
 		typ := descriptorType(d)
 		if typ == "" {
-			return nil, fmt.Errorf("the input descriptor %q names no credential type; add a filter on $.type", text(d["id"]))
+			return nil, nil, fmt.Errorf("the input descriptor %q names no credential type; add a filter on $.type", text(d["id"]))
 		}
 		d["schema"] = []map[string]string{{"uri": typ}}
 	}
@@ -240,7 +322,43 @@ func platformDefinition(raw string) (json.RawMessage, error) {
 			out[k] = v
 		}
 	}
-	return json.Marshal(out)
+	body, err := json.Marshal(out)
+	return body, names, err
+}
+
+// bracketName reads the name of a path in bracket form, such as
+// $.credentialSubject['fullName'], as the platform does.
+var bracketName = regexp.MustCompile(`\['(.*?)'\]`)
+
+// claimNames returns the attribute names that the fields of a
+// descriptor ask for, the way the platform reads a path: the name in
+// brackets, or the part after the last dot. A field on the type of the
+// credential names no attribute.
+func claimNames(d map[string]any) []string {
+	var out []string
+	constraints := anyval.As[map[string]any](d["constraints"])
+	for _, item := range anyval.As[[]any](constraints["fields"]) {
+		f := anyval.As[map[string]any](item)
+		for _, p := range anyval.As[[]any](f["path"]) {
+			path := text(p)
+			if typePath(path) {
+				continue
+			}
+			name := path[strings.LastIndex(path, ".")+1:]
+			if m := bracketName.FindStringSubmatch(path); m != nil {
+				name = m[1]
+			}
+			if name != "" && !slices.Contains(out, name) {
+				out = append(out, name)
+			}
+		}
+	}
+	return out
+}
+
+// typePath reports a path on the type of the credential.
+func typePath(path string) bool {
+	return path == "$.type" || path == "$.vc.type" || path == "$['type']"
 }
 
 // descriptorType returns the credential type a descriptor filters on: the
@@ -251,7 +369,7 @@ func descriptorType(d map[string]any) string {
 		f := anyval.As[map[string]any](item)
 		onType := false
 		for _, p := range anyval.As[[]any](f["path"]) {
-			if s := text(p); s == "$.type" || s == "$.vc.type" || s == "$['type']" {
+			if typePath(text(p)) {
 				onType = true
 			}
 		}
@@ -281,7 +399,7 @@ func text(v any) string {
 // invitation, or over the connection of the call.
 func (s *Service) didcommRequest(ctx context.Context, msg *backendv1.CreateRequestRequest) (*connect.Response[backendv1.CreateRequestResponse], error) {
 	connection := strings.TrimSpace(msg.GetConnectionId())
-	req, err := proofRequestOf(msg, connection != "")
+	req, kept, err := proofRequestOf(msg, connection != "")
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -290,11 +408,17 @@ func (s *Service) didcommRequest(ctx context.Context, msg *backendv1.CreateReque
 		if serr != nil {
 			return nil, failed("send the proof request over the connection", serr)
 		}
+		if kerr := s.keepProof(ctx, record.ID, kept); kerr != nil {
+			return nil, kerr
+		}
 		return connect.NewResponse(&backendv1.CreateRequestResponse{State: DidcommProofPrefix + record.ID}), nil
 	}
 	invitation, err := s.client.CreateOOBProof(ctx, req)
 	if err != nil {
 		return nil, failed("create the out of band proof request", err)
+	}
+	if err := s.keepProof(ctx, invitation.RecordID, kept); err != nil {
+		return nil, err
 	}
 	return connect.NewResponse(&backendv1.CreateRequestResponse{
 		RequestUri: invitation.InvitationURL, State: DidcommProofPrefix + invitation.RecordID,
@@ -331,7 +455,11 @@ func (s *Service) didcommResult(ctx context.Context, id string) (*connect.Respon
 	if record.IsVerified == nil || !*record.IsVerified {
 		return connect.NewResponse(rejected("the proof is not valid")), nil
 	}
-	revealed, err := s.client.VerifiedProof(ctx, id)
+	kept, _, err := s.proofOf(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	revealed, err := s.client.VerifiedProof(ctx, id, kept.Names)
 	if err != nil {
 		return nil, failed("read the revealed values", err)
 	}

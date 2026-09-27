@@ -46,13 +46,13 @@ func TestProofHelpers(t *testing.T) {
 	if _, twice := parseAnonCreds(`{"requested_attributes":{"a":{"names":["x"]},"a_1":{"name":"y"}}}`); twice == nil {
 		t.Error("a referent named twice passed")
 	}
-	if _, perr := proofRequestOf(&backendv1.CreateRequestRequest{AnoncredsRequest: `{"requested_predicates":{"p":{"name":"a","p_type":">","p_value":1}}}`}, false); perr != nil {
+	if _, _, perr := proofRequestOf(&backendv1.CreateRequestRequest{AnoncredsRequest: `{"requested_predicates":{"p":{"name":"a","p_type":">","p_value":1}}}`}, false); perr != nil {
 		t.Errorf("a request with a predicate alone: %v", perr)
 	}
-	if _, derr := platformDefinition(`{"id":"x","input_descriptors":[1]}`); derr == nil {
+	if _, _, derr := platformDefinition(`{"id":"x","input_descriptors":[1]}`); derr == nil {
 		t.Error("a descriptor that is no object passed")
 	}
-	def, err := platformDefinition(`{"id":"x","input_descriptors":[{"id":"a","schema":[{"uri":"u"}]},` +
+	def, _, err := platformDefinition(`{"id":"x","input_descriptors":[{"id":"a","schema":[{"uri":"u"}]},` +
 		`{"id":"b","constraints":{"fields":[{"path":["$.vc.type"],"filter":{"const":"T"}}]}}]}`)
 	if err != nil || string(def) != `{"id":"x","input_descriptors":[{"id":"a","schema":[{"uri":"u"}]},`+
 		`{"constraints":{"fields":[{"filter":{"const":"T"},"path":["$.vc.type"]}]},"id":"b","schema":[{"uri":"T"}]}]}` {

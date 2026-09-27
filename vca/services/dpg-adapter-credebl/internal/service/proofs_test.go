@@ -5,6 +5,7 @@ package service_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/fake"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/service"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
 // P6-C6: the platform asks for a proof over DIDComm: an AnonCreds proof
@@ -303,6 +305,85 @@ func TestProofRequestRefusesWhatItCannotAsk(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
+}
+
+// TestProofRequestRefusesNamesThePlatformDrops is finding 3.3 of the
+// CREDEBL review: the platform writes schemaId, credDefId and
+// certificateTemplate beside each value, so an attribute of such a name
+// never comes back. The adapter refuses to ask for it.
+func TestProofRequestRefusesNamesThePlatformDrops(t *testing.T) {
+	svc, _ := newService(t, nil)
+	for name, req := range map[string]*backendv1.CreateRequestRequest{
+		"anoncreds attribute": {AnoncredsRequest: `{"requested_attributes":{"a":{"name":"schemaId","restrictions":[{"cred_def_id":"` + proofCredDef + `"}]}}}`},
+		"anoncreds predicate": {AnoncredsRequest: `{"requested_predicates":{"p":{"name":"credDefId","p_type":">","p_value":1,"restrictions":[{"cred_def_id":"` + proofCredDef + `"}]}}}`},
+		"pe field": {Didcomm: true, PresentationDefinition: `{"id":"x","input_descriptors":[{"id":"a","constraints":{"fields":[` +
+			`{"path":["$.credentialSubject['certificateTemplate']"]},{"path":["$.type"],"filter":{"const":"T"}}]}}]}`},
+	} {
+		_, err := svc.CreateRequest(context.Background(), connect.NewRequest(req))
+		if connect.CodeOf(err) != connect.CodeInvalidArgument || !strings.Contains(err.Error(), "platform") {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// TestProofRequestKeepsTheNamesItAsks is finding 3.3 of the CREDEBL
+// review: the adapter keeps the names of each request it makes, so the
+// result reads each value by its name. A store that fails fails the
+// request.
+func TestProofRequestKeepsTheNamesItAsks(t *testing.T) {
+	kv := store.Memory()
+	svc, f := newService(t, func(o *service.Options) { o.Store = kv })
+	if _, err := svc.CreateRequest(context.Background(), connect.NewRequest(&backendv1.CreateRequestRequest{AnoncredsRequest: anonCredsRequest})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateRequest(context.Background(), connect.NewRequest(&backendv1.CreateRequestRequest{
+		Didcomm: true, PresentationDefinition: peDefinition, ConnectionId: holderConn,
+	})); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := kv.List(context.Background(), "proof/")
+	if err != nil || len(keys) != 2 {
+		t.Fatalf("keys = %v, %v", keys, err)
+	}
+	var names []string
+	for _, k := range keys {
+		raw, gerr := kv.Get(context.Background(), k)
+		if gerr != nil {
+			t.Fatal(gerr)
+		}
+		names = append(names, string(raw))
+	}
+	joined := strings.Join(names, " ")
+	if !strings.Contains(joined, `"fullName"`) || !strings.Contains(joined, `"acres"`) {
+		t.Errorf("records = %s", joined)
+	}
+	f.SetProof(fake.ProofDone)
+	if m := getResult(t, svc, oobProofID); len(m.GetPresented()) != 1 {
+		t.Errorf("result = %+v", m)
+	}
+	broken, bf := newService(t, func(o *service.Options) { o.Store = failingStore{store.Memory()} })
+	bf.SetProof(fake.ProofDone)
+	_, err = broken.CreateRequest(context.Background(), connect.NewRequest(&backendv1.CreateRequestRequest{AnoncredsRequest: anonCredsRequest}))
+	wantCode(t, err, connect.CodeInternal)
+	_, err = broken.GetResult(context.Background(), connect.NewRequest(&backendv1.GetResultRequest{State: service.DidcommProofPrefix + oobProofID}))
+	wantCode(t, err, connect.CodeInternal)
+}
+
+// failingStore is a store whose reads and writes of proof records fail.
+type failingStore struct{ store.KeyValue }
+
+func (f failingStore) Put(ctx context.Context, key string, value []byte) error {
+	if strings.HasPrefix(key, "proof/") {
+		return errors.New("disk full")
+	}
+	return f.KeyValue.Put(ctx, key, value)
+}
+
+func (f failingStore) Get(ctx context.Context, key string) ([]byte, error) {
+	if strings.HasPrefix(key, "proof/") {
+		return nil, errors.New("disk read failed")
+	}
+	return f.KeyValue.Get(ctx, key)
 }
 
 // getResult reads the result of one DIDComm proof request.

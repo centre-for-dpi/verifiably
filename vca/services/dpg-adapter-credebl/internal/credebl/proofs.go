@@ -240,9 +240,15 @@ type Revealed struct {
 // name the source of the value.
 var revealedKeys = map[string]bool{"schemaId": true, "credDefId": true, "certificateTemplate": true}
 
+// DroppedName reports an attribute name that the platform writes over
+// with the source of the value, so its value never comes back.
+func DroppedName(name string) bool { return revealedKeys[name] }
+
 // VerifiedProof reads the revealed values of a verified proof, in the
-// order of the request.
-func (c *Client) VerifiedProof(ctx context.Context, id string) ([]Revealed, error) {
+// order of the answer. It reads the member of each entry by the names
+// of the request. With no names it reads an entry only when one member
+// besides the source keys holds the value.
+func (c *Client) VerifiedProof(ctx context.Context, id string, names []string) ([]Revealed, error) {
 	if c == nil {
 		return nil, ErrNoPlatform
 	}
@@ -253,16 +259,39 @@ func (c *Client) VerifiedProof(ctx context.Context, id string) ([]Revealed, erro
 	var list []Revealed
 	for _, entry := range out.Data {
 		item := Revealed{SchemaID: text(entry["schemaId"]), CredDefID: text(entry["credDefId"])}
-		for k, v := range entry {
-			if !revealedKeys[k] {
-				item.Name, item.Value = k, text(v)
-			}
-		}
+		item.Name = memberOf(entry, names)
 		if item.Name != "" {
+			item.Value = text(entry[item.Name])
 			list = append(list, item)
 		}
 	}
 	return list, nil
+}
+
+// memberOf returns the member of an entry that holds the value: the
+// first requested name the entry has, or with no names the one member
+// besides the source keys. An entry with more such members and no
+// names gives none, so no value lands under another name.
+func memberOf(entry map[string]any, names []string) string {
+	if len(names) > 0 {
+		for _, n := range names {
+			if _, ok := entry[n]; ok && !revealedKeys[n] {
+				return n
+			}
+		}
+		return ""
+	}
+	found := ""
+	for k := range entry {
+		if revealedKeys[k] {
+			continue
+		}
+		if found != "" {
+			return ""
+		}
+		found = k
+	}
+	return found
 }
 
 // text returns a JSON value as text: a string as it is, null as empty,

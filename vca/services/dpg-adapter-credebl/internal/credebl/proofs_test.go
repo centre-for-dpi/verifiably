@@ -161,7 +161,7 @@ func TestProofRecordAndVerify(t *testing.T) {
 	if err != nil || after.State != ProofStateDone {
 		t.Fatalf("verify = %+v, %v", after, err)
 	}
-	values, err := c.VerifiedProof(ctx, "p-1")
+	values, err := c.VerifiedProof(ctx, "p-1", nil)
 	if err != nil || len(values) != 2 {
 		t.Fatalf("values = %+v, %v", values, err)
 	}
@@ -174,7 +174,7 @@ func TestProofRecordAndVerify(t *testing.T) {
 	if _, err := c.VerifyProof(ctx, "missing"); err == nil {
 		t.Error("a missing verify passed")
 	}
-	if _, err := c.VerifiedProof(ctx, "missing"); err == nil {
+	if _, err := c.VerifiedProof(ctx, "missing", nil); err == nil {
 		t.Error("missing values passed")
 	}
 }
@@ -184,12 +184,34 @@ func TestProofRecordAndVerify(t *testing.T) {
 func TestVerifiedProofReadsEachValue(t *testing.T) {
 	p := newProofServer(t)
 	p.answers["GET /v1/orgs/org-1/verified-proofs/p-odd"] = `{"data":[{"acres":12,"schemaId":null},{"schemaId":"s"},{"land":{"a":1}}]}`
-	values, err := p.client().VerifiedProof(context.Background(), "p-odd")
+	values, err := p.client().VerifiedProof(context.Background(), "p-odd", nil)
 	if err != nil || len(values) != 2 {
 		t.Fatalf("values = %+v, %v", values, err)
 	}
 	if values[0].Value != "12" || values[0].SchemaID != "" || values[1].Value != `{"a":1}` {
 		t.Errorf("values = %+v", values)
+	}
+}
+
+// TestVerifiedProofReadsTheRequestedNames is finding 3.3 of the CREDEBL
+// review: an entry with more than one member besides the source keys
+// gives the member of a requested name, never an arbitrary one. With no
+// names such an entry gives nothing.
+func TestVerifiedProofReadsTheRequestedNames(t *testing.T) {
+	p := newProofServer(t)
+	p.answers["GET /v1/orgs/org-1/verified-proofs/p-two"] = `{"data":[` +
+		`{"nickname":"x","fullName":"[holder]","credDefId":"c","schemaId":"s"},` +
+		`{"acres":">=10","credDefId":"c","schemaId":"s"}]}`
+	for range 5 {
+		values, err := p.client().VerifiedProof(context.Background(), "p-two", []string{"fullName", "acres"})
+		if err != nil || len(values) != 2 || values[0].Name != "fullName" || values[0].Value != "[holder]" ||
+			values[1].Name != "acres" || values[1].CredDefID != "c" {
+			t.Fatalf("values = %+v, %v", values, err)
+		}
+	}
+	values, err := p.client().VerifiedProof(context.Background(), "p-two", nil)
+	if err != nil || len(values) != 1 || values[0].Name != "acres" {
+		t.Fatalf("no names: %+v, %v", values, err)
 	}
 }
 
@@ -248,7 +270,7 @@ func TestProofCallsNeedAPlatform(t *testing.T) {
 	_, e2 := c.SendConnectionProof(ctx, "c", ProofRequest{})
 	_, e3 := c.ProofRecord(ctx, "p")
 	_, e4 := c.VerifyProof(ctx, "p")
-	_, e5 := c.VerifiedProof(ctx, "p")
+	_, e5 := c.VerifiedProof(ctx, "p", nil)
 	_, _, e6 := c.ProofRequests(ctx, 1, 1)
 	_, _, e7 := c.PlatformSchemas(ctx, 1, 1)
 	_, e8 := c.PlatformCredDefs(ctx)

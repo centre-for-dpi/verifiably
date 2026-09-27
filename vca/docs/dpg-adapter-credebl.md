@@ -297,6 +297,11 @@ the check call of the platform. The state of a request is
 
 **The platform verifies the proof, and VCA reads the values.** A proof
 in the state `done` with `isVerified` reads as accepted. The adapter
+keeps the attribute names of each request it makes, under the id of the
+proof exchange. It reads each value of the answer by one of those names.
+The platform writes `schemaId`, `credDefId` and `certificateTemplate`
+beside each value, so the adapter refuses to ask for an attribute of
+such a name. The adapter
 returns one JSON view per credential, with the revealed values under
 `credentialSubject`. A predicate reads as the operator and the number,
 such as `>=10`, and never as the value of the holder. The view carries
