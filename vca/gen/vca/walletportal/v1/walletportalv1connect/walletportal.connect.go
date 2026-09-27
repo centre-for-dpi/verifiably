@@ -84,6 +84,18 @@ const (
 	// WalletPortalServiceDocumentProcedure is the fully-qualified name of the WalletPortalService's
 	// Document RPC.
 	WalletPortalServiceDocumentProcedure = "/vca.walletportal.v1.WalletPortalService/Document"
+	// WalletPortalServiceAnswerInvitationProcedure is the fully-qualified name of the
+	// WalletPortalService's AnswerInvitation RPC.
+	WalletPortalServiceAnswerInvitationProcedure = "/vca.walletportal.v1.WalletPortalService/AnswerInvitation"
+	// WalletPortalServiceListInboxProcedure is the fully-qualified name of the WalletPortalService's
+	// ListInbox RPC.
+	WalletPortalServiceListInboxProcedure = "/vca.walletportal.v1.WalletPortalService/ListInbox"
+	// WalletPortalServiceAnswerInboxProcedure is the fully-qualified name of the WalletPortalService's
+	// AnswerInbox RPC.
+	WalletPortalServiceAnswerInboxProcedure = "/vca.walletportal.v1.WalletPortalService/AnswerInbox"
+	// WalletPortalServiceListConnectionsProcedure is the fully-qualified name of the
+	// WalletPortalService's ListConnections RPC.
+	WalletPortalServiceListConnectionsProcedure = "/vca.walletportal.v1.WalletPortalService/ListConnections"
 )
 
 // WalletPortalServiceClient is a client for the vca.walletportal.v1.WalletPortalService service.
@@ -127,6 +139,19 @@ type WalletPortalServiceClient interface {
 	// Document returns a printable document of one credential of the DPG
 	// wallet, when the adapter lists FEATURE_WALLET_DOCUMENT.
 	Document(context.Context, *connect.Request[v1.DocumentRequest]) (*connect.Response[v1.DocumentResponse], error)
+	// AnswerInvitation accepts or declines a DIDComm invitation that the
+	// citizen scanned or pasted. It works when the wallet of the stack
+	// speaks DIDComm (ADR-062). A decline sends nothing to the other
+	// party.
+	AnswerInvitation(context.Context, *connect.Request[v1.AnswerInvitationRequest]) (*connect.Response[v1.AnswerInvitationResponse], error)
+	// ListInbox returns the credential offers and the proof requests that
+	// came to the wallet over a DIDComm connection, newest first.
+	ListInbox(context.Context, *connect.Request[v1.ListInboxRequest]) (*connect.Response[v1.ListInboxResponse], error)
+	// AnswerInbox accepts one offer or one proof request of the inbox.
+	AnswerInbox(context.Context, *connect.Request[v1.AnswerInboxRequest]) (*connect.Response[v1.AnswerInboxResponse], error)
+	// ListConnections returns the DIDComm connections of the wallet,
+	// newest first.
+	ListConnections(context.Context, *connect.Request[v1.ListConnectionsRequest]) (*connect.Response[v1.ListConnectionsResponse], error)
 }
 
 // NewWalletPortalServiceClient constructs a client for the vca.walletportal.v1.WalletPortalService
@@ -230,6 +255,30 @@ func NewWalletPortalServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(walletPortalServiceMethods.ByName("Document")),
 			connect.WithClientOptions(opts...),
 		),
+		answerInvitation: connect.NewClient[v1.AnswerInvitationRequest, v1.AnswerInvitationResponse](
+			httpClient,
+			baseURL+WalletPortalServiceAnswerInvitationProcedure,
+			connect.WithSchema(walletPortalServiceMethods.ByName("AnswerInvitation")),
+			connect.WithClientOptions(opts...),
+		),
+		listInbox: connect.NewClient[v1.ListInboxRequest, v1.ListInboxResponse](
+			httpClient,
+			baseURL+WalletPortalServiceListInboxProcedure,
+			connect.WithSchema(walletPortalServiceMethods.ByName("ListInbox")),
+			connect.WithClientOptions(opts...),
+		),
+		answerInbox: connect.NewClient[v1.AnswerInboxRequest, v1.AnswerInboxResponse](
+			httpClient,
+			baseURL+WalletPortalServiceAnswerInboxProcedure,
+			connect.WithSchema(walletPortalServiceMethods.ByName("AnswerInbox")),
+			connect.WithClientOptions(opts...),
+		),
+		listConnections: connect.NewClient[v1.ListConnectionsRequest, v1.ListConnectionsResponse](
+			httpClient,
+			baseURL+WalletPortalServiceListConnectionsProcedure,
+			connect.WithSchema(walletPortalServiceMethods.ByName("ListConnections")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -250,6 +299,10 @@ type walletPortalServiceClient struct {
 	presentDecline    *connect.Client[v1.PresentDeclineRequest, v1.PresentDeclineResponse]
 	listPresentations *connect.Client[v1.ListPresentationsRequest, v1.ListPresentationsResponse]
 	document          *connect.Client[v1.DocumentRequest, v1.DocumentResponse]
+	answerInvitation  *connect.Client[v1.AnswerInvitationRequest, v1.AnswerInvitationResponse]
+	listInbox         *connect.Client[v1.ListInboxRequest, v1.ListInboxResponse]
+	answerInbox       *connect.Client[v1.AnswerInboxRequest, v1.AnswerInboxResponse]
+	listConnections   *connect.Client[v1.ListConnectionsRequest, v1.ListConnectionsResponse]
 }
 
 // ListDiscoverable calls vca.walletportal.v1.WalletPortalService.ListDiscoverable.
@@ -327,6 +380,26 @@ func (c *walletPortalServiceClient) Document(ctx context.Context, req *connect.R
 	return c.document.CallUnary(ctx, req)
 }
 
+// AnswerInvitation calls vca.walletportal.v1.WalletPortalService.AnswerInvitation.
+func (c *walletPortalServiceClient) AnswerInvitation(ctx context.Context, req *connect.Request[v1.AnswerInvitationRequest]) (*connect.Response[v1.AnswerInvitationResponse], error) {
+	return c.answerInvitation.CallUnary(ctx, req)
+}
+
+// ListInbox calls vca.walletportal.v1.WalletPortalService.ListInbox.
+func (c *walletPortalServiceClient) ListInbox(ctx context.Context, req *connect.Request[v1.ListInboxRequest]) (*connect.Response[v1.ListInboxResponse], error) {
+	return c.listInbox.CallUnary(ctx, req)
+}
+
+// AnswerInbox calls vca.walletportal.v1.WalletPortalService.AnswerInbox.
+func (c *walletPortalServiceClient) AnswerInbox(ctx context.Context, req *connect.Request[v1.AnswerInboxRequest]) (*connect.Response[v1.AnswerInboxResponse], error) {
+	return c.answerInbox.CallUnary(ctx, req)
+}
+
+// ListConnections calls vca.walletportal.v1.WalletPortalService.ListConnections.
+func (c *walletPortalServiceClient) ListConnections(ctx context.Context, req *connect.Request[v1.ListConnectionsRequest]) (*connect.Response[v1.ListConnectionsResponse], error) {
+	return c.listConnections.CallUnary(ctx, req)
+}
+
 // WalletPortalServiceHandler is an implementation of the vca.walletportal.v1.WalletPortalService
 // service.
 type WalletPortalServiceHandler interface {
@@ -369,6 +442,19 @@ type WalletPortalServiceHandler interface {
 	// Document returns a printable document of one credential of the DPG
 	// wallet, when the adapter lists FEATURE_WALLET_DOCUMENT.
 	Document(context.Context, *connect.Request[v1.DocumentRequest]) (*connect.Response[v1.DocumentResponse], error)
+	// AnswerInvitation accepts or declines a DIDComm invitation that the
+	// citizen scanned or pasted. It works when the wallet of the stack
+	// speaks DIDComm (ADR-062). A decline sends nothing to the other
+	// party.
+	AnswerInvitation(context.Context, *connect.Request[v1.AnswerInvitationRequest]) (*connect.Response[v1.AnswerInvitationResponse], error)
+	// ListInbox returns the credential offers and the proof requests that
+	// came to the wallet over a DIDComm connection, newest first.
+	ListInbox(context.Context, *connect.Request[v1.ListInboxRequest]) (*connect.Response[v1.ListInboxResponse], error)
+	// AnswerInbox accepts one offer or one proof request of the inbox.
+	AnswerInbox(context.Context, *connect.Request[v1.AnswerInboxRequest]) (*connect.Response[v1.AnswerInboxResponse], error)
+	// ListConnections returns the DIDComm connections of the wallet,
+	// newest first.
+	ListConnections(context.Context, *connect.Request[v1.ListConnectionsRequest]) (*connect.Response[v1.ListConnectionsResponse], error)
 }
 
 // NewWalletPortalServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -468,6 +554,30 @@ func NewWalletPortalServiceHandler(svc WalletPortalServiceHandler, opts ...conne
 		connect.WithSchema(walletPortalServiceMethods.ByName("Document")),
 		connect.WithHandlerOptions(opts...),
 	)
+	walletPortalServiceAnswerInvitationHandler := connect.NewUnaryHandler(
+		WalletPortalServiceAnswerInvitationProcedure,
+		svc.AnswerInvitation,
+		connect.WithSchema(walletPortalServiceMethods.ByName("AnswerInvitation")),
+		connect.WithHandlerOptions(opts...),
+	)
+	walletPortalServiceListInboxHandler := connect.NewUnaryHandler(
+		WalletPortalServiceListInboxProcedure,
+		svc.ListInbox,
+		connect.WithSchema(walletPortalServiceMethods.ByName("ListInbox")),
+		connect.WithHandlerOptions(opts...),
+	)
+	walletPortalServiceAnswerInboxHandler := connect.NewUnaryHandler(
+		WalletPortalServiceAnswerInboxProcedure,
+		svc.AnswerInbox,
+		connect.WithSchema(walletPortalServiceMethods.ByName("AnswerInbox")),
+		connect.WithHandlerOptions(opts...),
+	)
+	walletPortalServiceListConnectionsHandler := connect.NewUnaryHandler(
+		WalletPortalServiceListConnectionsProcedure,
+		svc.ListConnections,
+		connect.WithSchema(walletPortalServiceMethods.ByName("ListConnections")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.walletportal.v1.WalletPortalService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case WalletPortalServiceListDiscoverableProcedure:
@@ -500,6 +610,14 @@ func NewWalletPortalServiceHandler(svc WalletPortalServiceHandler, opts ...conne
 			walletPortalServiceListPresentationsHandler.ServeHTTP(w, r)
 		case WalletPortalServiceDocumentProcedure:
 			walletPortalServiceDocumentHandler.ServeHTTP(w, r)
+		case WalletPortalServiceAnswerInvitationProcedure:
+			walletPortalServiceAnswerInvitationHandler.ServeHTTP(w, r)
+		case WalletPortalServiceListInboxProcedure:
+			walletPortalServiceListInboxHandler.ServeHTTP(w, r)
+		case WalletPortalServiceAnswerInboxProcedure:
+			walletPortalServiceAnswerInboxHandler.ServeHTTP(w, r)
+		case WalletPortalServiceListConnectionsProcedure:
+			walletPortalServiceListConnectionsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -567,4 +685,20 @@ func (UnimplementedWalletPortalServiceHandler) ListPresentations(context.Context
 
 func (UnimplementedWalletPortalServiceHandler) Document(context.Context, *connect.Request[v1.DocumentRequest]) (*connect.Response[v1.DocumentResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.walletportal.v1.WalletPortalService.Document is not implemented"))
+}
+
+func (UnimplementedWalletPortalServiceHandler) AnswerInvitation(context.Context, *connect.Request[v1.AnswerInvitationRequest]) (*connect.Response[v1.AnswerInvitationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.walletportal.v1.WalletPortalService.AnswerInvitation is not implemented"))
+}
+
+func (UnimplementedWalletPortalServiceHandler) ListInbox(context.Context, *connect.Request[v1.ListInboxRequest]) (*connect.Response[v1.ListInboxResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.walletportal.v1.WalletPortalService.ListInbox is not implemented"))
+}
+
+func (UnimplementedWalletPortalServiceHandler) AnswerInbox(context.Context, *connect.Request[v1.AnswerInboxRequest]) (*connect.Response[v1.AnswerInboxResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.walletportal.v1.WalletPortalService.AnswerInbox is not implemented"))
+}
+
+func (UnimplementedWalletPortalServiceHandler) ListConnections(context.Context, *connect.Request[v1.ListConnectionsRequest]) (*connect.Response[v1.ListConnectionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.walletportal.v1.WalletPortalService.ListConnections is not implemented"))
 }

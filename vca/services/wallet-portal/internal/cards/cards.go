@@ -93,6 +93,7 @@ func (b *Builder) Card(ctx context.Context, held *backendv1.WalletCredential) *w
 		Claims:     map[string]string{},
 		Trust:      trustv1.TrustLookupResponse_OUTCOME_UNAVAILABLE,
 		Revocation: walletportalv1.Card_REVOCATION_STATE_UNKNOWN,
+		Permanent:  held.GetPermanent(),
 	}
 	if len(payload) == 0 && held.GetType() != "" {
 		// Some stack wallets list names only. The card names the type

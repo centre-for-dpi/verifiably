@@ -133,6 +133,11 @@ func (p *Portal) card(b *pen, card *walletportalv1.Card, index int) components.C
 	}
 	remove := b.form(p.opts.Prefix+"/delete", map[string]string{"id": card.GetId()},
 		components.Button{Text: "Remove from my wallet", Type: "submit", Variant: "danger"})
+	// The stack wallet cannot remove some credentials, such as an
+	// AnonCreds credential in a DIDComm wallet (ADR-062 decision 5).
+	if card.GetPermanent() {
+		remove = b.raw(`<p class="hint">` + template.HTMLEscapeString(msg.T("holder.card.permanent")) + `</p>`)
+	}
 	title := card.GetTitle()
 	if title == "" {
 		title = msg.T("holder.card.untitled.label")

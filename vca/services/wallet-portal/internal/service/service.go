@@ -59,6 +59,10 @@ type Options struct {
 	// the stack for what it holds and keeps the browser store beside it
 	// for what the holder loads here. Nil means false.
 	Hybrid func(ctx context.Context) bool
+	// Didcomm reports true when the wallet of the stack speaks DIDComm
+	// (FEATURE_WALLET_DIDCOMM, ADR-062). The wallet then keeps a scanned
+	// invitation until the citizen answers it. Nil means false.
+	Didcomm func(ctx context.Context) bool
 	// Catalogue reads the published credential types from the verifier
 	// discovery service. Nil, or a catalogue that does not answer, hands
 	// the pages to Fallback.
@@ -429,13 +433,14 @@ func (s *Service) read(ctx context.Context, text string) (*walletportalv1.Detect
 		}
 		return &walletportalv1.Detected{Kind: walletportalv1.Detected_KIND_CREDENTIAL, OfferId: id}, nil
 	case detect.Invitation:
-		// A DIDComm wallet opens it; this wallet keeps nothing of it.
-		return &walletportalv1.Detected{
-			Kind: walletportalv1.Detected_KIND_DIDCOMM_INVITATION,
-			Invitation: &walletportalv1.DidcommInvitation{
-				Uri: got.Invitation.URI, Label: got.Invitation.Label, CarriesOffer: got.Invitation.CarriesOffer,
-			},
-		}, nil
+		// A stack wallet that speaks DIDComm opens it after the citizen
+		// accepts. Any other wallet keeps nothing of it, and a DIDComm
+		// wallet opens it.
+		inv, ierr := s.invitationOf(ctx, citizen, id, got.Invitation)
+		if ierr != nil {
+			return nil, ierr
+		}
+		return &walletportalv1.Detected{Kind: walletportalv1.Detected_KIND_DIDCOMM_INVITATION, Invitation: inv}, nil
 	}
 	return &walletportalv1.Detected{
 		Kind: walletportalv1.Detected_KIND_UNKNOWN,

@@ -96,13 +96,15 @@ func Sections(role commonv1.Role) []Section {
 		}}}
 	case commonv1.Role_ROLE_HOLDER:
 		// Board Holder-Portal. The wallet portal serves every page. The
-		// keys page shows only when the wallet of the stack manages keys.
+		// connections page shows only when the wallet of the stack speaks
+		// DIDComm, and the keys page only when it manages DIDs.
 		return []Section{{Pages: []Page{
 			{Path: "/wallet/", Key: "holder.nav.credentials.label"},
 			{Path: "/wallet/discover", Key: "holder.nav.discover.label"},
 			{Path: "/wallet/claim", Key: "holder.nav.claim.label"},
 			{Path: "/wallet/present", Key: "holder.nav.present.label"},
-			{Path: "/wallet/keys", Key: "holder.nav.keys.label", Feature: backendv1.Feature_FEATURE_WALLET_KEYS},
+			{Path: "/wallet/connections", Key: "holder.nav.connections.label", Feature: backendv1.Feature_FEATURE_WALLET_DIDCOMM},
+			{Path: "/wallet/keys", Key: "holder.nav.keys.label", Feature: backendv1.Feature_FEATURE_WALLET_DIDS},
 			{Path: "/wallet/help", Key: "common.help.label"},
 		}}}
 	case commonv1.Role_ROLE_VERIFIER:

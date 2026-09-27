@@ -5,11 +5,13 @@ package app_test
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -588,5 +590,66 @@ func TestBuildGatesTheBrowserStoreOfAStackWallet(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusNotFound || a.Blobs == nil {
 		t.Fatalf("blobs = %d", resp.StatusCode)
+	}
+}
+
+// TestBuildOpensInvitationsWithADidcommStackWallet is ADR-062 decision
+// 4: the service keeps a scanned invitation for the answer of the
+// holder when the adapter of the own pair lists FEATURE_WALLET_DIDCOMM.
+func TestBuildOpensInvitationsWithADidcommStackWallet(t *testing.T) {
+	k := newKeys(t)
+	cfg := load(t, map[string]string{
+		"VCA_WALLET_PORTAL_AUTH_JWKS_FILE": k.file(t),
+		"VCA_WALLET_PORTAL_AUTH_JWKS_URL":  "http://credebl-auth:8083/.well-known/jwks.json",
+		"VCA_PEERS":                        "holder-credebl|https://holder-credebl.example|wallet-auth=http://credebl-auth:8083,wallet-portal=http://portal:8092",
+	})
+	a, err := app.Build(cfg, app.Deps{
+		Holder: fakeHolder{},
+		Snapshot: func(context.Context) topology.Snapshot {
+			return topology.Snapshot{Peers: []topology.Status{{Peer: cfg.Peers[0], State: topology.Live,
+				Capabilities: &backendv1.GetCapabilitiesResponse{DpgInfo: &backendv1.DpgInfo{DisplayName: "CREDEBL"},
+					Features: []backendv1.Feature{backendv1.Feature_FEATURE_WALLET_DIDCOMM}}}}}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(a.Mux)
+	defer srv.Close()
+	get := func(path string) string {
+		req, rerr := http.NewRequest(http.MethodGet, srv.URL+path, nil)
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		req.AddCookie(&http.Cookie{Name: session.CookieName, Value: k.token(t)})
+		resp, derr := http.DefaultClient.Do(req)
+		if derr != nil {
+			t.Fatal(derr)
+		}
+		raw, rerr := io.ReadAll(resp.Body)
+		if cerr := resp.Body.Close(); cerr != nil || rerr != nil {
+			t.Fatal(rerr, cerr)
+		}
+		return string(raw)
+	}
+	home := get("/wallet/claim")
+	invitation := "https://agent.example?oob=" + base64.RawURLEncoding.EncodeToString([]byte(`{"@type":"https://didcomm.org/out-of-band/1.1/invitation","label":"Farm board"}`))
+	form := url.Values{"csrf_token": {between(home, `name="csrf_token" value="`, `"`)}, "text": {invitation}}
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/wallet/scan", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: session.CookieName, Value: k.token(t)})
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := io.ReadAll(resp.Body)
+	if cerr := resp.Body.Close(); cerr != nil || err != nil {
+		t.Fatal(err, cerr)
+	}
+	if !strings.Contains(string(raw), `name="invitation_id"`) || !strings.Contains(string(raw), "Invitation from Farm board") {
+		t.Fatalf("the scan keeps no invitation: %s", raw)
 	}
 }

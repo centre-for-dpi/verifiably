@@ -13,16 +13,21 @@ import (
 )
 
 // A DIDComm invitation (P6-C3). An issuer that issues over DIDComm shows
-// an out of band invitation. This wallet claims OID4VCI offers, so the
-// page names the invitation and points the holder at a DIDComm wallet.
+// an out of band invitation. A wallet whose stack speaks no DIDComm
+// names the invitation and points the holder at a DIDComm wallet. A
+// stack wallet that speaks DIDComm shows what the invitation carries and
+// asks the holder first (P6-C7, ADR-062 decision 4).
 
 // invitationPage renders the page of one DIDComm invitation.
 func (p *Portal) invitationPage(w http.ResponseWriter, r *http.Request, inv *walletportalv1.DidcommInvitation) error {
 	b := p.pen(r)
 	card := p.invitationCard(b, inv)
+	lead := msg.T("holder.invitation.lead")
+	if inv.GetInvitationId() != "" {
+		lead = msg.T("holder.didcomm.invitation.lead")
+	}
 	return p.render(w, r, b, components.Page{
-		Title: msg.T("holder.invitation.title.label"), Lead: msg.T("holder.invitation.lead"),
-		Description: msg.T("holder.invitation.lead"), Content: card,
+		Title: msg.T("holder.invitation.title.label"), Lead: lead, Description: lead, Content: card,
 	})
 }
 
@@ -30,6 +35,9 @@ func (p *Portal) invitationPage(w http.ResponseWriter, r *http.Request, inv *wal
 // carries, with the text to copy and a link that a DIDComm wallet on
 // the same device opens.
 func (p *Portal) invitationCard(b *pen, inv *walletportalv1.DidcommInvitation) template.HTML {
+	if inv.GetInvitationId() != "" {
+		return p.answerCard(b, inv)
+	}
 	text := msg.T("holder.invitation.text")
 	if inv.GetCarriesOffer() {
 		text = msg.T("holder.invitation.offer.text")

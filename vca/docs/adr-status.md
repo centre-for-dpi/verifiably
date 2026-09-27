@@ -670,17 +670,17 @@ A row that is not `Done` carries a note.
 | ADR-062 | 1 A tenant wallet per holder in the shared agent | Done | `vca/services/dpg-adapter-credebl/internal/credebl/agent.go` | `TestAgentTenantAndTokens` and `TestCreateCloudWallet` pin it. |
 | ADR-062 | 2 The hashed subject maps onto the tenant | Done | `vca/services/dpg-adapter-credebl/internal/service/holder.go` | `TestCreateCloudWallet` pins it. |
 | ADR-062 | 3 The DIDComm wallet RPCs | Done | `vca/services/dpg-adapter-credebl/internal/service/holder.go` | `TestAcceptOfferThroughInvitation`, `TestAcceptProofRequest`, `TestOpenInvitationKeepsTheConnection` and `TestListInbox` pin it. |
-| ADR-062 | 4 The wallet portal shows an invitation before the wallet takes it | Not started | `vca/services/wallet-portal` | The adapter RPCs exist. The pages follow. |
-| ADR-062 | 5 AnonCreds and W3C credentials, and permanent ones | Partial | `vca/services/dpg-adapter-credebl/internal/service/holder.go` | `TestListCloudCredentials` pins the adapter. The wallet portal still offers a remove button for a permanent credential. |
-| ADR-062 | 6 The keys page with DIDs alone | Partial | `vca/services/dpg-adapter-credebl/internal/service/holder.go` | `TestWalletDids` pins the adapter. The keys page still needs `FEATURE_WALLET_KEYS`. |
+| ADR-062 | 4 The wallet portal shows an invitation before the wallet takes it | Done | `vca/services/wallet-portal/internal/service/didcomm.go`, `vca/services/wallet-portal/internal/portal/didcommwallet.go` | `TestScannedOfferWaitsForTheHolder`, `TestOfferInvitationShowsTheValuesFirst` and `TestConnectionsPage` pin it. |
+| ADR-062 | 5 AnonCreds and W3C credentials, and permanent ones | Done | `vca/services/dpg-adapter-credebl/internal/service/holder.go`, `vca/services/wallet-portal/internal/portal/home.go` | `TestListCloudCredentials` and `TestPermanentCardHasNoRemoveButton` pin it. |
+| ADR-062 | 6 The keys page with DIDs alone | Done | `vca/services/dpg-adapter-credebl/internal/service/holder.go`, `vca/services/wallet-portal/internal/portal/keys.go` | `TestWalletDids` and `TestKeysPageOnlyWithFeature` pin it. |
 | ADR-062 | 7 The holder role with the agent, and setup | Done | `vca/services/dpg-adapter-credebl/internal/service/service.go`, `vca/internal/cli/credebl.go` | `TestCapabilitiesListHolderRole` and `TestCredeblHolderPairReachesTheAgent` pin it. |
 
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 291 |
-| Partial | 27 |
+| Done | 294 |
+| Partial | 25 |
 | Deferred | 3 |
-| Not started | 27 |
+| Not started | 26 |
 | Total | 348 |

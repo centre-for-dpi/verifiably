@@ -10,15 +10,17 @@ import (
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
+	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
 
 // The page "Keys and identifiers" (P6-W4). It exists only when the
-// wallet of the own stack manages keys (ADR-034 decision 5). Each part
-// shows only when the adapter lists its feature: the keys with
-// FEATURE_WALLET_KEYS, the DIDs with FEATURE_WALLET_DIDS, and the
-// activity with FEATURE_WALLET_EVENTS. The choices of the forms are the
-// key types and the DID methods the adapter lists.
+// wallet of the own stack manages DIDs (ADR-034 decision 5, ADR-062
+// decision 6). Each part shows only when the adapter lists its feature:
+// the keys with FEATURE_WALLET_KEYS, the default DID with
+// FEATURE_WALLET_DEFAULT_DID, and the activity with
+// FEATURE_WALLET_EVENTS. The choices of the forms are the key types and
+// the DID methods the adapter lists.
 //
 //	GET  /keys           the page
 //	POST /keys/key       make a key
@@ -43,21 +45,24 @@ func options(values []string) []components.Option {
 // keys renders the page.
 func (p *Portal) keys(w http.ResponseWriter, r *http.Request) error {
 	b := p.pen(r)
-	if !b.frame.Has(backendv1.Feature_FEATURE_WALLET_KEYS) {
+	if !b.frame.Has(backendv1.Feature_FEATURE_WALLET_DIDS) {
 		http.NotFound(w, r)
 		return nil
 	}
-	withDids, withEvents := b.frame.Has(backendv1.Feature_FEATURE_WALLET_DIDS), b.frame.Has(backendv1.Feature_FEATURE_WALLET_EVENTS)
+	parts := service.WalletParts{
+		Keys: b.frame.Has(backendv1.Feature_FEATURE_WALLET_KEYS), Dids: true,
+		Events: b.frame.Has(backendv1.Feature_FEATURE_WALLET_EVENTS),
+	}
 	content := p.summary(b)
-	wallet, err := p.opts.Service.ReadWalletKeys(r.Context(), withDids, withEvents)
+	wallet, err := p.opts.Service.ReadWalletKeys(r.Context(), parts)
 	if err != nil {
 		content += b.part("card", components.Card{ID: "keys-problem", Title: msg.T("holder.keys.problem.title"), Text: msg.T("holder.keys.problem.text") + " " + message(err)})
 	} else {
-		content += p.keyBlock(b, wallet.Keys)
-		if withDids {
-			content += p.didBlock(b, wallet.Dids, wallet.Keys)
+		if parts.Keys {
+			content += p.keyBlock(b, wallet.Keys)
 		}
-		if withEvents {
+		content += p.didBlock(b, wallet.Dids, wallet.Keys)
+		if parts.Events {
 			content += p.eventBlock(b, wallet.Events)
 		}
 	}
@@ -113,19 +118,26 @@ func (p *Portal) keyBlock(b *pen, keys []*backendv1.WalletKey) template.HTML {
 
 // didBlock lists the DIDs, marks the default one, and offers a new one.
 func (p *Portal) didBlock(b *pen, dids []*backendv1.WalletDid, keys []*backendv1.WalletKey) template.HTML {
+	withDefault := b.frame.Has(backendv1.Feature_FEATURE_WALLET_DEFAULT_DID)
 	rows := make([]components.Row, 0, len(dids))
 	for _, d := range dids {
-		state := components.Cell{HTML: b.part("badge", components.Badge{Status: "ok", Text: msg.T("holder.keys.default.label")})}
-		if !d.GetDefault() {
-			state = components.Cell{HTML: b.form(p.opts.Prefix+"/keys/default", map[string]string{"did": d.GetDid()},
-				components.Button{Text: msg.T("holder.keys.default.make.label"), Type: "submit", Variant: "ghost"})}
+		row := components.Row{b.mono(d.GetDid()), {Text: d.GetAlias()}, b.mono(d.GetKeyId())}
+		if withDefault {
+			state := components.Cell{HTML: b.part("badge", components.Badge{Status: "ok", Text: msg.T("holder.keys.default.label")})}
+			if !d.GetDefault() {
+				state = components.Cell{HTML: b.form(p.opts.Prefix+"/keys/default", map[string]string{"did": d.GetDid()},
+					components.Button{Text: msg.T("holder.keys.default.make.label"), Type: "submit", Variant: "ghost"})}
+			}
+			row = append(row, state)
 		}
-		rows = append(rows, components.Row{b.mono(d.GetDid()), {Text: d.GetAlias()}, b.mono(d.GetKeyId()), state})
+		rows = append(rows, row)
+	}
+	columns := []string{msg.T("holder.keys.column.did.label"), msg.T("holder.keys.column.name.label"), msg.T("holder.keys.column.key.label")}
+	if withDefault {
+		columns = append(columns, msg.T("holder.keys.column.default.label"))
 	}
 	table := b.part("table", components.Table{
-		ID: "wallet-dids", Caption: msg.T("holder.keys.dids.caption.label"),
-		Columns: []string{msg.T("holder.keys.column.did.label"), msg.T("holder.keys.column.name.label"),
-			msg.T("holder.keys.column.key.label"), msg.T("holder.keys.column.default.label")},
+		ID: "wallet-dids", Caption: msg.T("holder.keys.dids.caption.label"), Columns: columns,
 		Rows: rows, Empty: msg.T("holder.keys.dids.empty"),
 	})
 	keyOptions := []components.Option{{Value: "", Text: msg.T("holder.keys.did.newkey.label")}}
@@ -136,14 +148,25 @@ func (p *Portal) didBlock(b *pen, dids []*backendv1.WalletDid, keys []*backendv1
 		}
 		keyOptions = append(keyOptions, components.Option{Value: k.GetId(), Text: text})
 	}
-	fields := components.Join(
-		b.part("field", components.Field{ID: "method", Label: msg.T("holder.keys.method.label"), Type: "select",
-			Options: options(b.ownCaps().GetWalletDidMethods()), Hint: msg.T("holder.keys.method.hint")}),
-		b.part("field", components.Field{ID: "key_id", Label: msg.T("holder.keys.did.key.label"), Type: "select", Options: keyOptions}),
-		b.part("field", components.Field{ID: "alias", Label: msg.T("holder.keys.alias.label"), Hint: msg.T("holder.keys.alias.hint")}),
-	)
-	form := b.form(p.opts.Prefix+"/keys/did", nil, components.Button{Text: msg.T("holder.keys.did.create.label"), Type: "submit"}, fields)
-	return b.part("block", components.Block{ID: "dids", Title: msg.T("holder.keys.dids.label"), Lead: msg.T("holder.keys.dids.lead"),
+	// A stack that makes the key of each DID itself lists no keys, so
+	// the form offers no key and the hint on keys stays out.
+	withKeys := b.frame.Has(backendv1.Feature_FEATURE_WALLET_KEYS)
+	method := components.Field{ID: "method", Label: msg.T("holder.keys.method.label"), Type: "select",
+		Options: options(b.ownCaps().GetWalletDidMethods())}
+	if withKeys {
+		method.Hint = msg.T("holder.keys.method.hint")
+	}
+	fields := []template.HTML{b.part("field", method)}
+	if withKeys {
+		fields = append(fields, b.part("field", components.Field{ID: "key_id", Label: msg.T("holder.keys.did.key.label"), Type: "select", Options: keyOptions}))
+	}
+	fields = append(fields, b.part("field", components.Field{ID: "alias", Label: msg.T("holder.keys.alias.label"), Hint: msg.T("holder.keys.alias.hint")}))
+	form := b.form(p.opts.Prefix+"/keys/did", nil, components.Button{Text: msg.T("holder.keys.did.create.label"), Type: "submit"}, fields...)
+	lead := msg.T("holder.keys.dids.stack.lead")
+	if withDefault {
+		lead = msg.T("holder.keys.dids.lead")
+	}
+	return b.part("block", components.Block{ID: "dids", Title: msg.T("holder.keys.dids.label"), Lead: lead,
 		Body: components.Join(table, form)})
 }
 
@@ -169,7 +192,7 @@ func (p *Portal) eventBlock(b *pen, events []*backendv1.WalletEvent) template.HT
 // answers the request itself and returns false when the post stops.
 func (p *Portal) keyForm(w http.ResponseWriter, r *http.Request, feature backendv1.Feature) (*pen, bool) {
 	b := p.pen(r)
-	if !b.frame.Has(backendv1.Feature_FEATURE_WALLET_KEYS) || !b.frame.Has(feature) {
+	if !b.frame.Has(backendv1.Feature_FEATURE_WALLET_DIDS) || !b.frame.Has(feature) {
 		http.NotFound(w, r)
 		return nil, false
 	}
@@ -217,12 +240,16 @@ func (p *Portal) createDid(w http.ResponseWriter, r *http.Request) error {
 	if !slices.Contains(b.ownCaps().GetWalletDidMethods(), method) {
 		return p.refuse(w, r, msg.T("holder.keys.refused.method"))
 	}
-	return p.after(w, r, p.opts.Service.CreateWalletDid(r.Context(), method, r.PostFormValue("key_id"), strings.TrimSpace(r.PostFormValue("alias"))))
+	keyID := ""
+	if b.frame.Has(backendv1.Feature_FEATURE_WALLET_KEYS) {
+		keyID = r.PostFormValue("key_id")
+	}
+	return p.after(w, r, p.opts.Service.CreateWalletDid(r.Context(), method, keyID, strings.TrimSpace(r.PostFormValue("alias"))))
 }
 
 // defaultDid picks the default DID.
 func (p *Portal) defaultDid(w http.ResponseWriter, r *http.Request) error {
-	if _, ok := p.keyForm(w, r, backendv1.Feature_FEATURE_WALLET_DIDS); !ok {
+	if _, ok := p.keyForm(w, r, backendv1.Feature_FEATURE_WALLET_DEFAULT_DID); !ok {
 		return nil
 	}
 	did := strings.TrimSpace(r.PostFormValue("did"))

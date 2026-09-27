@@ -157,10 +157,10 @@ func TestIssuerNavFollowsTheBoard(t *testing.T) {
 
 // TestHolderNavFollowsTheBoard lists the wallet pages in the order of
 // board Holder-Portal: my credentials, discover, claim, present, then
-// keys and identifiers when the wallet of the stack manages keys, then
-// help.
+// connections when the wallet of the stack speaks DIDComm, keys and
+// identifiers when it manages DIDs, then help (ADR-062).
 func TestHolderNavFollowsTheBoard(t *testing.T) {
-	want := []string{"/wallet/", "/wallet/discover", "/wallet/claim", "/wallet/present", "/wallet/keys", "/wallet/help"}
+	want := []string{"/wallet/", "/wallet/discover", "/wallet/claim", "/wallet/present", "/wallet/connections", "/wallet/keys", "/wallet/help"}
 	if got := Paths(commonv1.Role_ROLE_HOLDER); strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Fatalf("holder paths %v, want %v", got, want)
 	}
@@ -180,9 +180,15 @@ func TestHolderNavFollowsTheBoard(t *testing.T) {
 	if got := strings.Join(labels(nil), ", "); got != "My credentials, Discover, Claim*, Present, Help" {
 		t.Fatalf("holder nav without keys: %s", got)
 	}
-	keys := func(f backendv1.Feature) bool { return f == backendv1.Feature_FEATURE_WALLET_KEYS }
-	if got := strings.Join(labels(keys), ", "); got != "My credentials, Discover, Claim*, Present, Keys and identifiers, Help" {
-		t.Fatalf("holder nav with keys: %s", got)
+	dids := func(f backendv1.Feature) bool { return f == backendv1.Feature_FEATURE_WALLET_DIDS }
+	if got := strings.Join(labels(dids), ", "); got != "My credentials, Discover, Claim*, Present, Keys and identifiers, Help" {
+		t.Fatalf("holder nav with DIDs: %s", got)
+	}
+	didcomm := func(f backendv1.Feature) bool {
+		return f == backendv1.Feature_FEATURE_WALLET_DIDS || f == backendv1.Feature_FEATURE_WALLET_DIDCOMM
+	}
+	if got := strings.Join(labels(didcomm), ", "); got != "My credentials, Discover, Claim*, Present, Connections, Keys and identifiers, Help" {
+		t.Fatalf("holder nav with DIDComm: %s", got)
 	}
 }
 

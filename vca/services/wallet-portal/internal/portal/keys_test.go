@@ -26,7 +26,8 @@ func walletKeysDeployment(features ...backendv1.Feature) func(*testing.T) *harne
 // TestListKeysAndDids draws the keys and the DIDs of the stack wallet,
 // with the default DID, and makes a key, a DID, and a new default.
 func TestListKeysAndDids(t *testing.T) {
-	h := walletKeysDeployment(backendv1.Feature_FEATURE_WALLET_KEYS, backendv1.Feature_FEATURE_WALLET_DIDS, backendv1.Feature_FEATURE_WALLET_EVENTS)(t)
+	h := walletKeysDeployment(backendv1.Feature_FEATURE_WALLET_KEYS, backendv1.Feature_FEATURE_WALLET_DIDS,
+		backendv1.Feature_FEATURE_WALLET_EVENTS, backendv1.Feature_FEATURE_WALLET_DEFAULT_DID)(t)
 	rec := h.get(t, "/wallet/keys")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("keys: %d", rec.Code)
@@ -75,27 +76,42 @@ func TestListKeysAndDids(t *testing.T) {
 }
 
 // TestKeysPageOnlyWithFeature shows each part of the page only when the
-// adapter lists its feature, and answers 404 for the forms otherwise.
+// adapter lists its feature, and answers 404 for the forms otherwise
+// (ADR-062 decision 6). The page itself needs FEATURE_WALLET_DIDS.
 func TestKeysPageOnlyWithFeature(t *testing.T) {
-	h := walletKeysDeployment(backendv1.Feature_FEATURE_WALLET_KEYS)(t)
-	body := h.get(t, "/wallet/keys").Body.String()
-	if strings.Contains(body, `action="/wallet/keys/did"`) || strings.Contains(body, "Ministry of Transport") {
-		t.Error("the page shows DIDs or events the stack does not list")
+	h := walletKeysDeployment(backendv1.Feature_FEATURE_WALLET_DIDS)(t)
+	rec := h.get(t, "/wallet/keys")
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, "did:key:z6MkjoRhq1jSNJdLiruSXrFFxagqrztZaXHqHGUTKJbcNywp") || !strings.Contains(body, `action="/wallet/keys/did"`) {
+		t.Fatalf("a DID wallet: %d", rec.Code)
 	}
-	if rec := h.post(t, "/wallet/keys/did", url.Values{"method": {"did:jwk"}}); rec.Code != http.StatusNotFound {
-		t.Errorf("a DID without the feature: %d", rec.Code)
+	for _, absent := range []string{`action="/wallet/keys/key"`, `name="key_id"`, `action="/wallet/keys/default"`, "Make default", "Ministry of Transport",
+		"LocalKey", "did:cheqd needs", "binds to the default"} {
+		if strings.Contains(body, absent) {
+			t.Errorf("the page shows %q, which the stack does not list", absent)
+		}
 	}
-	if rec := h.post(t, "/wallet/keys/default", url.Values{"did": {"did:x"}}); rec.Code != http.StatusNotFound {
-		t.Errorf("a default without the feature: %d", rec.Code)
+	if len(h.holder.madeKeys) != 0 || rec.Code != http.StatusOK {
+		t.Error("the page read keys")
 	}
-	none := setupShell(t, nil, holderDeployment())
-	if rec := none.post(t, "/wallet/keys/key", url.Values{"key_type": {"Ed25519"}}); rec.Code != http.StatusNotFound {
-		t.Errorf("a key without the feature: %d", rec.Code)
+	if made := h.post(t, "/wallet/keys/did", url.Values{"method": {"did:key"}}); made.Code != http.StatusSeeOther ||
+		len(h.holder.madeDids) != 1 || h.holder.madeDids[0].GetKeyId() != "" {
+		t.Errorf("a DID without a key: %d %+v", made.Code, h.holder.madeDids)
+	}
+	if key := h.post(t, "/wallet/keys/key", url.Values{"key_type": {"Ed25519"}}); key.Code != http.StatusNotFound {
+		t.Errorf("a key without the feature: %d", key.Code)
+	}
+	if def := h.post(t, "/wallet/keys/default", url.Values{"did": {"did:x"}}); def.Code != http.StatusNotFound {
+		t.Errorf("a default without the feature: %d", def.Code)
+	}
+	none := setupShell(t, nil, holderDeployment(backendv1.Feature_FEATURE_WALLET_KEYS))
+	if page := none.get(t, "/wallet/keys"); page.Code != http.StatusNotFound {
+		t.Errorf("the page without DIDs: %d", page.Code)
 	}
 	// A failed read shows a problem, not a broken page.
-	failing := walletKeysDeployment(backendv1.Feature_FEATURE_WALLET_KEYS)(t)
+	failing := walletKeysDeployment(backendv1.Feature_FEATURE_WALLET_KEYS, backendv1.Feature_FEATURE_WALLET_DIDS)(t)
 	failing.holder.keysErr = errDown
-	rec := failing.get(t, "/wallet/keys")
+	rec = failing.get(t, "/wallet/keys")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "did not answer") {
 		t.Errorf("a failed read: %d %s", rec.Code, rec.Body.String())
 	}

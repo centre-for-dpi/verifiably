@@ -62,6 +62,17 @@ type fakeHolder struct {
 	lock  backendv1.WalletLock
 	pin   string
 	typed []string
+	// The DIDComm calls of the stack wallet (P6-C7): the last accept and
+	// the last answer, the inbox, the connections, and the opened
+	// invitation.
+	lastAccept  *backendv1.AcceptOfferRequest
+	lastPresent *backendv1.PresentRequest
+	inbox       []*backendv1.InboxItem
+	connections []*backendv1.DidcommConnection
+	opened      string
+	didcommErr  error
+	// dids replaces the DIDs of the wallet when a test sets it.
+	dids []*backendv1.WalletDid
 }
 
 func (f *fakeHolder) ListKeys(context.Context, *connect.Request[backendv1.ListKeysRequest]) (*connect.Response[backendv1.ListKeysResponse], error) {
@@ -80,6 +91,9 @@ func (f *fakeHolder) CreateKey(_ context.Context, req *connect.Request[backendv1
 }
 
 func (f *fakeHolder) ListDids(context.Context, *connect.Request[backendv1.ListDidsRequest]) (*connect.Response[backendv1.ListDidsResponse], error) {
+	if f.dids != nil {
+		return connect.NewResponse(&backendv1.ListDidsResponse{Dids: f.dids}), nil
+	}
 	return connect.NewResponse(&backendv1.ListDidsResponse{Dids: []*backendv1.WalletDid{
 		{Did: "did:key:z6MkjoRhq1jSNJdLiruSXrFFxagqrztZaXHqHGUTKJbcNywp", Alias: "Onboarding", KeyId: "v1sbluyFJrMT6Lt46S4N_CBH1g7OWHpm_f3uK93dSLE", Default: true},
 		{Did: "did:jwk:eyJrdHkiOiJFQyJ9", Alias: "Travel", KeyId: "_nd-T2YRYLSmuKkJZlRI641zrCIJLTpiHeqMwXuvdug"},
@@ -117,8 +131,9 @@ func (f *fakeHolder) ListCredentials(_ context.Context, _ *connect.Request[backe
 	}), nil
 }
 
-func (f *fakeHolder) AcceptOffer(_ context.Context, _ *connect.Request[backendv1.AcceptOfferRequest],
+func (f *fakeHolder) AcceptOffer(_ context.Context, req *connect.Request[backendv1.AcceptOfferRequest],
 ) (*connect.Response[backendv1.AcceptOfferResponse], error) {
+	f.lastAccept = req.Msg
 	if f.acceptErr != nil {
 		return nil, f.acceptErr
 	}
@@ -134,8 +149,9 @@ func (f *fakeHolder) DeleteCredential(_ context.Context, req *connect.Request[ba
 	return connect.NewResponse(&backendv1.DeleteCredentialResponse{}), nil
 }
 
-func (f *fakeHolder) Present(_ context.Context, _ *connect.Request[backendv1.PresentRequest],
+func (f *fakeHolder) Present(_ context.Context, req *connect.Request[backendv1.PresentRequest],
 ) (*connect.Response[backendv1.PresentResponse], error) {
+	f.lastPresent = req.Msg
 	return connect.NewResponse(&backendv1.PresentResponse{Accepted: f.accepted}), nil
 }
 

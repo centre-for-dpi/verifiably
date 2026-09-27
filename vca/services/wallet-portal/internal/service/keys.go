@@ -36,30 +36,43 @@ func (s *Service) holderOf(ctx context.Context) (session.Citizen, error) {
 	return citizen, nil
 }
 
-// ReadWalletKeys reads the keys of the wallet, and its DIDs and its events
-// when the caller asks for them.
-func (s *Service) ReadWalletKeys(ctx context.Context, dids, events bool) (WalletKeys, error) {
+// WalletParts names the parts of the stack wallet a page reads. Each
+// part maps onto one feature of the adapter.
+type WalletParts struct {
+	// Keys reads the keys (FEATURE_WALLET_KEYS).
+	Keys bool
+	// Dids reads the DIDs (FEATURE_WALLET_DIDS).
+	Dids bool
+	// Events reads the event log (FEATURE_WALLET_EVENTS).
+	Events bool
+}
+
+// ReadWalletKeys reads the parts of the wallet a page shows: its keys,
+// its DIDs, and its events.
+func (s *Service) ReadWalletKeys(ctx context.Context, parts WalletParts) (WalletKeys, error) {
 	citizen, err := s.holderOf(ctx)
 	if err != nil {
 		return WalletKeys{}, err
 	}
 	var out WalletKeys
-	keys, err := s.opts.Holder.ListKeys(ctx, connect.NewRequest(&backendv1.ListKeysRequest{WalletId: citizen.WalletID}))
-	if err != nil {
-		return WalletKeys{}, err
+	if parts.Keys {
+		keys, kerr := s.opts.Holder.ListKeys(ctx, connect.NewRequest(&backendv1.ListKeysRequest{WalletId: citizen.WalletID}))
+		if kerr != nil {
+			return WalletKeys{}, kerr
+		}
+		out.Keys = keys.Msg.GetKeys()
 	}
-	out.Keys = keys.Msg.GetKeys()
-	if dids {
-		list, err := s.opts.Holder.ListDids(ctx, connect.NewRequest(&backendv1.ListDidsRequest{WalletId: citizen.WalletID}))
-		if err != nil {
-			return WalletKeys{}, err
+	if parts.Dids {
+		list, derr := s.opts.Holder.ListDids(ctx, connect.NewRequest(&backendv1.ListDidsRequest{WalletId: citizen.WalletID}))
+		if derr != nil {
+			return WalletKeys{}, derr
 		}
 		out.Dids = list.Msg.GetDids()
 	}
-	if events {
-		list, err := s.opts.Holder.ListEvents(ctx, connect.NewRequest(&backendv1.ListEventsRequest{WalletId: citizen.WalletID}))
-		if err != nil {
-			return WalletKeys{}, err
+	if parts.Events {
+		list, eerr := s.opts.Holder.ListEvents(ctx, connect.NewRequest(&backendv1.ListEventsRequest{WalletId: citizen.WalletID}))
+		if eerr != nil {
+			return WalletKeys{}, eerr
 		}
 		out.Events = list.Msg.GetEvents()
 	}

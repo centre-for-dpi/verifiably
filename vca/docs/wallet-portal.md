@@ -31,15 +31,17 @@ the wallet session and never a staff session.
 | Role chip | The holder role. |
 | Stack switcher | The holder pairs in `VCA_PEERS` that run. The probe of the peers names each stack. A pair that starts shows as text. |
 | User menu | The name in the wallet session and a sign out form. |
-| Side navigation | The holder pages of `internal/rolenav`. These are My credentials, Discover, Claim, Present, and Help. |
+| Side navigation | The holder pages of `internal/rolenav`. These are My credentials, Discover, Claim, Present, and Help. Connections and Keys and identifiers show when the adapter of the own pair lists their features. |
 
 The own pair is the holder pair whose `wallet-auth` serves the key set
 in `AUTH_JWKS_URL`. The page "Keys and identifiers" shows only when the
-adapter of the own pair lists `FEATURE_WALLET_KEYS`. The page shows the
-holder identifier and where the holder key sits. It lists the keys of
-the wallet of the stack and makes a key of a type the adapter lists.
-With `FEATURE_WALLET_DIDS` it lists the identifiers, marks the default,
-makes an identifier, and picks a new default. With
+adapter of the own pair lists `FEATURE_WALLET_DIDS` (ADR-062 decision
+6). The page shows the holder identifier and where the holder key sits.
+It lists the identifiers of the wallet of the stack and makes an
+identifier of a method the adapter lists. With `FEATURE_WALLET_KEYS` it
+lists the keys and makes a key of a type the adapter lists. It then
+also makes an identifier with a key of the wallet. With `FEATURE_WALLET_DEFAULT_DID`
+it marks the default identifier and picks a new default. With
 `FEATURE_WALLET_EVENTS` it shows the latest events of that wallet. A
 form of a part the adapter does not list answers 404.
 
@@ -196,11 +198,29 @@ reads four kinds of text:
 4. A DIDComm invitation, in the query parameter `oob`, `c_i` or `d_m`
    (ADR-059 decision 5).
 
-A DIDComm invitation gets a page of its own. It names the issuer and
-says whether the invitation carries a credential offer. It shows the
-invitation and a link that a DIDComm wallet on the device opens. This
-wallet keeps OID4VCI credentials only, so it keeps nothing of the
-invitation.
+A DIDComm invitation gets a page of its own. The page depends on the
+wallet of the stack.
+
+- A stack wallet that lists `FEATURE_WALLET_DIDCOMM` opens the
+  invitation (ADR-062 decision 4). The page first shows what the
+  invitation carries: the values of an offer, or the attributes and the
+  predicates of a proof request. A predicate shows as the name, the
+  operator, and the number, such as `acres >= 10`. The stack wallet
+  receives the invitation only after the holder accepts. Accept takes
+  the credential, Share answers the request, and Connect keeps the
+  connection. Decline forgets the invitation and sends nothing. The
+  answer to a proof request goes into the presentation records.
+- Any other wallet names the issuer and says whether the invitation
+  carries a credential offer. The page shows the invitation and a link
+  that a DIDComm wallet on the device opens. The wallet keeps nothing of
+  the invitation.
+
+The page "Connections" shows with `FEATURE_WALLET_DIDCOMM`. It lists
+the offers and the proof requests that wait for the holder, with what
+each carries. Each came over a connection. Accept and Share answer one
+entry. The agent of the stack has no decline call, so an entry waits
+until the holder answers it. The page also lists the connections of the
+wallet.
 
 The service keeps the offer or the request for the time in
 `PENDING_TTL`. A pending record holds no credential content.
@@ -323,6 +343,10 @@ A card carries these parts (ADR-021 decision 6):
 | Withdrawal state | The status list the credential names. |
 | Claims | The credential claims, with the SD-JWT disclosures resolved. |
 | Status line | One sentence per part, in Simplified Technical English. |
+
+A card of a credential that the stack wallet cannot remove has no
+remove button. The adapter marks it `permanent`, as the CREDEBL adapter
+does for an AnonCreds credential (ADR-062 decision 5).
 
 The withdrawal state reads a Bitstring Status List or a Token Status
 List. A cached fetcher reads the list, so one list serves many cards.

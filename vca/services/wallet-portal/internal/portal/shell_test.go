@@ -88,7 +88,7 @@ func TestWalletUsesShell(t *testing.T) {
 	if rec := h.get(t, "/wallet/keys"); rec.Code != http.StatusNotFound {
 		t.Fatalf("keys without the feature: status = %d", rec.Code)
 	}
-	keys := setupShell(t, nil, holderDeployment(backendv1.Feature_FEATURE_WALLET_KEYS))
+	keys := setupShell(t, nil, holderDeployment(backendv1.Feature_FEATURE_WALLET_KEYS, backendv1.Feature_FEATURE_WALLET_DIDS))
 	rec := keys.get(t, "/wallet/keys")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("keys: status = %d", rec.Code)
@@ -200,8 +200,9 @@ func TestSignOutEndsTheSession(t *testing.T) {
 // TestShellPagesPassTheChecks renders every wallet page inside the frame
 // through htmx too, where the page part must pass the fragment checks.
 func TestShellPagesPassTheChecks(t *testing.T) {
-	h := setupShell(t, nil, holderDeployment(backendv1.Feature_FEATURE_WALLET_KEYS))
-	for _, path := range []string{"/wallet/", "/wallet/discover", "/wallet/claim", "/wallet/present", "/wallet/keys", "/wallet/help"} {
+	h := setupShell(t, func(o *serviceOptions) { o.Didcomm = func(context.Context) bool { return true } },
+		holderDeployment(backendv1.Feature_FEATURE_WALLET_KEYS, backendv1.Feature_FEATURE_WALLET_DIDS, backendv1.Feature_FEATURE_WALLET_DIDCOMM))
+	for _, path := range []string{"/wallet/", "/wallet/discover", "/wallet/claim", "/wallet/present", "/wallet/keys", "/wallet/connections", "/wallet/help"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		req.Header.Set("HX-Request", "true")
 		rec := httptest.NewRecorder()

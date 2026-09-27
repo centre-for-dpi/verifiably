@@ -53,6 +53,19 @@ service WalletPortalService {
   // Document returns a printable document of one credential of the DPG
   // wallet, when the adapter lists FEATURE_WALLET_DOCUMENT.
   rpc Document(DocumentRequest) returns (DocumentResponse);
+  // AnswerInvitation accepts or declines a DIDComm invitation that the
+  // citizen scanned or pasted. It works when the wallet of the stack
+  // speaks DIDComm (ADR-062). A decline sends nothing to the other
+  // party.
+  rpc AnswerInvitation(AnswerInvitationRequest) returns (AnswerInvitationResponse);
+  // ListInbox returns the credential offers and the proof requests that
+  // came to the wallet over a DIDComm connection, newest first.
+  rpc ListInbox(ListInboxRequest) returns (ListInboxResponse);
+  // AnswerInbox accepts one offer or one proof request of the inbox.
+  rpc AnswerInbox(AnswerInboxRequest) returns (AnswerInboxResponse);
+  // ListConnections returns the DIDComm connections of the wallet,
+  // newest first.
+  rpc ListConnections(ListConnectionsRequest) returns (ListConnectionsResponse);
 }
 
 // Card is one credential as the wallet shows it (ADR-021 decision 6).
@@ -86,6 +99,8 @@ message Card {
   // True when the browser store keeps the credential. A card of the
   // wallet of the stack carries false.
   bool in_browser = 14;
+  // True when the wallet of the stack cannot remove the credential.
+  bool permanent = 15;
 
   // RevocationState names what the status list says.
   enum RevocationState {
@@ -244,6 +259,20 @@ message DidcommInvitation {
   string label = 2;
   // True when the invitation carries a credential offer.
   bool carries_offer = 3;
+  // The id of the pending invitation that AnswerInvitation takes. Only
+  // a wallet of the stack that speaks DIDComm opens an invitation, so
+  // it is empty for any other wallet.
+  string invitation_id = 4;
+  // True when the invitation carries a proof request.
+  bool carries_request = 5;
+  // The values an offer carries.
+  repeated NamedValue offered = 6;
+  // What a proof request asks for, as plain text: an attribute name, or
+  // a predicate such as "acres >= 10".
+  repeated string requested = 7;
+  // The name of the credential or of the proof request, when the
+  // invitation names one.
+  string name = 8;
 }
 
 // OfferSummary is what the wallet shows before the citizen accepts.
@@ -488,4 +517,109 @@ message ListPresentationsResponse {
   repeated PresentationRecord records = 1;
   // The page result.
   vca.common.v1.PageResult page = 2;
+}
+
+// NamedValue is one name and its value.
+message NamedValue {
+  // The name.
+  string name = 1;
+  // The value.
+  string value = 2;
+}
+
+// AnswerInvitationRequest answers one pending invitation.
+message AnswerInvitationRequest {
+  // The invitation id from Scan or Paste.
+  string invitation_id = 1;
+  // True declines the invitation. The wallet then forgets it and sends
+  // nothing.
+  bool decline = 2;
+}
+
+// AnswerInvitationResponse returns what the wallet did.
+message AnswerInvitationResponse {
+  // The credential the wallet took, for an invitation with an offer.
+  Card card = 1;
+  // The record of the answer, for an invitation with a proof request.
+  PresentationRecord record = 2;
+  // The label of the other party, for an invitation that makes a
+  // connection only.
+  string connection_label = 3;
+  // A plain language sentence about the result.
+  string message = 4;
+}
+
+// ListInboxRequest has no fields.
+message ListInboxRequest {}
+
+// ListInboxResponse returns what waits for the citizen.
+message ListInboxResponse {
+  // The offers and the proof requests, newest first.
+  repeated InboxEntry entries = 1;
+}
+
+// InboxEntry is one offer or proof request that waits for the citizen.
+message InboxEntry {
+  // The id AnswerInbox takes.
+  string id = 1;
+  // What the entry is.
+  Kind kind = 2;
+  // The label of the connection it came over.
+  string from = 3;
+  // When it came.
+  google.protobuf.Timestamp received_at = 4;
+  // The name of the credential or of the proof request.
+  string name = 5;
+  // The values an offer carries.
+  repeated NamedValue offered = 6;
+  // What a proof request asks for, as plain text.
+  repeated string requested = 7;
+
+  // Kind names the type of an entry.
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    // A credential offer.
+    KIND_OFFER = 1;
+    // A proof request.
+    KIND_PROOF_REQUEST = 2;
+  }
+}
+
+// AnswerInboxRequest accepts one entry of the inbox.
+message AnswerInboxRequest {
+  // The entry id from ListInbox.
+  string id = 1;
+  // The kind of the entry from ListInbox.
+  InboxEntry.Kind kind = 2;
+}
+
+// AnswerInboxResponse returns what the wallet did.
+message AnswerInboxResponse {
+  // The credential the wallet took, for an offer.
+  Card card = 1;
+  // The record of the answer, for a proof request.
+  PresentationRecord record = 2;
+  // A plain language sentence about the result.
+  string message = 3;
+}
+
+// ListConnectionsRequest has no fields.
+message ListConnectionsRequest {}
+
+// ListConnectionsResponse returns the connections of the wallet.
+message ListConnectionsResponse {
+  // The connections, newest first.
+  repeated Connection connections = 1;
+}
+
+// Connection is one DIDComm connection of the wallet.
+message Connection {
+  // The id of the connection.
+  string id = 1;
+  // The label of the other party.
+  string label = 2;
+  // The state of the connection, such as completed.
+  string state = 3;
+  // When the connection began.
+  google.protobuf.Timestamp created_at = 4;
 }

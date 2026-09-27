@@ -67,6 +67,13 @@ type record struct {
 	// Offer is the credential offer the wallet claims after the
 	// presentation.
 	Offer string `json:"offer,omitempty"`
+	// Label is the label of the other party of a DIDComm invitation.
+	Label string `json:"label,omitempty"`
+	// Carries names what a DIDComm invitation carries: offer, request,
+	// or connection.
+	Carries string `json:"carries,omitempty"`
+	// Asked is what the proof request of a DIDComm invitation asks for.
+	Asked []string `json:"asked,omitempty"`
 	// ExpiresAt is the time the record stops working.
 	ExpiresAt time.Time `json:"expires_at"`
 }

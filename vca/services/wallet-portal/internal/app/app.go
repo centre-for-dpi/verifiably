@@ -124,9 +124,15 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	hybrid := func(ctx context.Context) bool {
 		return pages != nil && pages.Has(ctx, backendv1.Feature_FEATURE_WALLET_CLAIM_IN_STACK)
 	}
+	// The stack wallet opens a DIDComm invitation after the holder
+	// answers it (ADR-062).
+	didcomm := func(ctx context.Context) bool {
+		return pages != nil && pages.Has(ctx, backendv1.Feature_FEATURE_WALLET_DIDCOMM)
+	}
 	svc, err := service.New(service.Options{
 		Holder:    holder,
 		Hybrid:    hybrid,
+		Didcomm:   didcomm,
 		Catalogue: catalogue,
 		Fallback:  ports.Cached(crawl, cfg.CrawlTTL, deps.Now),
 		Methods:   crawl.Methods,

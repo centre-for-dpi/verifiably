@@ -33,6 +33,9 @@
 //	POST /present/read     open a pasted request link
 //	POST /present/upload   open an uploaded request file
 //	POST /present/decline  refuse the request
+//	POST /invitation       answer a DIDComm invitation (P6-C7)
+//	GET  /connections      the inbox and the connections of a DIDComm wallet
+//	POST /inbox            answer an entry of the inbox
 //	GET  /wallet.js  the browser script (decision 4)
 //
 // Every POST carries a synchronizer token. Every page passes the
@@ -182,6 +185,9 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+p.opts.Prefix+"/present/read", p.handle(p.presentRead))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/present/upload", p.handle(p.presentUpload))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/present/decline", p.handle(p.decline))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/invitation", p.handle(p.answerInvitation))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/connections", p.handle(p.connections))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/inbox", p.handle(p.answerInbox))
 }
 
 // handle answers with one sentence when a page fails.

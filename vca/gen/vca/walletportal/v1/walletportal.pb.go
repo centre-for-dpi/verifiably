@@ -272,6 +272,58 @@ func (PresentationRecord_Result) EnumDescriptor() ([]byte, []int) {
 	return file_vca_walletportal_v1_walletportal_proto_rawDescGZIP(), []int{31, 0}
 }
 
+// Kind names the type of an entry.
+type InboxEntry_Kind int32
+
+const (
+	InboxEntry_KIND_UNSPECIFIED InboxEntry_Kind = 0
+	// A credential offer.
+	InboxEntry_KIND_OFFER InboxEntry_Kind = 1
+	// A proof request.
+	InboxEntry_KIND_PROOF_REQUEST InboxEntry_Kind = 2
+)
+
+// Enum value maps for InboxEntry_Kind.
+var (
+	InboxEntry_Kind_name = map[int32]string{
+		0: "KIND_UNSPECIFIED",
+		1: "KIND_OFFER",
+		2: "KIND_PROOF_REQUEST",
+	}
+	InboxEntry_Kind_value = map[string]int32{
+		"KIND_UNSPECIFIED":   0,
+		"KIND_OFFER":         1,
+		"KIND_PROOF_REQUEST": 2,
+	}
+)
+
+func (x InboxEntry_Kind) Enum() *InboxEntry_Kind {
+	p := new(InboxEntry_Kind)
+	*p = x
+	return p
+}
+
+func (x InboxEntry_Kind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (InboxEntry_Kind) Descriptor() protoreflect.EnumDescriptor {
+	return file_vca_walletportal_v1_walletportal_proto_enumTypes[4].Descriptor()
+}
+
+func (InboxEntry_Kind) Type() protoreflect.EnumType {
+	return &file_vca_walletportal_v1_walletportal_proto_enumTypes[4]
+}
+
+func (x InboxEntry_Kind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use InboxEntry_Kind.Descriptor instead.
+func (InboxEntry_Kind) EnumDescriptor() ([]byte, []int) {
+	return file_vca_walletportal_v1_walletportal_proto_rawDescGZIP(), []int{41, 0}
+}
+
 // Card is one credential as the wallet shows it (ADR-021 decision 6).
 type Card struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -303,7 +355,9 @@ type Card struct {
 	Display *v12.Display `protobuf:"bytes,13,opt,name=display,proto3" json:"display,omitempty"`
 	// True when the browser store keeps the credential. A card of the
 	// wallet of the stack carries false.
-	InBrowser     bool `protobuf:"varint,14,opt,name=in_browser,json=inBrowser,proto3" json:"in_browser,omitempty"`
+	InBrowser bool `protobuf:"varint,14,opt,name=in_browser,json=inBrowser,proto3" json:"in_browser,omitempty"`
+	// True when the wallet of the stack cannot remove the credential.
+	Permanent     bool `protobuf:"varint,15,opt,name=permanent,proto3" json:"permanent,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -432,6 +486,13 @@ func (x *Card) GetDisplay() *v12.Display {
 func (x *Card) GetInBrowser() bool {
 	if x != nil {
 		return x.InBrowser
+	}
+	return false
+}
+
+func (x *Card) GetPermanent() bool {
+	if x != nil {
+		return x.Permanent
 	}
 	return false
 }
@@ -1070,7 +1131,21 @@ type DidcommInvitation struct {
 	// The name the issuer gave its agent.
 	Label string `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
 	// True when the invitation carries a credential offer.
-	CarriesOffer  bool `protobuf:"varint,3,opt,name=carries_offer,json=carriesOffer,proto3" json:"carries_offer,omitempty"`
+	CarriesOffer bool `protobuf:"varint,3,opt,name=carries_offer,json=carriesOffer,proto3" json:"carries_offer,omitempty"`
+	// The id of the pending invitation that AnswerInvitation takes. Only
+	// a wallet of the stack that speaks DIDComm opens an invitation, so
+	// it is empty for any other wallet.
+	InvitationId string `protobuf:"bytes,4,opt,name=invitation_id,json=invitationId,proto3" json:"invitation_id,omitempty"`
+	// True when the invitation carries a proof request.
+	CarriesRequest bool `protobuf:"varint,5,opt,name=carries_request,json=carriesRequest,proto3" json:"carries_request,omitempty"`
+	// The values an offer carries.
+	Offered []*NamedValue `protobuf:"bytes,6,rep,name=offered,proto3" json:"offered,omitempty"`
+	// What a proof request asks for, as plain text: an attribute name, or
+	// a predicate such as "acres >= 10".
+	Requested []string `protobuf:"bytes,7,rep,name=requested,proto3" json:"requested,omitempty"`
+	// The name of the credential or of the proof request, when the
+	// invitation names one.
+	Name          string `protobuf:"bytes,8,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1124,6 +1199,41 @@ func (x *DidcommInvitation) GetCarriesOffer() bool {
 		return x.CarriesOffer
 	}
 	return false
+}
+
+func (x *DidcommInvitation) GetInvitationId() string {
+	if x != nil {
+		return x.InvitationId
+	}
+	return ""
+}
+
+func (x *DidcommInvitation) GetCarriesRequest() bool {
+	if x != nil {
+		return x.CarriesRequest
+	}
+	return false
+}
+
+func (x *DidcommInvitation) GetOffered() []*NamedValue {
+	if x != nil {
+		return x.Offered
+	}
+	return nil
+}
+
+func (x *DidcommInvitation) GetRequested() []string {
+	if x != nil {
+		return x.Requested
+	}
+	return nil
+}
+
+func (x *DidcommInvitation) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
 }
 
 // OfferSummary is what the wallet shows before the citizen accepts.
@@ -2471,6 +2581,649 @@ func (x *ListPresentationsResponse) GetPage() *v1.PageResult {
 	return nil
 }
 
+// NamedValue is one name and its value.
+type NamedValue struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The name.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The value.
+	Value         string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NamedValue) Reset() {
+	*x = NamedValue{}
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NamedValue) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NamedValue) ProtoMessage() {}
+
+func (x *NamedValue) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NamedValue.ProtoReflect.Descriptor instead.
+func (*NamedValue) Descriptor() ([]byte, []int) {
+	return file_vca_walletportal_v1_walletportal_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *NamedValue) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *NamedValue) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
+// AnswerInvitationRequest answers one pending invitation.
+type AnswerInvitationRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The invitation id from Scan or Paste.
+	InvitationId string `protobuf:"bytes,1,opt,name=invitation_id,json=invitationId,proto3" json:"invitation_id,omitempty"`
+	// True declines the invitation. The wallet then forgets it and sends
+	// nothing.
+	Decline       bool `protobuf:"varint,2,opt,name=decline,proto3" json:"decline,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AnswerInvitationRequest) Reset() {
+	*x = AnswerInvitationRequest{}
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnswerInvitationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnswerInvitationRequest) ProtoMessage() {}
+
+func (x *AnswerInvitationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnswerInvitationRequest.ProtoReflect.Descriptor instead.
+func (*AnswerInvitationRequest) Descriptor() ([]byte, []int) {
+	return file_vca_walletportal_v1_walletportal_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *AnswerInvitationRequest) GetInvitationId() string {
+	if x != nil {
+		return x.InvitationId
+	}
+	return ""
+}
+
+func (x *AnswerInvitationRequest) GetDecline() bool {
+	if x != nil {
+		return x.Decline
+	}
+	return false
+}
+
+// AnswerInvitationResponse returns what the wallet did.
+type AnswerInvitationResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The credential the wallet took, for an invitation with an offer.
+	Card *Card `protobuf:"bytes,1,opt,name=card,proto3" json:"card,omitempty"`
+	// The record of the answer, for an invitation with a proof request.
+	Record *PresentationRecord `protobuf:"bytes,2,opt,name=record,proto3" json:"record,omitempty"`
+	// The label of the other party, for an invitation that makes a
+	// connection only.
+	ConnectionLabel string `protobuf:"bytes,3,opt,name=connection_label,json=connectionLabel,proto3" json:"connection_label,omitempty"`
+	// A plain language sentence about the result.
+	Message       string `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AnswerInvitationResponse) Reset() {
+	*x = AnswerInvitationResponse{}
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnswerInvitationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnswerInvitationResponse) ProtoMessage() {}
+
+func (x *AnswerInvitationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnswerInvitationResponse.ProtoReflect.Descriptor instead.
+func (*AnswerInvitationResponse) Descriptor() ([]byte, []int) {
+	return file_vca_walletportal_v1_walletportal_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *AnswerInvitationResponse) GetCard() *Card {
+	if x != nil {
+		return x.Card
+	}
+	return nil
+}
+
+func (x *AnswerInvitationResponse) GetRecord() *PresentationRecord {
+	if x != nil {
+		return x.Record
+	}
+	return nil
+}
+
+func (x *AnswerInvitationResponse) GetConnectionLabel() string {
+	if x != nil {
+		return x.ConnectionLabel
+	}
+	return ""
+}
+
+func (x *AnswerInvitationResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+// ListInboxRequest has no fields.
+type ListInboxRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListInboxRequest) Reset() {
+	*x = ListInboxRequest{}
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListInboxRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListInboxRequest) ProtoMessage() {}
+
+func (x *ListInboxRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListInboxRequest.ProtoReflect.Descriptor instead.
+func (*ListInboxRequest) Descriptor() ([]byte, []int) {
+	return file_vca_walletportal_v1_walletportal_proto_rawDescGZIP(), []int{39}
+}
+
+// ListInboxResponse returns what waits for the citizen.
+type ListInboxResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The offers and the proof requests, newest first.
+	Entries       []*InboxEntry `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListInboxResponse) Reset() {
+	*x = ListInboxResponse{}
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListInboxResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListInboxResponse) ProtoMessage() {}
+
+func (x *ListInboxResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListInboxResponse.ProtoReflect.Descriptor instead.
+func (*ListInboxResponse) Descriptor() ([]byte, []int) {
+	return file_vca_walletportal_v1_walletportal_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *ListInboxResponse) GetEntries() []*InboxEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
+// InboxEntry is one offer or proof request that waits for the citizen.
+type InboxEntry struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The id AnswerInbox takes.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// What the entry is.
+	Kind InboxEntry_Kind `protobuf:"varint,2,opt,name=kind,proto3,enum=vca.walletportal.v1.InboxEntry_Kind" json:"kind,omitempty"`
+	// The label of the connection it came over.
+	From string `protobuf:"bytes,3,opt,name=from,proto3" json:"from,omitempty"`
+	// When it came.
+	ReceivedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=received_at,json=receivedAt,proto3" json:"received_at,omitempty"`
+	// The name of the credential or of the proof request.
+	Name string `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"`
+	// The values an offer carries.
+	Offered []*NamedValue `protobuf:"bytes,6,rep,name=offered,proto3" json:"offered,omitempty"`
+	// What a proof request asks for, as plain text.
+	Requested     []string `protobuf:"bytes,7,rep,name=requested,proto3" json:"requested,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InboxEntry) Reset() {
+	*x = InboxEntry{}
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InboxEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InboxEntry) ProtoMessage() {}
+
+func (x *InboxEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InboxEntry.ProtoReflect.Descriptor instead.
+func (*InboxEntry) Descriptor() ([]byte, []int) {
+	return file_vca_walletportal_v1_walletportal_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *InboxEntry) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *InboxEntry) GetKind() InboxEntry_Kind {
+	if x != nil {
+		return x.Kind
+	}
+	return InboxEntry_KIND_UNSPECIFIED
+}
+
+func (x *InboxEntry) GetFrom() string {
+	if x != nil {
+		return x.From
+	}
+	return ""
+}
+
+func (x *InboxEntry) GetReceivedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ReceivedAt
+	}
+	return nil
+}
+
+func (x *InboxEntry) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *InboxEntry) GetOffered() []*NamedValue {
+	if x != nil {
+		return x.Offered
+	}
+	return nil
+}
+
+func (x *InboxEntry) GetRequested() []string {
+	if x != nil {
+		return x.Requested
+	}
+	return nil
+}
+
+// AnswerInboxRequest accepts one entry of the inbox.
+type AnswerInboxRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The entry id from ListInbox.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// The kind of the entry from ListInbox.
+	Kind          InboxEntry_Kind `protobuf:"varint,2,opt,name=kind,proto3,enum=vca.walletportal.v1.InboxEntry_Kind" json:"kind,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AnswerInboxRequest) Reset() {
+	*x = AnswerInboxRequest{}
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnswerInboxRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnswerInboxRequest) ProtoMessage() {}
+
+func (x *AnswerInboxRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnswerInboxRequest.ProtoReflect.Descriptor instead.
+func (*AnswerInboxRequest) Descriptor() ([]byte, []int) {
+	return file_vca_walletportal_v1_walletportal_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *AnswerInboxRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *AnswerInboxRequest) GetKind() InboxEntry_Kind {
+	if x != nil {
+		return x.Kind
+	}
+	return InboxEntry_KIND_UNSPECIFIED
+}
+
+// AnswerInboxResponse returns what the wallet did.
+type AnswerInboxResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The credential the wallet took, for an offer.
+	Card *Card `protobuf:"bytes,1,opt,name=card,proto3" json:"card,omitempty"`
+	// The record of the answer, for a proof request.
+	Record *PresentationRecord `protobuf:"bytes,2,opt,name=record,proto3" json:"record,omitempty"`
+	// A plain language sentence about the result.
+	Message       string `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AnswerInboxResponse) Reset() {
+	*x = AnswerInboxResponse{}
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnswerInboxResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnswerInboxResponse) ProtoMessage() {}
+
+func (x *AnswerInboxResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnswerInboxResponse.ProtoReflect.Descriptor instead.
+func (*AnswerInboxResponse) Descriptor() ([]byte, []int) {
+	return file_vca_walletportal_v1_walletportal_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *AnswerInboxResponse) GetCard() *Card {
+	if x != nil {
+		return x.Card
+	}
+	return nil
+}
+
+func (x *AnswerInboxResponse) GetRecord() *PresentationRecord {
+	if x != nil {
+		return x.Record
+	}
+	return nil
+}
+
+func (x *AnswerInboxResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+// ListConnectionsRequest has no fields.
+type ListConnectionsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListConnectionsRequest) Reset() {
+	*x = ListConnectionsRequest{}
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListConnectionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListConnectionsRequest) ProtoMessage() {}
+
+func (x *ListConnectionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListConnectionsRequest.ProtoReflect.Descriptor instead.
+func (*ListConnectionsRequest) Descriptor() ([]byte, []int) {
+	return file_vca_walletportal_v1_walletportal_proto_rawDescGZIP(), []int{44}
+}
+
+// ListConnectionsResponse returns the connections of the wallet.
+type ListConnectionsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The connections, newest first.
+	Connections   []*Connection `protobuf:"bytes,1,rep,name=connections,proto3" json:"connections,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListConnectionsResponse) Reset() {
+	*x = ListConnectionsResponse{}
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListConnectionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListConnectionsResponse) ProtoMessage() {}
+
+func (x *ListConnectionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListConnectionsResponse.ProtoReflect.Descriptor instead.
+func (*ListConnectionsResponse) Descriptor() ([]byte, []int) {
+	return file_vca_walletportal_v1_walletportal_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *ListConnectionsResponse) GetConnections() []*Connection {
+	if x != nil {
+		return x.Connections
+	}
+	return nil
+}
+
+// Connection is one DIDComm connection of the wallet.
+type Connection struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The id of the connection.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// The label of the other party.
+	Label string `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
+	// The state of the connection, such as completed.
+	State string `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
+	// When the connection began.
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Connection) Reset() {
+	*x = Connection{}
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Connection) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Connection) ProtoMessage() {}
+
+func (x *Connection) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Connection.ProtoReflect.Descriptor instead.
+func (*Connection) Descriptor() ([]byte, []int) {
+	return file_vca_walletportal_v1_walletportal_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *Connection) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Connection) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *Connection) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *Connection) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
 // Item is one offering and whether the citizen can claim it.
 type ListClaimableResponse_Item struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -2484,7 +3237,7 @@ type ListClaimableResponse_Item struct {
 
 func (x *ListClaimableResponse_Item) Reset() {
 	*x = ListClaimableResponse_Item{}
-	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[37]
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2496,7 +3249,7 @@ func (x *ListClaimableResponse_Item) String() string {
 func (*ListClaimableResponse_Item) ProtoMessage() {}
 
 func (x *ListClaimableResponse_Item) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[37]
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2545,7 +3298,7 @@ type PresentStartResponse_RequestedCredential struct {
 
 func (x *PresentStartResponse_RequestedCredential) Reset() {
 	*x = PresentStartResponse_RequestedCredential{}
-	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[38]
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2557,7 +3310,7 @@ func (x *PresentStartResponse_RequestedCredential) String() string {
 func (*PresentStartResponse_RequestedCredential) ProtoMessage() {}
 
 func (x *PresentStartResponse_RequestedCredential) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[38]
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2623,7 +3376,7 @@ type PresentStartResponse_RequestedCredential_Claim struct {
 
 func (x *PresentStartResponse_RequestedCredential_Claim) Reset() {
 	*x = PresentStartResponse_RequestedCredential_Claim{}
-	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[39]
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2635,7 +3388,7 @@ func (x *PresentStartResponse_RequestedCredential_Claim) String() string {
 func (*PresentStartResponse_RequestedCredential_Claim) ProtoMessage() {}
 
 func (x *PresentStartResponse_RequestedCredential_Claim) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[39]
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2683,7 +3436,7 @@ type PresentConfirmRequest_ClaimPaths struct {
 
 func (x *PresentConfirmRequest_ClaimPaths) Reset() {
 	*x = PresentConfirmRequest_ClaimPaths{}
-	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[42]
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2695,7 +3448,7 @@ func (x *PresentConfirmRequest_ClaimPaths) String() string {
 func (*PresentConfirmRequest_ClaimPaths) ProtoMessage() {}
 
 func (x *PresentConfirmRequest_ClaimPaths) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[42]
+	mi := &file_vca_walletportal_v1_walletportal_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2722,7 +3475,7 @@ var File_vca_walletportal_v1_walletportal_proto protoreflect.FileDescriptor
 
 const file_vca_walletportal_v1_walletportal_proto_rawDesc = "" +
 	"\n" +
-	"&vca/walletportal/v1/walletportal.proto\x12\x13vca.walletportal.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\x1a\x1avca/schema/v1/schema.proto\x1a\x18vca/trust/v1/trust.proto\"\xe1\x06\n" +
+	"&vca/walletportal/v1/walletportal.proto\x12\x13vca.walletportal.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\x1a\x1avca/schema/v1/schema.proto\x1a\x18vca/trust/v1/trust.proto\"\xff\x06\n" +
 	"\x04Card\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x12\n" +
@@ -2744,7 +3497,8 @@ const file_vca_walletportal_v1_walletportal_proto_rawDesc = "" +
 	"receivedAt\x120\n" +
 	"\adisplay\x18\r \x01(\v2\x16.vca.schema.v1.DisplayR\adisplay\x12\x1d\n" +
 	"\n" +
-	"in_browser\x18\x0e \x01(\bR\tinBrowser\x1a9\n" +
+	"in_browser\x18\x0e \x01(\bR\tinBrowser\x12\x1c\n" +
+	"\tpermanent\x18\x0f \x01(\bR\tpermanent\x1a9\n" +
 	"\vClaimsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc6\x01\n" +
@@ -2805,11 +3559,16 @@ const file_vca_walletportal_v1_walletportal_proto_rawDesc = "" +
 	"\x19KIND_PRESENTATION_REQUEST\x10\x02\x12\x13\n" +
 	"\x0fKIND_CREDENTIAL\x10\x03\x12\x10\n" +
 	"\fKIND_UNKNOWN\x10\x04\x12\x1b\n" +
-	"\x17KIND_DIDCOMM_INVITATION\x10\x05\"`\n" +
+	"\x17KIND_DIDCOMM_INVITATION\x10\x05\"\x9b\x02\n" +
 	"\x11DidcommInvitation\x12\x10\n" +
 	"\x03uri\x18\x01 \x01(\tR\x03uri\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x12#\n" +
-	"\rcarries_offer\x18\x03 \x01(\bR\fcarriesOffer\"\x82\x02\n" +
+	"\rcarries_offer\x18\x03 \x01(\bR\fcarriesOffer\x12#\n" +
+	"\rinvitation_id\x18\x04 \x01(\tR\finvitationId\x12'\n" +
+	"\x0fcarries_request\x18\x05 \x01(\bR\x0ecarriesRequest\x129\n" +
+	"\aoffered\x18\x06 \x03(\v2\x1f.vca.walletportal.v1.NamedValueR\aoffered\x12\x1c\n" +
+	"\trequested\x18\a \x03(\tR\trequested\x12\x12\n" +
+	"\x04name\x18\b \x01(\tR\x04name\"\x82\x02\n" +
 	"\fOfferSummary\x12+\n" +
 	"\x11credential_issuer\x18\x01 \x01(\tR\x10credentialIssuer\x12\x1f\n" +
 	"\vissuer_name\x18\x02 \x01(\tR\n" +
@@ -2910,11 +3669,58 @@ const file_vca_walletportal_v1_walletportal_proto_rawDesc = "" +
 	"\x04page\x18\x01 \x01(\v2\x19.vca.common.v1.PaginationR\x04page\"\x8d\x01\n" +
 	"\x19ListPresentationsResponse\x12A\n" +
 	"\arecords\x18\x01 \x03(\v2'.vca.walletportal.v1.PresentationRecordR\arecords\x12-\n" +
-	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page*v\n" +
+	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page\"6\n" +
+	"\n" +
+	"NamedValue\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\"X\n" +
+	"\x17AnswerInvitationRequest\x12#\n" +
+	"\rinvitation_id\x18\x01 \x01(\tR\finvitationId\x12\x18\n" +
+	"\adecline\x18\x02 \x01(\bR\adecline\"\xcf\x01\n" +
+	"\x18AnswerInvitationResponse\x12-\n" +
+	"\x04card\x18\x01 \x01(\v2\x19.vca.walletportal.v1.CardR\x04card\x12?\n" +
+	"\x06record\x18\x02 \x01(\v2'.vca.walletportal.v1.PresentationRecordR\x06record\x12)\n" +
+	"\x10connection_label\x18\x03 \x01(\tR\x0fconnectionLabel\x12\x18\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\"\x12\n" +
+	"\x10ListInboxRequest\"N\n" +
+	"\x11ListInboxResponse\x129\n" +
+	"\aentries\x18\x01 \x03(\v2\x1f.vca.walletportal.v1.InboxEntryR\aentries\"\xda\x02\n" +
+	"\n" +
+	"InboxEntry\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x128\n" +
+	"\x04kind\x18\x02 \x01(\x0e2$.vca.walletportal.v1.InboxEntry.KindR\x04kind\x12\x12\n" +
+	"\x04from\x18\x03 \x01(\tR\x04from\x12;\n" +
+	"\vreceived_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"receivedAt\x12\x12\n" +
+	"\x04name\x18\x05 \x01(\tR\x04name\x129\n" +
+	"\aoffered\x18\x06 \x03(\v2\x1f.vca.walletportal.v1.NamedValueR\aoffered\x12\x1c\n" +
+	"\trequested\x18\a \x03(\tR\trequested\"D\n" +
+	"\x04Kind\x12\x14\n" +
+	"\x10KIND_UNSPECIFIED\x10\x00\x12\x0e\n" +
+	"\n" +
+	"KIND_OFFER\x10\x01\x12\x16\n" +
+	"\x12KIND_PROOF_REQUEST\x10\x02\"^\n" +
+	"\x12AnswerInboxRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x128\n" +
+	"\x04kind\x18\x02 \x01(\x0e2$.vca.walletportal.v1.InboxEntry.KindR\x04kind\"\x9f\x01\n" +
+	"\x13AnswerInboxResponse\x12-\n" +
+	"\x04card\x18\x01 \x01(\v2\x19.vca.walletportal.v1.CardR\x04card\x12?\n" +
+	"\x06record\x18\x02 \x01(\v2'.vca.walletportal.v1.PresentationRecordR\x06record\x12\x18\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\"\x18\n" +
+	"\x16ListConnectionsRequest\"\\\n" +
+	"\x17ListConnectionsResponse\x12A\n" +
+	"\vconnections\x18\x01 \x03(\v2\x1f.vca.walletportal.v1.ConnectionR\vconnections\"\x83\x01\n" +
+	"\n" +
+	"Connection\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label\x12\x14\n" +
+	"\x05state\x18\x03 \x01(\tR\x05state\x129\n" +
+	"\n" +
+	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt*v\n" +
 	"\vClaimMethod\x12\x1c\n" +
 	"\x18CLAIM_METHOD_UNSPECIFIED\x10\x00\x12$\n" +
 	" CLAIM_METHOD_PRE_AUTHORIZED_CODE\x10\x01\x12#\n" +
-	"\x1fCLAIM_METHOD_AUTHORIZATION_CODE\x10\x022\x9d\v\n" +
+	"\x1fCLAIM_METHOD_AUTHORIZATION_CODE\x10\x022\xba\x0e\n" +
 	"\x13WalletPortalService\x12o\n" +
 	"\x10ListDiscoverable\x12,.vca.walletportal.v1.ListDiscoverableRequest\x1a-.vca.walletportal.v1.ListDiscoverableResponse\x12f\n" +
 	"\rListClaimable\x12).vca.walletportal.v1.ListClaimableRequest\x1a*.vca.walletportal.v1.ListClaimableResponse\x12N\n" +
@@ -2930,7 +3736,11 @@ const file_vca_walletportal_v1_walletportal_proto_rawDesc = "" +
 	"\x0ePresentConfirm\x12*.vca.walletportal.v1.PresentConfirmRequest\x1a+.vca.walletportal.v1.PresentConfirmResponse\x12i\n" +
 	"\x0ePresentDecline\x12*.vca.walletportal.v1.PresentDeclineRequest\x1a+.vca.walletportal.v1.PresentDeclineResponse\x12r\n" +
 	"\x11ListPresentations\x12-.vca.walletportal.v1.ListPresentationsRequest\x1a..vca.walletportal.v1.ListPresentationsResponse\x12W\n" +
-	"\bDocument\x12$.vca.walletportal.v1.DocumentRequest\x1a%.vca.walletportal.v1.DocumentResponseB\xe8\x01\n" +
+	"\bDocument\x12$.vca.walletportal.v1.DocumentRequest\x1a%.vca.walletportal.v1.DocumentResponse\x12o\n" +
+	"\x10AnswerInvitation\x12,.vca.walletportal.v1.AnswerInvitationRequest\x1a-.vca.walletportal.v1.AnswerInvitationResponse\x12Z\n" +
+	"\tListInbox\x12%.vca.walletportal.v1.ListInboxRequest\x1a&.vca.walletportal.v1.ListInboxResponse\x12`\n" +
+	"\vAnswerInbox\x12'.vca.walletportal.v1.AnswerInboxRequest\x1a(.vca.walletportal.v1.AnswerInboxResponse\x12l\n" +
+	"\x0fListConnections\x12+.vca.walletportal.v1.ListConnectionsRequest\x1a,.vca.walletportal.v1.ListConnectionsResponseB\xe8\x01\n" +
 	"\x17com.vca.walletportal.v1B\x11WalletportalProtoP\x01ZLgithub.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1;walletportalv1\xa2\x02\x03VWX\xaa\x02\x13Vca.Walletportal.V1\xca\x02\x13Vca\\Walletportal\\V1\xe2\x02\x1fVca\\Walletportal\\V1\\GPBMetadata\xea\x02\x15Vca::Walletportal::V1b\x06proto3"
 
 var (
@@ -2945,150 +3755,182 @@ func file_vca_walletportal_v1_walletportal_proto_rawDescGZIP() []byte {
 	return file_vca_walletportal_v1_walletportal_proto_rawDescData
 }
 
-var file_vca_walletportal_v1_walletportal_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_vca_walletportal_v1_walletportal_proto_msgTypes = make([]protoimpl.MessageInfo, 43)
+var file_vca_walletportal_v1_walletportal_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
+var file_vca_walletportal_v1_walletportal_proto_msgTypes = make([]protoimpl.MessageInfo, 54)
 var file_vca_walletportal_v1_walletportal_proto_goTypes = []any{
 	(ClaimMethod)(0),                                       // 0: vca.walletportal.v1.ClaimMethod
 	(Card_RevocationState)(0),                              // 1: vca.walletportal.v1.Card.RevocationState
 	(Detected_Kind)(0),                                     // 2: vca.walletportal.v1.Detected.Kind
 	(PresentationRecord_Result)(0),                         // 3: vca.walletportal.v1.PresentationRecord.Result
-	(*Card)(nil),                                           // 4: vca.walletportal.v1.Card
-	(*Offering)(nil),                                       // 5: vca.walletportal.v1.Offering
-	(*ListDiscoverableRequest)(nil),                        // 6: vca.walletportal.v1.ListDiscoverableRequest
-	(*ListDiscoverableResponse)(nil),                       // 7: vca.walletportal.v1.ListDiscoverableResponse
-	(*ListClaimableRequest)(nil),                           // 8: vca.walletportal.v1.ListClaimableRequest
-	(*ListClaimableResponse)(nil),                          // 9: vca.walletportal.v1.ListClaimableResponse
-	(*ClaimRequest)(nil),                                   // 10: vca.walletportal.v1.ClaimRequest
-	(*ClaimResponse)(nil),                                  // 11: vca.walletportal.v1.ClaimResponse
-	(*ClaimCompleteRequest)(nil),                           // 12: vca.walletportal.v1.ClaimCompleteRequest
-	(*ClaimCompleteResponse)(nil),                          // 13: vca.walletportal.v1.ClaimCompleteResponse
-	(*Detected)(nil),                                       // 14: vca.walletportal.v1.Detected
-	(*DidcommInvitation)(nil),                              // 15: vca.walletportal.v1.DidcommInvitation
-	(*OfferSummary)(nil),                                   // 16: vca.walletportal.v1.OfferSummary
-	(*ScanRequest)(nil),                                    // 17: vca.walletportal.v1.ScanRequest
-	(*ScanResponse)(nil),                                   // 18: vca.walletportal.v1.ScanResponse
-	(*PasteRequest)(nil),                                   // 19: vca.walletportal.v1.PasteRequest
-	(*PasteResponse)(nil),                                  // 20: vca.walletportal.v1.PasteResponse
-	(*AcceptRequest)(nil),                                  // 21: vca.walletportal.v1.AcceptRequest
-	(*AcceptResponse)(nil),                                 // 22: vca.walletportal.v1.AcceptResponse
-	(*RejectRequest)(nil),                                  // 23: vca.walletportal.v1.RejectRequest
-	(*RejectResponse)(nil),                                 // 24: vca.walletportal.v1.RejectResponse
-	(*DeleteRequest)(nil),                                  // 25: vca.walletportal.v1.DeleteRequest
-	(*DeleteResponse)(nil),                                 // 26: vca.walletportal.v1.DeleteResponse
-	(*DocumentRequest)(nil),                                // 27: vca.walletportal.v1.DocumentRequest
-	(*DocumentResponse)(nil),                               // 28: vca.walletportal.v1.DocumentResponse
-	(*ListMineRequest)(nil),                                // 29: vca.walletportal.v1.ListMineRequest
-	(*ListMineResponse)(nil),                               // 30: vca.walletportal.v1.ListMineResponse
-	(*PresentStartRequest)(nil),                            // 31: vca.walletportal.v1.PresentStartRequest
-	(*PresentStartResponse)(nil),                           // 32: vca.walletportal.v1.PresentStartResponse
-	(*PresentConfirmRequest)(nil),                          // 33: vca.walletportal.v1.PresentConfirmRequest
-	(*PresentConfirmResponse)(nil),                         // 34: vca.walletportal.v1.PresentConfirmResponse
-	(*PresentationRecord)(nil),                             // 35: vca.walletportal.v1.PresentationRecord
-	(*PresentDeclineRequest)(nil),                          // 36: vca.walletportal.v1.PresentDeclineRequest
-	(*PresentDeclineResponse)(nil),                         // 37: vca.walletportal.v1.PresentDeclineResponse
-	(*ListPresentationsRequest)(nil),                       // 38: vca.walletportal.v1.ListPresentationsRequest
-	(*ListPresentationsResponse)(nil),                      // 39: vca.walletportal.v1.ListPresentationsResponse
-	nil,                                                    // 40: vca.walletportal.v1.Card.ClaimsEntry
-	(*ListClaimableResponse_Item)(nil),                     // 41: vca.walletportal.v1.ListClaimableResponse.Item
-	(*PresentStartResponse_RequestedCredential)(nil),       // 42: vca.walletportal.v1.PresentStartResponse.RequestedCredential
-	(*PresentStartResponse_RequestedCredential_Claim)(nil), // 43: vca.walletportal.v1.PresentStartResponse.RequestedCredential.Claim
-	nil,                                      // 44: vca.walletportal.v1.PresentConfirmRequest.SelectedCardsEntry
-	nil,                                      // 45: vca.walletportal.v1.PresentConfirmRequest.DisclosedEntry
-	(*PresentConfirmRequest_ClaimPaths)(nil), // 46: vca.walletportal.v1.PresentConfirmRequest.ClaimPaths
-	(v1.Format)(0),                           // 47: vca.common.v1.Format
-	(v11.TrustLookupResponse_Outcome)(0),     // 48: vca.trust.v1.TrustLookupResponse.Outcome
-	(*v1.ValidityWindow)(nil),                // 49: vca.common.v1.ValidityWindow
-	(*timestamppb.Timestamp)(nil),            // 50: google.protobuf.Timestamp
-	(*v12.Display)(nil),                      // 51: vca.schema.v1.Display
-	(*v12.PublicSchema)(nil),                 // 52: vca.schema.v1.PublicSchema
-	(*v1.Pagination)(nil),                    // 53: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),                    // 54: vca.common.v1.PageResult
-	(*v1.Error)(nil),                         // 55: vca.common.v1.Error
+	(InboxEntry_Kind)(0),                                   // 4: vca.walletportal.v1.InboxEntry.Kind
+	(*Card)(nil),                                           // 5: vca.walletportal.v1.Card
+	(*Offering)(nil),                                       // 6: vca.walletportal.v1.Offering
+	(*ListDiscoverableRequest)(nil),                        // 7: vca.walletportal.v1.ListDiscoverableRequest
+	(*ListDiscoverableResponse)(nil),                       // 8: vca.walletportal.v1.ListDiscoverableResponse
+	(*ListClaimableRequest)(nil),                           // 9: vca.walletportal.v1.ListClaimableRequest
+	(*ListClaimableResponse)(nil),                          // 10: vca.walletportal.v1.ListClaimableResponse
+	(*ClaimRequest)(nil),                                   // 11: vca.walletportal.v1.ClaimRequest
+	(*ClaimResponse)(nil),                                  // 12: vca.walletportal.v1.ClaimResponse
+	(*ClaimCompleteRequest)(nil),                           // 13: vca.walletportal.v1.ClaimCompleteRequest
+	(*ClaimCompleteResponse)(nil),                          // 14: vca.walletportal.v1.ClaimCompleteResponse
+	(*Detected)(nil),                                       // 15: vca.walletportal.v1.Detected
+	(*DidcommInvitation)(nil),                              // 16: vca.walletportal.v1.DidcommInvitation
+	(*OfferSummary)(nil),                                   // 17: vca.walletportal.v1.OfferSummary
+	(*ScanRequest)(nil),                                    // 18: vca.walletportal.v1.ScanRequest
+	(*ScanResponse)(nil),                                   // 19: vca.walletportal.v1.ScanResponse
+	(*PasteRequest)(nil),                                   // 20: vca.walletportal.v1.PasteRequest
+	(*PasteResponse)(nil),                                  // 21: vca.walletportal.v1.PasteResponse
+	(*AcceptRequest)(nil),                                  // 22: vca.walletportal.v1.AcceptRequest
+	(*AcceptResponse)(nil),                                 // 23: vca.walletportal.v1.AcceptResponse
+	(*RejectRequest)(nil),                                  // 24: vca.walletportal.v1.RejectRequest
+	(*RejectResponse)(nil),                                 // 25: vca.walletportal.v1.RejectResponse
+	(*DeleteRequest)(nil),                                  // 26: vca.walletportal.v1.DeleteRequest
+	(*DeleteResponse)(nil),                                 // 27: vca.walletportal.v1.DeleteResponse
+	(*DocumentRequest)(nil),                                // 28: vca.walletportal.v1.DocumentRequest
+	(*DocumentResponse)(nil),                               // 29: vca.walletportal.v1.DocumentResponse
+	(*ListMineRequest)(nil),                                // 30: vca.walletportal.v1.ListMineRequest
+	(*ListMineResponse)(nil),                               // 31: vca.walletportal.v1.ListMineResponse
+	(*PresentStartRequest)(nil),                            // 32: vca.walletportal.v1.PresentStartRequest
+	(*PresentStartResponse)(nil),                           // 33: vca.walletportal.v1.PresentStartResponse
+	(*PresentConfirmRequest)(nil),                          // 34: vca.walletportal.v1.PresentConfirmRequest
+	(*PresentConfirmResponse)(nil),                         // 35: vca.walletportal.v1.PresentConfirmResponse
+	(*PresentationRecord)(nil),                             // 36: vca.walletportal.v1.PresentationRecord
+	(*PresentDeclineRequest)(nil),                          // 37: vca.walletportal.v1.PresentDeclineRequest
+	(*PresentDeclineResponse)(nil),                         // 38: vca.walletportal.v1.PresentDeclineResponse
+	(*ListPresentationsRequest)(nil),                       // 39: vca.walletportal.v1.ListPresentationsRequest
+	(*ListPresentationsResponse)(nil),                      // 40: vca.walletportal.v1.ListPresentationsResponse
+	(*NamedValue)(nil),                                     // 41: vca.walletportal.v1.NamedValue
+	(*AnswerInvitationRequest)(nil),                        // 42: vca.walletportal.v1.AnswerInvitationRequest
+	(*AnswerInvitationResponse)(nil),                       // 43: vca.walletportal.v1.AnswerInvitationResponse
+	(*ListInboxRequest)(nil),                               // 44: vca.walletportal.v1.ListInboxRequest
+	(*ListInboxResponse)(nil),                              // 45: vca.walletportal.v1.ListInboxResponse
+	(*InboxEntry)(nil),                                     // 46: vca.walletportal.v1.InboxEntry
+	(*AnswerInboxRequest)(nil),                             // 47: vca.walletportal.v1.AnswerInboxRequest
+	(*AnswerInboxResponse)(nil),                            // 48: vca.walletportal.v1.AnswerInboxResponse
+	(*ListConnectionsRequest)(nil),                         // 49: vca.walletportal.v1.ListConnectionsRequest
+	(*ListConnectionsResponse)(nil),                        // 50: vca.walletportal.v1.ListConnectionsResponse
+	(*Connection)(nil),                                     // 51: vca.walletportal.v1.Connection
+	nil,                                                    // 52: vca.walletportal.v1.Card.ClaimsEntry
+	(*ListClaimableResponse_Item)(nil),                     // 53: vca.walletportal.v1.ListClaimableResponse.Item
+	(*PresentStartResponse_RequestedCredential)(nil),       // 54: vca.walletportal.v1.PresentStartResponse.RequestedCredential
+	(*PresentStartResponse_RequestedCredential_Claim)(nil), // 55: vca.walletportal.v1.PresentStartResponse.RequestedCredential.Claim
+	nil,                                      // 56: vca.walletportal.v1.PresentConfirmRequest.SelectedCardsEntry
+	nil,                                      // 57: vca.walletportal.v1.PresentConfirmRequest.DisclosedEntry
+	(*PresentConfirmRequest_ClaimPaths)(nil), // 58: vca.walletportal.v1.PresentConfirmRequest.ClaimPaths
+	(v1.Format)(0),                           // 59: vca.common.v1.Format
+	(v11.TrustLookupResponse_Outcome)(0),     // 60: vca.trust.v1.TrustLookupResponse.Outcome
+	(*v1.ValidityWindow)(nil),                // 61: vca.common.v1.ValidityWindow
+	(*timestamppb.Timestamp)(nil),            // 62: google.protobuf.Timestamp
+	(*v12.Display)(nil),                      // 63: vca.schema.v1.Display
+	(*v12.PublicSchema)(nil),                 // 64: vca.schema.v1.PublicSchema
+	(*v1.Pagination)(nil),                    // 65: vca.common.v1.Pagination
+	(*v1.PageResult)(nil),                    // 66: vca.common.v1.PageResult
+	(*v1.Error)(nil),                         // 67: vca.common.v1.Error
 }
 var file_vca_walletportal_v1_walletportal_proto_depIdxs = []int32{
-	47, // 0: vca.walletportal.v1.Card.format:type_name -> vca.common.v1.Format
-	48, // 1: vca.walletportal.v1.Card.trust:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
-	49, // 2: vca.walletportal.v1.Card.validity:type_name -> vca.common.v1.ValidityWindow
+	59, // 0: vca.walletportal.v1.Card.format:type_name -> vca.common.v1.Format
+	60, // 1: vca.walletportal.v1.Card.trust:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
+	61, // 2: vca.walletportal.v1.Card.validity:type_name -> vca.common.v1.ValidityWindow
 	1,  // 3: vca.walletportal.v1.Card.revocation:type_name -> vca.walletportal.v1.Card.RevocationState
-	40, // 4: vca.walletportal.v1.Card.claims:type_name -> vca.walletportal.v1.Card.ClaimsEntry
-	50, // 5: vca.walletportal.v1.Card.received_at:type_name -> google.protobuf.Timestamp
-	51, // 6: vca.walletportal.v1.Card.display:type_name -> vca.schema.v1.Display
-	48, // 7: vca.walletportal.v1.Offering.trust:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
-	52, // 8: vca.walletportal.v1.Offering.schema:type_name -> vca.schema.v1.PublicSchema
+	52, // 4: vca.walletportal.v1.Card.claims:type_name -> vca.walletportal.v1.Card.ClaimsEntry
+	62, // 5: vca.walletportal.v1.Card.received_at:type_name -> google.protobuf.Timestamp
+	63, // 6: vca.walletportal.v1.Card.display:type_name -> vca.schema.v1.Display
+	60, // 7: vca.walletportal.v1.Offering.trust:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
+	64, // 8: vca.walletportal.v1.Offering.schema:type_name -> vca.schema.v1.PublicSchema
 	0,  // 9: vca.walletportal.v1.Offering.claim_methods:type_name -> vca.walletportal.v1.ClaimMethod
-	53, // 10: vca.walletportal.v1.ListDiscoverableRequest.page:type_name -> vca.common.v1.Pagination
-	5,  // 11: vca.walletportal.v1.ListDiscoverableResponse.offerings:type_name -> vca.walletportal.v1.Offering
-	54, // 12: vca.walletportal.v1.ListDiscoverableResponse.page:type_name -> vca.common.v1.PageResult
-	53, // 13: vca.walletportal.v1.ListClaimableRequest.page:type_name -> vca.common.v1.Pagination
-	41, // 14: vca.walletportal.v1.ListClaimableResponse.items:type_name -> vca.walletportal.v1.ListClaimableResponse.Item
-	54, // 15: vca.walletportal.v1.ListClaimableResponse.page:type_name -> vca.common.v1.PageResult
-	47, // 16: vca.walletportal.v1.ClaimRequest.format:type_name -> vca.common.v1.Format
-	4,  // 17: vca.walletportal.v1.ClaimResponse.card:type_name -> vca.walletportal.v1.Card
-	4,  // 18: vca.walletportal.v1.ClaimCompleteResponse.card:type_name -> vca.walletportal.v1.Card
+	65, // 10: vca.walletportal.v1.ListDiscoverableRequest.page:type_name -> vca.common.v1.Pagination
+	6,  // 11: vca.walletportal.v1.ListDiscoverableResponse.offerings:type_name -> vca.walletportal.v1.Offering
+	66, // 12: vca.walletportal.v1.ListDiscoverableResponse.page:type_name -> vca.common.v1.PageResult
+	65, // 13: vca.walletportal.v1.ListClaimableRequest.page:type_name -> vca.common.v1.Pagination
+	53, // 14: vca.walletportal.v1.ListClaimableResponse.items:type_name -> vca.walletportal.v1.ListClaimableResponse.Item
+	66, // 15: vca.walletportal.v1.ListClaimableResponse.page:type_name -> vca.common.v1.PageResult
+	59, // 16: vca.walletportal.v1.ClaimRequest.format:type_name -> vca.common.v1.Format
+	5,  // 17: vca.walletportal.v1.ClaimResponse.card:type_name -> vca.walletportal.v1.Card
+	5,  // 18: vca.walletportal.v1.ClaimCompleteResponse.card:type_name -> vca.walletportal.v1.Card
 	2,  // 19: vca.walletportal.v1.Detected.kind:type_name -> vca.walletportal.v1.Detected.Kind
-	16, // 20: vca.walletportal.v1.Detected.offer:type_name -> vca.walletportal.v1.OfferSummary
-	55, // 21: vca.walletportal.v1.Detected.error:type_name -> vca.common.v1.Error
-	15, // 22: vca.walletportal.v1.Detected.invitation:type_name -> vca.walletportal.v1.DidcommInvitation
-	48, // 23: vca.walletportal.v1.OfferSummary.trust:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
-	51, // 24: vca.walletportal.v1.OfferSummary.display:type_name -> vca.schema.v1.Display
-	14, // 25: vca.walletportal.v1.ScanResponse.detected:type_name -> vca.walletportal.v1.Detected
-	14, // 26: vca.walletportal.v1.PasteResponse.detected:type_name -> vca.walletportal.v1.Detected
-	4,  // 27: vca.walletportal.v1.AcceptResponse.card:type_name -> vca.walletportal.v1.Card
-	53, // 28: vca.walletportal.v1.ListMineRequest.page:type_name -> vca.common.v1.Pagination
-	4,  // 29: vca.walletportal.v1.ListMineResponse.cards:type_name -> vca.walletportal.v1.Card
-	54, // 30: vca.walletportal.v1.ListMineResponse.page:type_name -> vca.common.v1.PageResult
-	48, // 31: vca.walletportal.v1.PresentStartResponse.trust:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
-	42, // 32: vca.walletportal.v1.PresentStartResponse.requested:type_name -> vca.walletportal.v1.PresentStartResponse.RequestedCredential
-	44, // 33: vca.walletportal.v1.PresentConfirmRequest.selected_cards:type_name -> vca.walletportal.v1.PresentConfirmRequest.SelectedCardsEntry
-	45, // 34: vca.walletportal.v1.PresentConfirmRequest.disclosed:type_name -> vca.walletportal.v1.PresentConfirmRequest.DisclosedEntry
-	35, // 35: vca.walletportal.v1.PresentConfirmResponse.record:type_name -> vca.walletportal.v1.PresentationRecord
-	4,  // 36: vca.walletportal.v1.PresentConfirmResponse.card:type_name -> vca.walletportal.v1.Card
-	50, // 37: vca.walletportal.v1.PresentationRecord.at:type_name -> google.protobuf.Timestamp
-	3,  // 38: vca.walletportal.v1.PresentationRecord.result:type_name -> vca.walletportal.v1.PresentationRecord.Result
-	35, // 39: vca.walletportal.v1.PresentDeclineResponse.record:type_name -> vca.walletportal.v1.PresentationRecord
-	53, // 40: vca.walletportal.v1.ListPresentationsRequest.page:type_name -> vca.common.v1.Pagination
-	35, // 41: vca.walletportal.v1.ListPresentationsResponse.records:type_name -> vca.walletportal.v1.PresentationRecord
-	54, // 42: vca.walletportal.v1.ListPresentationsResponse.page:type_name -> vca.common.v1.PageResult
-	5,  // 43: vca.walletportal.v1.ListClaimableResponse.Item.offering:type_name -> vca.walletportal.v1.Offering
-	47, // 44: vca.walletportal.v1.PresentStartResponse.RequestedCredential.format:type_name -> vca.common.v1.Format
-	4,  // 45: vca.walletportal.v1.PresentStartResponse.RequestedCredential.matches:type_name -> vca.walletportal.v1.Card
-	43, // 46: vca.walletportal.v1.PresentStartResponse.RequestedCredential.claims:type_name -> vca.walletportal.v1.PresentStartResponse.RequestedCredential.Claim
-	46, // 47: vca.walletportal.v1.PresentConfirmRequest.DisclosedEntry.value:type_name -> vca.walletportal.v1.PresentConfirmRequest.ClaimPaths
-	6,  // 48: vca.walletportal.v1.WalletPortalService.ListDiscoverable:input_type -> vca.walletportal.v1.ListDiscoverableRequest
-	8,  // 49: vca.walletportal.v1.WalletPortalService.ListClaimable:input_type -> vca.walletportal.v1.ListClaimableRequest
-	10, // 50: vca.walletportal.v1.WalletPortalService.Claim:input_type -> vca.walletportal.v1.ClaimRequest
-	12, // 51: vca.walletportal.v1.WalletPortalService.ClaimComplete:input_type -> vca.walletportal.v1.ClaimCompleteRequest
-	17, // 52: vca.walletportal.v1.WalletPortalService.Scan:input_type -> vca.walletportal.v1.ScanRequest
-	19, // 53: vca.walletportal.v1.WalletPortalService.Paste:input_type -> vca.walletportal.v1.PasteRequest
-	21, // 54: vca.walletportal.v1.WalletPortalService.Accept:input_type -> vca.walletportal.v1.AcceptRequest
-	23, // 55: vca.walletportal.v1.WalletPortalService.Reject:input_type -> vca.walletportal.v1.RejectRequest
-	25, // 56: vca.walletportal.v1.WalletPortalService.Delete:input_type -> vca.walletportal.v1.DeleteRequest
-	29, // 57: vca.walletportal.v1.WalletPortalService.ListMine:input_type -> vca.walletportal.v1.ListMineRequest
-	31, // 58: vca.walletportal.v1.WalletPortalService.PresentStart:input_type -> vca.walletportal.v1.PresentStartRequest
-	33, // 59: vca.walletportal.v1.WalletPortalService.PresentConfirm:input_type -> vca.walletportal.v1.PresentConfirmRequest
-	36, // 60: vca.walletportal.v1.WalletPortalService.PresentDecline:input_type -> vca.walletportal.v1.PresentDeclineRequest
-	38, // 61: vca.walletportal.v1.WalletPortalService.ListPresentations:input_type -> vca.walletportal.v1.ListPresentationsRequest
-	27, // 62: vca.walletportal.v1.WalletPortalService.Document:input_type -> vca.walletportal.v1.DocumentRequest
-	7,  // 63: vca.walletportal.v1.WalletPortalService.ListDiscoverable:output_type -> vca.walletportal.v1.ListDiscoverableResponse
-	9,  // 64: vca.walletportal.v1.WalletPortalService.ListClaimable:output_type -> vca.walletportal.v1.ListClaimableResponse
-	11, // 65: vca.walletportal.v1.WalletPortalService.Claim:output_type -> vca.walletportal.v1.ClaimResponse
-	13, // 66: vca.walletportal.v1.WalletPortalService.ClaimComplete:output_type -> vca.walletportal.v1.ClaimCompleteResponse
-	18, // 67: vca.walletportal.v1.WalletPortalService.Scan:output_type -> vca.walletportal.v1.ScanResponse
-	20, // 68: vca.walletportal.v1.WalletPortalService.Paste:output_type -> vca.walletportal.v1.PasteResponse
-	22, // 69: vca.walletportal.v1.WalletPortalService.Accept:output_type -> vca.walletportal.v1.AcceptResponse
-	24, // 70: vca.walletportal.v1.WalletPortalService.Reject:output_type -> vca.walletportal.v1.RejectResponse
-	26, // 71: vca.walletportal.v1.WalletPortalService.Delete:output_type -> vca.walletportal.v1.DeleteResponse
-	30, // 72: vca.walletportal.v1.WalletPortalService.ListMine:output_type -> vca.walletportal.v1.ListMineResponse
-	32, // 73: vca.walletportal.v1.WalletPortalService.PresentStart:output_type -> vca.walletportal.v1.PresentStartResponse
-	34, // 74: vca.walletportal.v1.WalletPortalService.PresentConfirm:output_type -> vca.walletportal.v1.PresentConfirmResponse
-	37, // 75: vca.walletportal.v1.WalletPortalService.PresentDecline:output_type -> vca.walletportal.v1.PresentDeclineResponse
-	39, // 76: vca.walletportal.v1.WalletPortalService.ListPresentations:output_type -> vca.walletportal.v1.ListPresentationsResponse
-	28, // 77: vca.walletportal.v1.WalletPortalService.Document:output_type -> vca.walletportal.v1.DocumentResponse
-	63, // [63:78] is the sub-list for method output_type
-	48, // [48:63] is the sub-list for method input_type
-	48, // [48:48] is the sub-list for extension type_name
-	48, // [48:48] is the sub-list for extension extendee
-	0,  // [0:48] is the sub-list for field type_name
+	17, // 20: vca.walletportal.v1.Detected.offer:type_name -> vca.walletportal.v1.OfferSummary
+	67, // 21: vca.walletportal.v1.Detected.error:type_name -> vca.common.v1.Error
+	16, // 22: vca.walletportal.v1.Detected.invitation:type_name -> vca.walletportal.v1.DidcommInvitation
+	41, // 23: vca.walletportal.v1.DidcommInvitation.offered:type_name -> vca.walletportal.v1.NamedValue
+	60, // 24: vca.walletportal.v1.OfferSummary.trust:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
+	63, // 25: vca.walletportal.v1.OfferSummary.display:type_name -> vca.schema.v1.Display
+	15, // 26: vca.walletportal.v1.ScanResponse.detected:type_name -> vca.walletportal.v1.Detected
+	15, // 27: vca.walletportal.v1.PasteResponse.detected:type_name -> vca.walletportal.v1.Detected
+	5,  // 28: vca.walletportal.v1.AcceptResponse.card:type_name -> vca.walletportal.v1.Card
+	65, // 29: vca.walletportal.v1.ListMineRequest.page:type_name -> vca.common.v1.Pagination
+	5,  // 30: vca.walletportal.v1.ListMineResponse.cards:type_name -> vca.walletportal.v1.Card
+	66, // 31: vca.walletportal.v1.ListMineResponse.page:type_name -> vca.common.v1.PageResult
+	60, // 32: vca.walletportal.v1.PresentStartResponse.trust:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
+	54, // 33: vca.walletportal.v1.PresentStartResponse.requested:type_name -> vca.walletportal.v1.PresentStartResponse.RequestedCredential
+	56, // 34: vca.walletportal.v1.PresentConfirmRequest.selected_cards:type_name -> vca.walletportal.v1.PresentConfirmRequest.SelectedCardsEntry
+	57, // 35: vca.walletportal.v1.PresentConfirmRequest.disclosed:type_name -> vca.walletportal.v1.PresentConfirmRequest.DisclosedEntry
+	36, // 36: vca.walletportal.v1.PresentConfirmResponse.record:type_name -> vca.walletportal.v1.PresentationRecord
+	5,  // 37: vca.walletportal.v1.PresentConfirmResponse.card:type_name -> vca.walletportal.v1.Card
+	62, // 38: vca.walletportal.v1.PresentationRecord.at:type_name -> google.protobuf.Timestamp
+	3,  // 39: vca.walletportal.v1.PresentationRecord.result:type_name -> vca.walletportal.v1.PresentationRecord.Result
+	36, // 40: vca.walletportal.v1.PresentDeclineResponse.record:type_name -> vca.walletportal.v1.PresentationRecord
+	65, // 41: vca.walletportal.v1.ListPresentationsRequest.page:type_name -> vca.common.v1.Pagination
+	36, // 42: vca.walletportal.v1.ListPresentationsResponse.records:type_name -> vca.walletportal.v1.PresentationRecord
+	66, // 43: vca.walletportal.v1.ListPresentationsResponse.page:type_name -> vca.common.v1.PageResult
+	5,  // 44: vca.walletportal.v1.AnswerInvitationResponse.card:type_name -> vca.walletportal.v1.Card
+	36, // 45: vca.walletportal.v1.AnswerInvitationResponse.record:type_name -> vca.walletportal.v1.PresentationRecord
+	46, // 46: vca.walletportal.v1.ListInboxResponse.entries:type_name -> vca.walletportal.v1.InboxEntry
+	4,  // 47: vca.walletportal.v1.InboxEntry.kind:type_name -> vca.walletportal.v1.InboxEntry.Kind
+	62, // 48: vca.walletportal.v1.InboxEntry.received_at:type_name -> google.protobuf.Timestamp
+	41, // 49: vca.walletportal.v1.InboxEntry.offered:type_name -> vca.walletportal.v1.NamedValue
+	4,  // 50: vca.walletportal.v1.AnswerInboxRequest.kind:type_name -> vca.walletportal.v1.InboxEntry.Kind
+	5,  // 51: vca.walletportal.v1.AnswerInboxResponse.card:type_name -> vca.walletportal.v1.Card
+	36, // 52: vca.walletportal.v1.AnswerInboxResponse.record:type_name -> vca.walletportal.v1.PresentationRecord
+	51, // 53: vca.walletportal.v1.ListConnectionsResponse.connections:type_name -> vca.walletportal.v1.Connection
+	62, // 54: vca.walletportal.v1.Connection.created_at:type_name -> google.protobuf.Timestamp
+	6,  // 55: vca.walletportal.v1.ListClaimableResponse.Item.offering:type_name -> vca.walletportal.v1.Offering
+	59, // 56: vca.walletportal.v1.PresentStartResponse.RequestedCredential.format:type_name -> vca.common.v1.Format
+	5,  // 57: vca.walletportal.v1.PresentStartResponse.RequestedCredential.matches:type_name -> vca.walletportal.v1.Card
+	55, // 58: vca.walletportal.v1.PresentStartResponse.RequestedCredential.claims:type_name -> vca.walletportal.v1.PresentStartResponse.RequestedCredential.Claim
+	58, // 59: vca.walletportal.v1.PresentConfirmRequest.DisclosedEntry.value:type_name -> vca.walletportal.v1.PresentConfirmRequest.ClaimPaths
+	7,  // 60: vca.walletportal.v1.WalletPortalService.ListDiscoverable:input_type -> vca.walletportal.v1.ListDiscoverableRequest
+	9,  // 61: vca.walletportal.v1.WalletPortalService.ListClaimable:input_type -> vca.walletportal.v1.ListClaimableRequest
+	11, // 62: vca.walletportal.v1.WalletPortalService.Claim:input_type -> vca.walletportal.v1.ClaimRequest
+	13, // 63: vca.walletportal.v1.WalletPortalService.ClaimComplete:input_type -> vca.walletportal.v1.ClaimCompleteRequest
+	18, // 64: vca.walletportal.v1.WalletPortalService.Scan:input_type -> vca.walletportal.v1.ScanRequest
+	20, // 65: vca.walletportal.v1.WalletPortalService.Paste:input_type -> vca.walletportal.v1.PasteRequest
+	22, // 66: vca.walletportal.v1.WalletPortalService.Accept:input_type -> vca.walletportal.v1.AcceptRequest
+	24, // 67: vca.walletportal.v1.WalletPortalService.Reject:input_type -> vca.walletportal.v1.RejectRequest
+	26, // 68: vca.walletportal.v1.WalletPortalService.Delete:input_type -> vca.walletportal.v1.DeleteRequest
+	30, // 69: vca.walletportal.v1.WalletPortalService.ListMine:input_type -> vca.walletportal.v1.ListMineRequest
+	32, // 70: vca.walletportal.v1.WalletPortalService.PresentStart:input_type -> vca.walletportal.v1.PresentStartRequest
+	34, // 71: vca.walletportal.v1.WalletPortalService.PresentConfirm:input_type -> vca.walletportal.v1.PresentConfirmRequest
+	37, // 72: vca.walletportal.v1.WalletPortalService.PresentDecline:input_type -> vca.walletportal.v1.PresentDeclineRequest
+	39, // 73: vca.walletportal.v1.WalletPortalService.ListPresentations:input_type -> vca.walletportal.v1.ListPresentationsRequest
+	28, // 74: vca.walletportal.v1.WalletPortalService.Document:input_type -> vca.walletportal.v1.DocumentRequest
+	42, // 75: vca.walletportal.v1.WalletPortalService.AnswerInvitation:input_type -> vca.walletportal.v1.AnswerInvitationRequest
+	44, // 76: vca.walletportal.v1.WalletPortalService.ListInbox:input_type -> vca.walletportal.v1.ListInboxRequest
+	47, // 77: vca.walletportal.v1.WalletPortalService.AnswerInbox:input_type -> vca.walletportal.v1.AnswerInboxRequest
+	49, // 78: vca.walletportal.v1.WalletPortalService.ListConnections:input_type -> vca.walletportal.v1.ListConnectionsRequest
+	8,  // 79: vca.walletportal.v1.WalletPortalService.ListDiscoverable:output_type -> vca.walletportal.v1.ListDiscoverableResponse
+	10, // 80: vca.walletportal.v1.WalletPortalService.ListClaimable:output_type -> vca.walletportal.v1.ListClaimableResponse
+	12, // 81: vca.walletportal.v1.WalletPortalService.Claim:output_type -> vca.walletportal.v1.ClaimResponse
+	14, // 82: vca.walletportal.v1.WalletPortalService.ClaimComplete:output_type -> vca.walletportal.v1.ClaimCompleteResponse
+	19, // 83: vca.walletportal.v1.WalletPortalService.Scan:output_type -> vca.walletportal.v1.ScanResponse
+	21, // 84: vca.walletportal.v1.WalletPortalService.Paste:output_type -> vca.walletportal.v1.PasteResponse
+	23, // 85: vca.walletportal.v1.WalletPortalService.Accept:output_type -> vca.walletportal.v1.AcceptResponse
+	25, // 86: vca.walletportal.v1.WalletPortalService.Reject:output_type -> vca.walletportal.v1.RejectResponse
+	27, // 87: vca.walletportal.v1.WalletPortalService.Delete:output_type -> vca.walletportal.v1.DeleteResponse
+	31, // 88: vca.walletportal.v1.WalletPortalService.ListMine:output_type -> vca.walletportal.v1.ListMineResponse
+	33, // 89: vca.walletportal.v1.WalletPortalService.PresentStart:output_type -> vca.walletportal.v1.PresentStartResponse
+	35, // 90: vca.walletportal.v1.WalletPortalService.PresentConfirm:output_type -> vca.walletportal.v1.PresentConfirmResponse
+	38, // 91: vca.walletportal.v1.WalletPortalService.PresentDecline:output_type -> vca.walletportal.v1.PresentDeclineResponse
+	40, // 92: vca.walletportal.v1.WalletPortalService.ListPresentations:output_type -> vca.walletportal.v1.ListPresentationsResponse
+	29, // 93: vca.walletportal.v1.WalletPortalService.Document:output_type -> vca.walletportal.v1.DocumentResponse
+	43, // 94: vca.walletportal.v1.WalletPortalService.AnswerInvitation:output_type -> vca.walletportal.v1.AnswerInvitationResponse
+	45, // 95: vca.walletportal.v1.WalletPortalService.ListInbox:output_type -> vca.walletportal.v1.ListInboxResponse
+	48, // 96: vca.walletportal.v1.WalletPortalService.AnswerInbox:output_type -> vca.walletportal.v1.AnswerInboxResponse
+	50, // 97: vca.walletportal.v1.WalletPortalService.ListConnections:output_type -> vca.walletportal.v1.ListConnectionsResponse
+	79, // [79:98] is the sub-list for method output_type
+	60, // [60:79] is the sub-list for method input_type
+	60, // [60:60] is the sub-list for extension type_name
+	60, // [60:60] is the sub-list for extension extendee
+	0,  // [0:60] is the sub-list for field type_name
 }
 
 func init() { file_vca_walletportal_v1_walletportal_proto_init() }
@@ -3101,8 +3943,8 @@ func file_vca_walletportal_v1_walletportal_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_walletportal_v1_walletportal_proto_rawDesc), len(file_vca_walletportal_v1_walletportal_proto_rawDesc)),
-			NumEnums:      4,
-			NumMessages:   43,
+			NumEnums:      5,
+			NumMessages:   54,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
