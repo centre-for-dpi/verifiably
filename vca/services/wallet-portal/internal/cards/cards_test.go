@@ -291,7 +291,7 @@ func TestBuilderDefaultsAndTrustErrors(t *testing.T) {
 	if card.GetTrust() != trustv1.TrustLookupResponse_OUTCOME_UNKNOWN {
 		t.Fatalf("trust = %v", card.GetTrust())
 	}
-	if !strings.Contains(card.GetStatusText(), "No trust list names The issuer") {
+	if !strings.Contains(card.GetStatusText(), "No trust list names the issuer") {
 		t.Fatalf("status text = %q", card.GetStatusText())
 	}
 }

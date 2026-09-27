@@ -326,11 +326,13 @@ func validitySentence(window *commonv1.ValidityWindow, now time.Time) string {
 	return "This credential is valid until " + day(until.AsTime()) + "."
 }
 
-// trustSentence says whether relying parties trust the issuer.
+// trustSentence says whether relying parties trust the issuer. An
+// issuer with no name reads as "The issuer" at the start of a sentence
+// and as "the issuer" in its middle.
 func trustSentence(outcome trustv1.TrustLookupResponse_Outcome, name string) string {
-	who := strings.TrimSpace(name)
+	who, whom := strings.TrimSpace(name), strings.TrimSpace(name)
 	if who == "" {
-		who = "The issuer"
+		who, whom = "The issuer", "the issuer"
 	}
 	switch outcome {
 	case trustv1.TrustLookupResponse_OUTCOME_TRUSTED:
@@ -338,7 +340,7 @@ func trustSentence(outcome trustv1.TrustLookupResponse_Outcome, name string) str
 	case trustv1.TrustLookupResponse_OUTCOME_UNTRUSTED:
 		return who + " is not on the trust list now."
 	case trustv1.TrustLookupResponse_OUTCOME_UNKNOWN:
-		return "No trust list names " + who + "."
+		return "No trust list names " + whom + "."
 	case trustv1.TrustLookupResponse_OUTCOME_UNAVAILABLE,
 		trustv1.TrustLookupResponse_OUTCOME_UNSPECIFIED:
 		return "The wallet could not check the trust list."
