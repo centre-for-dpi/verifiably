@@ -126,3 +126,37 @@ func TestStackRefusalOfAConsentReachesTheHolder(t *testing.T) {
 		t.Fatalf("refusal: %v", err)
 	}
 }
+
+// byValue is an OID4VP request that carries its query in the link.
+const byValue = `openid4vp://?client_id=https%3A%2F%2Fverifier.example&response_mode=direct_post&nonce=n-1` +
+	`&response_uri=http%3A%2F%2F10.0.0.5%2Finternal&dcql_query=%7B%22credentials%22%3A%5B%7B%22id%22%3A%22licence%22%2C` +
+	`%22format%22%3A%22dc%2Bsd-jwt%22%2C%22meta%22%3A%7B%22vct_values%22%3A%5B%22DriverLicence%22%5D%7D%2C` +
+	`%22claims%22%3A%5B%7B%22path%22%3A%5B%22given_name%22%5D%7D%5D%7D%5D%7D`
+
+// TestStackWalletRefusesARequestByValue is finding 5 of the CREDEBL
+// review: a request by value has no request_uri, so the stack wallet
+// would read the response address of the verifier as a request. The
+// portal refuses it through the stack wallet with a reason, and the
+// holder backend never sees the response address.
+func TestStackWalletRefusesARequestByValue(t *testing.T) {
+	holder := &fakeHolder{credential: credential(t), accepted: true}
+	svc := build(t, func(o *service.Options) { o.Holder = holder })
+	scan, err := svc.Scan(ctx(), connect.NewRequest(&walletportalv1.ScanRequest{Text: byValue}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := scan.Msg.GetDetected().GetPresentationId()
+	_, err = svc.PresentStart(ctx(), connect.NewRequest(&walletportalv1.PresentStartRequest{PresentationId: id}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "request link") {
+		t.Fatalf("start: %v", err)
+	}
+	_, err = svc.PresentConfirm(ctx(), connect.NewRequest(&walletportalv1.PresentConfirmRequest{
+		PresentationId: id, SelectedCards: map[string]string{"licence": "c1"},
+	}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "request link") {
+		t.Fatalf("confirm: %v", err)
+	}
+	if holder.seenPresent != nil {
+		t.Fatalf("the holder backend got %q", holder.seenPresent.GetRequestUri())
+	}
+}

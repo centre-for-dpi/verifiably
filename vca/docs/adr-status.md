@@ -681,15 +681,15 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-063 | 1 The whole query feature, the consent check and the shared claims | Done | `vca/services/dpg-adapter-credebl/internal/service/holder_oid4vc.go`, `vca/services/wallet-portal/internal/service/service.go` | `TestPresentOid4vpRefusesAnUntickedClaim`, `TestResolvedRequestDisclosures`, `TestConsentMarksEveryClaimWhenTheStackSharesTheWholeQuery` and `TestHistoryNamesWhatTheStackShared` pin it. |
-| ADR-063 | 2 A request by value stays with the browser store | Not started | `vca/services/wallet-portal/internal/service/service.go` | The portal still hands the response address to the stack wallet. |
+| ADR-063 | 2 A request by value stays with the browser store | Done | `vca/services/wallet-portal/internal/service/service.go` | `TestStackWalletRefusesARequestByValue` and `TestPresentFromUploadedRequestFile` pin it. |
 | ADR-063 | 3 The two fetches of a request URI | Not started | `vca/docs/dpg-adapter-credebl.md` | The adapter document does not name the second fetch yet. |
 
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 296 |
+| Done | 297 |
 | Partial | 25 |
 | Deferred | 3 |
-| Not started | 28 |
+| Not started | 27 |
 | Total | 352 |

@@ -704,6 +704,9 @@ func (s *Service) PresentStart(ctx context.Context,
 	}
 	// A hybrid wallet whose stack does not answer still presents the
 	// credentials of the browser store.
+	if rec.Interactive == "" && s.opts.Holder != nil && !s.hybrid(ctx) && parsed.RequestURI == "" {
+		return nil, errByValue
+	}
 	held, _, err := s.held(ctx, citizen, nil)
 	if err != nil {
 		return nil, err
@@ -849,18 +852,24 @@ func selections(msg *walletportalv1.PresentConfirmRequest) ([]string, []string) 
 	return ids, paths
 }
 
+// errByValue refuses a request by value through the stack wallet
+// (ADR-063 decision 2).
+var errByValue = connect.NewError(connect.CodeFailedPrecondition,
+	errors.New("this wallet answers a request link only; ask the verifier for a request link"))
+
 // presentWithBackend asks the holder backend to answer the request. It
 // returns the answer and the claims the stack reports it shared. A stack
 // that refuses the consent says why, and the holder sees the reason.
 func (s *Service) presentWithBackend(ctx context.Context, citizen session.Citizen,
 	parsed present.Request, chosen, disclosed []string,
 ) (*walletportalv1.PresentConfirmResponse, []string, error) {
-	uri := parsed.RequestURI
-	if uri == "" {
-		uri = parsed.ResponseURI
+	// The stack wallet fetches the request itself. A request by value
+	// has no address to fetch, and the response address is not one.
+	if parsed.RequestURI == "" {
+		return nil, nil, errByValue
 	}
 	resp, err := s.opts.Holder.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{
-		WalletId: citizen.WalletID, RequestUri: uri,
+		WalletId: citizen.WalletID, RequestUri: parsed.RequestURI,
 		CredentialIds: chosen, DisclosedClaims: disclosed,
 	}))
 	if cerr := new(connect.Error); errors.As(err, &cerr) && cerr.Code() == connect.CodeFailedPrecondition {

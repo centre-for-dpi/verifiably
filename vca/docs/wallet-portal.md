@@ -330,6 +330,10 @@ declines. The adapter refuses an answer that leaves a claim out, and
 the page shows its reason. The record names the claims the stack
 reports as shared.
 
+A stack wallet fetches the request itself, so it takes a request link
+only. The portal refuses a request by value through a stack wallet and
+says why. The browser store answers such a request (ADR-063 decision 2).
+
 The response mode is `direct_post` only. The wallet refuses another
 response mode.
 

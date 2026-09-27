@@ -111,14 +111,22 @@ func TestPresentFromPastedLink(t *testing.T) {
 }
 
 // TestPresentFromUploadedRequestFile checks that a request object in a
-// file opens the request card.
+// file opens the request card of the browser store. A stack wallet
+// takes a request link only, so its page says why it cannot answer
+// (ADR-063 decision 2).
 func TestPresentFromUploadedRequestFile(t *testing.T) {
-	h := setupShell(t, nil, holderDeployment())
+	stack := setupShell(t, nil, holderDeployment())
+	refused := stack.upload(t, optionalRequest())
+	page := stack.get(t, noFragment(refused.Header().Get("Location"))).Body.String()
+	if !strings.Contains(page, "answers a request link only") {
+		t.Fatalf("stack wallet page = %s", page)
+	}
+	h := setupShell(t, func(o *serviceOptions) { o.Holder = nil }, holderDeployment())
 	rec := h.upload(t, optionalRequest())
 	if rec.Code != http.StatusSeeOther || !strings.HasPrefix(rec.Header().Get("Location"), "/wallet/present?id=") {
 		t.Fatalf("status = %d location = %q body = %s", rec.Code, rec.Header().Get("Location"), rec.Body.String())
 	}
-	page := h.get(t, noFragment(rec.Header().Get("Location"))).Body.String()
+	page = h.get(t, noFragment(rec.Header().Get("Location"))).Body.String()
 	if !strings.Contains(page, "Purpose: Check your licence") {
 		t.Fatalf("page = %s", page)
 	}
