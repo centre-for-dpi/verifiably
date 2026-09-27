@@ -39,6 +39,16 @@ const (
 	// PlatformAdminEmailSetting is the setting that names the platform
 	// admin. It has no default.
 	PlatformAdminEmailSetting = "VCA_CREDEBL_PLATFORM_ADMIN_EMAIL"
+	// CredeblLedgersSetting is the setting that names the Indy networks
+	// of the shared agent and of the platform (ADR-065).
+	CredeblLedgersSetting = "VCA_CREDEBL_INDY_LEDGERS" //nolint:gosec // G101: this is a variable name, not a credential.
+	// CredeblLedgersEnv is the variable of the CREDEBL stack .env that
+	// keeps the Indy networks of the setting.
+	CredeblLedgersEnv = "CREDEBL_INDY_LEDGERS" //nolint:gosec // G101: this is a variable name, not a credential.
+	// CredeblAgentConfigFile is the configuration of the shared agent
+	// that setup writes under the deploy root: its transports and the
+	// Indy networks of the operator.
+	CredeblAgentConfigFile = "credebl/credebl-agent.json" //nolint:gosec // G101: a file path, not a credential.
 	// PlatformAdminEmailEnv is the variable of the CREDEBL stack .env
 	// that the database initialisation reads.
 	PlatformAdminEmailEnv = "PLATFORM_ADMIN_EMAIL"

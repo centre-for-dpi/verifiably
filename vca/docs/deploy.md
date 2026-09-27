@@ -479,7 +479,8 @@ Without the socket, the platform cannot start a dedicated agent.
 It then gives the organisation of the deployment a wallet in the agent.
 The platform checks an agent address with a pattern that needs dots.
 So the agent has the network alias `credebl-agent.vca.internal`.
-The agent reads its transports and Indy ledgers from `dpg/credebl-agent.json`.
+The agent reads its transports and Indy ledgers from `deploy/credebl/credebl-agent.json`.
+Setup writes that file from `VCA_CREDEBL_INDY_LEDGERS`.
 Its keys come from `deploy/credebl/.env`.
 Set `CREDEBL_AGENT_ENDPOINT` to the public address of its port 9001 on a public host.
 The agent sends each DIDComm and OID4VC event to the api gateway at
@@ -559,6 +560,38 @@ It then sets `VCA_CREDEBL_MAIL_OFFERS`, and the issue page offers the email card
 The adapter also lists the bulk import of the platform (ADR-060).
 That import mails an offer to each row of a CSV file.
 Without a provider the adapter lists no email channel and no bulk import.
+
+### CREDEBL ledgers
+
+The operator picks the Indy networks of a CREDEBL stack (ADR-065).
+Setup asks for `VCA_CREDEBL_INDY_LEDGERS` on every CREDEBL pair but the
+admin one.
+The setting has no default, so no deployment writes on a public test
+network by itself.
+It takes a comma separated list of these networks:
+
+| Value | Network |
+|---|---|
+| `bcovrin:testnet` | The BCovrin test network of the Government of British Columbia |
+| `indicio:testnet` | The Indicio test network |
+| `indicio:demonet` | The Indicio demo network |
+| `indicio:mainnet` | The Indicio main network |
+
+Setup writes the list into `deploy/credebl/.env` as `CREDEBL_INDY_LEDGERS`.
+It writes the configuration of the shared agent with those networks
+alone, as `deploy/credebl/credebl-agent.json`.
+It marks those networks active in the master table of the
+initialisation, and it marks every other ledger inactive.
+The row `no_ledger` stays active, because `did:key` and `did:web` need no
+ledger.
+The Polygon ledgers stay inactive.
+They need a funded key and an RPC address that this stack does not set.
+The pinned agent needs one Indy network at least.
+With none it falls back to the BCovrin test network, so setup always
+writes the list of the operator.
+To change the networks, run `vca setup` again with a new value.
+Then run `vca dpg bootstrap credebl` on a new database, because the
+initialisation writes the ledgers once.
 
 ### CREDEBL holder wallets
 

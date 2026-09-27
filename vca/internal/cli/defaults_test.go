@@ -72,6 +72,8 @@ func baseFlags() map[string]string {
 		// A CREDEBL pair names its platform admin (ADR-055 decision 4).
 		// Every other pair leaves the declared setting out of its .env.
 		PlatformAdminEmailSetting: credeblAdmin,
+		// A CREDEBL pair names the Indy networks of its agent.
+		CredeblLedgersSetting: "bcovrin:testnet",
 	}
 }
 
@@ -188,7 +190,7 @@ func TestBuildPlanDefaultsTheIdp(t *testing.T) {
 // path needs. No flag supplies it.
 func TestBuildPlanDefaultsTheDiscoveryURL(t *testing.T) {
 	for _, p := range AllPairs() {
-		flags := map[string]string{"VCA_REDIS_URL": "redis://redis:6379", PlatformAdminEmailSetting: credeblAdmin}
+		flags := map[string]string{"VCA_REDIS_URL": "redis://redis:6379", PlatformAdminEmailSetting: credeblAdmin, CredeblLedgersSetting: "indicio:mainnet"}
 		plan, err := BuildPlan(SetupRequest{Pair: p, Flags: flags, Random: rand.Reader})
 		if err != nil {
 			t.Fatalf("%s: BuildPlan: %v", p.Name(), err)

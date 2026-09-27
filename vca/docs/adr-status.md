@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-064, one row per decision.
+ADR-065, one row per decision.
 
 The status values are:
 
@@ -693,12 +693,21 @@ A row that is not `Done` carries a note.
 | ADR-064 | 3 The issuer of the view comes from the recorded request | Done | `vca/services/dpg-adapter-credebl/internal/service/proofs.go` | `TestProofViewIssuerComesFromTheRequest` pins it. |
 | ADR-064 | 4 No issuer and a failed check for an unbound part | Done | `vca/services/dpg-adapter-credebl/internal/service/proofs.go` | `TestProofViewNamesNoIssuerWhenTheRequestBindsNone` pins it. |
 
+## ADR-065: The Indy networks of a CREDEBL stack are a setting of the operator
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-065 | 1 The setting with no default | Done | `proto/vca/config/v1/config.proto`, `vca/internal/cli/stackenv.go` | `TestCredeblLedgersAreASetting` and `TestBuildPlanEveryPairNeedsNoValue` pin it. |
+| ADR-065 | 2 Setup writes the agent file | Done | `vca/internal/cli/credebl_master.go`, `deploy/vca/dpg/credebl.yaml` | `TestCredeblLedgersAreASetting` and `TestCredeblStackReadsTheStackEnv` pin it. |
+| ADR-065 | 3 Only the chosen ledgers are active | Done | `vca/internal/cli/credebl_master.go` | `TestCredeblLedgersAreASetting` and `TestNoUpstreamCredeblCredentialSurvives` pin it. |
+| ADR-065 | 4 No agent file without a network | Done | `vca/internal/cli/stackenv.go` | `TestCredeblAgentConfigNeedsANetwork` pins it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 302 |
+| Done | 306 |
 | Partial | 25 |
 | Deferred | 3 |
 | Not started | 26 |
-| Total | 356 |
+| Total | 360 |

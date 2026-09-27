@@ -115,7 +115,7 @@ func stackKeys(d configv1.Dpg) []stackKey {
 // other pair keeps them.
 func stackSettingNames(d configv1.Dpg) []string {
 	if d == configv1.Dpg_DPG_CREDEBL {
-		return []string{PlatformAdminEmailEnv}
+		return []string{PlatformAdminEmailEnv, CredeblLedgersEnv}
 	}
 	return nil
 }
@@ -160,11 +160,17 @@ func StackSettings(p Pair, values map[string]string) map[configv1.Dpg]map[string
 	if p.Dpg != configv1.Dpg_DPG_CREDEBL {
 		return nil
 	}
-	email := strings.TrimSpace(values[PlatformAdminEmailSetting])
-	if email == "" {
+	out := map[string]string{}
+	if email := strings.TrimSpace(values[PlatformAdminEmailSetting]); email != "" {
+		out[PlatformAdminEmailEnv] = email
+	}
+	if ledgers := strings.Join(splitList(values[CredeblLedgersSetting]), ","); ledgers != "" {
+		out[CredeblLedgersEnv] = ledgers
+	}
+	if len(out) == 0 {
 		return nil
 	}
-	return map[configv1.Dpg]map[string]string{p.Dpg: {PlatformAdminEmailEnv: email}}
+	return map[configv1.Dpg]map[string]string{p.Dpg: out}
 }
 
 // StackDir returns the directory of the secrets of one stack under the
@@ -302,6 +308,12 @@ func StackFiles(existing map[configv1.Dpg]map[string]string, random io.Reader, n
 			return nil, err
 		}
 		out = append(out, File{Name: CredeblMasterTableFile, Data: table, Mode: 0o600})
+		// The agent file names the Indy networks of the operator. A run
+		// that knows none writes no file, so the agent never falls back
+		// to a test network (ADR-065).
+		if agent, ok := CredeblAgentConfig(values[CredeblLedgersEnv]); ok {
+			out = append(out, File{Name: CredeblAgentConfigFile, Data: agent, Mode: 0o644})
+		}
 	}
 	return out, nil
 }

@@ -354,8 +354,9 @@ services:
     depends_on:
       credebl-postgres:
         condition: service_healthy
-    # The file holds the transports and the ledgers. The secrets come
-    # from the environment, which wins over the file.
+    # The file holds the transports and the Indy networks that the
+    # operator named in VCA_CREDEBL_INDY_LEDGERS; vca setup writes it.
+    # The secrets come from the environment, which wins over the file.
     command: ["--config", "/config/agent.json"]
     environment:
       AFJ_REST_LABEL: vca-shared-agent
@@ -382,7 +383,7 @@ services:
       # Before that run the agent sends no event.
       AFJ_REST_WEBHOOK_URL: ${CREDEBL_AGENT_WEBHOOK_URL:-}
     volumes:
-      - ./dpg/credebl-agent.json:/config/agent.json:ro
+      - ../credebl/credebl-agent.json:/config/agent.json:ro
     ports:
       - "${VCA_BIND:-0.0.0.0}:${CREDEBL_AGENT_HOST_PORT:-17182}:9001"
     networks:

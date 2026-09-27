@@ -7,7 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // The master table of the CREDEBL initialisation (P6-C0d, ADR-055
@@ -121,6 +124,10 @@ var (
 		{"Ecosystem Lead", "Ecosystem Lead"},
 		{"Ecosystem Member", "Ecosystem Member"},
 	}
+	// credeblLedgers are the ledgers of the release. Setup marks a row
+	// active only when the operator names it (ADR-065). The Polygon rows
+	// need a funded key and an RPC address that the stack does not set,
+	// so they stay off. The row no_ledger serves did:key and did:web.
 	credeblLedgers = []credeblLedgerRow{
 		{"Bcovrin Testnet", "testnet", "https://raw.githubusercontent.com/bcgov/von-network/main/BCovrin/genesis_test", true, "testnet", "http://test.bcovrin.vonx.io/register", "bcovrin:testnet"},
 		{"Indicio Testnet", "testnet", "https://raw.githubusercontent.com/Indicio-tech/indicio-network/main/genesis_files/pool_transactions_testnet_genesis", true, "testnet", "https://selfserve.indiciotech.io/nym", "indicio:testnet"},
@@ -128,9 +135,86 @@ var (
 		{"Indicio Mainnet", "mainnet", "https://raw.githubusercontent.com/Indicio-tech/indicio-network/main/genesis_files/pool_transactions_mainnet_genesis", true, "mainnet", "https://selfserve.indiciotech.io/nym", "indicio:mainnet"},
 		{"Polygon Testnet", "testnet", "", true, "testnet", "", "polygon:testnet"},
 		{"Polygon Mainnet", "mainnet", "", true, "mainnet", "", "polygon:mainnet"},
-		{"NA", "NA", "NA", true, "NA", "NA", "no_ledger"},
+		{"NA", "NA", "NA", true, "NA", "NA", credeblNoLedger},
 	}
 )
+
+// credeblNoLedger is the ledger row of the DID methods with no ledger.
+const credeblNoLedger = "no_ledger"
+
+// credeblActiveLedgers returns the ledger rows with isActive set for the
+// Indy networks in chosen, a comma separated list, and for no_ledger.
+func credeblActiveLedgers(chosen string) []credeblLedgerRow {
+	names := splitList(chosen)
+	out := make([]credeblLedgerRow, 0, len(credeblLedgers))
+	for _, row := range credeblLedgers {
+		row.IsActive = row.IndyNamespace == credeblNoLedger || slices.Contains(names, row.IndyNamespace)
+		out = append(out, row)
+	}
+	return out
+}
+
+// credeblAgentLedger is one Indy network of the agent file.
+type credeblAgentLedger struct {
+	Genesis   string `json:"genesisTransactions"`
+	Namespace string `json:"indyNamespace"`
+}
+
+// credeblAgentFile is the configuration file of the shared agent
+// (AfjConfig of cliAgent.ts of the agent controller). The secrets come
+// from the stack .env, never from this file.
+type credeblAgentFile struct {
+	WalletType            string               `json:"walletType"`
+	WalletScheme          string               `json:"walletScheme"`
+	IndyLedger            []credeblAgentLedger `json:"indyLedger"`
+	AutoAcceptConnections bool                 `json:"autoAcceptConnections"`
+	AutoAcceptCredentials string               `json:"autoAcceptCredentials"`
+	AutoAcceptProofs      string               `json:"autoAcceptProofs"`
+	LogLevel              int                  `json:"logLevel"`
+	InboundTransport      []map[string]any     `json:"inboundTransport"`
+	OutboundTransport     []string             `json:"outboundTransport"`
+	AdminPort             int                  `json:"adminPort"`
+	Tenancy               bool                 `json:"tenancy"`
+}
+
+// CredeblAgentConfig renders the configuration of the shared agent with
+// the Indy networks in chosen, a comma separated list. The agent answers
+// an offer or a request only after the holder does, so it accepts the
+// content the holder approved. It reports false when chosen names no
+// known Indy network: the pinned agent then falls back to a test
+// network, so setup writes no file at all.
+func CredeblAgentConfig(chosen string) ([]byte, bool) {
+	var ledgers []credeblAgentLedger
+	for _, row := range credeblActiveLedgers(chosen) {
+		if row.IsActive && strings.Contains(row.PoolConfig, "://") {
+			ledgers = append(ledgers, credeblAgentLedger{Genesis: row.PoolConfig, Namespace: row.IndyNamespace})
+		}
+	}
+	if len(ledgers) == 0 {
+		return nil, false
+	}
+	file := credeblAgentFile{
+		WalletType: "postgres", WalletScheme: "ProfilePerWallet", IndyLedger: ledgers,
+		AutoAcceptConnections: true, AutoAcceptCredentials: "contentApproved", AutoAcceptProofs: "contentApproved",
+		LogLevel: 2, InboundTransport: []map[string]any{{"transport": "http", "port": 9001}},
+		OutboundTransport: []string{"http"}, AdminPort: 8001, Tenancy: true,
+	}
+	// A struct of plain fields always encodes.
+	out := anyval.Must(json.MarshalIndent(file, "", "  "))
+	return append(out, '\n'), true
+}
+
+// splitList returns the items of a comma separated list without spaces
+// and without empty items.
+func splitList(text string) []string {
+	var out []string
+	for _, part := range strings.Split(text, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
 
 // credeblLedgerConfigs returns the DID methods of each ledger family.
 func credeblLedgerConfigs() []credeblLedgerConfig {
@@ -196,7 +280,7 @@ func CredeblMasterTable(stack map[string]string, random io.Reader) ([]byte, erro
 		OrgRoleData:                   credeblOrgRoles,
 		AgentTypeData:                 []credeblAgentType{{"AFJ"}, {"ACAPY"}},
 		OrgAgentTypeData:              []credeblAgentType{{"DEDICATED"}, {"SHARED"}},
-		LedgerData:                    credeblLedgers,
+		LedgerData:                    credeblActiveLedgers(stack[CredeblLedgersEnv]),
 		LedgerConfig:                  credeblLedgerConfigs(),
 		UserRoleData:                  []credeblUserRole{{"HOLDER"}, {"DEFAULT_USER"}},
 		EcosystemRoleData:             credeblEcosystemRoles,

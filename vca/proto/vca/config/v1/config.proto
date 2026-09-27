@@ -416,6 +416,16 @@ message Config {
       required: true
       validation: "An email address of the operator. No default exists."
     }];
+    // The Indy networks that the shared agent connects to and that the
+    // platform lists as active ledgers. Required. No default exists,
+    // so no deployment writes on a public test ledger that the operator
+    // did not pick (ADR-065).
+    string indy_ledgers = 2 [(setting) = {
+      description: "The Indy networks of the CREDEBL agent and platform."
+      env: "VCA_CREDEBL_INDY_LEDGERS"
+      required: true
+      validation: "A comma separated list of bcovrin:testnet, indicio:testnet, indicio:demonet and indicio:mainnet. No default exists."
+    }];
   }
 
   // Inji holds the settings of the Inji issuer pair.

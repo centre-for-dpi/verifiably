@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -101,6 +102,82 @@ func TestSetupWritesTheCredeblEnv(t *testing.T) {
 	bad[PlatformAdminEmailSetting] = "not an address"
 	if _, err := BuildPlan(SetupRequest{Pair: credeblPair(commonv1.Role_ROLE_ISSUER), Flags: bad, Random: rand.Reader}); err == nil {
 		t.Error("a value that is no email address passed")
+	}
+}
+
+// TestCredeblLedgersAreASetting is finding 6 of the CREDEBL review
+// (ADR-050 decision 1): the Indy networks of the agent and of the
+// platform come from a setting of the operator with no default. Setup
+// writes the agent file and marks only those ledgers active in the
+// master table. A value outside the real networks stops setup.
+func TestCredeblLedgersAreASetting(t *testing.T) {
+	flags := credeblFlags()
+	flags[CredeblLedgersSetting] = "indicio:mainnet"
+	plan, err := BuildPlan(SetupRequest{Pair: credeblPair(commonv1.Role_ROLE_ISSUER), Flags: flags, Random: rand.Reader})
+	if err != nil {
+		t.Fatalf("BuildPlan: %v", err)
+	}
+	var agent struct {
+		Ledgers []struct {
+			Genesis   string `json:"genesisTransactions"`
+			Namespace string `json:"indyNamespace"`
+		} `json:"indyLedger"`
+		Tenancy bool   `json:"tenancy"`
+		Proofs  string `json:"autoAcceptProofs"`
+	}
+	f := sharedFile(t, plan, CredeblAgentConfigFile)
+	if jerr := json.Unmarshal(f.Data, &agent); jerr != nil {
+		t.Fatalf("the agent file: %v", jerr)
+	}
+	if len(agent.Ledgers) != 1 || agent.Ledgers[0].Namespace != "indicio:mainnet" ||
+		!strings.HasPrefix(agent.Ledgers[0].Genesis, "https://raw.githubusercontent.com/Indicio-tech/") || !agent.Tenancy || agent.Proofs != "contentApproved" {
+		t.Fatalf("agent file = %+v", agent)
+	}
+	var table struct {
+		Ledgers []struct {
+			Name      string `json:"name"`
+			Namespace string `json:"indyNamespace"`
+			Active    bool   `json:"isActive"`
+		} `json:"ledgerData"`
+	}
+	if jerr := json.Unmarshal(sharedFile(t, plan, CredeblMasterTableFile).Data, &table); jerr != nil {
+		t.Fatal(jerr)
+	}
+	var active []string
+	for _, l := range table.Ledgers {
+		if l.Active {
+			active = append(active, l.Namespace)
+		}
+	}
+	if strings.Join(active, ",") != "indicio:mainnet,no_ledger" {
+		t.Errorf("active ledgers = %v", active)
+	}
+	if env := string(sharedFile(t, plan, StackEnvFile(configv1.Dpg_DPG_CREDEBL)).Data); !strings.Contains(env, CredeblLedgersEnv+`=`) ||
+		!strings.Contains(env, "indicio:mainnet") {
+		t.Errorf("the stack .env has no ledgers:\n%s", env)
+	}
+	without := credeblFlags()
+	delete(without, CredeblLedgersSetting)
+	_, err = BuildPlan(SetupRequest{Pair: credeblPair(commonv1.Role_ROLE_ISSUER), Flags: without, Random: rand.Reader})
+	var missing *MissingValuesError
+	if !errors.As(err, &missing) || !strings.Contains(err.Error(), CredeblLedgersSetting) {
+		t.Errorf("no ledgers: err = %v", err)
+	}
+	for _, bad := range []string{"sovrin:mainnet", "indicio:mainnet, polygon:mainnet", " , "} {
+		flags[CredeblLedgersSetting] = bad
+		if _, berr := BuildPlan(SetupRequest{Pair: credeblPair(commonv1.Role_ROLE_ISSUER), Flags: flags, Random: rand.Reader}); berr == nil {
+			t.Errorf("%q passed", bad)
+		}
+	}
+	two := credeblFlags()
+	two[CredeblLedgersSetting] = "bcovrin:testnet,indicio:testnet"
+	plan, err = BuildPlan(SetupRequest{Pair: credeblPair(commonv1.Role_ROLE_ISSUER), Flags: two, Random: rand.Reader})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data := string(sharedFile(t, plan, CredeblAgentConfigFile).Data); !strings.Contains(data, `"bcovrin:testnet"`) || !strings.Contains(data, `"indicio:testnet"`) ||
+		strings.Contains(data, "mainnet") {
+		t.Errorf("two ledgers: %s", data)
 	}
 }
 
@@ -220,13 +297,16 @@ func TestCredeblStackRunsEveryPlatformService(t *testing.T) {
 			t.Errorf("credebl-agent %s = %q, want %q", key, agent.Environment[key], want)
 		}
 	}
-	if len(agent.Volumes) != 1 || !strings.HasPrefix(agent.Volumes[0], "./dpg/credebl-agent.json:") {
+	// Setup writes the agent file from the ledgers of the operator
+	// (finding 6 of the CREDEBL review).
+	if len(agent.Volumes) != 1 || agent.Volumes[0] != "../"+CredeblAgentConfigFile+":/config/agent.json:ro" {
 		t.Errorf("credebl-agent volumes = %v", agent.Volumes)
 	}
-	file, err := os.ReadFile(filepath.Join(repoRoot(), "deploy", "vca", "dpg", "credebl-agent.json")) // #nosec G304 -- a fixed test path
+	plan, err := BuildPlan(SetupRequest{Pair: credeblPair(commonv1.Role_ROLE_ISSUER), Flags: credeblFlags(), Random: rand.Reader})
 	if err != nil {
 		t.Fatal(err)
 	}
+	file := sharedFile(t, plan, CredeblAgentConfigFile).Data
 	for _, secret := range []string{"walletKey", "walletPassword", "apiKey", "Password"} {
 		if strings.Contains(string(file), secret) {
 			t.Errorf("the agent file holds %s; secrets come from the stack .env", secret)

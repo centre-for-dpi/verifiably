@@ -834,8 +834,13 @@ type Config_Credebl struct {
 	// platform admin with it, and vca dpg bootstrap credebl signs in as
 	// that user. Required. No default exists.
 	PlatformAdminEmail string `protobuf:"bytes,1,opt,name=platform_admin_email,json=platformAdminEmail,proto3" json:"platform_admin_email,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// The Indy networks that the shared agent connects to and that the
+	// platform lists as active ledgers. Required. No default exists,
+	// so no deployment writes on a public test ledger that the operator
+	// did not pick (ADR-065).
+	IndyLedgers   string `protobuf:"bytes,2,opt,name=indy_ledgers,json=indyLedgers,proto3" json:"indy_ledgers,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Config_Credebl) Reset() {
@@ -871,6 +876,13 @@ func (*Config_Credebl) Descriptor() ([]byte, []int) {
 func (x *Config_Credebl) GetPlatformAdminEmail() string {
 	if x != nil {
 		return x.PlatformAdminEmail
+	}
+	return ""
+}
+
+func (x *Config_Credebl) GetIndyLedgers() string {
+	if x != nil {
+		return x.IndyLedgers
 	}
 	return ""
 }
@@ -959,7 +971,7 @@ const file_vca_config_v1_config_proto_rawDesc = "" +
 	"\n" +
 	"validation\x18\b \x01(\tR\n" +
 	"validation\x12\x16\n" +
-	"\x06prompt\x18\t \x01(\bR\x06prompt\"\xda6\n" +
+	"\x06prompt\x18\t \x01(\bR\x06prompt\"\xcd8\n" +
 	"\x06Config\x12x\n" +
 	"\x04role\x18\x01 \x01(\x0e2\x13.vca.common.v1.RoleBO\xd2\xf3\x18K\n" +
 	"\x14The deployment role.\x12\bVCA_ROLE8\x01B'One of issuer, holder, verifier, admin.R\x04role\x12~\n" +
@@ -1051,10 +1063,12 @@ const file_vca_config_v1_config_proto_rawDesc = "" +
 	"6The plugin jar of a custom authenticator, on the host.\x12\x17VCA_ESIGNET_PLUGIN_FILEBBAn absolute path to a jar file. The custom authenticator needs it.R\n" +
 	"pluginFile\x12\xda\x01\n" +
 	"\x0fproperties_file\x18\x03 \x01(\tB\xb0\x01\xd2\xf3\x18\xab\x01\n" +
-	"=The properties file of the authenticator plugin, on the host.\x12\x1bVCA_ESIGNET_PROPERTIES_FILEBMAn absolute path to a properties file. Every authenticator but none needs it.R\x0epropertiesFile\x1a\xcb\x01\n" +
+	"=The properties file of the authenticator plugin, on the host.\x12\x1bVCA_ESIGNET_PROPERTIES_FILEBMAn absolute path to a properties file. Every authenticator but none needs it.R\x0epropertiesFile\x1a\xbe\x03\n" +
 	"\aCredebl\x12\xbf\x01\n" +
 	"\x14platform_admin_email\x18\x01 \x01(\tB\x8c\x01\xd2\xf3\x18\x87\x01\n" +
-	"+The email of the platform admin of CREDEBL.\x12 VCA_CREDEBL_PLATFORM_ADMIN_EMAIL8\x01B4An email address of the operator. No default exists.R\x12platformAdminEmail\x1a\xfd\x01\n" +
+	"+The email of the platform admin of CREDEBL.\x12 VCA_CREDEBL_PLATFORM_ADMIN_EMAIL8\x01B4An email address of the operator. No default exists.R\x12platformAdminEmail\x12\xf0\x01\n" +
+	"\findy_ledgers\x18\x02 \x01(\tB\xcc\x01\xd2\xf3\x18\xc7\x01\n" +
+	"4The Indy networks of the CREDEBL agent and platform.\x12\x18VCA_CREDEBL_INDY_LEDGERS8\x01BsA comma separated list of bcovrin:testnet, indicio:testnet, indicio:demonet and indicio:mainnet. No default exists.R\vindyLedgers\x1a\xfd\x01\n" +
 	"\x04Inji\x12\xf4\x01\n" +
 	"\x13iar_identity_claims\x18\x01 \x01(\tB\xc3\x01\xd2\xf3\x18\xbe\x01\n" +
 	":The claims of a presented credential that name the holder.\x12\x1cVCA_INJI_IAR_IDENTITY_CLAIMS\x1a\n" +

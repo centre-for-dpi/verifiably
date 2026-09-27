@@ -21,7 +21,7 @@ import (
 var (
 	rxOneOf      = regexp.MustCompile(`one of ([a-z0-9_, -]+?)\s*\.`)
 	rxStartsWith = regexp.MustCompile(`starts with ([a-z0-9]+://(?: or [a-z0-9]+://)*)`)
-	rxCommaList  = regexp.MustCompile(`comma separated list of ([a-z0-9, ]+?(?: and [a-z0-9]+)?)\s*\.`)
+	rxCommaList  = regexp.MustCompile(`comma separated list of ([a-z0-9:, ]+?(?: and [a-z0-9:]+)?)\s*\.`)
 	rxBetween    = regexp.MustCompile(`between (\d+) and (\d+)`)
 	rxScheme     = regexp.MustCompile(`[a-z0-9]+://`)
 	rxAtMost     = regexp.MustCompile(`(\d+) characters or fewer`)

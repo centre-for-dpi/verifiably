@@ -292,7 +292,10 @@ secret of the schema file server, `CREDEBL_SCHEMA_FILE_SERVER_SECRET`.
 Setup signs the upload token of the platform with it, into
 `CREDEBL_SCHEMA_FILE_SERVER_TOKEN`.
 Every CREDEBL pair but the admin one needs the email. It has no
-default. Each has 32 random letters and digits. A later run keeps
+default. The same pairs need `VCA_CREDEBL_INDY_LEDGERS`, the Indy
+networks of the shared agent. It has no default either. Setup writes it
+as `CREDEBL_INDY_LEDGERS` and writes `deploy/credebl/credebl-agent.json`
+from it (ADR-065). Each has 32 random letters and digits. A later run keeps
 every value it finds. The main compose file includes every stack file.
 Compose checks the values of each, so the run writes all three.
 The `.gitignore` beside it keeps the file out of git.

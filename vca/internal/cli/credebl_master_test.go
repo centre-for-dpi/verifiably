@@ -12,7 +12,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
@@ -57,6 +59,31 @@ func field(t *testing.T, table map[string]any, section, name string) string {
 		return value
 	}
 	return ""
+}
+
+// activeAs returns the ledger rows of the release with isActive set for
+// the chosen networks and for no_ledger.
+func activeAs(t *testing.T, rows any, chosen string) any {
+	t.Helper()
+	list, ok := rows.([]any)
+	if !ok {
+		t.Fatalf("ledgerData is no list: %v", rows)
+	}
+	out := make([]any, 0, len(list))
+	for _, item := range list {
+		row, isMap := item.(map[string]any)
+		if !isMap {
+			t.Fatalf("a ledger row is no object: %v", item)
+		}
+		copied := map[string]any{}
+		for k, v := range row {
+			copied[k] = v
+		}
+		ns := anyval.As[string](row["indyNamespace"])
+		copied["isActive"] = ns == "no_ledger" || slices.Contains(strings.Split(chosen, ","), ns)
+		out = append(out, copied)
+	}
+	return out
 }
 
 // upstreamCredentials returns every credential the upstream sources
@@ -162,6 +189,10 @@ func TestNoUpstreamCredeblCredentialSurvives(t *testing.T) {
 		switch name {
 		case "platformConfigData", "platformAdminData", "platformAdminKeycloakPassword":
 			continue
+		case "ledgerData":
+			// The ledgers of the operator are active, and the others
+			// are off (ADR-065).
+			want = activeAs(t, want, credeblFlags()[CredeblLedgersSetting])
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("section %s = %v, want %v", name, got, want)
@@ -245,5 +276,25 @@ func TestCredeblPairEnvSignsInWithTheGeneratedAdmin(t *testing.T) {
 	}
 	if strings.Contains(planFile(t, waltid, EnvFileName), CredeblAdapterPasswordEnv) {
 		t.Error("a walt.id pair carries the CREDEBL password")
+	}
+}
+
+// TestCredeblAgentConfigNeedsANetwork is ADR-065 decision 4: with no
+// known Indy network setup writes no agent file, because the pinned
+// agent would fall back to a test network.
+func TestCredeblAgentConfigNeedsANetwork(t *testing.T) {
+	for _, chosen := range []string{"", " , ", "polygon:mainnet", "no_ledger"} {
+		if data, ok := CredeblAgentConfig(chosen); ok {
+			t.Errorf("%q wrote %s", chosen, data)
+		}
+	}
+	files, err := StackFiles(nil, rand.Reader, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if f.Name == CredeblAgentConfigFile {
+			t.Errorf("a run with no networks wrote %s", f.Name)
+		}
 	}
 }
