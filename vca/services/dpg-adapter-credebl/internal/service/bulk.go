@@ -54,6 +54,9 @@ func (s *Service) features() []backendv1.Feature {
 		backendv1.Feature_FEATURE_CREDENTIAL_CONFIG_API,
 		backendv1.Feature_FEATURE_MULTI_TENANCY,
 		backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION,
+		// An X.509 chain binds to a certificate row of the platform
+		// (P6-C9, ADR-068).
+		backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_X509,
 		// The issuance sessions of the agent give the state of an offer
 		// and the issued credentials (P6-C5).
 		backendv1.Feature_FEATURE_ISSUANCE_STATUS,
@@ -66,6 +69,8 @@ func (s *Service) features() []backendv1.Feature {
 		backendv1.Feature_FEATURE_WEBHOOKS,
 		backendv1.Feature_FEATURE_HOLDER_NOTIFICATIONS,
 		backendv1.Feature_FEATURE_TENANT_CLIENT_CREDENTIALS,
+		// The ecosystems of the platform (P6-C9, ADR-068).
+		backendv1.Feature_FEATURE_ECOSYSTEMS,
 	}
 	if s.mailOffers {
 		out = append(out, backendv1.Feature_FEATURE_BULK_NATIVE)

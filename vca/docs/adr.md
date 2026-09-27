@@ -47,3 +47,4 @@ each decision of each record.
 - [ADR-065: The Indy networks of a CREDEBL stack are a setting of the operator](adr/ADR-065-credebl-ledgers-setting.md)
 - [ADR-066: The CREDEBL stack runs one release line of the platform](adr/ADR-066-credebl-release-line.md)
 - [ADR-067: The webhook, the holder notification address and the client credential of a CREDEBL organisation](adr/ADR-067-credebl-organisation-settings.md)
+- [ADR-068: CREDEBL ecosystems and the X.509 issuer identity](adr/ADR-068-credebl-ecosystems-and-x509.md)

@@ -190,6 +190,24 @@ service TenantBackendService {
   rpc CreateClientCredential(CreateClientCredentialRequest) returns (CreateClientCredentialResponse);
   // DeleteClientCredential removes one client credential of a tenant.
   rpc DeleteClientCredential(DeleteClientCredentialRequest) returns (DeleteClientCredentialResponse);
+  // GetEcosystemSettings reports whether the ecosystems of the DPG are
+  // on (ADR-068). An adapter serves the ecosystem RPCs when it lists
+  // FEATURE_ECOSYSTEMS.
+  rpc GetEcosystemSettings(GetEcosystemSettingsRequest) returns (GetEcosystemSettingsResponse);
+  // SetEcosystemSettings turns the ecosystems of the DPG on or off.
+  rpc SetEcosystemSettings(SetEcosystemSettingsRequest) returns (SetEcosystemSettingsResponse);
+  // ListEcosystems returns the ecosystems that one tenant leads or
+  // belongs to.
+  rpc ListEcosystems(ListEcosystemsRequest) returns (ListEcosystemsResponse);
+  // CreateEcosystem creates one ecosystem that a tenant leads.
+  rpc CreateEcosystem(CreateEcosystemRequest) returns (CreateEcosystemResponse);
+  // ListEcosystemMembers returns the member tenants of one ecosystem,
+  // without the lead.
+  rpc ListEcosystemMembers(ListEcosystemMembersRequest) returns (ListEcosystemMembersResponse);
+  // AddEcosystemMember adds one tenant to an ecosystem as a member.
+  rpc AddEcosystemMember(AddEcosystemMemberRequest) returns (AddEcosystemMemberResponse);
+  // RemoveEcosystemMember removes one member tenant from an ecosystem.
+  rpc RemoveEcosystemMember(RemoveEcosystemMemberRequest) returns (RemoveEcosystemMemberResponse);
 }
 
 // NotificationBackendService reads and sets the webhook that a DPG calls
@@ -1827,6 +1845,121 @@ message DeleteClientCredentialRequest {
 
 // DeleteClientCredentialResponse has no fields.
 message DeleteClientCredentialResponse {}
+
+// Ecosystem is a group of tenants that one lead tenant runs (ADR-068).
+message Ecosystem {
+  // The DPG assigned id of the ecosystem.
+  string id = 1;
+  // The name of the ecosystem. The DPG keeps each name once.
+  string name = 2;
+  // What the ecosystem is for.
+  string description = 3;
+  // The DPG assigned id of the lead tenant.
+  string lead_tenant_id = 4;
+  // The name of the lead tenant.
+  string lead_tenant_name = 5;
+  // The number of member tenants, without the lead.
+  int32 member_count = 6;
+}
+
+// EcosystemMember is one member tenant of an ecosystem.
+message EcosystemMember {
+  // The DPG assigned id of the tenant.
+  string tenant_id = 1;
+  // The name of the tenant.
+  string tenant_name = 2;
+  // The state of the membership as the DPG names it, such as ACTIVE.
+  string status = 3;
+  // When the tenant joined.
+  google.protobuf.Timestamp joined_at = 4;
+}
+
+// GetEcosystemSettingsRequest has no fields.
+message GetEcosystemSettingsRequest {}
+
+// GetEcosystemSettingsResponse reports the ecosystem settings.
+message GetEcosystemSettingsResponse {
+  // True when the ecosystems of the DPG are on.
+  bool enabled = 1;
+}
+
+// SetEcosystemSettingsRequest turns the ecosystems on or off.
+message SetEcosystemSettingsRequest {
+  // True turns the ecosystems on.
+  bool enabled = 1;
+}
+
+// SetEcosystemSettingsResponse returns the new settings.
+message SetEcosystemSettingsResponse {
+  // True when the ecosystems of the DPG are on.
+  bool enabled = 1;
+}
+
+// ListEcosystemsRequest selects one tenant.
+message ListEcosystemsRequest {
+  // The DPG assigned id of the tenant.
+  string tenant_id = 1;
+}
+
+// ListEcosystemsResponse returns the ecosystems of the tenant.
+message ListEcosystemsResponse {
+  // The ecosystems that the tenant leads or belongs to.
+  repeated Ecosystem ecosystems = 1;
+}
+
+// CreateEcosystemRequest names the new ecosystem and its lead.
+message CreateEcosystemRequest {
+  // The DPG assigned id of the lead tenant.
+  string lead_tenant_id = 1;
+  // The name of the ecosystem.
+  string name = 2;
+  // What the ecosystem is for.
+  string description = 3;
+}
+
+// CreateEcosystemResponse returns the new ecosystem.
+message CreateEcosystemResponse {
+  // The ecosystem.
+  Ecosystem ecosystem = 1;
+}
+
+// ListEcosystemMembersRequest selects one ecosystem.
+message ListEcosystemMembersRequest {
+  // The DPG assigned id of the ecosystem.
+  string ecosystem_id = 1;
+}
+
+// ListEcosystemMembersResponse returns the members.
+message ListEcosystemMembersResponse {
+  // The member tenants, without the lead.
+  repeated EcosystemMember members = 1;
+}
+
+// AddEcosystemMemberRequest names the ecosystem and the tenant.
+message AddEcosystemMemberRequest {
+  // The DPG assigned id of the ecosystem.
+  string ecosystem_id = 1;
+  // The DPG assigned id of the tenant.
+  string tenant_id = 2;
+}
+
+// AddEcosystemMemberResponse says how the tenant joins.
+message AddEcosystemMemberResponse {
+  // True when the DPG mailed an invitation that the owner of the tenant
+  // must accept. False when the tenant joined at once.
+  bool invited = 1;
+}
+
+// RemoveEcosystemMemberRequest names the ecosystem and the tenant.
+message RemoveEcosystemMemberRequest {
+  // The DPG assigned id of the ecosystem.
+  string ecosystem_id = 1;
+  // The DPG assigned id of the tenant.
+  string tenant_id = 2;
+}
+
+// RemoveEcosystemMemberResponse has no fields.
+message RemoveEcosystemMemberResponse {}
 
 // Webhook is the address a DPG calls on the events of one tenant.
 message Webhook {

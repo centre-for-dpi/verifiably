@@ -24,7 +24,7 @@ DIDComm wallet for each holder in the shared agent of the stack.
 | `HolderBackendService` | Served with the address and the API key of the shared agent: a DIDComm wallet per holder (ADR-062). |
 | `VerifierBackendService` | Served: OID4VP with DCQL, and DIDComm proof requests. |
 | `CatalogBackendService` | Served. |
-| `TenantBackendService` | Served for organisations, with one client credential per organisation (ADR-067). |
+| `TenantBackendService` | Served for organisations, with one client credential per organisation (ADR-067) and the ecosystems (ADR-068). |
 | `NotificationBackendService` | Served: the webhook of an organisation and its holder notification address (ADR-067). |
 | `BulkImportBackendService` | Served when the stack names a mail provider. The platform mails each row of a file an offer. |
 
@@ -79,6 +79,17 @@ DIDComm wallet for each holder in the shared agent of the stack.
 | `GET /v1/orgs/{org}/client_credentials` | Reads the client id of an organisation. The platform answers not found for none. |
 | `POST /v1/orgs/{org}/client_credentials` | Makes the client credential of an organisation. The answer holds the secret once. |
 | `DELETE /v1/orgs/{org}/client_credentials` | Removes the client credential and its Keycloak client. |
+| `GET /v1/ecosystem/status` | Reads the ecosystem switch of the platform. |
+| `PUT /v1/config/ecosystem` | Turns the ecosystems of the platform on or off. |
+| `POST /v1/invitations` | Invites the platform admin to create one ecosystem, before each create. |
+| `POST /v1/ecosystem?orgId={org}` | Creates an ecosystem that the organisation leads. |
+| `GET /v1/ecosystem?orgId={org}` | Lists the ecosystems that an organisation leads or belongs to. |
+| `GET /v1/ecosystem/members` | Lists the members of an ecosystem. The platform answers not found for none. |
+| `POST /v1/ecosystem/invitation` | Adds an organisation to an ecosystem. |
+| `DELETE /v1/ecosystem/member` | Removes a member organisation from an ecosystem. |
+| `GET /v1/x509/{org}/{id}` | Reads the certificate row that an X.509 import names. |
+| `GET /v1/x509/{org}` | Lists the active certificates of a key type. |
+| `PUT /v1/x509/{org}/activate/{id}`, `PUT /v1/x509/{org}/deactivate/{id}` | Makes the imported row the active certificate of its key type, and takes the older rows out of use. |
 
 ## What the adapter can do
 
@@ -90,7 +101,7 @@ The answer of `GetCapabilities` reports what the platform supports.
 | Channels | OID4VCI pre-authorized code for SD-JWT. A DIDComm invitation for AnonCreds and W3C JSON-LD. An email from the stack for the same two, when the stack names a mail provider. |
 | Protocols | OID4VCI, OID4VP, OID4VP with DCQL, DIDComm issue credential 2.0, DIDComm present proof 2.0 |
 | Roles | Issuer and verifier. Holder too with the agent. |
-| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUANCE_STATUS`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ANONCREDS_PROOF`, `FEATURE_WEBHOOKS`, `FEATURE_HOLDER_NOTIFICATIONS`, `FEATURE_TENANT_CLIENT_CREDENTIALS`, `FEATURE_BULK_NATIVE` with a mail provider, and `FEATURE_WALLET_DIDCOMM` and `FEATURE_WALLET_DIDS` with the agent |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUER_IDENTITY_IMPORT_X509`, `FEATURE_ISSUANCE_STATUS`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ANONCREDS_PROOF`, `FEATURE_WEBHOOKS`, `FEATURE_HOLDER_NOTIFICATIONS`, `FEATURE_TENANT_CLIENT_CREDENTIALS`, `FEATURE_ECOSYSTEMS`, `FEATURE_BULK_NATIVE` with a mail provider, and `FEATURE_WALLET_DIDCOMM` and `FEATURE_WALLET_DIDS` with the agent |
 | Wallet DID methods | `did:key`, with the agent |
 | Bulk import | With a mail provider: the email channel, AnonCreds and W3C JSON-LD, and the address column `email_identifier` |
 | DID methods | `did:key` |
@@ -131,6 +142,28 @@ lists it by its client id, with the name of the organisation. The
 answer of a create holds the secret once. Neither the adapter nor the
 admin service stores it.
 
+## Ecosystems
+
+An ecosystem groups organisations of the platform. One organisation
+leads it, and the other organisations are members (ADR-068). The platform
+keeps a switch for all ecosystems, off at first. It turns ecosystems on
+only when its Keycloak realm keeps the ecosystem roles of each user. The
+bootstrap of the stack sets the realm up. The platform keeps each name
+once.
+
+The platform admin of the adapter creates each ecosystem. The platform
+lets a user create an ecosystem only with an unused invitation of the
+platform admin. So the adapter invites the platform admin before each
+create. With a mail provider, the platform mails that invitation to the
+address of the platform admin. The platform then writes the lead role to
+the Keycloak user of the platform admin. The adapter signs in again, so
+the next call carries the role.
+
+The platform accepts a member at once when the platform admin created the
+organisation. That holds for each tenant that VCA made. For another
+organisation, the platform mails its creator an invitation, and the
+answer says so.
+
 ## What the adapter does not do
 
 | RPC | Reason |
@@ -147,7 +180,7 @@ admin service stores it.
 | `CreateKey`, `ListKeys` and `SetDefaultDid` | The agent makes the key of each DID itself and binds no credential to a default DID. |
 | A second client credential of an organisation | The platform keeps one per organisation. Delete the credential, then make a new one. |
 | `CreateTenant` with a dedicated agent | The platform starts a dedicated agent through the Docker socket. The stack file mounts none, so every tenant gets the shared agent. |
-| `ImportIssuerIdentity` | The agent keeps every key and takes no key reference. Set another primary DID in the platform. |
+| `ImportIssuerIdentity` with a DID | The agent keeps the key of every DID and takes no key reference. Set another primary DID in the platform, or import an X.509 chain. |
 | A revocable credential definition | The adapter writes every credential definition without a revocation registry. |
 | `ProvisionIssuerIdentity` for `did:indy` and `did:web` | The agent takes the private key in the request for those methods. The adapter never holds a key, so it makes `did:key` only. |
 | A clear of a webhook | The platform has no call that clears one. Set another address instead. |
@@ -248,6 +281,21 @@ roles of the organisation it reads.
 of the organisation of the adapter, the primary DID first. A new
 identity is a `did:key` that the agent makes and marks primary. The key
 stays in the Askar wallet of the agent.
+
+**An X.509 chain binds to a certificate row of the platform.** The
+platform imports a certificate only with its private key, and VCA never
+holds one. So make or import the certificate in the platform first. The
+agent keeps its key, and the platform keeps the certificate in a row.
+Then import the chain on the identity page of VCA, with the leaf first.
+The key reference names the row: `{"certificateId": "<id of the row>"}`.
+The adapter checks that the chain verifies and that the leaf is the
+certificate of the row. The leaf must be valid now. The adapter takes the
+older active rows of the key type out of use and activates the row. The
+platform signs a template with the signer option `X509_P256` or
+`X509_ED25519` with that row. The `x5c` header of such a credential holds
+the leaf only, so the adapter keeps the chain for the identity. The
+identity lists the subject of the leaf after the DIDs while the row stays
+active (ADR-068).
 
 **An AnonCreds schema goes on the ledger of a DID.** The publish page
 offers AnonCreds on each Indy ledger where the organisation of the

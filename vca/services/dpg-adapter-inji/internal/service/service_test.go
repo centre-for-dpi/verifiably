@@ -803,6 +803,34 @@ func TestTenantServiceUnimplementedWithoutFeature(t *testing.T) {
 			_, err := svc.DeleteClientCredential(ctx, connect.NewRequest(&backendv1.DeleteClientCredentialRequest{TenantId: "t-1", Id: "c-1"}))
 			return err
 		},
+		func() error {
+			_, err := svc.GetEcosystemSettings(ctx, connect.NewRequest(&backendv1.GetEcosystemSettingsRequest{}))
+			return err
+		},
+		func() error {
+			_, err := svc.SetEcosystemSettings(ctx, connect.NewRequest(&backendv1.SetEcosystemSettingsRequest{Enabled: true}))
+			return err
+		},
+		func() error {
+			_, err := svc.ListEcosystems(ctx, connect.NewRequest(&backendv1.ListEcosystemsRequest{TenantId: "t-1"}))
+			return err
+		},
+		func() error {
+			_, err := svc.CreateEcosystem(ctx, connect.NewRequest(&backendv1.CreateEcosystemRequest{LeadTenantId: "t-1", Name: "Health"}))
+			return err
+		},
+		func() error {
+			_, err := svc.ListEcosystemMembers(ctx, connect.NewRequest(&backendv1.ListEcosystemMembersRequest{EcosystemId: "e-1"}))
+			return err
+		},
+		func() error {
+			_, err := svc.AddEcosystemMember(ctx, connect.NewRequest(&backendv1.AddEcosystemMemberRequest{EcosystemId: "e-1", TenantId: "t-1"}))
+			return err
+		},
+		func() error {
+			_, err := svc.RemoveEcosystemMember(ctx, connect.NewRequest(&backendv1.RemoveEcosystemMemberRequest{EcosystemId: "e-1", TenantId: "t-1"}))
+			return err
+		},
 	}
 	for i, call := range calls {
 		err := call()

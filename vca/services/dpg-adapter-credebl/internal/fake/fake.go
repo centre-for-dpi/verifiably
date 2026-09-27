@@ -11,15 +11,20 @@ package fake
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
+	"maps"
 	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 )
 
 // Answer names one recorded file the fake can serve.
@@ -143,6 +148,33 @@ type Server struct {
 	// with a client credential. notified holds the organisations with an
 	// address of the notification service.
 	hooked, credentialed, notified map[string]bool
+	// eco holds the ecosystems of P6-C9.
+	eco ecosystems
+	// certs holds the certificate rows of P6-C9 by id, loaded from the
+	// recorded list at the first call.
+	certs map[string]map[string]any
+}
+
+// The certificate rows of the recorded list: the imported certificate,
+// which waits for activation, and the older certificate, which is active.
+const (
+	ImportedCertificateID = "6f1d2c3b-4a5e-4f60-8b7a-9c0d1e2f3a4b"
+	OlderCertificateID    = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+)
+
+// EcosystemID is the id the fake gives the ecosystem it creates, as the
+// recorded answer names it.
+const EcosystemID = "3c9d7a41-6e2b-4f8a-b1d5-7e0c2f4a9b63"
+
+// ecosystems is what the fake keeps of the ecosystems of the platform:
+// the switch, the unused invitations of the platform admin, and the one
+// ecosystem with its lead and its members in order.
+type ecosystems struct {
+	on                bool
+	invitations       int
+	name, description string
+	lead              string
+	members           []string
 }
 
 // New starts a fake CREDEBL platform.
@@ -371,6 +403,12 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	if f.serveNotify(w, r) {
 		return
 	}
+	if f.serveEcosystem(w, r) {
+		return
+	}
+	if f.serveX509(w, r) {
+		return
+	}
 	if f.serveOrgs(w, r, orgs) {
 		return
 	}
@@ -442,6 +480,255 @@ func (f *Server) serveNotify(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	return true
+}
+
+// serveEcosystem answers the ecosystem calls of P6-C9 from the answers
+// written from the platform sources (testdata/doc). Like the platform,
+// it refuses every ecosystem call while the switch is off, refuses a
+// create without an unused invitation of the platform admin and with a
+// name that exists, refuses the lead as a member, and answers not found
+// for an ecosystem without members. It reports whether it answered.
+func (f *Server) serveEcosystem(w http.ResponseWriter, r *http.Request) bool {
+	path := r.URL.Path
+	if path != "/v1/config/ecosystem" && path != "/v1/invitations" && path != "/v1/ecosystem/status" &&
+		path != "/v1/ecosystem" && !strings.HasPrefix(path, "/v1/ecosystem/") {
+		return false
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	body := f.requests[path]
+	e := &f.eco
+	switch {
+	case path == "/v1/ecosystem/status" && r.Method == http.MethodGet:
+		if e.on {
+			f.send(w, "doc/ecosystem-status.json")
+		} else {
+			f.send(w, "doc/ecosystem-status-off.json")
+		}
+	case path == "/v1/config/ecosystem" && r.Method == http.MethodPut:
+		var in struct {
+			On bool `json:"isEcosystemEnabled"`
+		}
+		if json.Unmarshal(body, &in) != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return true
+		}
+		e.on = in.On
+		f.send(w, "doc/ecosystem-config-updated.json")
+	case !e.on:
+		// The feature guard of the platform.
+		w.WriteHeader(http.StatusForbidden)
+	case path == "/v1/invitations" && r.Method == http.MethodPost:
+		e.invitations++
+		f.sendStatus(w, http.StatusCreated, "doc/ecosystem-invitation-created.json")
+	case path == "/v1/ecosystem" && r.Method == http.MethodPost:
+		f.createEcosystem(w, r.URL.Query().Get("orgId"), body)
+	case path == "/v1/ecosystem" && r.Method == http.MethodGet:
+		f.listEcosystems(w, r.URL.Query().Get("orgId"))
+	case path == "/v1/ecosystem/members" && r.Method == http.MethodGet:
+		f.listMembers(w, r)
+	case path == "/v1/ecosystem/invitation" && r.Method == http.MethodPost:
+		var in struct {
+			OrgID string `json:"orgId"`
+		}
+		if json.Unmarshal(body, &in) != nil || in.OrgID == e.lead {
+			w.WriteHeader(http.StatusBadRequest)
+			return true
+		}
+		e.members = append(e.members, in.OrgID)
+		f.sendStatus(w, http.StatusCreated, "doc/ecosystem-member-invited.json")
+	case path == "/v1/ecosystem/member" && r.Method == http.MethodDelete:
+		var in struct {
+			OrgIDs []string `json:"orgIds"`
+		}
+		n := len(e.members)
+		if json.Unmarshal(body, &in) == nil {
+			e.members = slices.DeleteFunc(e.members, func(m string) bool { return slices.Contains(in.OrgIDs, m) })
+		}
+		if len(e.members) == n {
+			w.WriteHeader(http.StatusBadRequest)
+			return true
+		}
+		f.sendStatus(w, http.StatusCreated, "doc/ecosystem-member-deleted.json")
+	default:
+		http.NotFound(w, r)
+	}
+	return true
+}
+
+// serveX509 answers the certificate calls of P6-C9 from the recorded
+// list (testdata/doc). It keeps the status of each row. It refuses a
+// second active row of one key type, as the platform does for rows whose
+// dates meet. It reports whether it answered.
+func (f *Server) serveX509(w http.ResponseWriter, r *http.Request) bool {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 3 || parts[1] != "x509" {
+		return false
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.certs == nil {
+		f.certs = map[string]map[string]any{}
+		doc, err := f.loadJSON("doc/x509-certificates.json")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return true
+		}
+		for _, row := range asList(asMap(doc["data"])["data"]) {
+			f.certs[anyval.As[string](asMap(row)["id"])] = asMap(row)
+		}
+	}
+	switch {
+	case len(parts) == 3 && r.Method == http.MethodGet:
+		q := r.URL.Query()
+		f.sendJSON(w, http.StatusOK, "doc/x509-certificates.json", func(doc map[string]any) {
+			list := []any{}
+			for _, id := range slices.Sorted(maps.Keys(f.certs)) {
+				row := f.certs[id]
+				if row["status"] == q.Get("status") && row["keyType"] == q.Get("keyType") {
+					list = append(list, row)
+				}
+			}
+			doc["data"] = map[string]any{"data": list, "total": len(list)}
+		})
+	case len(parts) == 4 && r.Method == http.MethodGet && f.certs[parts[3]] != nil:
+		f.sendJSON(w, http.StatusOK, "doc/x509-certificate.json", func(doc map[string]any) { doc["data"] = f.certs[parts[3]] })
+	case len(parts) == 5 && r.Method == http.MethodPut && f.certs[parts[4]] != nil:
+		f.setCertificate(w, parts[3], f.certs[parts[4]])
+	default:
+		http.NotFound(w, r)
+	}
+	return true
+}
+
+// setCertificate activates or deactivates one row. The caller holds the
+// lock.
+func (f *Server) setCertificate(w http.ResponseWriter, action string, row map[string]any) {
+	switch action {
+	case "activate":
+		for _, other := range f.certs {
+			if other["id"] != row["id"] && other["status"] == "Active" && other["keyType"] == row["keyType"] {
+				w.WriteHeader(http.StatusConflict)
+				return
+			}
+		}
+		row["status"] = "Active"
+		f.sendJSON(w, http.StatusOK, "doc/x509-activated.json", func(doc map[string]any) { doc["data"] = row })
+	case "deactivate":
+		row["status"] = "In Active"
+		f.sendJSON(w, http.StatusOK, "doc/x509-deactivated.json", func(doc map[string]any) { doc["data"] = row })
+	default:
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+// createEcosystem makes the one ecosystem of the fake. The caller holds
+// the lock.
+func (f *Server) createEcosystem(w http.ResponseWriter, lead string, body []byte) {
+	e := &f.eco
+	var in struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	switch {
+	case e.invitations == 0:
+		w.WriteHeader(http.StatusForbidden)
+		return
+	case json.Unmarshal(body, &in) != nil:
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	case e.lead != "":
+		w.WriteHeader(http.StatusConflict)
+		return
+	}
+	e.invitations--
+	e.name, e.description, e.lead = in.Name, in.Description, lead
+	f.sendJSON(w, http.StatusCreated, "doc/ecosystem-created.json", func(doc map[string]any) {
+		data := asMap(doc["data"])
+		data["name"], data["description"] = e.name, e.description
+	})
+}
+
+// listEcosystems lists the ecosystem for its lead and its members. The
+// caller holds the lock.
+func (f *Server) listEcosystems(w http.ResponseWriter, org string) {
+	e := &f.eco
+	if e.lead == "" || (org != e.lead && !slices.Contains(e.members, org)) {
+		f.send(w, "doc/ecosystems-none.json")
+		return
+	}
+	f.sendJSON(w, http.StatusOK, "doc/ecosystems.json", func(doc map[string]any) {
+		entry := asMap(asList(asMap(doc["data"])["data"])[0])
+		entry["name"], entry["description"], entry["memberCount"] = e.name, e.description, len(e.members)
+		asMap(entry["leadOrg"])["id"] = e.lead
+		if org != e.lead {
+			entry["role"] = "Ecosystem Member"
+		}
+	})
+}
+
+// listMembers lists the members of the ecosystem. The caller holds the
+// lock.
+func (f *Server) listMembers(w http.ResponseWriter, r *http.Request) {
+	e := &f.eco
+	if r.URL.Query().Get("ecosystemId") != EcosystemID || len(e.members) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	f.sendJSON(w, http.StatusOK, "doc/ecosystem-members.json", func(doc map[string]any) {
+		data := asMap(doc["data"])
+		recorded := asList(data["data"])[0]
+		list := make([]any, 0, len(e.members))
+		for _, m := range e.members {
+			raw, err := json.Marshal(recorded)
+			var entry map[string]any
+			if err != nil || json.Unmarshal(raw, &entry) != nil {
+				continue
+			}
+			asMap(entry["organisation"])["id"] = m
+			list = append(list, entry)
+		}
+		data["data"] = list
+	})
+}
+
+// asMap reads an object of a recorded answer.
+func asMap(v any) map[string]any { return anyval.As[map[string]any](v) }
+
+// asList reads a list of a recorded answer.
+func asList(v any) []any { return anyval.As[[]any](v) }
+
+// loadJSON reads one recorded answer as JSON.
+func (f *Server) loadJSON(name string) (map[string]any, error) {
+	raw, err := os.ReadFile(filepath.Join(f.dir, name)) //nolint:gosec // G304: the name is one of the fixed answers
+	var doc map[string]any
+	if err == nil {
+		err = json.Unmarshal(raw, &doc)
+	}
+	if err != nil {
+		return nil, errors.New("the recorded answer " + name + " is damaged")
+	}
+	return doc, nil
+}
+
+// sendJSON writes one recorded answer after a change of its parts.
+func (f *Server) sendJSON(w http.ResponseWriter, status int, name string, change func(map[string]any)) {
+	doc, err := f.loadJSON(name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	change(doc)
+	out, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if _, err := w.Write(out); err != nil {
+		return
+	}
 }
 
 // serveCredential answers the client credential calls of one

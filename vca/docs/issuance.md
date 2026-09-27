@@ -65,7 +65,9 @@ shows its entry in the trust registry of the first live admin pair.
 "Start instantly" asks the stack for a key and an identifier. "Bring
 your own" checks a DID or an X.509 chain. It then binds the identifier
 to a key reference in the key store of the stack. The stack keeps the key; VCA stores no issuer
-private key (ADR-001 decision 3, ADR-046). A box asks the trust
+private key (ADR-001 decision 3, ADR-046). On CREDEBL, the
+key reference of an X.509 chain names a certificate row of the platform
+as `{"certificateId": "<id>"}` (ADR-068). A box asks the trust
 registry for an entry in state `pending`, which an admin approves. The
 page hides the box when no live admin pair runs a trust registry, and
 says so. The service serves the DID document of a `did:web` of its

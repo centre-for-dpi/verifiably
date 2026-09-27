@@ -1,0 +1,5 @@
+{
+  "statusCode": 200,
+  "message": "Ecosystem status fetched successfully",
+  "data": true
+}

@@ -20,9 +20,10 @@ import (
 // 3). The agent needs the private key in the request for a did:indy and
 // a did:web, so the adapter provisions a did:key only.
 
-// importMessage says why import answers Unimplemented.
-const importMessage = "the agent of the CREDEBL organisation keeps every key and takes no key reference, " +
-	"so the adapter imports no issuer identity; make a new identity or set the primary DID in the platform"
+// importMessage says why a DID import answers Unimplemented. An X.509
+// chain imports (P6-C9, x509.go).
+const importMessage = "the agent of the CREDEBL organisation keeps the key of every DID and takes no key reference, " +
+	"so the adapter imports no DID; make a new identity, set the primary DID in the platform, or import an X.509 chain"
 
 // keyBackend names the key store of the agent: the Askar wallet of Credo.
 const keyBackend = "askar"
@@ -63,27 +64,33 @@ func (s *Service) GetIssuerIdentity(
 	return connect.NewResponse(&backendv1.GetIssuerIdentityResponse{Identity: id}), nil
 }
 
-// identity builds the identity of the organisation of the adapter. It
-// returns nil for an organisation with no DID.
+// identity builds the identity of the organisation of the adapter: its
+// DIDs, then the subject of the imported X.509 chain while its
+// certificate is active (P6-C9). It returns nil for an organisation with
+// neither.
 func (s *Service) identity(ctx context.Context) (*backendv1.IssuerIdentity, error) {
 	orgID := s.client.OrgID()
 	dids, err := s.client.OrgDids(ctx, orgID)
 	if err != nil {
 		return nil, failed("read the DIDs of the organisation", err)
 	}
-	if len(dids) == 0 {
+	id := &backendv1.IssuerIdentity{Key: &backendv1.IssuerIdentity_Key{Backend: keyBackend}}
+	for _, d := range dids {
+		id.Identifiers = append(id.Identifiers, d.Did)
+	}
+	if cerr := s.addChain(ctx, orgID, id); cerr != nil {
+		return nil, cerr
+	}
+	if len(id.Identifiers) == 0 {
 		return nil, nil
 	}
 	org, err := s.client.GetOrg(ctx, orgID)
 	if err != nil {
 		return nil, orgFailed(err)
 	}
-	id := &backendv1.IssuerIdentity{
-		Metadata: &backendv1.IssuerIdentity_Metadata{DisplayName: org.Name},
-		Key:      &backendv1.IssuerIdentity_Key{Backend: keyBackend},
-	}
-	for _, d := range dids {
-		id.Identifiers = append(id.Identifiers, d.Did)
+	id.Metadata = &backendv1.IssuerIdentity_Metadata{DisplayName: org.Name}
+	if len(dids) == 0 {
+		return id, nil
 	}
 	document := dids[0].DidDocument
 	if len(org.Agents) > 0 && org.Agents[0].OrgDid == dids[0].Did && len(org.Agents[0].DidDocument) > 0 {
@@ -91,7 +98,9 @@ func (s *Service) identity(ctx context.Context) (*backendv1.IssuerIdentity, erro
 	}
 	if len(document) > 0 && string(document) != "null" {
 		id.DidDocument = string(document)
-		id.Key.Type = documentKeyType(document)
+		if t := documentKeyType(document); t != "" {
+			id.Key.Type = t
+		}
 	}
 	return id, nil
 }
@@ -138,13 +147,6 @@ func (s *Service) ProvisionIssuerIdentity(
 		return nil, err
 	}
 	return connect.NewResponse(&backendv1.ProvisionIssuerIdentityResponse{Identity: id}), nil
-}
-
-// ImportIssuerIdentity is not available. See importMessage.
-func (s *Service) ImportIssuerIdentity(
-	context.Context, *connect.Request[backendv1.ImportIssuerIdentityRequest],
-) (*connect.Response[backendv1.ImportIssuerIdentityResponse], error) {
-	return nil, unimplemented(importMessage)
 }
 
 // contains reports whether the list holds the value.

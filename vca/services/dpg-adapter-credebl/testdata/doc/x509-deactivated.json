@@ -1,0 +1,19 @@
+{
+  "statusCode": 200,
+  "message": "x509 certificate deactivated successfully",
+  "data": {
+    "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+    "orgAgentId": "9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a",
+    "keyType": "P-256",
+    "status": "In Active",
+    "validFrom": "2026-01-01T00:00:00.000Z",
+    "expiry": "2036-01-01T00:00:00.000Z",
+    "certificateBase64": "MIIBkTCCATegAwIBAgIBATAKBggqhkjOPQQDAjAwMRcwFQYDVQQKDA5bT1JHQU5JU0FUSU9OXTEVMBMGA1UEAwwMW0lTU1VJTkcgQ0FdMB4XDTI2MDEwMTAwMDAwMFoXDTM2MDEwMTAwMDAwMFowMDEXMBUGA1UECgwOW09SR0FOSVNBVElPTl0xFTATBgNVBAMMDFtJU1NVSU5HIENBXTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABGHikiefQpeqmVZ4xGvWPbMoWRG/l5WjYufvEsJ8s2eZWe383yObR9xwWABC+/v6/tdF1dRxE0ArjhFrpiEUrv+jQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBRd83zu35BDciqw9To4w1zu5DdTBTAKBggqhkjOPQQDAgNIADBFAiEA1yzOZXX3H1GgHg5hkAUMWhw+4UVPWnOWQq3B8rZYPOMCIFcrmwzfDORQM+lQlpTc5dEoUd8HuOIPCIyCh2VDvace",
+    "isImported": true,
+    "keyId": "[older agent key id]",
+    "createdAt": "2026-09-20T09:00:00.000Z",
+    "createdBy": "2d4f6a8c-0e1b-4c3d-9f5e-7a8b9c0d1e2f",
+    "lastChangedDateTime": "2026-09-20T09:00:00.000Z",
+    "lastChangedBy": "2d4f6a8c-0e1b-4c3d-9f5e-7a8b9c0d1e2f"
+  }
+}

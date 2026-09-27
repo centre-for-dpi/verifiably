@@ -1,0 +1,14 @@
+{
+  "statusCode": 201,
+  "message": "Ecosystem created successfully",
+  "data": {
+    "id": "3c9d7a41-6e2b-4f8a-b1d5-7e0c2f4a9b63",
+    "name": "[ECOSYSTEM]",
+    "description": "[ECOSYSTEM DESCRIPTION]",
+    "tags": null,
+    "autoEndorsement": false,
+    "logoUrl": null,
+    "createdBy": "2d4f6a8c-0e1b-4c3d-9f5e-7a8b9c0d1e2f",
+    "createDateTime": "2026-09-27T09:00:00.000Z"
+  }
+}

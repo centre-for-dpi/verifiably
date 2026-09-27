@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-067, one row per decision.
+ADR-068, one row per decision.
 
 The status values are:
 
@@ -720,12 +720,25 @@ A row that is not `Done` carries a note.
 | ADR-067 | 4 One client credential, with the secret shown once | Done | `vca/services/dpg-adapter-credebl/internal/service/tenant.go` | `TestClientCredentialCreatedOnce` pins it. |
 | ADR-067 | 5 The three features and the portal parts | Done | `vca/services/dpg-adapter-credebl/internal/service/bulk.go`, `vca/services/admin/internal/portal/notifications.go` | `TestFeaturesListed` and `TestHolderNotificationsOnlyWithFeature` pin it. |
 
+## ADR-068: CREDEBL ecosystems and the X.509 issuer identity
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-068 | 1 The ecosystem RPCs and the feature | Done | `proto/vca/backend/v1/backend.proto`, `vca/services/dpg-adapter-credebl/internal/service/ecosystem.go` | `TestListEcosystems`, `TestFeaturesListed` and the tenant tests of the walt.id and Inji adapters pin it. |
+| ADR-068 | 2 The invitation of the platform admin and the new sign in | Done | `vca/services/dpg-adapter-credebl/internal/credebl/ecosystem.go` | `TestEcosystemCalls` and `TestListEcosystems` pin it. |
+| ADR-068 | 3 A member joins at once or gets an invitation | Done | `vca/services/dpg-adapter-credebl/internal/service/ecosystem.go` | `TestListEcosystems` and `TestEcosystemRefusals` pin it. |
+| ADR-068 | 4 The realm keeps the ecosystem roles | Done | `vca/internal/cli/credebl_realm.go` | `TestCredeblRealmAllowsEcosystemAccess` pins it. |
+| ADR-068 | 5 The Ecosystems tab of the admin portal | Done | `vca/services/admin/internal/portal/ecosystems.go`, `vca/services/admin/internal/service/ecosystems.go` | `TestEcosystemsTabOnlyWithFeature`, `TestEcosystemsPageRunsEachStep` and `TestStackEcosystemRPCs` pin it. |
+| ADR-068 | 6 The X.509 import with a certificate row | Done | `vca/services/dpg-adapter-credebl/internal/service/x509.go` | `TestImportX509Certificate` pins it. |
+| ADR-068 | 7 The checks, the activation and the kept chain | Done | `vca/services/dpg-adapter-credebl/internal/service/x509.go` | `TestImportX509Certificate` and `TestImportX509Refusals` pin it. |
+| ADR-068 | 8 No DID import | Done | `vca/services/dpg-adapter-credebl/internal/service/x509.go` | `TestImportDidUnimplementedWithoutFeature` pins it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 314 |
+| Done | 322 |
 | Partial | 25 |
 | Deferred | 3 |
 | Not started | 26 |
-| Total | 368 |
+| Total | 376 |

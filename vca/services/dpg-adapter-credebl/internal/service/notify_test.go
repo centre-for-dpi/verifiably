@@ -266,6 +266,7 @@ func TestFeaturesListed(t *testing.T) {
 	}
 	for _, want := range []backendv1.Feature{
 		backendv1.Feature_FEATURE_WEBHOOKS, backendv1.Feature_FEATURE_TENANT_CLIENT_CREDENTIALS, backendv1.Feature_FEATURE_HOLDER_NOTIFICATIONS,
+		backendv1.Feature_FEATURE_ECOSYSTEMS,
 	} {
 		if !slices.Contains(caps.Msg.GetFeatures(), want) {
 			t.Errorf("the answer lists no %v: %v", want, caps.Msg.GetFeatures())

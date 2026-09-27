@@ -65,3 +65,52 @@ func (s *Service) DeleteClientCredential(
 ) (*connect.Response[backendv1.DeleteClientCredentialResponse], error) {
 	return nil, unimplemented(tenantMessage)
 }
+
+// GetEcosystemSettings is not available. See tenantMessage.
+func (s *Service) GetEcosystemSettings(
+	context.Context, *connect.Request[backendv1.GetEcosystemSettingsRequest],
+) (*connect.Response[backendv1.GetEcosystemSettingsResponse], error) {
+	return nil, unimplemented(tenantMessage)
+}
+
+// SetEcosystemSettings is not available. See tenantMessage.
+func (s *Service) SetEcosystemSettings(
+	context.Context, *connect.Request[backendv1.SetEcosystemSettingsRequest],
+) (*connect.Response[backendv1.SetEcosystemSettingsResponse], error) {
+	return nil, unimplemented(tenantMessage)
+}
+
+// ListEcosystems is not available. See tenantMessage.
+func (s *Service) ListEcosystems(
+	context.Context, *connect.Request[backendv1.ListEcosystemsRequest],
+) (*connect.Response[backendv1.ListEcosystemsResponse], error) {
+	return nil, unimplemented(tenantMessage)
+}
+
+// CreateEcosystem is not available. See tenantMessage.
+func (s *Service) CreateEcosystem(
+	context.Context, *connect.Request[backendv1.CreateEcosystemRequest],
+) (*connect.Response[backendv1.CreateEcosystemResponse], error) {
+	return nil, unimplemented(tenantMessage)
+}
+
+// ListEcosystemMembers is not available. See tenantMessage.
+func (s *Service) ListEcosystemMembers(
+	context.Context, *connect.Request[backendv1.ListEcosystemMembersRequest],
+) (*connect.Response[backendv1.ListEcosystemMembersResponse], error) {
+	return nil, unimplemented(tenantMessage)
+}
+
+// AddEcosystemMember is not available. See tenantMessage.
+func (s *Service) AddEcosystemMember(
+	context.Context, *connect.Request[backendv1.AddEcosystemMemberRequest],
+) (*connect.Response[backendv1.AddEcosystemMemberResponse], error) {
+	return nil, unimplemented(tenantMessage)
+}
+
+// RemoveEcosystemMember is not available. See tenantMessage.
+func (s *Service) RemoveEcosystemMember(
+	context.Context, *connect.Request[backendv1.RemoveEcosystemMemberRequest],
+) (*connect.Response[backendv1.RemoveEcosystemMemberResponse], error) {
+	return nil, unimplemented(tenantMessage)
+}

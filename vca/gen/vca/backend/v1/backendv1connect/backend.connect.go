@@ -205,6 +205,27 @@ const (
 	// TenantBackendServiceDeleteClientCredentialProcedure is the fully-qualified name of the
 	// TenantBackendService's DeleteClientCredential RPC.
 	TenantBackendServiceDeleteClientCredentialProcedure = "/vca.backend.v1.TenantBackendService/DeleteClientCredential"
+	// TenantBackendServiceGetEcosystemSettingsProcedure is the fully-qualified name of the
+	// TenantBackendService's GetEcosystemSettings RPC.
+	TenantBackendServiceGetEcosystemSettingsProcedure = "/vca.backend.v1.TenantBackendService/GetEcosystemSettings"
+	// TenantBackendServiceSetEcosystemSettingsProcedure is the fully-qualified name of the
+	// TenantBackendService's SetEcosystemSettings RPC.
+	TenantBackendServiceSetEcosystemSettingsProcedure = "/vca.backend.v1.TenantBackendService/SetEcosystemSettings"
+	// TenantBackendServiceListEcosystemsProcedure is the fully-qualified name of the
+	// TenantBackendService's ListEcosystems RPC.
+	TenantBackendServiceListEcosystemsProcedure = "/vca.backend.v1.TenantBackendService/ListEcosystems"
+	// TenantBackendServiceCreateEcosystemProcedure is the fully-qualified name of the
+	// TenantBackendService's CreateEcosystem RPC.
+	TenantBackendServiceCreateEcosystemProcedure = "/vca.backend.v1.TenantBackendService/CreateEcosystem"
+	// TenantBackendServiceListEcosystemMembersProcedure is the fully-qualified name of the
+	// TenantBackendService's ListEcosystemMembers RPC.
+	TenantBackendServiceListEcosystemMembersProcedure = "/vca.backend.v1.TenantBackendService/ListEcosystemMembers"
+	// TenantBackendServiceAddEcosystemMemberProcedure is the fully-qualified name of the
+	// TenantBackendService's AddEcosystemMember RPC.
+	TenantBackendServiceAddEcosystemMemberProcedure = "/vca.backend.v1.TenantBackendService/AddEcosystemMember"
+	// TenantBackendServiceRemoveEcosystemMemberProcedure is the fully-qualified name of the
+	// TenantBackendService's RemoveEcosystemMember RPC.
+	TenantBackendServiceRemoveEcosystemMemberProcedure = "/vca.backend.v1.TenantBackendService/RemoveEcosystemMember"
 	// NotificationBackendServiceGetWebhookProcedure is the fully-qualified name of the
 	// NotificationBackendService's GetWebhook RPC.
 	NotificationBackendServiceGetWebhookProcedure = "/vca.backend.v1.NotificationBackendService/GetWebhook"
@@ -1788,6 +1809,24 @@ type TenantBackendServiceClient interface {
 	CreateClientCredential(context.Context, *connect.Request[v1.CreateClientCredentialRequest]) (*connect.Response[v1.CreateClientCredentialResponse], error)
 	// DeleteClientCredential removes one client credential of a tenant.
 	DeleteClientCredential(context.Context, *connect.Request[v1.DeleteClientCredentialRequest]) (*connect.Response[v1.DeleteClientCredentialResponse], error)
+	// GetEcosystemSettings reports whether the ecosystems of the DPG are
+	// on (ADR-068). An adapter serves the ecosystem RPCs when it lists
+	// FEATURE_ECOSYSTEMS.
+	GetEcosystemSettings(context.Context, *connect.Request[v1.GetEcosystemSettingsRequest]) (*connect.Response[v1.GetEcosystemSettingsResponse], error)
+	// SetEcosystemSettings turns the ecosystems of the DPG on or off.
+	SetEcosystemSettings(context.Context, *connect.Request[v1.SetEcosystemSettingsRequest]) (*connect.Response[v1.SetEcosystemSettingsResponse], error)
+	// ListEcosystems returns the ecosystems that one tenant leads or
+	// belongs to.
+	ListEcosystems(context.Context, *connect.Request[v1.ListEcosystemsRequest]) (*connect.Response[v1.ListEcosystemsResponse], error)
+	// CreateEcosystem creates one ecosystem that a tenant leads.
+	CreateEcosystem(context.Context, *connect.Request[v1.CreateEcosystemRequest]) (*connect.Response[v1.CreateEcosystemResponse], error)
+	// ListEcosystemMembers returns the member tenants of one ecosystem,
+	// without the lead.
+	ListEcosystemMembers(context.Context, *connect.Request[v1.ListEcosystemMembersRequest]) (*connect.Response[v1.ListEcosystemMembersResponse], error)
+	// AddEcosystemMember adds one tenant to an ecosystem as a member.
+	AddEcosystemMember(context.Context, *connect.Request[v1.AddEcosystemMemberRequest]) (*connect.Response[v1.AddEcosystemMemberResponse], error)
+	// RemoveEcosystemMember removes one member tenant from an ecosystem.
+	RemoveEcosystemMember(context.Context, *connect.Request[v1.RemoveEcosystemMemberRequest]) (*connect.Response[v1.RemoveEcosystemMemberResponse], error)
 }
 
 // NewTenantBackendServiceClient constructs a client for the vca.backend.v1.TenantBackendService
@@ -1843,6 +1882,48 @@ func NewTenantBackendServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(tenantBackendServiceMethods.ByName("DeleteClientCredential")),
 			connect.WithClientOptions(opts...),
 		),
+		getEcosystemSettings: connect.NewClient[v1.GetEcosystemSettingsRequest, v1.GetEcosystemSettingsResponse](
+			httpClient,
+			baseURL+TenantBackendServiceGetEcosystemSettingsProcedure,
+			connect.WithSchema(tenantBackendServiceMethods.ByName("GetEcosystemSettings")),
+			connect.WithClientOptions(opts...),
+		),
+		setEcosystemSettings: connect.NewClient[v1.SetEcosystemSettingsRequest, v1.SetEcosystemSettingsResponse](
+			httpClient,
+			baseURL+TenantBackendServiceSetEcosystemSettingsProcedure,
+			connect.WithSchema(tenantBackendServiceMethods.ByName("SetEcosystemSettings")),
+			connect.WithClientOptions(opts...),
+		),
+		listEcosystems: connect.NewClient[v1.ListEcosystemsRequest, v1.ListEcosystemsResponse](
+			httpClient,
+			baseURL+TenantBackendServiceListEcosystemsProcedure,
+			connect.WithSchema(tenantBackendServiceMethods.ByName("ListEcosystems")),
+			connect.WithClientOptions(opts...),
+		),
+		createEcosystem: connect.NewClient[v1.CreateEcosystemRequest, v1.CreateEcosystemResponse](
+			httpClient,
+			baseURL+TenantBackendServiceCreateEcosystemProcedure,
+			connect.WithSchema(tenantBackendServiceMethods.ByName("CreateEcosystem")),
+			connect.WithClientOptions(opts...),
+		),
+		listEcosystemMembers: connect.NewClient[v1.ListEcosystemMembersRequest, v1.ListEcosystemMembersResponse](
+			httpClient,
+			baseURL+TenantBackendServiceListEcosystemMembersProcedure,
+			connect.WithSchema(tenantBackendServiceMethods.ByName("ListEcosystemMembers")),
+			connect.WithClientOptions(opts...),
+		),
+		addEcosystemMember: connect.NewClient[v1.AddEcosystemMemberRequest, v1.AddEcosystemMemberResponse](
+			httpClient,
+			baseURL+TenantBackendServiceAddEcosystemMemberProcedure,
+			connect.WithSchema(tenantBackendServiceMethods.ByName("AddEcosystemMember")),
+			connect.WithClientOptions(opts...),
+		),
+		removeEcosystemMember: connect.NewClient[v1.RemoveEcosystemMemberRequest, v1.RemoveEcosystemMemberResponse](
+			httpClient,
+			baseURL+TenantBackendServiceRemoveEcosystemMemberProcedure,
+			connect.WithSchema(tenantBackendServiceMethods.ByName("RemoveEcosystemMember")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -1855,6 +1936,13 @@ type tenantBackendServiceClient struct {
 	listClientCredentials  *connect.Client[v1.ListClientCredentialsRequest, v1.ListClientCredentialsResponse]
 	createClientCredential *connect.Client[v1.CreateClientCredentialRequest, v1.CreateClientCredentialResponse]
 	deleteClientCredential *connect.Client[v1.DeleteClientCredentialRequest, v1.DeleteClientCredentialResponse]
+	getEcosystemSettings   *connect.Client[v1.GetEcosystemSettingsRequest, v1.GetEcosystemSettingsResponse]
+	setEcosystemSettings   *connect.Client[v1.SetEcosystemSettingsRequest, v1.SetEcosystemSettingsResponse]
+	listEcosystems         *connect.Client[v1.ListEcosystemsRequest, v1.ListEcosystemsResponse]
+	createEcosystem        *connect.Client[v1.CreateEcosystemRequest, v1.CreateEcosystemResponse]
+	listEcosystemMembers   *connect.Client[v1.ListEcosystemMembersRequest, v1.ListEcosystemMembersResponse]
+	addEcosystemMember     *connect.Client[v1.AddEcosystemMemberRequest, v1.AddEcosystemMemberResponse]
+	removeEcosystemMember  *connect.Client[v1.RemoveEcosystemMemberRequest, v1.RemoveEcosystemMemberResponse]
 }
 
 // CreateTenant calls vca.backend.v1.TenantBackendService.CreateTenant.
@@ -1892,6 +1980,41 @@ func (c *tenantBackendServiceClient) DeleteClientCredential(ctx context.Context,
 	return c.deleteClientCredential.CallUnary(ctx, req)
 }
 
+// GetEcosystemSettings calls vca.backend.v1.TenantBackendService.GetEcosystemSettings.
+func (c *tenantBackendServiceClient) GetEcosystemSettings(ctx context.Context, req *connect.Request[v1.GetEcosystemSettingsRequest]) (*connect.Response[v1.GetEcosystemSettingsResponse], error) {
+	return c.getEcosystemSettings.CallUnary(ctx, req)
+}
+
+// SetEcosystemSettings calls vca.backend.v1.TenantBackendService.SetEcosystemSettings.
+func (c *tenantBackendServiceClient) SetEcosystemSettings(ctx context.Context, req *connect.Request[v1.SetEcosystemSettingsRequest]) (*connect.Response[v1.SetEcosystemSettingsResponse], error) {
+	return c.setEcosystemSettings.CallUnary(ctx, req)
+}
+
+// ListEcosystems calls vca.backend.v1.TenantBackendService.ListEcosystems.
+func (c *tenantBackendServiceClient) ListEcosystems(ctx context.Context, req *connect.Request[v1.ListEcosystemsRequest]) (*connect.Response[v1.ListEcosystemsResponse], error) {
+	return c.listEcosystems.CallUnary(ctx, req)
+}
+
+// CreateEcosystem calls vca.backend.v1.TenantBackendService.CreateEcosystem.
+func (c *tenantBackendServiceClient) CreateEcosystem(ctx context.Context, req *connect.Request[v1.CreateEcosystemRequest]) (*connect.Response[v1.CreateEcosystemResponse], error) {
+	return c.createEcosystem.CallUnary(ctx, req)
+}
+
+// ListEcosystemMembers calls vca.backend.v1.TenantBackendService.ListEcosystemMembers.
+func (c *tenantBackendServiceClient) ListEcosystemMembers(ctx context.Context, req *connect.Request[v1.ListEcosystemMembersRequest]) (*connect.Response[v1.ListEcosystemMembersResponse], error) {
+	return c.listEcosystemMembers.CallUnary(ctx, req)
+}
+
+// AddEcosystemMember calls vca.backend.v1.TenantBackendService.AddEcosystemMember.
+func (c *tenantBackendServiceClient) AddEcosystemMember(ctx context.Context, req *connect.Request[v1.AddEcosystemMemberRequest]) (*connect.Response[v1.AddEcosystemMemberResponse], error) {
+	return c.addEcosystemMember.CallUnary(ctx, req)
+}
+
+// RemoveEcosystemMember calls vca.backend.v1.TenantBackendService.RemoveEcosystemMember.
+func (c *tenantBackendServiceClient) RemoveEcosystemMember(ctx context.Context, req *connect.Request[v1.RemoveEcosystemMemberRequest]) (*connect.Response[v1.RemoveEcosystemMemberResponse], error) {
+	return c.removeEcosystemMember.CallUnary(ctx, req)
+}
+
 // TenantBackendServiceHandler is an implementation of the vca.backend.v1.TenantBackendService
 // service.
 type TenantBackendServiceHandler interface {
@@ -1912,6 +2035,24 @@ type TenantBackendServiceHandler interface {
 	CreateClientCredential(context.Context, *connect.Request[v1.CreateClientCredentialRequest]) (*connect.Response[v1.CreateClientCredentialResponse], error)
 	// DeleteClientCredential removes one client credential of a tenant.
 	DeleteClientCredential(context.Context, *connect.Request[v1.DeleteClientCredentialRequest]) (*connect.Response[v1.DeleteClientCredentialResponse], error)
+	// GetEcosystemSettings reports whether the ecosystems of the DPG are
+	// on (ADR-068). An adapter serves the ecosystem RPCs when it lists
+	// FEATURE_ECOSYSTEMS.
+	GetEcosystemSettings(context.Context, *connect.Request[v1.GetEcosystemSettingsRequest]) (*connect.Response[v1.GetEcosystemSettingsResponse], error)
+	// SetEcosystemSettings turns the ecosystems of the DPG on or off.
+	SetEcosystemSettings(context.Context, *connect.Request[v1.SetEcosystemSettingsRequest]) (*connect.Response[v1.SetEcosystemSettingsResponse], error)
+	// ListEcosystems returns the ecosystems that one tenant leads or
+	// belongs to.
+	ListEcosystems(context.Context, *connect.Request[v1.ListEcosystemsRequest]) (*connect.Response[v1.ListEcosystemsResponse], error)
+	// CreateEcosystem creates one ecosystem that a tenant leads.
+	CreateEcosystem(context.Context, *connect.Request[v1.CreateEcosystemRequest]) (*connect.Response[v1.CreateEcosystemResponse], error)
+	// ListEcosystemMembers returns the member tenants of one ecosystem,
+	// without the lead.
+	ListEcosystemMembers(context.Context, *connect.Request[v1.ListEcosystemMembersRequest]) (*connect.Response[v1.ListEcosystemMembersResponse], error)
+	// AddEcosystemMember adds one tenant to an ecosystem as a member.
+	AddEcosystemMember(context.Context, *connect.Request[v1.AddEcosystemMemberRequest]) (*connect.Response[v1.AddEcosystemMemberResponse], error)
+	// RemoveEcosystemMember removes one member tenant from an ecosystem.
+	RemoveEcosystemMember(context.Context, *connect.Request[v1.RemoveEcosystemMemberRequest]) (*connect.Response[v1.RemoveEcosystemMemberResponse], error)
 }
 
 // NewTenantBackendServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -1963,6 +2104,48 @@ func NewTenantBackendServiceHandler(svc TenantBackendServiceHandler, opts ...con
 		connect.WithSchema(tenantBackendServiceMethods.ByName("DeleteClientCredential")),
 		connect.WithHandlerOptions(opts...),
 	)
+	tenantBackendServiceGetEcosystemSettingsHandler := connect.NewUnaryHandler(
+		TenantBackendServiceGetEcosystemSettingsProcedure,
+		svc.GetEcosystemSettings,
+		connect.WithSchema(tenantBackendServiceMethods.ByName("GetEcosystemSettings")),
+		connect.WithHandlerOptions(opts...),
+	)
+	tenantBackendServiceSetEcosystemSettingsHandler := connect.NewUnaryHandler(
+		TenantBackendServiceSetEcosystemSettingsProcedure,
+		svc.SetEcosystemSettings,
+		connect.WithSchema(tenantBackendServiceMethods.ByName("SetEcosystemSettings")),
+		connect.WithHandlerOptions(opts...),
+	)
+	tenantBackendServiceListEcosystemsHandler := connect.NewUnaryHandler(
+		TenantBackendServiceListEcosystemsProcedure,
+		svc.ListEcosystems,
+		connect.WithSchema(tenantBackendServiceMethods.ByName("ListEcosystems")),
+		connect.WithHandlerOptions(opts...),
+	)
+	tenantBackendServiceCreateEcosystemHandler := connect.NewUnaryHandler(
+		TenantBackendServiceCreateEcosystemProcedure,
+		svc.CreateEcosystem,
+		connect.WithSchema(tenantBackendServiceMethods.ByName("CreateEcosystem")),
+		connect.WithHandlerOptions(opts...),
+	)
+	tenantBackendServiceListEcosystemMembersHandler := connect.NewUnaryHandler(
+		TenantBackendServiceListEcosystemMembersProcedure,
+		svc.ListEcosystemMembers,
+		connect.WithSchema(tenantBackendServiceMethods.ByName("ListEcosystemMembers")),
+		connect.WithHandlerOptions(opts...),
+	)
+	tenantBackendServiceAddEcosystemMemberHandler := connect.NewUnaryHandler(
+		TenantBackendServiceAddEcosystemMemberProcedure,
+		svc.AddEcosystemMember,
+		connect.WithSchema(tenantBackendServiceMethods.ByName("AddEcosystemMember")),
+		connect.WithHandlerOptions(opts...),
+	)
+	tenantBackendServiceRemoveEcosystemMemberHandler := connect.NewUnaryHandler(
+		TenantBackendServiceRemoveEcosystemMemberProcedure,
+		svc.RemoveEcosystemMember,
+		connect.WithSchema(tenantBackendServiceMethods.ByName("RemoveEcosystemMember")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.backend.v1.TenantBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TenantBackendServiceCreateTenantProcedure:
@@ -1979,6 +2162,20 @@ func NewTenantBackendServiceHandler(svc TenantBackendServiceHandler, opts ...con
 			tenantBackendServiceCreateClientCredentialHandler.ServeHTTP(w, r)
 		case TenantBackendServiceDeleteClientCredentialProcedure:
 			tenantBackendServiceDeleteClientCredentialHandler.ServeHTTP(w, r)
+		case TenantBackendServiceGetEcosystemSettingsProcedure:
+			tenantBackendServiceGetEcosystemSettingsHandler.ServeHTTP(w, r)
+		case TenantBackendServiceSetEcosystemSettingsProcedure:
+			tenantBackendServiceSetEcosystemSettingsHandler.ServeHTTP(w, r)
+		case TenantBackendServiceListEcosystemsProcedure:
+			tenantBackendServiceListEcosystemsHandler.ServeHTTP(w, r)
+		case TenantBackendServiceCreateEcosystemProcedure:
+			tenantBackendServiceCreateEcosystemHandler.ServeHTTP(w, r)
+		case TenantBackendServiceListEcosystemMembersProcedure:
+			tenantBackendServiceListEcosystemMembersHandler.ServeHTTP(w, r)
+		case TenantBackendServiceAddEcosystemMemberProcedure:
+			tenantBackendServiceAddEcosystemMemberHandler.ServeHTTP(w, r)
+		case TenantBackendServiceRemoveEcosystemMemberProcedure:
+			tenantBackendServiceRemoveEcosystemMemberHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -2014,6 +2211,34 @@ func (UnimplementedTenantBackendServiceHandler) CreateClientCredential(context.C
 
 func (UnimplementedTenantBackendServiceHandler) DeleteClientCredential(context.Context, *connect.Request[v1.DeleteClientCredentialRequest]) (*connect.Response[v1.DeleteClientCredentialResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.DeleteClientCredential is not implemented"))
+}
+
+func (UnimplementedTenantBackendServiceHandler) GetEcosystemSettings(context.Context, *connect.Request[v1.GetEcosystemSettingsRequest]) (*connect.Response[v1.GetEcosystemSettingsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.GetEcosystemSettings is not implemented"))
+}
+
+func (UnimplementedTenantBackendServiceHandler) SetEcosystemSettings(context.Context, *connect.Request[v1.SetEcosystemSettingsRequest]) (*connect.Response[v1.SetEcosystemSettingsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.SetEcosystemSettings is not implemented"))
+}
+
+func (UnimplementedTenantBackendServiceHandler) ListEcosystems(context.Context, *connect.Request[v1.ListEcosystemsRequest]) (*connect.Response[v1.ListEcosystemsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.ListEcosystems is not implemented"))
+}
+
+func (UnimplementedTenantBackendServiceHandler) CreateEcosystem(context.Context, *connect.Request[v1.CreateEcosystemRequest]) (*connect.Response[v1.CreateEcosystemResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.CreateEcosystem is not implemented"))
+}
+
+func (UnimplementedTenantBackendServiceHandler) ListEcosystemMembers(context.Context, *connect.Request[v1.ListEcosystemMembersRequest]) (*connect.Response[v1.ListEcosystemMembersResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.ListEcosystemMembers is not implemented"))
+}
+
+func (UnimplementedTenantBackendServiceHandler) AddEcosystemMember(context.Context, *connect.Request[v1.AddEcosystemMemberRequest]) (*connect.Response[v1.AddEcosystemMemberResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.AddEcosystemMember is not implemented"))
+}
+
+func (UnimplementedTenantBackendServiceHandler) RemoveEcosystemMember(context.Context, *connect.Request[v1.RemoveEcosystemMemberRequest]) (*connect.Response[v1.RemoveEcosystemMemberResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.RemoveEcosystemMember is not implemented"))
 }
 
 // NotificationBackendServiceClient is a client for the vca.backend.v1.NotificationBackendService

@@ -472,3 +472,98 @@ func TestFakeKeepsTheNotifySettings(t *testing.T) {
 		}
 	}
 }
+
+// TestFakeKeepsTheEcosystems is P6-C9: the fake keeps the ecosystem
+// switch, the invitations of the platform admin, and each ecosystem with
+// its lead and members, as the platform does.
+func TestFakeKeepsTheEcosystems(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	id := fake.EcosystemID
+	if body := get(t, f, "/v1/ecosystem/status"); !strings.Contains(body, `"data": false`) {
+		t.Errorf("status = %s", body)
+	}
+	steps := []struct {
+		method, path, body string
+		want               int
+	}{
+		{http.MethodGet, "/v1/ecosystem?orgId=org-2", "", http.StatusForbidden},
+		{http.MethodPost, "/v1/invitations", `{"email":"admin@example.org"}`, http.StatusForbidden},
+		{http.MethodPut, "/v1/config/ecosystem", `{"isEcosystemEnabled":true}`, http.StatusOK},
+		{http.MethodPost, "/v1/ecosystem?orgId=org-2", `{"name":"Health","description":"Health agencies"}`, http.StatusForbidden},
+		{http.MethodPost, "/v1/invitations", `{"email":"admin@example.org"}`, http.StatusCreated},
+		{http.MethodPost, "/v1/ecosystem?orgId=org-2", `{"name":"Health","description":"Health agencies"}`, http.StatusCreated},
+		{http.MethodPost, "/v1/invitations", `{"email":"admin@example.org"}`, http.StatusCreated},
+		{http.MethodPost, "/v1/ecosystem?orgId=org-2", `{"name":"Health","description":"Again"}`, http.StatusConflict},
+		{http.MethodGet, "/v1/ecosystem/members?ecosystemId=" + id, "", http.StatusNotFound},
+		{http.MethodPost, "/v1/ecosystem/invitation", `{"ecosystemId":"` + id + `","orgId":"org-2"}`, http.StatusBadRequest},
+		{http.MethodPost, "/v1/ecosystem/invitation", `{"ecosystemId":"` + id + `","orgId":"org-3"}`, http.StatusCreated},
+		{http.MethodPost, "/v1/ecosystem/invitation", `{`, http.StatusBadRequest},
+		{http.MethodPut, "/v1/config/ecosystem", `{`, http.StatusBadRequest},
+		{http.MethodPatch, "/v1/ecosystem", "", http.StatusNotFound},
+	}
+	for _, s := range steps {
+		if got := statusOf(t, f, s.method, s.path, s.body); got != s.want {
+			t.Errorf("%s %s %s = %d, want %d", s.method, s.path, s.body, got, s.want)
+		}
+	}
+	for org, want := range map[string]string{"org-2": `"memberCount": 1`, "org-3": `"name": "Health"`} {
+		body := get(t, f, "/v1/ecosystem?orgId="+org)
+		if !strings.Contains(body, want) || !strings.Contains(body, `"id": "org-2"`) || !strings.Contains(body, "Health agencies") {
+			t.Errorf("%s lists %s", org, body)
+		}
+	}
+	if body := get(t, f, "/v1/ecosystem?orgId=org-4"); !strings.Contains(body, `"data": []`) {
+		t.Errorf("org-4 lists %s", body)
+	}
+	if body := get(t, f, "/v1/ecosystem/members?ecosystemId="+id); !strings.Contains(body, `"id": "org-3"`) {
+		t.Errorf("members = %s", body)
+	}
+	remove := `{"ecosystemId":"` + id + `","orgIds":["org-3"]}`
+	for _, want := range []int{http.StatusCreated, http.StatusBadRequest} {
+		if got := statusOf(t, f, http.MethodDelete, "/v1/ecosystem/member", remove); got != want {
+			t.Errorf("remove = %d, want %d", got, want)
+		}
+	}
+	if body := get(t, f, "/v1/ecosystem/status"); !strings.Contains(body, `"data": true`) {
+		t.Errorf("status = %s", body)
+	}
+}
+
+// TestFakeKeepsTheCertificates is P6-C9: the fake keeps the status of
+// each certificate of the recorded list. It refuses a second active
+// certificate of one key type, as the platform does, and filters the
+// list by status.
+func TestFakeKeepsTheCertificates(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	older, imported := "/v1/x509/org-1/"+fake.OlderCertificateID, "/v1/x509/org-1/"+fake.ImportedCertificateID
+	if body := get(t, f, imported); !strings.Contains(body, `"status": "Pending activation"`) {
+		t.Errorf("imported = %s", body)
+	}
+	if body := get(t, f, "/v1/x509/org-1?status=Active&keyType=P-256"); !strings.Contains(body, fake.OlderCertificateID) || strings.Contains(body, fake.ImportedCertificateID) {
+		t.Errorf("active list = %s", body)
+	}
+	steps := []struct {
+		method, path string
+		want         int
+	}{
+		{http.MethodPut, "/v1/x509/org-1/activate/" + fake.ImportedCertificateID, http.StatusConflict},
+		{http.MethodPut, "/v1/x509/org-1/deactivate/" + fake.OlderCertificateID, http.StatusOK},
+		{http.MethodPut, "/v1/x509/org-1/activate/" + fake.ImportedCertificateID, http.StatusOK},
+		{http.MethodGet, "/v1/x509/org-1/unknown", http.StatusNotFound},
+		{http.MethodPut, "/v1/x509/org-1/activate/unknown", http.StatusNotFound},
+		{http.MethodDelete, older, http.StatusNotFound},
+	}
+	for _, s := range steps {
+		if got := statusOf(t, f, s.method, s.path, ""); got != s.want {
+			t.Errorf("%s %s = %d, want %d", s.method, s.path, got, s.want)
+		}
+	}
+	if body := get(t, f, "/v1/x509/org-1?status=Active&keyType=P-256"); !strings.Contains(body, fake.ImportedCertificateID) || strings.Contains(body, fake.OlderCertificateID) {
+		t.Errorf("active list after the change = %s", body)
+	}
+	if body := get(t, f, older); !strings.Contains(body, `"status": "In Active"`) {
+		t.Errorf("older = %s", body)
+	}
+}
