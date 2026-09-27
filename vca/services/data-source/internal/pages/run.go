@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -51,19 +52,51 @@ var bulkChannels = []struct {
 	{backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, "issuer.issue.pre_auth"},
 	{backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE, "issuer.issue.auth_code"},
 	{backendv1.Channel_CHANNEL_PDF, "issuer.issue.pdf"},
+	{backendv1.Channel_CHANNEL_DIDCOMM_OOB, "issuer.issue.didcomm"},
+	{backendv1.Channel_CHANNEL_EMAIL, "issuer.issue.email"},
 }
 
-// offered lists the channels of a bulk run on the pair: the channels
-// its adapter lists, and the document channel that VCA gives every
-// stack (ADR-043 decision 2).
-func offered(c *backendv1.GetCapabilitiesResponse) []backendv1.Channel {
+// offered lists the channels of a bulk run of a schema on the pair: the
+// channels its adapter lists that carry a format of the schema, and the
+// document channel that VCA gives every stack (ADR-043 decision 2). A
+// DIDComm channel gives each row an invitation, and the email channel
+// has the stack mail each row (ADR-059 decision 5).
+func offered(c *backendv1.GetCapabilitiesResponse, s *schemav1.Schema) []backendv1.Channel {
 	var out []backendv1.Channel
 	for _, bc := range bulkChannels {
-		if bc.channel == backendv1.Channel_CHANNEL_PDF || lists(c, bc.channel) {
+		if (bc.channel == backendv1.Channel_CHANNEL_PDF && documents(c, s)) || (lists(c, bc.channel) && carriesSchema(c, bc.channel, s)) {
 			out = append(out, bc.channel)
 		}
 	}
 	return out
+}
+
+// documents reports whether VCA can give a row of the schema a
+// document: the stack returns the credential, or the pre-authorized
+// offer of the stack carries a format of the schema. Without the answer
+// of the adapter the run offers the document, as before the probe.
+func documents(c *backendv1.GetCapabilitiesResponse, s *schemav1.Schema) bool {
+	return len(c.GetChannels()) == 0 || lists(c, backendv1.Channel_CHANNEL_PDF) ||
+		(lists(c, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH) && carriesSchema(c, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, s))
+}
+
+// carriesSchema reports whether a channel carries a format of the
+// schema on the stack. A channel that channel_formats leaves out carries
+// every format of the stack.
+func carriesSchema(c *backendv1.GetCapabilitiesResponse, ch backendv1.Channel, s *schemav1.Schema) bool {
+	formats := formatsOn(s, c)
+	for _, cf := range c.GetChannelFormats() {
+		if cf.GetChannel() != ch {
+			continue
+		}
+		for _, f := range cf.GetFormats() {
+			if slices.Contains(formats, f) {
+				return true
+			}
+		}
+		return false
+	}
+	return true
 }
 
 // lists reports whether the adapter lists a channel.
@@ -170,6 +203,7 @@ func (p *Pages) renderRun(pg page, s runSetup, values url.Values, toast string) 
 			{Value: methodNative, Title: msg.T("issuer.sources.run.native.label", stackName(c)), Text: nativeText, Meta: stackName(c), Checked: method == methodNative},
 		}}))
 	}
+	channels := offered(c, s.schema)
 	if mails {
 		fields = append(fields, p.emailColumnField(pg, b, s.src.GetId(), values.Get("email_column")))
 	}
@@ -182,7 +216,7 @@ func (p *Pages) renderRun(pg page, s runSetup, values url.Values, toast string) 
 	}
 	current := values.Get("channel")
 	channelOptions := make([]components.ChoiceOption, 0, len(bulkChannels))
-	for i, ch := range offered(c) {
+	for i, ch := range channels {
 		key := channelKey(ch)
 		meta := msg.T("issuer.issue.every_stack.label")
 		if lists(c, ch) {
@@ -193,6 +227,11 @@ func (p *Pages) renderRun(pg page, s runSetup, values url.Values, toast string) 
 	}
 	fields = append(fields, b.add("choice", components.Choice{ID: "channel", Legend: msg.T("issuer.issue.step.delivery.label"),
 		Hint: channelHint, Options: channelOptions}))
+	// The email channel of the stack mails each row an invitation, so it
+	// needs the column of the address (ADR-059 decision 5).
+	if !mails && slices.Contains(channels, backendv1.Channel_CHANNEL_EMAIL) {
+		fields = append(fields, p.emailColumnField(pg, b, s.src.GetId(), values.Get("email_column")))
+	}
 	if fs := formatsOn(s.schema, c); len(fs) > 1 {
 		opts := make([]components.Option, 0, len(fs))
 		for _, f := range fs {
@@ -282,14 +321,17 @@ func (p *Pages) batchRequest(pg page, s runSetup, values url.Values) (*issuancev
 		req.Native, req.Channel = true, backendv1.Channel_CHANNEL_PDF
 	default:
 		ch := backendv1.Channel(backendv1.Channel_value[values.Get("channel")])
-		found := false
-		for _, o := range offered(c) {
-			found = found || o == ch
-		}
-		if !found {
+		if !slices.Contains(offered(c, s.schema), ch) {
 			return nil, refusal(msg.T("issuer.issue.error.channel"))
 		}
 		req.Channel = ch
+		// The stack mails each row an invitation, so each row needs an
+		// address.
+		if ch == backendv1.Channel_CHANNEL_EMAIL {
+			if emailColumn = strings.TrimSpace(values.Get("email_column")); emailColumn == "" {
+				return nil, refusal(msg.T("issuer.sources.run.error.email_column"))
+			}
+		}
 	}
 	tb, err := p.opts.Sources.IssueRows(pg.ctx(), s.src.GetId())
 	switch {

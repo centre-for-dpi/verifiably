@@ -237,6 +237,14 @@ an integer claim as `12`, `true` a boolean claim as `true`, and
 text, so the schema check of the issuance service names the claim. A
 transform that fails on one row keeps the source text of that row.
 
+The run form offers the channels of the adapter that carry a format of
+the schema (ADR-059 decision 2). Take a schema in AnonCreds or W3C
+JSON-LD on a stack that issues over DIDComm. Each row then gets a
+DIDComm invitation, or an email that the stack sends. The email goes to
+the address in a column of the source, and the form asks for that
+column. The document of VCA carries a pre-authorized offer. So the form
+offers it only when that offer carries a format of the schema.
+
 The page calls `IssueBatch` of the issuance service of the pair. The
 call sets `X-Vca-Actor` to the staff member. The page reads the progress
 with `GetBatch`. While the run goes on, the progress block asks htmx to

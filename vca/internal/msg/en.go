@@ -863,7 +863,7 @@ var en = map[string]string{
 	"issuer.sources.run.channel.native.mail":              "The bulk import of the stack mails each holder an offer instead.",
 	"issuer.sources.run.email_column.label":               "Email column",
 	"issuer.sources.run.email_column.none.label":          "Pick a column",
-	"issuer.sources.run.email_column.hint":                "The bulk import of the stack mails the offer to the address in this column.",
+	"issuer.sources.run.email_column.hint":                "The stack mails each offer to the address in this column.",
 	"issuer.sources.run.error.email_column":               "Pick the column with the email address of each holder.",
 	"issuer.sources.run.start.label":                      "Start the run",
 	"issuer.sources.run.no_issuance":                      "This pair has no issuance service, so a run cannot start.",
