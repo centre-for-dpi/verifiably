@@ -68,6 +68,9 @@ type offerRequest struct {
 	AuthorizationType string       `json:"authorizationType"`
 	PIN               string       `json:"pin,omitempty"`
 	Credentials       []offerEntry `json:"credentials"`
+	// IsRevocable asks the platform for a status list entry in each
+	// credential. The platform refuses it without a status list host.
+	IsRevocable bool `json:"isRevocable,omitempty"`
 }
 
 // offerEntry is one credential of a create offer body.
@@ -102,8 +105,9 @@ type Offer struct {
 // CREDEBL checks the payload against the attributes of the template, so
 // the payload carries the claims of the template and nothing else. The
 // flow binds the subject to the key of the wallet during the exchange,
-// so the payload carries no subject identifier.
-func (c *Client) CreateOffer(ctx context.Context, templateID, pin string, payload map[string]any) (Offer, error) {
+// so the payload carries no subject identifier. A revocable offer gives
+// each credential a status list entry, which Revoke later sets.
+func (c *Client) CreateOffer(ctx context.Context, templateID, pin string, payload map[string]any, revocable bool) (Offer, error) {
 	if c == nil {
 		return Offer{}, ErrNoPlatform
 	}
@@ -114,6 +118,7 @@ func (c *Client) CreateOffer(ctx context.Context, templateID, pin string, payloa
 		AuthorizationType: "preAuthorizedCodeFlow",
 		PIN:               pin,
 		Credentials:       []offerEntry{{TemplateID: templateID, Payload: payload}},
+		IsRevocable:       revocable,
 	}
 	path := fmt.Sprintf("/v1/orgs/%s/oid4vc/%s/create-offer", c.orgID, c.issuerID)
 	var out offerResponse

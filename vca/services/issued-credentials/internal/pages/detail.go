@@ -133,6 +133,9 @@ func (p *Pages) renderDetail(pg page, id string, v view) error {
 	if r.GetStatusBinding() != nil {
 		actions = allowed(r.GetStatus())
 	}
+	if r.GetDpgCredentialId() != "" {
+		actions = p.stackActions(ctx, actions)
+	}
 	act := canAct(ctx)
 	var buttons []template.HTML
 	if act {
@@ -164,6 +167,29 @@ func (p *Pages) renderDetail(pg page, id string, v view) error {
 			r.GetIssuedAt().AsTime().UTC().Format(dateText)),
 		Actions: components.Join(buttons...), Content: components.Join(parts...), Toasts: v.toasts,
 	})
+}
+
+// stackActions keeps the actions of a record from the stack ledger that
+// the adapter of the pair makes: a revoke with FEATURE_REVOCATION, a
+// suspension and a reinstatement with FEATURE_SUSPENSION. An adapter
+// that lists neither leaves every change to the status services of VCA
+// (ADR-034 decision 5). One that lists one of them holds the status
+// entry, so the other change has no service that can make it.
+func (p *Pages) stackActions(ctx context.Context, actions []string) []string {
+	if !p.has(ctx, backendv1.Feature_FEATURE_REVOCATION) && !p.has(ctx, backendv1.Feature_FEATURE_SUSPENSION) {
+		return actions
+	}
+	out := make([]string, 0, len(actions))
+	for _, a := range actions {
+		feature := backendv1.Feature_FEATURE_SUSPENSION
+		if a == actRevoke {
+			feature = backendv1.Feature_FEATURE_REVOCATION
+		}
+		if p.has(ctx, feature) {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // allowed returns the actions of a status, in the order of the page.

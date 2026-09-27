@@ -89,6 +89,11 @@ x-credebl-platform: &credebl-platform
     # The mail provider of an offer by email comes from ../credebl/.env:
     # EMAIL_PROVIDER and the values of that provider. No provider, no
     # email offer.
+    # The status list host of this file. The platform refuses a
+    # revocable offer without it. The agent puts the same address into
+    # each revocable credential, so a verifier fetches the list there.
+    # On a public host set CREDEBL_STATUS_LIST_URL to its public address.
+    STATUS_LIST_HOST: ${CREDEBL_STATUS_LIST_URL:-http://credebl-status-list:3000}
   volumes:
     - credebl-files:/app/uploadedFiles
   networks:
@@ -216,6 +221,51 @@ services:
       ISSUER: ${CREDEBL_SCHEMA_FILE_SERVER_ISSUER:-credebl-platform}
     volumes:
       - credebl-schemas:/app/schemas
+    networks:
+      - vca
+
+  # The status list host of the platform: a Token Status List server
+  # that keeps each list as a signed JWT. The agent creates and updates
+  # the lists with the API key, and anyone reads them. CREDEBL publishes
+  # no image of it, so compose builds it from the repository of its
+  # authors at one commit, read on 2026-09-27. The build repeats the
+  # Dockerfile of that commit with its base image pinned by digest.
+  credebl-status-list:
+    image: vca-local/credebl-status-list:f6025ab
+    build:
+      context: https://github.com/sovio-id/status-list-server.git#f6025abe794076abfc8b08513be1165142f2eda8
+      dockerfile_inline: |
+        FROM oven/bun:1.3.2-alpine@sha256:adda30fd4db7d8ef9a2113cb935c6f751de3daad39373713b56eefe49db78471 AS build
+        WORKDIR /app
+        COPY package.json bun.lock ./
+        COPY apps/server/package.json ./apps/server/
+        COPY packages/db/package.json ./packages/db/
+        COPY packages/env/package.json ./packages/env/
+        COPY packages/config/package.json ./packages/config/
+        RUN bun install --frozen-lockfile
+        COPY . .
+        RUN bun run build
+        FROM oven/bun:1.3.2-alpine@sha256:adda30fd4db7d8ef9a2113cb935c6f751de3daad39373713b56eefe49db78471
+        WORKDIR /app
+        COPY --from=build /app/apps/server/dist ./dist
+        COPY --from=build /app/packages/db/src/migrations ./dist/migrations
+        EXPOSE 3000
+        CMD ["bun", "run", "dist/index.mjs"]
+    profiles: [issuer-credebl, holder-credebl, verifier-credebl]
+    container_name: credebl-status-list
+    restart: unless-stopped
+    environment:
+      # The server runs its migrations at the start, on the volume.
+      DATABASE_URL: file:/app/data/status-list.db
+      PORT: "3000"
+      NODE_ENV: production
+      API_KEY: ${CREDEBL_STATUS_LIST_API_KEY:?set by vca setup}
+    volumes:
+      - credebl-status-lists:/app/data
+    # A verifier outside the host reads the lists here. Publish only the
+    # GET requests of /status-lists/ through the reverse proxy.
+    ports:
+      - "${VCA_BIND:-0.0.0.0}:${CREDEBL_STATUS_LIST_HOST_PORT:-17183}:3000"
     networks:
       - vca
 
@@ -382,6 +432,12 @@ services:
       # writes the address into ../credebl/.env and restarts the agent.
       # Before that run the agent sends no event.
       AFJ_REST_WEBHOOK_URL: ${CREDEBL_AGENT_WEBHOOK_URL:-}
+      # The status list host of this file (P6-C5b). The agent signs each
+      # list with the DID of the issuer and writes it with the API key.
+      # The size is the one the platform allocates from.
+      STATUS_LIST_SERVER_URL: ${CREDEBL_STATUS_LIST_URL:-http://credebl-status-list:3000}
+      STATUS_LIST_API_KEY: ${CREDEBL_STATUS_LIST_API_KEY:?set by vca setup}
+      STATUS_LIST_DEFAULT_SIZE: "131072"
     volumes:
       - ../credebl/credebl-agent.json:/config/agent.json:ro
     ports:
@@ -396,3 +452,4 @@ volumes:
   credebl-cache:
   credebl-schemas:
   credebl-files:
+  credebl-status-lists:

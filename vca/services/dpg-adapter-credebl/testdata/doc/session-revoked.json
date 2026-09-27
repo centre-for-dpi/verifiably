@@ -1,0 +1,7 @@
+{
+  "statusCode": 200,
+  "message": "Credential revoked successfully.",
+  "data": {
+    "message": "Credentials in session revoked successfully"
+  }
+}

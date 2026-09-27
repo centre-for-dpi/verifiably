@@ -431,6 +431,8 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		f.send(w, "doc/platform-ledgers.json")
 	case strings.HasSuffix(path, "/create-offer"):
 		f.send(w, "create-offer.json")
+	case strings.Contains(path, "/openid4vc/issuance-sessions/") && strings.HasSuffix(path, "/revoke") && r.Method == http.MethodPost:
+		f.send(w, "doc/session-revoked.json")
 	case strings.HasSuffix(path, "/oid4vp/verifier") && r.Method == http.MethodGet:
 		f.send(w, "verifier-list.json")
 	case strings.HasSuffix(path, "/oid4vp/verifier"):

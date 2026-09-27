@@ -111,7 +111,7 @@ Use --all --dpg <dpg> for one stack (<n> MiB) or --role admin --dpg <dpg> for on
 
 The hint names the largest DPG that fits and the memory it needs.
 One stack needs 4064 MiB with `waltid`, 7040 MiB with `inji`, and
-7200 MiB with `credebl`. One admin pair needs 704 MiB with any DPG.
+7264 MiB with `credebl`. One admin pair needs 704 MiB with any DPG.
 `vca doctor --suggest` prints the selection that fits the free memory of
 this host, with the two commands that start it.
 

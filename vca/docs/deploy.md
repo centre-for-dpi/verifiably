@@ -455,7 +455,7 @@ The versions come from `verifiably-go/docs/dpg-matrix.md`:
 | `dpg/inji.yaml` | Inji Web and Mimoto | 0.16.0 and 0.21.0 |
 | `dpg/inji.yaml` | Inji Verify UI and service | 0.16.0 |
 | `dpg/inji.yaml` | eSignet and its login page, with an authenticator only | 1.5.1 |
-| `dpg/credebl.yaml` | The whole CREDEBL platform and its shared Credo agent | `v2.2.1-alpha.4`, by digest |
+| `dpg/credebl.yaml` | The whole CREDEBL platform, its shared Credo agent, and its status list host | `v2.2.1-alpha.4`, by digest |
 | Every `dpg/*.yaml` file | Keycloak | 25.0 |
 
 The stack file runs one release line of CREDEBL, `v2.2.1` (ADR-066).
@@ -517,7 +517,7 @@ A later run keeps that time.
 |---|---|
 | `deploy/waltid/.env` | `WALTID_DB_PASSWORD` and the four `WALTID_WALLET_*` keys |
 | `deploy/inji/.env` | `INJI_DB_PASSWORD`, `INJI_CERTIFY_KEYSTORE_PASSWORD`, `INJI_ESIGNET_DB_PASSWORD`, `INJI_MIMOTO_DB_PASSWORD`, `INJI_MIMOTO_KEYSTORE_PASSWORD`, `INJI_VERIFY_DB_PASSWORD` |
-| `deploy/credebl/.env` | `CREDEBL_DB_PASSWORD`, `CRYPTO_PRIVATE_KEY`, `CREDEBL_PLATFORM_ADMIN_PASSWORD`, `PLATFORM_WALLET_PASSWORD`, `PLATFORM_SEED`, `CREDEBL_AGENT_WALLET_KEY`, `CREDEBL_AGENT_API_KEY`, `CREDEBL_SCHEMA_FILE_SERVER_SECRET`, `CREDEBL_ADMIN_KEYCLOAK_SECRET`, `CREDEBL_KEYCLOAK_MANAGEMENT_CLIENT_SECRET`, `CREDEBL_SCHEMA_FILE_SERVER_TOKEN` |
+| `deploy/credebl/.env` | `CREDEBL_DB_PASSWORD`, `CRYPTO_PRIVATE_KEY`, `CREDEBL_PLATFORM_ADMIN_PASSWORD`, `PLATFORM_WALLET_PASSWORD`, `PLATFORM_SEED`, `CREDEBL_AGENT_WALLET_KEY`, `CREDEBL_AGENT_API_KEY`, `CREDEBL_SCHEMA_FILE_SERVER_SECRET`, `CREDEBL_ADMIN_KEYCLOAK_SECRET`, `CREDEBL_KEYCLOAK_MANAGEMENT_CLIENT_SECRET`, `CREDEBL_STATUS_LIST_API_KEY`, `CREDEBL_SCHEMA_FILE_SERVER_TOKEN` |
 | `deploy/credebl/.env`, written by `vca dpg bootstrap credebl` | `CREDEBL_PLATFORM_ORG_ID` and `CREDEBL_AGENT_WEBHOOK_URL`, which a later setup run keeps |
 | `deploy/credebl/credebl-master-table.json` | The master table of the CREDEBL initialisation, with the platform admin password of the `.env` |
 
@@ -594,6 +594,38 @@ writes the list of the operator.
 To change the networks, run `vca setup` again with a new value.
 Then run `vca dpg bootstrap credebl` on a new database, because the
 initialisation writes the ledgers once.
+
+### CREDEBL revocation
+
+The CREDEBL stack runs the status list host of the platform,
+`credebl-status-list` (P6-C5b).
+CREDEBL publishes no image of it, so compose builds it at the first start.
+The build reads one commit of its repository on GitHub and a base image
+pinned by digest.
+So the host needs access to both on that start.
+The host keeps each list on the volume `credebl-status-lists`.
+Setup generates `CREDEBL_STATUS_LIST_API_KEY`, which guards the writes.
+It also sets `VCA_CREDEBL_STATUS_LIST` in an issuer pair, so every OID4VC
+offer is revocable.
+The issued page then offers a revoke for each credential of the stack.
+
+Each credential names the address of its list.
+A verifier outside the host fetches the list there.
+On a public host, set `CREDEBL_STATUS_LIST_URL` in the environment of
+docker compose to the public address, before the first offer.
+Publish only the `GET` requests of `/status-lists/` of host port 17183.
+`CREDEBL_STATUS_LIST_HOST_PORT` changes the port.
+A Caddy route looks like this:
+
+```
+@lists {
+	method GET
+	path /status-lists/*
+}
+handle @lists {
+	reverse_proxy 127.0.0.1:17183
+}
+```
 
 ### CREDEBL holder wallets
 
@@ -1135,13 +1167,13 @@ The whole legacy stack needed 8 GB to 12 GB and about 25 ports.
 |---|---|---|---|---|---|
 | `issuer-waltid` | 9 | 864 MiB | 2048 MiB | 2912 MiB | 3.25 |
 | `issuer-inji` | 9 | 864 MiB | 4000 MiB | 4864 MiB | 3.25 |
-| `issuer-credebl` | 9 | 864 MiB | 5184 MiB | 6048 MiB | 3.25 |
+| `issuer-credebl` | 9 | 864 MiB | 5248 MiB | 6112 MiB | 3.25 |
 | `holder-waltid` | 3 | 288 MiB | 2048 MiB | 2336 MiB | 1.75 |
 | `holder-inji` | 3 | 288 MiB | 3584 MiB | 3872 MiB | 1.75 |
-| `holder-credebl` | 3 | 288 MiB | 5184 MiB | 5472 MiB | 1.75 |
+| `holder-credebl` | 3 | 288 MiB | 5248 MiB | 5536 MiB | 1.75 |
 | `verifier-waltid` | 7 | 672 MiB | 2048 MiB | 2720 MiB | 2.75 |
 | `verifier-inji` | 7 | 672 MiB | 2560 MiB | 3232 MiB | 2.75 |
-| `verifier-credebl` | 7 | 672 MiB | 5184 MiB | 5856 MiB | 2.75 |
+| `verifier-credebl` | 7 | 672 MiB | 5248 MiB | 5920 MiB | 2.75 |
 | `admin-waltid` | 2 | 192 MiB | 512 MiB | 704 MiB | 1.5 |
 | `admin-inji` | 2 | 192 MiB | 512 MiB | 704 MiB | 1.5 |
 | `admin-credebl` | 2 | 192 MiB | 512 MiB | 704 MiB | 1.5 |
@@ -1150,9 +1182,9 @@ One stack is the four roles of one DPG together:
 
 | Selection | `waltid` | `inji` | `credebl` |
 |---|---|---|---|
-| `--all --dpg <dpg>` | 4064 MiB | 7040 MiB | 7200 MiB |
+| `--all --dpg <dpg>` | 4064 MiB | 7040 MiB | 7264 MiB |
 
-`--all` alone starts every role of every DPG and needs 18304 MiB.
+`--all` alone starts every role of every DPG and needs 18368 MiB.
 The four roles of one DPG share one DPG stack and one Keycloak, so a
 stack counts once.
 
@@ -1176,6 +1208,7 @@ Keycloak takes 512 MiB, PostgreSQL 256 MiB, NATS 64 MiB, Redis 64 MiB.
 The schema file server takes 128 MiB and the API gateway 384 MiB.
 Each of the 17 other platform services takes 192 MiB.
 The shared Credo agent takes 512 MiB.
+The status list host takes 64 MiB.
 So every CREDEBL pair except the admin needs more than the 4 GB target (ADR-045 consequence 2).
 These figures are estimates until the nightly run measures the stack.
 `vca doctor` marks those pairs in the floor report.

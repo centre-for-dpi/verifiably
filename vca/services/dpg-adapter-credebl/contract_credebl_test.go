@@ -337,3 +337,37 @@ func TestContractDidcommProofRequest(t *testing.T) {
 		t.Fatalf("ListProofSchemas = %v, %v", schemas, err)
 	}
 }
+
+// TestContractRevokeSession creates a revocable offer and revokes its
+// issuance session through the status list host of the stack (P6-C5b).
+// The agent gives the credential its status list entry when it creates
+// the offer, so the revoke needs no wallet.
+func TestContractRevokeSession(t *testing.T) {
+	if os.Getenv("VCA_CREDEBL_CONTRACT_STATUS_LIST") != "true" {
+		t.Skip("set VCA_CREDEBL_CONTRACT_STATUS_LIST=true on a stack with the status list host")
+	}
+	subject := os.Getenv("VCA_CREDEBL_CONTRACT_SUBJECT_DATA")
+	if subject == "" {
+		t.Skip("set VCA_CREDEBL_CONTRACT_SUBJECT_DATA to run the revoke contract test")
+	}
+	cfg := contractEnv(t)
+	cfg.StatusList = true
+	a, err := app.Build(cfg, app.Deps{HTTP: &http.Client{Timeout: 30 * time.Second}})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	ctx := context.Background()
+	list, err := a.Service.ListCredentialTypes(ctx, connect.NewRequest(&backendv1.ListCredentialTypesRequest{}))
+	if err != nil || len(list.Msg.GetConfigurations()) == 0 {
+		t.Skipf("the real platform has no credential template: %v", err)
+	}
+	offer, err := a.Service.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
+		Spec: &backendv1.IssueSpec{ConfigurationId: list.Msg.GetConfigurations()[0].GetId(), SubjectData: subject},
+	}))
+	if err != nil {
+		t.Fatalf("CreateOffer: %v", err)
+	}
+	if _, err := a.Service.Revoke(ctx, connect.NewRequest(&backendv1.RevokeRequest{CredentialId: offer.Msg.GetOfferId(), Reason: "contract"})); err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+}

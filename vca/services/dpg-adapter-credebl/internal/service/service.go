@@ -73,6 +73,9 @@ type Options struct {
 	// PollAttempts is the number of reads of an exchange. Zero means
 	// DefaultPollAttempts.
 	PollAttempts int
+	// StatusList reports that the platform runs with a status list
+	// host, so an OID4VC offer is revocable (P6-C5b).
+	StatusList bool
 }
 
 // Service implements every vca.backend.v1 service of this adapter.
@@ -93,6 +96,7 @@ type Service struct {
 	holderLabel  string
 	pollInterval time.Duration
 	pollAttempts int
+	statusList   bool
 
 	// ledgerMu guards ledgers, the ledgers of the capability answer.
 	ledgerMu sync.Mutex
@@ -146,6 +150,7 @@ func New(opts Options) (*Service, error) {
 		holderLabel:  opts.HolderLabel,
 		pollInterval: opts.PollInterval,
 		pollAttempts: opts.PollAttempts,
+		statusList:   opts.StatusList,
 	}, nil
 }
 
@@ -209,7 +214,7 @@ func (s *Service) GetCapabilities(
 		// RegisterCredentialConfiguration writes a schema and a template
 		// to the platform. The organisations of the platform are the
 		// tenants, and the agent makes the issuer DID (P6-C1). Revoke
-		// answers Unimplemented, so its features stay off the list. The
+		// works with the status list host of the stack (P6-C5b). The
 		// platform embeds no status entry of VCA in what it signs. The
 		// bulk import mails each row, so it needs a mail provider
 		// (P6-C4).

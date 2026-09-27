@@ -316,6 +316,9 @@ func Catalog() []Service {
 			Stateful: true, Fixed: []FixedValue{
 				{Env: "VCA_CREDEBL_STORE_FILE", Value: "/data/credebl-state"},
 				{Env: CredeblAdapterAgentURLEnv, Value: "http://" + SharedAgentHost + ":8001", Roles: holder},
+				// The stack file runs the status list host, so the offers
+				// of an issuer pair are revocable (P6-C5b).
+				{Env: CredeblAdapterStatusListEnv, Value: "true", Roles: issuer},
 			}},
 		{Name: "dpg-adapter-inji", ListenEnv: "VCA_INJI_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_INJI,
 			Links: []Link{

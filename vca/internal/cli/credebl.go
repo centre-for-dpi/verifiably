@@ -107,6 +107,21 @@ const (
 	SchemaFileServerIssuer = "credebl-platform"
 )
 
+// The status list host of the stack (P6-C5b). The platform names it
+// STATUS_LIST_HOST and the agent STATUS_LIST_SERVER_URL. The agent
+// writes each list with the API key and puts the address of the list
+// into each revocable credential, so a verifier fetches it there.
+const (
+	// CredeblStatusListService is the container of the host.
+	CredeblStatusListService = "credebl-status-list" //nolint:gosec // G101: a container name, not a credential.
+	// CredeblStatusListKeyEnv is the generated API key of the host in
+	// the CREDEBL stack .env.
+	CredeblStatusListKeyEnv = "CREDEBL_STATUS_LIST_API_KEY" //nolint:gosec // G101: this is a variable name, not a credential.
+	// CredeblAdapterStatusListEnv tells the adapter of an issuer pair
+	// that the stack runs the host, so its offers are revocable.
+	CredeblAdapterStatusListEnv = "VCA_CREDEBL_STATUS_LIST" //nolint:gosec // G101: this is a variable name, not a credential.
+)
+
 // credeblPlatformAdmin returns the platform admin of a bootstrap run: the user
 // of the environment, else the platform admin of the CREDEBL stack .env.
 // No placeholder exists.

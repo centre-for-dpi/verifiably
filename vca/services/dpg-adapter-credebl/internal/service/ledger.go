@@ -88,9 +88,13 @@ func (s *Service) ListIssuedCredentials(
 		if !ok {
 			continue
 		}
-		matched = append(matched, &backendv1.LedgerEntry{
+		entry := &backendv1.LedgerEntry{
 			CredentialId: session.ID, CredentialType: credType, IssuedAt: timestamp(session.UpdatedAt),
-		})
+		}
+		if binding := statusBinding(session, credType); binding != nil {
+			entry.Status, entry.StatusPurpose = binding, "revocation"
+		}
+		matched = append(matched, entry)
 	}
 	sort.SliceStable(matched, func(i, j int) bool {
 		return matched[i].GetIssuedAt().AsTime().Before(matched[j].GetIssuedAt().AsTime())
@@ -112,6 +116,35 @@ func (s *Service) ListIssuedCredentials(
 		out.Page.NextPageToken = strconv.Itoa(end)
 	}
 	return connect.NewResponse(out), nil
+}
+
+// statusBinding returns the status list entry that the agent wrote into
+// the credential of one type of a revocable session: an IETF Token
+// Status List with the list of the agent, the index and the address a
+// verifier fetches. A session with no entry gives nil (P6-C5b).
+func statusBinding(session credebl.IssuanceSession, credType string) *backendv1.StatusListBinding {
+	var listID string
+	for _, info := range session.Metadata.StatusLists {
+		if info.SupportedID == credType {
+			listID = info.ListID
+		}
+	}
+	for _, c := range session.Metadata.Credentials {
+		if c.SupportedID != credType || listID == "" {
+			continue
+		}
+		var entry credebl.StatusEntry
+		if err := json.Unmarshal(c.Payload["status"], &entry); err != nil || entry.StatusList.URI == "" {
+			return nil
+		}
+		return &backendv1.StatusListBinding{
+			Kind:       backendv1.StatusListBinding_KIND_TOKEN,
+			ListId:     listID,
+			Index:      entry.StatusList.Index,
+			PublishUrl: entry.StatusList.URI,
+		}
+	}
+	return nil
 }
 
 // sessionType returns the credential type of the first credential of a

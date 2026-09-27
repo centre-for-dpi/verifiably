@@ -104,6 +104,10 @@ func stackKeys(d configv1.Dpg) []stackKey {
 			// The two clients of the platform realm (P6-C0b).
 			{CredeblAdminClientSecretEnv, stackSecretLength},
 			{CredeblManagementClientSecretEnv, stackSecretLength},
+			// The status list host guards its writes with an API key
+			// that the agent sends (P6-C5b). It keeps no copy, so a new
+			// key costs nothing.
+			{CredeblStatusListKeyEnv, stackSecretLength},
 		}
 	}
 	return nil

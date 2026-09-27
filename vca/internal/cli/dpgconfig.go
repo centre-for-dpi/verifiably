@@ -513,7 +513,8 @@ var dpgMemoryMiB = map[configv1.Dpg]int{
 // NATS client and a Prisma client, so it gets 192 MiB. The api gateway
 // also holds the HTTP server and the socket server, so it gets 384 MiB.
 // The shared Credo agent holds every tenant wallet and the Indy ledger
-// pools, so it gets 512 MiB. The initialisation runs once and exits, so
+// pools, so it gets 512 MiB. The status list host is one small Bun
+// process, so it gets 64 MiB. The initialisation runs once and exits, so
 // it has no figure. These are estimates until the nightly run measures
 // the stack (open question G.11). The sum passes the 4096 MiB target of
 // ADR-008 decision 7 on its own (ADR-045 consequence 2).
@@ -542,6 +543,8 @@ var credeblServiceMemoryMiB = map[string]int{
 	"credebl-oid4vc-verification": 192,
 	"credebl-x509":                192,
 	"credebl-agent":               512,
+	// One Bun process with a SQLite file of signed lists (P6-C5b).
+	"credebl-status-list": 64,
 }
 
 // sumMiB adds the figures of a memory table.

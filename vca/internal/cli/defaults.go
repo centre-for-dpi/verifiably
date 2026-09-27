@@ -145,7 +145,8 @@ type DpgPort struct {
 // DpgHostPorts lists the host ports of the DPG stack of one pair that
 // the deployment itself needs. The Keycloak of the stack is one, because
 // a browser reaches the login page there. The Inji holder pair adds
-// Inji Web, where the browser of the holder claims (P6-I7d).
+// Inji Web, where the browser of the holder claims (P6-I7d). A CREDEBL
+// pair that runs the platform adds the status list host.
 func DpgHostPorts(p Pair) []DpgPort {
 	name := KeycloakContainer(p.Dpg)
 	if name == "" {
@@ -158,6 +159,11 @@ func DpgHostPorts(p Pair) []DpgPort {
 	}
 	if isInjiHolder(p) {
 		out = append(out, DpgPort{Container: "inji-web", Host: 17085, Env: "INJI_WEB_HOST_PORT", Port: 3004})
+	}
+	if p.Dpg == configv1.Dpg_DPG_CREDEBL && p.Role != commonv1.Role_ROLE_ADMIN {
+		// A verifier outside the host reads the status lists of the
+		// platform here (P6-C5b).
+		out = append(out, DpgPort{Container: CredeblStatusListService, Host: 17183, Env: "CREDEBL_STATUS_LIST_HOST_PORT", Port: 3000})
 	}
 	return out
 }

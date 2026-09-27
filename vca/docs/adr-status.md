@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-068, one row per decision.
+ADR-069, one row per decision.
 
 The status values are:
 
@@ -733,12 +733,22 @@ A row that is not `Done` carries a note.
 | ADR-068 | 7 The checks, the activation and the kept chain | Done | `vca/services/dpg-adapter-credebl/internal/service/x509.go` | `TestImportX509Certificate` and `TestImportX509Refusals` pin it. |
 | ADR-068 | 8 No DID import | Done | `vca/services/dpg-adapter-credebl/internal/service/x509.go` | `TestImportDidUnimplementedWithoutFeature` pins it. |
 
+## ADR-069: The CREDEBL stack runs the status list host of the platform
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-069 | 1 The status list host, built at one commit | Done | `deploy/vca/dpg/credebl.yaml` | `TestCredeblStackRunsTheStatusListHost` pins it. |
+| ADR-069 | 2 One address for the platform, the agent and the verifier | Done | `deploy/vca/dpg/credebl.yaml`, `vca/docs/deploy.md` | `TestCredeblStackRunsTheStatusListHost` pins it. The deploy document names the public route. |
+| ADR-069 | 3 The generated key and the setting of the issuer pair | Done | `vca/internal/cli/stackenv.go`, `vca/internal/cli/services.go` | `TestCredeblStackEnvHoldsTheStatusListKey` and `TestCredeblIssuerPairNamesTheStatusList` pin it. |
+| ADR-069 | 4 Revocable offers, `Revoke` and no suspension | Done | `vca/services/dpg-adapter-credebl/internal/service/issuer.go` | `TestRevokeSession`, `TestOfferIsRevocableWithAStatusList` and `TestRevocationListedWithAStatusList` pin it. |
+| ADR-069 | 5 The ledger entry and the actions of the issued page | Done | `vca/services/dpg-adapter-credebl/internal/service/ledger.go`, `vca/services/issued-credentials/internal/pages/detail.go` | `TestLedgerEntryCarriesTheStatusListEntry` and `TestLedgerRecordOffersOnlyTheStackActions` pin it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 322 |
+| Done | 327 |
 | Partial | 25 |
 | Deferred | 3 |
 | Not started | 26 |
-| Total | 376 |
+| Total | 381 |

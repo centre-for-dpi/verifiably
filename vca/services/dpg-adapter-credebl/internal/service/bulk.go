@@ -75,6 +75,12 @@ func (s *Service) features() []backendv1.Feature {
 	if s.mailOffers {
 		out = append(out, backendv1.Feature_FEATURE_BULK_NATIVE)
 	}
+	// The agent revokes the credentials of a session in the status list
+	// of the stack (P6-C5b). It sets a bit and clears none, so the
+	// answer lists no suspension.
+	if s.statusList {
+		out = append(out, backendv1.Feature_FEATURE_REVOCATION)
+	}
 	// A tenant wallet per holder in the shared agent (ADR-062).
 	if s.holderRole() {
 		// The agent discloses every claim of a query, so the consent

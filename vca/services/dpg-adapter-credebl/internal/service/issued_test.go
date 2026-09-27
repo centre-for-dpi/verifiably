@@ -156,9 +156,9 @@ func TestIssuedListPages(t *testing.T) {
 }
 
 // TestRevokeNeedsAStatusListHost: the platform revokes an OID4VC
-// session only with a status list host, which the stack does not run.
-// So Revoke answers Unimplemented with the reason, and the answer lists
-// no revocation. The VCA status services revoke instead.
+// session only with a status list host. Settings that name none make
+// Revoke answer Unimplemented with the reason, and the answer lists no
+// revocation. The VCA status services revoke instead.
 func TestRevokeNeedsAStatusListHost(t *testing.T) {
 	svc, _ := newService(t, nil)
 	_, err := svc.Revoke(context.Background(), connect.NewRequest(&backendv1.RevokeRequest{CredentialId: completedSession}))

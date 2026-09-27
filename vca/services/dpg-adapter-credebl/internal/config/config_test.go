@@ -206,3 +206,18 @@ func TestLoadReadsTheAgentOfTheHolderRole(t *testing.T) {
 		}
 	}
 }
+
+// TestLoadReadsTheStatusList: the status list host of the stack turns
+// revocable offers on (P6-C5b). It is off by default, because the
+// platform refuses a revocable offer without the host.
+func TestLoadReadsTheStatusList(t *testing.T) {
+	values := required()
+	cfg, err := config.Load(env(values))
+	if err != nil || cfg.StatusList {
+		t.Fatalf("defaults = %+v, %v", cfg, err)
+	}
+	values["VCA_CREDEBL_STATUS_LIST"] = "true"
+	if cfg, err = config.Load(env(values)); err != nil || !cfg.StatusList {
+		t.Fatalf("config = %+v, %v", cfg, err)
+	}
+}

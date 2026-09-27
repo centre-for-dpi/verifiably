@@ -168,7 +168,7 @@ func (s *Service) CreateOffer(
 	if err != nil {
 		return nil, err
 	}
-	offer, oerr := s.client.CreateOffer(ctx, templateID, s.defaultPin, payload)
+	offer, oerr := s.client.CreateOffer(ctx, templateID, s.defaultPin, payload, s.statusList)
 	if oerr != nil {
 		return nil, failed("create the offer", oerr)
 	}
@@ -209,16 +209,40 @@ func (s *Service) Issue(
 		"CREDEBL signs a credential only when a wallet claims an offer; use CreateOffer")
 }
 
-// Revoke is not available. The platform revokes an OID4VC session only
-// when it runs with a status list host, which the stack file does not
-// run. The status list services of VCA own the status bits instead
-// (ADR-018, ADR-019).
+// Revoke revokes the credentials of one OID4VC issuance session. The
+// credential id is the session id that CreateOffer returned. The agent
+// sets the revoked bit in the status list of the stack and publishes the
+// list again (P6-C5b). The platform sets a bit and never clears it, so a
+// suspension and a reinstatement fail. Without a status list host the
+// platform issues no status entry, and the status list services of VCA
+// own the status bits instead (ADR-018, ADR-019).
 func (s *Service) Revoke(
-	context.Context, *connect.Request[backendv1.RevokeRequest],
+	ctx context.Context, req *connect.Request[backendv1.RevokeRequest],
 ) (*connect.Response[backendv1.RevokeResponse], error) {
-	return nil, unimplemented(
-		"CREDEBL revokes an OID4VC session only with a status list host, which the stack does not run; " +
-			"call the status list service that owns the list")
+	if !s.statusList {
+		return nil, unimplemented(
+			"CREDEBL revokes an OID4VC session only with a status list host, which this stack does not name; " +
+				"call the status list service that owns the list")
+	}
+	m := req.Msg
+	switch m.GetAction() {
+	case backendv1.RevokeRequest_ACTION_UNSPECIFIED, backendv1.RevokeRequest_ACTION_REVOKE:
+	default:
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf(
+			"CREDEBL revokes a credential and cannot %s it", strings.ToLower(strings.TrimPrefix(m.GetAction().String(), "ACTION_"))))
+	}
+	id := strings.TrimSpace(m.GetCredentialId())
+	if id == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the request needs the credential id, which is the issuance session"))
+	}
+	if strings.HasPrefix(id, DidcommOfferPrefix) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New(
+			"CREDEBL revokes an OID4VC credential only; a DIDComm credential of this stack has no revocation registry"))
+	}
+	if err := s.client.RevokeSession(ctx, id); err != nil {
+		return nil, failed("revoke the issuance session", err)
+	}
+	return connect.NewResponse(&backendv1.RevokeResponse{}), nil
 }
 
 // GetIssuerMetadata returns the OID4VCI issuer metadata of the adapter.

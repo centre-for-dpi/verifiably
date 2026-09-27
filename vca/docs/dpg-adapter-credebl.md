@@ -51,6 +51,7 @@ DIDComm wallet for each holder in the shared agent of the stack.
 | `GET /v1/platform/ledgers` | Reads the names of the ledgers. |
 | `GET /v1/orgs/{org}/oid4vc/credential-offer/{id}` | Reads the issuance session of one offer. |
 | `GET /v1/orgs/{org}/oid4vc/credential-offer` | Lists the issuance sessions, for the issued list. |
+| `POST /v1/orgs/{org}/openid4vc/issuance-sessions/{id}/revoke` | Revokes the credentials of one issuance session in the status list of the stack. |
 | `POST /v1/orgs/{org}/credentials/oob/offer` | Makes an out of band invitation that carries a DIDComm offer. |
 | `POST /v1/orgs/{org}/credentials/offer` | Sends a DIDComm offer over a connection of the organisation. |
 | `POST /v1/orgs/{org}/credentials/oob/email` | Has the platform mail an out of band invitation with a QR code. |
@@ -101,14 +102,14 @@ The answer of `GetCapabilities` reports what the platform supports.
 | Channels | OID4VCI pre-authorized code for SD-JWT. A DIDComm invitation for AnonCreds and W3C JSON-LD. An email from the stack for the same two, when the stack names a mail provider. |
 | Protocols | OID4VCI, OID4VP, OID4VP with DCQL, DIDComm issue credential 2.0, DIDComm present proof 2.0 |
 | Roles | Issuer and verifier. Holder too with the agent. |
-| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUER_IDENTITY_IMPORT_X509`, `FEATURE_ISSUANCE_STATUS`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ANONCREDS_PROOF`, `FEATURE_WEBHOOKS`, `FEATURE_HOLDER_NOTIFICATIONS`, `FEATURE_TENANT_CLIENT_CREDENTIALS`, `FEATURE_ECOSYSTEMS`, `FEATURE_BULK_NATIVE` with a mail provider, and `FEATURE_WALLET_DIDCOMM` and `FEATURE_WALLET_DIDS` with the agent |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUER_IDENTITY_IMPORT_X509`, `FEATURE_ISSUANCE_STATUS`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ANONCREDS_PROOF`, `FEATURE_WEBHOOKS`, `FEATURE_HOLDER_NOTIFICATIONS`, `FEATURE_TENANT_CLIENT_CREDENTIALS`, `FEATURE_ECOSYSTEMS`, `FEATURE_REVOCATION` with the status list host, `FEATURE_BULK_NATIVE` with a mail provider, and `FEATURE_WALLET_DIDCOMM` and `FEATURE_WALLET_DIDS` with the agent |
 | Wallet DID methods | `did:key`, with the agent |
 | Bulk import | With a mail provider: the email channel, AnonCreds and W3C JSON-LD, and the address column `email_identifier` |
 | DID methods | `did:key` |
 | Key types | `Ed25519`, `secp256r1`, `secp256k1` |
 | Schema formats | AnonCreds on each ledger of the organisation, and W3C JSON-LD |
 | Ledgers | The Indy ledgers where the organisation holds a DID, with the names of the platform |
-| Status mechanisms | None. The platform embeds no status entry of VCA. |
+| Status mechanisms | None. The platform embeds no status entry of VCA. With the status list host, each SD-JWT credential carries a Token Status List entry of the stack. |
 | DPG information | The platform name, `v2.2.1-alpha.4` with the digest of the api gateway, every platform service, the shared Credo agent, and Keycloak |
 
 Each component carries its pinned version, its repository, its
@@ -120,6 +121,33 @@ to the stack file. A page shows a feature on this stack only when the
 answer lists it (ADR-034).
 
 CREDEBL is the only one of the three DPGs that reads DCQL.
+
+## Revocation
+
+The stack file runs the status list host of the platform, the service
+`credebl-status-list` (P6-C5b).
+CREDEBL publishes no image of it.
+Compose builds it from the repository of its authors,
+[sovio-id/status-list-server](https://github.com/sovio-id/status-list-server),
+at one commit, on a base image pinned by digest.
+The platform names the host `STATUS_LIST_HOST`.
+The agent names it `STATUS_LIST_SERVER_URL` and writes each list with the
+generated key `CREDEBL_STATUS_LIST_API_KEY`.
+Setup sets `VCA_CREDEBL_STATUS_LIST` in an issuer pair.
+The adapter then asks for a revocable offer, and the platform gives each
+SD-JWT credential a Token Status List entry.
+The agent signs each list with the DID of the issuer.
+So the organisation needs a DID signer, which `did:key` is.
+
+`Revoke` takes the issuance session as the credential id.
+It calls the revoke route of the platform, and the agent sets the revoked
+bit and publishes the list again.
+The issued list reads the entry of each credential from its session.
+So a synced record carries its list, its index and the list address.
+A verifier fetches the list at that address.
+On a public host, set `CREDEBL_STATUS_LIST_URL` to the public address of
+host port 17183, and publish only the `GET` requests of `/status-lists/`.
+Each credential names that address, so set it before the first offer.
 
 ## Webhooks, notifications and client credentials
 
@@ -169,7 +197,9 @@ answer says so.
 | RPC | Reason |
 | --- | --- |
 | `Issue` | CREDEBL signs a credential only when a wallet claims an offer. |
-| `Revoke` | The platform revokes an OID4VC session only with a status list host. The stack file runs none, so the status services of VCA own the status bits. |
+| `Revoke` without `VCA_CREDEBL_STATUS_LIST` | The platform revokes an OID4VC session only with a status list host. Without one, the status services of VCA own the status bits. |
+| A suspension or a reinstatement | The agent sets the revoked bit of a credential and clears none. The answer lists no `FEATURE_SUSPENSION`, so the issued page offers a revoke alone. |
+| `Revoke` of a DIDComm credential | The adapter writes every credential definition without a revocation registry. |
 | Every holder RPC without the agent | The holder role needs the admin address and the API key of the shared agent. `vca setup` writes both into a holder pair. |
 | The cloud wallet service of the platform | The pinned cloud wallet service reads the agent with a call that the pinned agent refuses. Its proof paths hold a stray brace. Its holder account also needs a mail check. The adapter keeps each holder wallet in the shared agent instead (ADR-062). |
 | `AcceptOffer` with an OID4VCI offer that has an authorization code grant only | The agent redeems a pre-authorized code only. Ask the issuer for an offer with such a code. |

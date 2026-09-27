@@ -147,6 +147,56 @@
       "issuedCredentials": [
         "RegistrationCertificate"
       ]
+    },
+    {
+      "id": "a1b2c3d4-0000-4e5f-8a9b-000000000005",
+      "createdAt": "2026-09-27T08:00:00.000Z",
+      "updatedAt": "2026-09-27T08:04:00.000Z",
+      "state": "Completed",
+      "issuerId": "credebl-issuer",
+      "credentialOfferUri": "http://credebl-agent.vca.internal:8001/oid4vci/credebl-issuer/offers/a1b2c3d4-0000-4e5f-8a9b-000000000005",
+      "credentialOfferPayload": {
+        "credential_issuer": "http://credebl-agent.vca.internal:8001/oid4vci/credebl-issuer",
+        "credential_configuration_ids": [
+          "TradeLicence"
+        ],
+        "grants": {
+          "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
+            "pre-authorized_code": "[PRE-AUTHORIZED CODE]"
+          }
+        }
+      },
+      "issuanceMetadata": {
+        "issuerDid": "did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH",
+        "isRevocable": true,
+        "credentials": [
+          {
+            "credentialSupportedId": "TradeLicence",
+            "format": "dc+sd-jwt",
+            "payload": {
+              "licence_number": "[LICENCE NUMBER]",
+              "vct": "TradeLicence",
+              "status": {
+                "status_list": {
+                  "uri": "http://credebl-status-list:3000/status-lists/6f1e2d3c-4b5a-4968-8778-a1b2c3d4e5f6",
+                  "idx": 4211
+                }
+              }
+            }
+          }
+        ],
+        "StatusListInfo": [
+          {
+            "credentialSupportedId": "TradeLicence",
+            "listId": "6f1e2d3c-4b5a-4968-8778-a1b2c3d4e5f6",
+            "index": 4211,
+            "issuerDid": "did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH"
+          }
+        ]
+      },
+      "issuedCredentials": [
+        "TradeLicence"
+      ]
     }
   ]
 }

@@ -527,3 +527,37 @@ func TestIssuedListSchemaReadsAsWords(t *testing.T) {
 		t.Error("the list shows the schema id")
 	}
 }
+
+// TestLedgerRecordOffersOnlyTheStackActions: a record from the stack
+// ledger changes in the stack once the adapter lists a change, so its
+// page offers only the changes the adapter lists. A stack that revokes
+// and never suspends, such as one whose status list sets a bit and
+// clears none, shows revoke alone. A record with a status entry of VCA
+// keeps every action, and so does a ledger record of a stack that lists
+// no change: the status services of VCA make it (P6-C5b).
+func TestLedgerRecordOffersOnlyTheStackActions(t *testing.T) {
+	suspend, revoke := "?action=suspend", "?action=revoke"
+	h := newHarness(t, backendv1.Feature_FEATURE_REVOCATION)
+	doc := body(t, h.get(t, "/issued/"+recWanjiku))
+	a11ytest.AssertPage(t, doc)
+	if !strings.Contains(doc, revoke) || strings.Contains(doc, suspend) {
+		t.Error("a stack that only revokes offers a suspension, or no revocation")
+	}
+	if rec := h.get(t, "/issued/"+recWanjiku+"?action=suspend"); strings.Contains(body(t, rec), `id="status-dialog"`) {
+		t.Error("the suspend dialog opens for a stack that cannot suspend")
+	}
+	doc = body(t, h.get(t, "/issued/"+recOtieno))
+	if !strings.Contains(doc, revoke) || !strings.Contains(doc, suspend) {
+		t.Error("a record with a VCA status entry lost an action")
+	}
+	both := newHarness(t, backendv1.Feature_FEATURE_REVOCATION, backendv1.Feature_FEATURE_SUSPENSION)
+	doc = body(t, both.get(t, "/issued/"+recWanjiku))
+	if !strings.Contains(doc, revoke) || !strings.Contains(doc, suspend) {
+		t.Error("a stack that suspends and revokes lost an action")
+	}
+	none := newHarness(t)
+	doc = body(t, none.get(t, "/issued/"+recWanjiku))
+	if !strings.Contains(doc, revoke) || !strings.Contains(doc, suspend) {
+		t.Error("a ledger record of a stack that changes nothing lost the actions of VCA")
+	}
+}

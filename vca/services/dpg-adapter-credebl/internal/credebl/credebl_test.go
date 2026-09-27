@@ -54,7 +54,7 @@ func TestNewWithoutATransportTurnsEveryRoleOff(t *testing.T) {
 	if _, err := c.Templates(ctx); !errors.Is(err, ErrNoPlatform) {
 		t.Fatalf("Templates error = %v", err)
 	}
-	if _, err := c.CreateOffer(ctx, "t", "", nil); !errors.Is(err, ErrNoPlatform) {
+	if _, err := c.CreateOffer(ctx, "t", "", nil, false); !errors.Is(err, ErrNoPlatform) {
 		t.Fatalf("CreateOffer error = %v", err)
 	}
 	if _, err := c.CreateSchema(ctx, "n", "d", nil); !errors.Is(err, ErrNoPlatform) {
@@ -275,7 +275,7 @@ func TestCreateOfferSendsThePreAuthorizedType(t *testing.T) {
 	}))
 	defer srv.Close()
 	got, err := newClient(srv, nil).CreateOffer(context.Background(), "t-1", "0000",
-		map[string]any{"fullName": "Ada"})
+		map[string]any{"fullName": "Ada"}, false)
 	if err != nil {
 		t.Fatalf("CreateOffer: %v", err)
 	}
@@ -310,10 +310,10 @@ func TestCreateOfferChecksItsInputAndTheAnswer(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := newClient(srv, nil)
-	if _, err := c.CreateOffer(context.Background(), "  ", "", nil); err == nil {
+	if _, err := c.CreateOffer(context.Background(), "  ", "", nil, false); err == nil {
 		t.Fatal("CreateOffer accepted an empty template id")
 	}
-	if _, err := c.CreateOffer(context.Background(), "t-1", "", nil); err == nil {
+	if _, err := c.CreateOffer(context.Background(), "t-1", "", nil, false); err == nil {
 		t.Fatal("CreateOffer accepted an empty offer")
 	}
 }

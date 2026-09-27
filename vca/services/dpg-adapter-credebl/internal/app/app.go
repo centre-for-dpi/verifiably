@@ -83,6 +83,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		MailOffers:   cfg.MailOffers,
 		Agent:        agent,
 		HolderLabel:  cfg.HolderLabel,
+		StatusList:   cfg.StatusList,
 	})
 	if err != nil {
 		return nil, err

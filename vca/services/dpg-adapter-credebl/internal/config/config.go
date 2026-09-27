@@ -61,6 +61,11 @@ type Config struct {
 	// platform mails an out of band offer. vca setup sets it when the
 	// stack .env names EMAIL_PROVIDER.
 	MailOffers bool `env:"MAIL_OFFERS" default:"false"`
+	// StatusList reports that the platform runs with the status list
+	// host of the stack, so an OID4VC offer is revocable and Revoke
+	// works (P6-C5b). The stack file runs the host, and vca setup sets
+	// it for an issuer pair.
+	StatusList bool `env:"STATUS_LIST" default:"false"`
 	// StoreFile keeps the verifier id and the tenant of each holder
 	// between restarts. Empty keeps them in memory.
 	StoreFile string `env:"STORE_FILE"`

@@ -139,3 +139,31 @@ func TestBuildWiresTheHolderAgent(t *testing.T) {
 		t.Fatalf("Register: %d %s", resp.StatusCode, body)
 	}
 }
+
+// TestBuildWiresTheStatusList lists revocation when the settings name
+// the status list host of the stack (P6-C5b).
+func TestBuildWiresTheStatusList(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	for _, on := range []bool{false, true} {
+		cfg := settings(f)
+		cfg.StatusList = on
+		a, err := app.Build(cfg, app.Deps{HTTP: f.Client()})
+		if err != nil {
+			t.Fatalf("Build: %v", err)
+		}
+		srv := httptest.NewServer(a.Mux)
+		resp, err := srv.Client().Post(srv.URL+"/vca.backend.v1.CapabilityService/GetCapabilities", "application/json", strings.NewReader(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		if cerr := resp.Body.Close(); cerr != nil || err != nil {
+			t.Fatalf("read: %v %v", err, cerr)
+		}
+		srv.Close()
+		if strings.Contains(string(body), "FEATURE_REVOCATION") != on {
+			t.Errorf("status list %v: %s", on, body)
+		}
+	}
+}
