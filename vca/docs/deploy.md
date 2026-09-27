@@ -576,9 +576,34 @@ Set `CREDEBL_AGENT_ENDPOINT` to its public address on a public host.
 The platform keeps the invitation of each email, and the files of a bulk
 issuance, on the volume `credebl-files`.
 The initialisation gives that volume to the user of the platform images.
-The link of an email names the api gateway.
-Set `CREDEBL_PLATFORM_URL` to the public address of the gateway on a public host.
+The link of an email names the api gateway and the path
+`/uploadedFiles/demo-shortening-url/`.
+On a public host, publish that one path of the gateway through the
+reverse proxy of the machine.
+Keep every other path of the gateway on the host.
+The gateway also serves the CSV files of a bulk issuance under
+`/uploadedFiles/import`.
+Those files hold the addresses of the holders.
+A Caddy route for the one path looks like this:
+
+```
+handle /uploadedFiles/demo-shortening-url/* {
+	reverse_proxy 127.0.0.1:17181
+}
+```
+
+Set `CREDEBL_PLATFORM_URL` to the public address of that route, without
+the path.
 `CREDEBL_PLATFORM_NAME` names the platform in the subject of the email.
+
+The platform never deletes these files.
+Each name is a random UUID, so nobody guesses one.
+The volume `credebl-files` keeps each invitation and each CSV file until
+you remove it.
+Remove the files of a bulk issuance when the run ends, and the
+invitations when their offers end.
+For example, this command removes the files older than 30 days:
+`docker compose exec credebl-api-gateway find /app/uploadedFiles -type f -mtime +30 -delete`.
 
 ### CREDEBL platform realm
 

@@ -78,8 +78,11 @@ x-credebl-platform: &credebl-platform
     FILE_STORAGE_TYPE: local
     STOREOBJECT_BUCKET: demo-shortening-url
     FILE_SHARING_BUCKET: import
-    # An email names the api gateway in its link. Set CREDEBL_PLATFORM_URL
-    # to the public address of the api gateway on a public host.
+    # An email names the api gateway in its link. On a public host, publish
+    # only /uploadedFiles/demo-shortening-url/ of the gateway through the
+    # reverse proxy, and set CREDEBL_PLATFORM_URL to its public address.
+    # The other paths serve the CSV files of a bulk issuance; keep them on
+    # the host. The platform never deletes the files (docs/deploy.md).
     PLATFORM_URL: ${CREDEBL_PLATFORM_URL:-http://credebl-api-gateway:5000}
     PLATFORM_NAME: ${CREDEBL_PLATFORM_NAME:-CREDEBL}
     DEEPLINK_DOMAIN: ${CREDEBL_DEEPLINK_DOMAIN:-}
