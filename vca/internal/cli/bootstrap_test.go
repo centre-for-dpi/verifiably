@@ -592,6 +592,14 @@ type credeblState struct {
 	keycloakPaths []string
 	// onRealm runs when the run creates the platform realm.
 	onRealm func()
+	// The user profile of the platform realm, the number of its
+	// updates, and the protocol mappers of the profile client scope.
+	profile     []byte
+	profilePuts int
+	mappers     [][]byte
+	// broken makes one Keycloak path answer the status internal server
+	// error or, for the client scopes, a list without the profile scope.
+	broken string
 }
 
 // credeblKeycloakAdminPassword is the administrator password of the
@@ -684,6 +692,14 @@ func fakeCredebl(t *testing.T, state *credeblState) *httptest.Server {
 func fakePlatformRealm(t *testing.T, state *credeblState, w http.ResponseWriter, r *http.Request) {
 	t.Helper()
 	realmPath := "/admin/realms/" + CredeblPlatformRealm
+	if state.broken != "" && r.URL.Path == realmPath+state.broken {
+		if state.broken == "/client-scopes" {
+			anyval.DiscardWrite(io.WriteString(w, `[{"id":"scope-email","name":"email"}]`))
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	switch {
 	case r.URL.Path == "/realms/master/protocol/openid-connect/token":
 		if err := r.ParseForm(); err != nil {
@@ -711,6 +727,30 @@ func fakePlatformRealm(t *testing.T, state *credeblState, w http.ResponseWriter,
 	case r.URL.Path == realmPath+"/clients" && r.Method == http.MethodGet:
 		id := r.URL.Query().Get("clientId")
 		anyval.DiscardWrite(io.WriteString(w, `[{"id":"uuid-`+id+`"}]`))
+	case r.URL.Path == realmPath+"/users/profile" && r.Method == http.MethodGet:
+		if state.profile == nil {
+			state.profile = []byte(`{"attributes":[{"name":"username"},{"name":"email"}],"groups":[]}`)
+		}
+		anyval.DiscardWrite(w.Write(state.profile))
+	case r.URL.Path == realmPath+"/users/profile" && r.Method == http.MethodPut:
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read the user profile: %v", err)
+		}
+		state.profile = body
+		state.profilePuts++
+		anyval.DiscardWrite(w.Write(body))
+	case r.URL.Path == realmPath+"/client-scopes" && r.Method == http.MethodGet:
+		anyval.DiscardWrite(io.WriteString(w, `[{"id":"scope-email","name":"email"},{"id":"scope-profile","name":"profile"}]`))
+	case r.URL.Path == realmPath+"/client-scopes/scope-profile/protocol-mappers/models" && r.Method == http.MethodGet:
+		anyval.DiscardWrite(io.WriteString(w, "["+string(bytes.Join(state.mappers, []byte(",")))+"]"))
+	case r.URL.Path == realmPath+"/client-scopes/scope-profile/protocol-mappers/models" && r.Method == http.MethodPost:
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read the mapper: %v", err)
+		}
+		state.mappers = append(state.mappers, body)
+		w.WriteHeader(http.StatusCreated)
 	case strings.HasPrefix(r.URL.Path, realmPath+"/clients/uuid-") && r.Method == http.MethodPut:
 		body, err := io.ReadAll(r.Body)
 		if err != nil {

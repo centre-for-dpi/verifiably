@@ -246,3 +246,77 @@ func TestBootstrapCredeblCreatesThePlatformRealm(t *testing.T) {
 		t.Errorf("err = %v, want the name of %s", berr, KeycloakAdminPasswordEnv)
 	}
 }
+
+// TestCredeblRealmAllowsEcosystemAccess is P6-C9 (ADR-068): the
+// ecosystem service of the platform keeps the ecosystem roles of a user
+// in the user attribute ecosystem_access, and its guard reads them from
+// the claim of the same name. Keycloak 25 drops an attribute that the
+// user profile does not declare, and the platform turns ecosystems on
+// only when the realm keeps such attributes. The run turns that policy
+// on and maps the attribute into the tokens of the profile scope. A
+// second run changes nothing.
+func TestCredeblRealmAllowsEcosystemAccess(t *testing.T) {
+	state := &credeblState{}
+	server := fakeCredebl(t, state)
+	defer server.Close()
+	var out bytes.Buffer
+	opts := credeblOptions(t, server.URL, &out)
+	for run := 1; run <= 2; run++ {
+		if _, err := BootstrapCredebl(context.Background(), opts); err != nil {
+			t.Fatalf("run %d: %v", run, err)
+		}
+	}
+	var profile struct {
+		Policy     string            `json:"unmanagedAttributePolicy"`
+		Attributes []json.RawMessage `json:"attributes"`
+	}
+	if err := json.Unmarshal(state.profile, &profile); err != nil || profile.Policy != "ENABLED" || len(profile.Attributes) != 2 {
+		t.Errorf("the user profile is %s (%v)", state.profile, err)
+	}
+	if state.profilePuts != 1 || len(state.mappers) != 1 {
+		t.Fatalf("profile updates %d, mappers %d, want one of each over two runs", state.profilePuts, len(state.mappers))
+	}
+	var mapper struct {
+		Name           string            `json:"name"`
+		Protocol       string            `json:"protocol"`
+		ProtocolMapper string            `json:"protocolMapper"`
+		Config         map[string]string `json:"config"`
+	}
+	if err := json.Unmarshal(state.mappers[0], &mapper); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"user.attribute": "ecosystem_access", "claim.name": "ecosystem_access", "jsonType.label": "JSON",
+		"access.token.claim": "true", "id.token.claim": "true", "userinfo.token.claim": "true",
+	}
+	if mapper.Name != "ecosystem_access" || mapper.Protocol != "openid-connect" || mapper.ProtocolMapper != "oidc-usermodel-attribute-mapper" {
+		t.Errorf("mapper = %+v", mapper)
+	}
+	for k, v := range want {
+		if mapper.Config[k] != v {
+			t.Errorf("mapper config %s = %q, want %q", k, mapper.Config[k], v)
+		}
+	}
+	if !strings.Contains(out.String(), "ecosystem access") {
+		t.Errorf("out = %s", out.String())
+	}
+}
+
+// TestCredeblEcosystemAccessReportsEachStep names the step of the
+// realm that failed, so the operator knows what to fix.
+func TestCredeblEcosystemAccessReportsEachStep(t *testing.T) {
+	for path, want := range map[string]string{
+		"/users/profile": "user profile",
+		"/client-scopes": "no profile client scope",
+		"/client-scopes/scope-profile/protocol-mappers/models": "mappers of the profile client scope",
+	} {
+		state := &credeblState{broken: path}
+		server := fakeCredebl(t, state)
+		var out bytes.Buffer
+		_, err := BootstrapCredebl(context.Background(), credeblOptions(t, server.URL, &out))
+		server.Close()
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: err = %v, want %q", path, err, want)
+		}
+	}
+}

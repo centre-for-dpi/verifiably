@@ -5,10 +5,12 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -196,14 +198,105 @@ func ensureCredeblPlatformRealm(ctx context.Context, opts BootstrapOptions, stac
 			return err
 		}
 		result.step(opts.Out, "CREDEBL Keycloak realm %s present", CredeblPlatformRealm)
-		return nil
 	case http.StatusNotFound:
 		if _, err := doJSON(ctx, opts.client(), http.MethodPost, base+"/admin/realms", token, body); err != nil {
 			return fmt.Errorf("create the CREDEBL platform realm: %w", err)
 		}
 		result.step(opts.Out, "CREDEBL Keycloak realm %s created", CredeblPlatformRealm)
-		return nil
 	default:
 		return fmt.Errorf("read the CREDEBL platform realm: the server answered %d", status)
 	}
+	return ensureCredeblEcosystemAccess(ctx, opts, base+"/admin/realms/"+url.PathEscape(CredeblPlatformRealm), token, result)
+}
+
+// EcosystemAccessAttribute is the user attribute and the token claim
+// that hold the ecosystem roles of a platform user (ADR-068).
+const EcosystemAccessAttribute = "ecosystem_access"
+
+// keycloakNamed is an object of the Keycloak admin API with an id and a
+// name, such as a client scope or a protocol mapper.
+type keycloakNamed struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// named matches an object of the Keycloak admin API by its name.
+func named(name string) func(keycloakNamed) bool {
+	return func(o keycloakNamed) bool { return o.Name == name }
+}
+
+// ensureCredeblEcosystemAccess lets the platform realm carry the
+// ecosystem roles of a user (P6-C9, ADR-068). The ecosystem service
+// writes them to a user attribute that the user profile does not
+// declare, and Keycloak 25 keeps such an attribute only when the user
+// profile allows unmanaged attributes. The platform also refuses to turn
+// ecosystems on without that policy. The guard of the platform reads the
+// roles from a token claim, so a mapper on the profile client scope
+// copies the attribute into each token. The run changes each part only
+// when it is missing, and the management client of the platform keeps
+// its roles.
+func ensureCredeblEcosystemAccess(ctx context.Context, opts BootstrapOptions, realmURL, token string, result *BootstrapResult) error {
+	raw, err := doJSON(ctx, opts.client(), http.MethodGet, realmURL+"/users/profile", token, nil)
+	if err != nil {
+		return fmt.Errorf("read the user profile of the CREDEBL platform realm: %w", err)
+	}
+	var profile map[string]json.RawMessage
+	if json.Unmarshal(raw, &profile) != nil || profile == nil {
+		return fmt.Errorf("read the user profile of the CREDEBL platform realm: %s", raw)
+	}
+	changed := false
+	if string(profile["unmanagedAttributePolicy"]) != `"ENABLED"` {
+		profile["unmanagedAttributePolicy"] = json.RawMessage(`"ENABLED"`)
+		body, merr := json.Marshal(profile)
+		if merr != nil {
+			return merr
+		}
+		if _, perr := doJSON(ctx, opts.client(), http.MethodPut, realmURL+"/users/profile", token, body); perr != nil {
+			return fmt.Errorf("allow unmanaged attributes in the CREDEBL platform realm: %w", perr)
+		}
+		changed = true
+	}
+	raw, err = doJSON(ctx, opts.client(), http.MethodGet, realmURL+"/client-scopes", token, nil)
+	if err != nil {
+		return fmt.Errorf("read the client scopes of the CREDEBL platform realm: %w", err)
+	}
+	var scopes []keycloakNamed
+	if jerr := json.Unmarshal(raw, &scopes); jerr != nil {
+		return fmt.Errorf("read the client scopes of the CREDEBL platform realm: %w", jerr)
+	}
+	i := slices.IndexFunc(scopes, named("profile"))
+	if i < 0 {
+		return errors.New("the CREDEBL platform realm has no profile client scope")
+	}
+	mappersURL := realmURL + "/client-scopes/" + url.PathEscape(scopes[i].ID) + "/protocol-mappers/models"
+	raw, err = doJSON(ctx, opts.client(), http.MethodGet, mappersURL, token, nil)
+	if err != nil {
+		return fmt.Errorf("read the mappers of the profile client scope: %w", err)
+	}
+	var mappers []keycloakNamed
+	if err := json.Unmarshal(raw, &mappers); err != nil {
+		return fmt.Errorf("read the mappers of the profile client scope: %w", err)
+	}
+	if !slices.ContainsFunc(mappers, named(EcosystemAccessAttribute)) {
+		body, merr := json.Marshal(map[string]any{
+			"name": EcosystemAccessAttribute, "protocol": "openid-connect", "protocolMapper": "oidc-usermodel-attribute-mapper",
+			"config": map[string]string{
+				"user.attribute": EcosystemAccessAttribute, "claim.name": EcosystemAccessAttribute, "jsonType.label": "JSON",
+				"id.token.claim": "true", "access.token.claim": "true", "userinfo.token.claim": "true",
+			},
+		})
+		if merr != nil {
+			return merr
+		}
+		if _, err := doJSON(ctx, opts.client(), http.MethodPost, mappersURL, token, body); err != nil {
+			return fmt.Errorf("map the ecosystem roles into the tokens of the CREDEBL platform realm: %w", err)
+		}
+		changed = true
+	}
+	if changed {
+		result.step(opts.Out, "CREDEBL Keycloak realm %s carries the ecosystem access of each user", CredeblPlatformRealm)
+	} else {
+		result.step(opts.Out, "CREDEBL Keycloak realm %s already carries the ecosystem access of each user", CredeblPlatformRealm)
+	}
+	return nil
 }

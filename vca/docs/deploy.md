@@ -663,6 +663,16 @@ A later run sets the client secrets of the `.env` again.
 The run signs in with the administrator of `deploy/keycloak-credebl/.env`.
 It reaches that Keycloak on `127.0.0.1` and port 17180.
 Set `VCA_CREDEBL_KEYCLOAK_ADMIN_URL` to reach it on another address.
+
+The ecosystem service of the platform keeps the ecosystem roles of a user
+in the user attribute `ecosystem_access`.
+Keycloak 25 drops an attribute that the user profile does not declare.
+So each run of `vca dpg bootstrap credebl` lets the user profile of the
+platform realm keep unmanaged attributes.
+The run also adds the mapper `ecosystem_access` to the client scope
+`profile`, so each token carries the roles (ADR-068).
+The run changes each part only when it is missing.
+The platform turns ecosystems on only after this step.
 The realm comes before the initialisation, because the initialisation makes
 the Keycloak user of the platform admin there.
 
