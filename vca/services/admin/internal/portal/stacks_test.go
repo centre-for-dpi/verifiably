@@ -46,13 +46,19 @@ type fakeStack struct {
 	creds map[string][]*backendv1.ClientCredential
 	// hooks holds the webhook URL per stack tenant id.
 	hooks map[string]string
+	// fixedHooks makes the stack keep a webhook once set.
+	fixedHooks bool
+	// secrets holds the signing secret per stack tenant id.
+	secrets map[string]string
+	// notify holds the holder notification address per stack tenant id.
+	notify map[string]string
 }
 
 func newFakeStack(name string, features ...backendv1.Feature) *fakeStack {
 	return &fakeStack{
 		name: name, features: features,
 		tenants: map[string]*backendv1.DpgTenant{}, creds: map[string][]*backendv1.ClientCredential{},
-		hooks: map[string]string{},
+		hooks: map[string]string{}, secrets: map[string]string{}, notify: map[string]string{},
 	}
 }
 
@@ -132,14 +138,40 @@ func (f *fakeStack) DeleteClientCredential(_ context.Context, req *connect.Reque
 func (f *fakeStack) GetWebhook(_ context.Context, req *connect.Request[backendv1.GetWebhookRequest]) (*connect.Response[backendv1.GetWebhookResponse], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return connect.NewResponse(&backendv1.GetWebhookResponse{Webhook: &backendv1.Webhook{Url: f.hooks[req.Msg.GetTenantId()]}}), nil
+	id := req.Msg.GetTenantId()
+	return connect.NewResponse(&backendv1.GetWebhookResponse{Webhook: &backendv1.Webhook{
+		Url: f.hooks[id], Signed: f.secrets[id] != "", Fixed: f.fixedHooks,
+	}}), nil
+}
+
+func (f *fakeStack) GetNotificationEndpoint(_ context.Context, req *connect.Request[backendv1.GetNotificationEndpointRequest]) (*connect.Response[backendv1.GetNotificationEndpointResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return connect.NewResponse(&backendv1.GetNotificationEndpointResponse{Endpoint: &backendv1.NotificationEndpoint{
+		Url: f.notify[req.Msg.GetTenantId()], KeptByAdapter: true, Fixed: true,
+	}}), nil
+}
+
+func (f *fakeStack) SetNotificationEndpoint(_ context.Context, req *connect.Request[backendv1.SetNotificationEndpointRequest]) (*connect.Response[backendv1.SetNotificationEndpointResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.notify[req.Msg.GetTenantId()] = req.Msg.GetUrl()
+	return connect.NewResponse(&backendv1.SetNotificationEndpointResponse{Endpoint: &backendv1.NotificationEndpoint{
+		Url: req.Msg.GetUrl(), KeptByAdapter: true, Fixed: true,
+	}}), nil
 }
 
 func (f *fakeStack) SetWebhook(_ context.Context, req *connect.Request[backendv1.SetWebhookRequest]) (*connect.Response[backendv1.SetWebhookResponse], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.hooks[req.Msg.GetTenantId()] = req.Msg.GetUrl()
-	return connect.NewResponse(&backendv1.SetWebhookResponse{Webhook: &backendv1.Webhook{Url: req.Msg.GetUrl()}}), nil
+	id := req.Msg.GetTenantId()
+	f.hooks[id] = req.Msg.GetUrl()
+	if secret := req.Msg.GetSigningSecret(); secret != "" {
+		f.secrets[id] = secret
+	}
+	return connect.NewResponse(&backendv1.SetWebhookResponse{Webhook: &backendv1.Webhook{
+		Url: req.Msg.GetUrl(), Signed: f.secrets[id] != "", Fixed: f.fixedHooks,
+	}}), nil
 }
 
 func (f *fakeStack) count() int {

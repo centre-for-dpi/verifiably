@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-066, one row per decision.
+ADR-067, one row per decision.
 
 The status values are:
 
@@ -710,12 +710,22 @@ A row that is not `Done` carries a note.
 | ADR-066 | 2 The stack file does not follow `latest` | Done | `deploy/vca/dpg/credebl.yaml`, `vca/docs/deploy.md` | The deploy document names the two lines. |
 | ADR-066 | 3 The adapter reports the release and the digest | Done | `vca/services/dpg-adapter-credebl/internal/config/config.go` | `TestDefaultVersionsMatchTheStackFile` pins it. |
 
+## ADR-067: The webhook, the holder notification address and the client credential of a CREDEBL organisation
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-067 | 1 A signed webhook, with no copy of the secret | Done | `vca/services/dpg-adapter-credebl/internal/service/webhook.go`, `vca/services/admin/internal/service/webhooks.go` | `TestSetWebhook` and `TestStackWebhookPassesTheSigningSecret` pin it. |
+| ADR-067 | 2 A webhook stays once set | Done | `vca/services/dpg-adapter-credebl/internal/service/webhook.go`, `vca/services/admin/internal/portal/notifications.go` | `TestSetWebhook` and `TestFixedWebhookHasNoClearAction` pin it. |
+| ADR-067 | 3 The adapter keeps the holder notification address | Done | `vca/services/dpg-adapter-credebl/internal/service/webhook.go` | `TestNotificationEndpoint` and `TestStackNotificationEndpointRPCs` pin it. |
+| ADR-067 | 4 One client credential, with the secret shown once | Done | `vca/services/dpg-adapter-credebl/internal/service/tenant.go` | `TestClientCredentialCreatedOnce` pins it. |
+| ADR-067 | 5 The three features and the portal parts | Done | `vca/services/dpg-adapter-credebl/internal/service/bulk.go`, `vca/services/admin/internal/portal/notifications.go` | `TestFeaturesListed` and `TestHolderNotificationsOnlyWithFeature` pin it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 309 |
+| Done | 314 |
 | Partial | 25 |
 | Deferred | 3 |
 | Not started | 26 |
-| Total | 363 |
+| Total | 368 |

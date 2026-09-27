@@ -201,6 +201,13 @@ service NotificationBackendService {
   rpc GetWebhook(GetWebhookRequest) returns (GetWebhookResponse);
   // SetWebhook sets or clears the webhook of one DPG tenant.
   rpc SetWebhook(SetWebhookRequest) returns (SetWebhookResponse);
+  // GetNotificationEndpoint returns the holder notification address of
+  // one tenant. The notification service of the DPG posts the push
+  // notifications of the holders there. An adapter serves it when it lists
+  // FEATURE_HOLDER_NOTIFICATIONS.
+  rpc GetNotificationEndpoint(GetNotificationEndpointRequest) returns (GetNotificationEndpointResponse);
+  // SetNotificationEndpoint registers that address for one tenant.
+  rpc SetNotificationEndpoint(SetNotificationEndpointRequest) returns (SetNotificationEndpointResponse);
 }
 
 // BulkImportBackendService runs the CSV bulk import of a DPG: the
@@ -520,6 +527,11 @@ enum Feature {
   // claim, so the consent screen marks each claim as required. Present
   // refuses a request whose disclosed_claims leave out a claim.
   FEATURE_WALLET_WHOLE_QUERY = 29;
+  // The notification service of the DPG posts a push notification for a
+  // holder of a tenant to an address. The tenant registers the address,
+  // for example the push service of a mobile wallet. GetNotificationEndpoint and
+  // SetNotificationEndpoint work.
+  FEATURE_HOLDER_NOTIFICATIONS = 30;
 }
 
 // GetCapabilitiesRequest has no fields.
@@ -1822,6 +1834,12 @@ message Webhook {
   string url = 1;
   // The time of the last change, when the DPG reports it.
   google.protobuf.Timestamp updated_at = 2;
+  // True when the DPG signs each call with a secret of the tenant. The
+  // secret never leaves the DPG.
+  bool signed = 3;
+  // True when the DPG keeps a webhook after the first set. A caller can
+  // change the address but cannot clear it.
+  bool fixed = 4;
 }
 
 // GetWebhookRequest selects one DPG tenant.
@@ -1842,6 +1860,50 @@ message SetWebhookRequest {
   string tenant_id = 1;
   // The https URL. Empty clears the webhook.
   string url = 2;
+  // The secret that the DPG signs each call with. Empty keeps the
+  // secret the DPG holds. The adapter passes it on and keeps no copy.
+  string signing_secret = 3;
+}
+
+// NotificationEndpoint is the holder notification address of one tenant.
+// The notification service of a DPG posts the push notifications of the
+// holders there.
+message NotificationEndpoint {
+  // The URL. Empty means the tenant registered none.
+  string url = 1;
+  // The time of the registration.
+  google.protobuf.Timestamp updated_at = 2;
+  // True when the DPG does not report the address, so the adapter
+  // returns the one it registered last.
+  bool kept_by_adapter = 3;
+  // True when the DPG takes one address per tenant and no change.
+  bool fixed = 4;
+}
+
+// GetNotificationEndpointRequest selects one DPG tenant.
+message GetNotificationEndpointRequest {
+  // The DPG assigned id of the tenant.
+  string tenant_id = 1;
+}
+
+// GetNotificationEndpointResponse returns the address.
+message GetNotificationEndpointResponse {
+  // The address. An empty URL means none.
+  NotificationEndpoint endpoint = 1;
+}
+
+// SetNotificationEndpointRequest registers the address of one tenant.
+message SetNotificationEndpointRequest {
+  // The DPG assigned id of the tenant.
+  string tenant_id = 1;
+  // The https URL. Required.
+  string url = 2;
+}
+
+// SetNotificationEndpointResponse returns the registered address.
+message SetNotificationEndpointResponse {
+  // The address as the DPG took it.
+  NotificationEndpoint endpoint = 1;
 }
 
 // SetWebhookResponse returns the stored webhook.

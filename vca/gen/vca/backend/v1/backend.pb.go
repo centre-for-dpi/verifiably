@@ -269,6 +269,11 @@ const (
 	// claim, so the consent screen marks each claim as required. Present
 	// refuses a request whose disclosed_claims leave out a claim.
 	Feature_FEATURE_WALLET_WHOLE_QUERY Feature = 29
+	// The notification service of the DPG posts a push notification for a
+	// holder of a tenant to an address. The tenant registers the address,
+	// for example the push service of a mobile wallet. GetNotificationEndpoint and
+	// SetNotificationEndpoint work.
+	Feature_FEATURE_HOLDER_NOTIFICATIONS Feature = 30
 )
 
 // Enum value maps for Feature.
@@ -304,6 +309,7 @@ var (
 		27: "FEATURE_WALLET_DIDCOMM",
 		28: "FEATURE_WALLET_DEFAULT_DID",
 		29: "FEATURE_WALLET_WHOLE_QUERY",
+		30: "FEATURE_HOLDER_NOTIFICATIONS",
 	}
 	Feature_value = map[string]int32{
 		"FEATURE_UNSPECIFIED":                  0,
@@ -336,6 +342,7 @@ var (
 		"FEATURE_WALLET_DIDCOMM":               27,
 		"FEATURE_WALLET_DEFAULT_DID":           28,
 		"FEATURE_WALLET_WHOLE_QUERY":           29,
+		"FEATURE_HOLDER_NOTIFICATIONS":         30,
 	}
 )
 
@@ -9038,7 +9045,13 @@ type Webhook struct {
 	// The https URL. Empty means the tenant has no webhook.
 	Url string `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
 	// The time of the last change, when the DPG reports it.
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	UpdatedAt *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// True when the DPG signs each call with a secret of the tenant. The
+	// secret never leaves the DPG.
+	Signed bool `protobuf:"varint,3,opt,name=signed,proto3" json:"signed,omitempty"`
+	// True when the DPG keeps a webhook after the first set. A caller can
+	// change the address but cannot clear it.
+	Fixed         bool `protobuf:"varint,4,opt,name=fixed,proto3" json:"fixed,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9085,6 +9098,20 @@ func (x *Webhook) GetUpdatedAt() *timestamppb.Timestamp {
 		return x.UpdatedAt
 	}
 	return nil
+}
+
+func (x *Webhook) GetSigned() bool {
+	if x != nil {
+		return x.Signed
+	}
+	return false
+}
+
+func (x *Webhook) GetFixed() bool {
+	if x != nil {
+		return x.Fixed
+	}
+	return false
 }
 
 // GetWebhookRequest selects one DPG tenant.
@@ -9185,7 +9212,10 @@ type SetWebhookRequest struct {
 	// The DPG assigned id of the tenant.
 	TenantId string `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
 	// The https URL. Empty clears the webhook.
-	Url           string `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
+	Url string `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
+	// The secret that the DPG signs each call with. Empty keeps the
+	// secret the DPG holds. The adapter passes it on and keeps no copy.
+	SigningSecret string `protobuf:"bytes,3,opt,name=signing_secret,json=signingSecret,proto3" json:"signing_secret,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -9234,6 +9264,282 @@ func (x *SetWebhookRequest) GetUrl() string {
 	return ""
 }
 
+func (x *SetWebhookRequest) GetSigningSecret() string {
+	if x != nil {
+		return x.SigningSecret
+	}
+	return ""
+}
+
+// NotificationEndpoint is the holder notification address of one tenant.
+// The notification service of a DPG posts the push notifications of the
+// holders there.
+type NotificationEndpoint struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The URL. Empty means the tenant registered none.
+	Url string `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
+	// The time of the registration.
+	UpdatedAt *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// True when the DPG does not report the address, so the adapter
+	// returns the one it registered last.
+	KeptByAdapter bool `protobuf:"varint,3,opt,name=kept_by_adapter,json=keptByAdapter,proto3" json:"kept_by_adapter,omitempty"`
+	// True when the DPG takes one address per tenant and no change.
+	Fixed         bool `protobuf:"varint,4,opt,name=fixed,proto3" json:"fixed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotificationEndpoint) Reset() {
+	*x = NotificationEndpoint{}
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[137]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotificationEndpoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotificationEndpoint) ProtoMessage() {}
+
+func (x *NotificationEndpoint) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[137]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotificationEndpoint.ProtoReflect.Descriptor instead.
+func (*NotificationEndpoint) Descriptor() ([]byte, []int) {
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{137}
+}
+
+func (x *NotificationEndpoint) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *NotificationEndpoint) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *NotificationEndpoint) GetKeptByAdapter() bool {
+	if x != nil {
+		return x.KeptByAdapter
+	}
+	return false
+}
+
+func (x *NotificationEndpoint) GetFixed() bool {
+	if x != nil {
+		return x.Fixed
+	}
+	return false
+}
+
+// GetNotificationEndpointRequest selects one DPG tenant.
+type GetNotificationEndpointRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The DPG assigned id of the tenant.
+	TenantId      string `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetNotificationEndpointRequest) Reset() {
+	*x = GetNotificationEndpointRequest{}
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[138]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetNotificationEndpointRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetNotificationEndpointRequest) ProtoMessage() {}
+
+func (x *GetNotificationEndpointRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[138]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetNotificationEndpointRequest.ProtoReflect.Descriptor instead.
+func (*GetNotificationEndpointRequest) Descriptor() ([]byte, []int) {
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{138}
+}
+
+func (x *GetNotificationEndpointRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+// GetNotificationEndpointResponse returns the address.
+type GetNotificationEndpointResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The address. An empty URL means none.
+	Endpoint      *NotificationEndpoint `protobuf:"bytes,1,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetNotificationEndpointResponse) Reset() {
+	*x = GetNotificationEndpointResponse{}
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[139]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetNotificationEndpointResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetNotificationEndpointResponse) ProtoMessage() {}
+
+func (x *GetNotificationEndpointResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[139]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetNotificationEndpointResponse.ProtoReflect.Descriptor instead.
+func (*GetNotificationEndpointResponse) Descriptor() ([]byte, []int) {
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{139}
+}
+
+func (x *GetNotificationEndpointResponse) GetEndpoint() *NotificationEndpoint {
+	if x != nil {
+		return x.Endpoint
+	}
+	return nil
+}
+
+// SetNotificationEndpointRequest registers the address of one tenant.
+type SetNotificationEndpointRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The DPG assigned id of the tenant.
+	TenantId string `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	// The https URL. Required.
+	Url           string `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetNotificationEndpointRequest) Reset() {
+	*x = SetNotificationEndpointRequest{}
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[140]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetNotificationEndpointRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetNotificationEndpointRequest) ProtoMessage() {}
+
+func (x *SetNotificationEndpointRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[140]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetNotificationEndpointRequest.ProtoReflect.Descriptor instead.
+func (*SetNotificationEndpointRequest) Descriptor() ([]byte, []int) {
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{140}
+}
+
+func (x *SetNotificationEndpointRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *SetNotificationEndpointRequest) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+// SetNotificationEndpointResponse returns the registered address.
+type SetNotificationEndpointResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The address as the DPG took it.
+	Endpoint      *NotificationEndpoint `protobuf:"bytes,1,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetNotificationEndpointResponse) Reset() {
+	*x = SetNotificationEndpointResponse{}
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[141]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetNotificationEndpointResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetNotificationEndpointResponse) ProtoMessage() {}
+
+func (x *SetNotificationEndpointResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[141]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetNotificationEndpointResponse.ProtoReflect.Descriptor instead.
+func (*SetNotificationEndpointResponse) Descriptor() ([]byte, []int) {
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{141}
+}
+
+func (x *SetNotificationEndpointResponse) GetEndpoint() *NotificationEndpoint {
+	if x != nil {
+		return x.Endpoint
+	}
+	return nil
+}
+
 // SetWebhookResponse returns the stored webhook.
 type SetWebhookResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -9245,7 +9551,7 @@ type SetWebhookResponse struct {
 
 func (x *SetWebhookResponse) Reset() {
 	*x = SetWebhookResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[137]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[142]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9257,7 +9563,7 @@ func (x *SetWebhookResponse) String() string {
 func (*SetWebhookResponse) ProtoMessage() {}
 
 func (x *SetWebhookResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[137]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[142]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9270,7 +9576,7 @@ func (x *SetWebhookResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetWebhookResponse.ProtoReflect.Descriptor instead.
 func (*SetWebhookResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{137}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{142}
 }
 
 func (x *SetWebhookResponse) GetWebhook() *Webhook {
@@ -9292,7 +9598,7 @@ type ListVerifierConnectionsRequest struct {
 
 func (x *ListVerifierConnectionsRequest) Reset() {
 	*x = ListVerifierConnectionsRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[138]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[143]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9304,7 +9610,7 @@ func (x *ListVerifierConnectionsRequest) String() string {
 func (*ListVerifierConnectionsRequest) ProtoMessage() {}
 
 func (x *ListVerifierConnectionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[138]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[143]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9317,7 +9623,7 @@ func (x *ListVerifierConnectionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListVerifierConnectionsRequest.ProtoReflect.Descriptor instead.
 func (*ListVerifierConnectionsRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{138}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{143}
 }
 
 func (x *ListVerifierConnectionsRequest) GetPage() *v1.Pagination {
@@ -9341,7 +9647,7 @@ type ListVerifierConnectionsResponse struct {
 
 func (x *ListVerifierConnectionsResponse) Reset() {
 	*x = ListVerifierConnectionsResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[139]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[144]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9353,7 +9659,7 @@ func (x *ListVerifierConnectionsResponse) String() string {
 func (*ListVerifierConnectionsResponse) ProtoMessage() {}
 
 func (x *ListVerifierConnectionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[139]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[144]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9366,7 +9672,7 @@ func (x *ListVerifierConnectionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListVerifierConnectionsResponse.ProtoReflect.Descriptor instead.
 func (*ListVerifierConnectionsResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{139}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{144}
 }
 
 func (x *ListVerifierConnectionsResponse) GetConnections() []*DidcommConnection {
@@ -9395,7 +9701,7 @@ type ListProofRequestsRequest struct {
 
 func (x *ListProofRequestsRequest) Reset() {
 	*x = ListProofRequestsRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[140]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[145]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9407,7 +9713,7 @@ func (x *ListProofRequestsRequest) String() string {
 func (*ListProofRequestsRequest) ProtoMessage() {}
 
 func (x *ListProofRequestsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[140]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[145]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9420,7 +9726,7 @@ func (x *ListProofRequestsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProofRequestsRequest.ProtoReflect.Descriptor instead.
 func (*ListProofRequestsRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{140}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{145}
 }
 
 func (x *ListProofRequestsRequest) GetPage() *v1.Pagination {
@@ -9443,7 +9749,7 @@ type ListProofRequestsResponse struct {
 
 func (x *ListProofRequestsResponse) Reset() {
 	*x = ListProofRequestsResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[141]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[146]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9455,7 +9761,7 @@ func (x *ListProofRequestsResponse) String() string {
 func (*ListProofRequestsResponse) ProtoMessage() {}
 
 func (x *ListProofRequestsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[141]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[146]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9468,7 +9774,7 @@ func (x *ListProofRequestsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProofRequestsResponse.ProtoReflect.Descriptor instead.
 func (*ListProofRequestsResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{141}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{146}
 }
 
 func (x *ListProofRequestsResponse) GetRequests() []*ProofRequest {
@@ -9510,7 +9816,7 @@ type ProofRequest struct {
 
 func (x *ProofRequest) Reset() {
 	*x = ProofRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[142]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[147]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9522,7 +9828,7 @@ func (x *ProofRequest) String() string {
 func (*ProofRequest) ProtoMessage() {}
 
 func (x *ProofRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[142]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[147]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9535,7 +9841,7 @@ func (x *ProofRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProofRequest.ProtoReflect.Descriptor instead.
 func (*ProofRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{142}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{147}
 }
 
 func (x *ProofRequest) GetId() string {
@@ -9598,7 +9904,7 @@ type ListProofSchemasRequest struct {
 
 func (x *ListProofSchemasRequest) Reset() {
 	*x = ListProofSchemasRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[143]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[148]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9610,7 +9916,7 @@ func (x *ListProofSchemasRequest) String() string {
 func (*ListProofSchemasRequest) ProtoMessage() {}
 
 func (x *ListProofSchemasRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[143]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[148]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9623,7 +9929,7 @@ func (x *ListProofSchemasRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProofSchemasRequest.ProtoReflect.Descriptor instead.
 func (*ListProofSchemasRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{143}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{148}
 }
 
 func (x *ListProofSchemasRequest) GetPage() *v1.Pagination {
@@ -9646,7 +9952,7 @@ type ListProofSchemasResponse struct {
 
 func (x *ListProofSchemasResponse) Reset() {
 	*x = ListProofSchemasResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[144]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[149]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9658,7 +9964,7 @@ func (x *ListProofSchemasResponse) String() string {
 func (*ListProofSchemasResponse) ProtoMessage() {}
 
 func (x *ListProofSchemasResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[144]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[149]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9671,7 +9977,7 @@ func (x *ListProofSchemasResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProofSchemasResponse.ProtoReflect.Descriptor instead.
 func (*ListProofSchemasResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{144}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{149}
 }
 
 func (x *ListProofSchemasResponse) GetSchemas() []*ProofSchema {
@@ -9716,7 +10022,7 @@ type ProofSchema struct {
 
 func (x *ProofSchema) Reset() {
 	*x = ProofSchema{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[145]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[150]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9728,7 +10034,7 @@ func (x *ProofSchema) String() string {
 func (*ProofSchema) ProtoMessage() {}
 
 func (x *ProofSchema) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[145]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[150]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9741,7 +10047,7 @@ func (x *ProofSchema) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProofSchema.ProtoReflect.Descriptor instead.
 func (*ProofSchema) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{145}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{150}
 }
 
 func (x *ProofSchema) GetId() string {
@@ -9813,7 +10119,7 @@ type VerifyCredentialRequest struct {
 
 func (x *VerifyCredentialRequest) Reset() {
 	*x = VerifyCredentialRequest{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[146]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[151]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9825,7 +10131,7 @@ func (x *VerifyCredentialRequest) String() string {
 func (*VerifyCredentialRequest) ProtoMessage() {}
 
 func (x *VerifyCredentialRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[146]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[151]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9838,7 +10144,7 @@ func (x *VerifyCredentialRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyCredentialRequest.ProtoReflect.Descriptor instead.
 func (*VerifyCredentialRequest) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{146}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{151}
 }
 
 func (x *VerifyCredentialRequest) GetPayload() []byte {
@@ -9869,7 +10175,7 @@ type VerifyCredentialResponse struct {
 
 func (x *VerifyCredentialResponse) Reset() {
 	*x = VerifyCredentialResponse{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[147]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[152]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9881,7 +10187,7 @@ func (x *VerifyCredentialResponse) String() string {
 func (*VerifyCredentialResponse) ProtoMessage() {}
 
 func (x *VerifyCredentialResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[147]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[152]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9894,7 +10200,7 @@ func (x *VerifyCredentialResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyCredentialResponse.ProtoReflect.Descriptor instead.
 func (*VerifyCredentialResponse) Descriptor() ([]byte, []int) {
-	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{147}
+	return file_vca_backend_v1_backend_proto_rawDescGZIP(), []int{152}
 }
 
 func (x *VerifyCredentialResponse) GetVerified() bool {
@@ -9929,7 +10235,7 @@ type IssueBatchResponse_Item struct {
 
 func (x *IssueBatchResponse_Item) Reset() {
 	*x = IssueBatchResponse_Item{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[149]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[154]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9941,7 +10247,7 @@ func (x *IssueBatchResponse_Item) String() string {
 func (*IssueBatchResponse_Item) ProtoMessage() {}
 
 func (x *IssueBatchResponse_Item) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[149]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[154]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9999,7 +10305,7 @@ type IssuerIdentity_Metadata struct {
 
 func (x *IssuerIdentity_Metadata) Reset() {
 	*x = IssuerIdentity_Metadata{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[151]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[156]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10011,7 +10317,7 @@ func (x *IssuerIdentity_Metadata) String() string {
 func (*IssuerIdentity_Metadata) ProtoMessage() {}
 
 func (x *IssuerIdentity_Metadata) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[151]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[156]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10054,7 +10360,7 @@ type IssuerIdentity_Key struct {
 
 func (x *IssuerIdentity_Key) Reset() {
 	*x = IssuerIdentity_Key{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[152]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[157]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10066,7 +10372,7 @@ func (x *IssuerIdentity_Key) String() string {
 func (*IssuerIdentity_Key) ProtoMessage() {}
 
 func (x *IssuerIdentity_Key) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[152]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[157]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10112,7 +10418,7 @@ type GetResultResponse_DpgCheck struct {
 
 func (x *GetResultResponse_DpgCheck) Reset() {
 	*x = GetResultResponse_DpgCheck{}
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[153]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[158]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10124,7 +10430,7 @@ func (x *GetResultResponse_DpgCheck) String() string {
 func (*GetResultResponse_DpgCheck) ProtoMessage() {}
 
 func (x *GetResultResponse_DpgCheck) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_backend_v1_backend_proto_msgTypes[153]
+	mi := &file_vca_backend_v1_backend_proto_msgTypes[158]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10769,18 +11075,36 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\x1dDeleteClientCredentialRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\" \n" +
-	"\x1eDeleteClientCredentialResponse\"V\n" +
+	"\x1eDeleteClientCredentialResponse\"\x84\x01\n" +
 	"\aWebhook\x12\x10\n" +
 	"\x03url\x18\x01 \x01(\tR\x03url\x129\n" +
 	"\n" +
-	"updated_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"0\n" +
+	"updated_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x16\n" +
+	"\x06signed\x18\x03 \x01(\bR\x06signed\x12\x14\n" +
+	"\x05fixed\x18\x04 \x01(\bR\x05fixed\"0\n" +
 	"\x11GetWebhookRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\"G\n" +
 	"\x12GetWebhookResponse\x121\n" +
-	"\awebhook\x18\x01 \x01(\v2\x17.vca.backend.v1.WebhookR\awebhook\"B\n" +
+	"\awebhook\x18\x01 \x01(\v2\x17.vca.backend.v1.WebhookR\awebhook\"i\n" +
 	"\x11SetWebhookRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x10\n" +
-	"\x03url\x18\x02 \x01(\tR\x03url\"G\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\x12%\n" +
+	"\x0esigning_secret\x18\x03 \x01(\tR\rsigningSecret\"\xa1\x01\n" +
+	"\x14NotificationEndpoint\x12\x10\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\x129\n" +
+	"\n" +
+	"updated_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12&\n" +
+	"\x0fkept_by_adapter\x18\x03 \x01(\bR\rkeptByAdapter\x12\x14\n" +
+	"\x05fixed\x18\x04 \x01(\bR\x05fixed\"=\n" +
+	"\x1eGetNotificationEndpointRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\"c\n" +
+	"\x1fGetNotificationEndpointResponse\x12@\n" +
+	"\bendpoint\x18\x01 \x01(\v2$.vca.backend.v1.NotificationEndpointR\bendpoint\"O\n" +
+	"\x1eSetNotificationEndpointRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x10\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\"c\n" +
+	"\x1fSetNotificationEndpointResponse\x12@\n" +
+	"\bendpoint\x18\x01 \x01(\v2$.vca.backend.v1.NotificationEndpointR\bendpoint\"G\n" +
 	"\x12SetWebhookResponse\x121\n" +
 	"\awebhook\x18\x01 \x01(\v2\x17.vca.backend.v1.WebhookR\awebhook\"O\n" +
 	"\x1eListVerifierConnectionsRequest\x12-\n" +
@@ -10851,7 +11175,7 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\x19PROTOCOL_OID4VCI_DEFERRED\x10\x06\x12\x1d\n" +
 	"\x19PROTOCOL_DIDCOMM_ISSUE_V2\x10\a\x12\x1f\n" +
 	"\x1bPROTOCOL_DIDCOMM_PRESENT_V2\x10\b\x12\x13\n" +
-	"\x0fPROTOCOL_DC_API\x10\t*\x8f\a\n" +
+	"\x0fPROTOCOL_DC_API\x10\t*\xb1\a\n" +
 	"\aFeature\x12\x17\n" +
 	"\x13FEATURE_UNSPECIFIED\x10\x00\x12%\n" +
 	"!FEATURE_ISSUER_IDENTITY_PROVISION\x10\x01\x12&\n" +
@@ -10883,7 +11207,8 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\x1dFEATURE_HOLDER_SIGN_IN_SOURCE\x10\x1a\x12\x1a\n" +
 	"\x16FEATURE_WALLET_DIDCOMM\x10\x1b\x12\x1e\n" +
 	"\x1aFEATURE_WALLET_DEFAULT_DID\x10\x1c\x12\x1e\n" +
-	"\x1aFEATURE_WALLET_WHOLE_QUERY\x10\x1d*\x95\x01\n" +
+	"\x1aFEATURE_WALLET_WHOLE_QUERY\x10\x1d\x12 \n" +
+	"\x1cFEATURE_HOLDER_NOTIFICATIONS\x10\x1e*\x95\x01\n" +
 	"\n" +
 	"WalletLock\x12\x1b\n" +
 	"\x17WALLET_LOCK_UNSPECIFIED\x10\x00\x12\x14\n" +
@@ -10948,12 +11273,14 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\fDeleteTenant\x12#.vca.backend.v1.DeleteTenantRequest\x1a$.vca.backend.v1.DeleteTenantResponse\x12t\n" +
 	"\x15ListClientCredentials\x12,.vca.backend.v1.ListClientCredentialsRequest\x1a-.vca.backend.v1.ListClientCredentialsResponse\x12w\n" +
 	"\x16CreateClientCredential\x12-.vca.backend.v1.CreateClientCredentialRequest\x1a..vca.backend.v1.CreateClientCredentialResponse\x12w\n" +
-	"\x16DeleteClientCredential\x12-.vca.backend.v1.DeleteClientCredentialRequest\x1a..vca.backend.v1.DeleteClientCredentialResponse2\xc6\x01\n" +
+	"\x16DeleteClientCredential\x12-.vca.backend.v1.DeleteClientCredentialRequest\x1a..vca.backend.v1.DeleteClientCredentialResponse2\xbe\x03\n" +
 	"\x1aNotificationBackendService\x12S\n" +
 	"\n" +
 	"GetWebhook\x12!.vca.backend.v1.GetWebhookRequest\x1a\".vca.backend.v1.GetWebhookResponse\x12S\n" +
 	"\n" +
-	"SetWebhook\x12!.vca.backend.v1.SetWebhookRequest\x1a\".vca.backend.v1.SetWebhookResponse2\xc4\x05\n" +
+	"SetWebhook\x12!.vca.backend.v1.SetWebhookRequest\x1a\".vca.backend.v1.SetWebhookResponse\x12z\n" +
+	"\x17GetNotificationEndpoint\x12..vca.backend.v1.GetNotificationEndpointRequest\x1a/.vca.backend.v1.GetNotificationEndpointResponse\x12z\n" +
+	"\x17SetNotificationEndpoint\x12..vca.backend.v1.SetNotificationEndpointRequest\x1a/.vca.backend.v1.SetNotificationEndpointResponse2\xc4\x05\n" +
 	"\x18BulkImportBackendService\x12b\n" +
 	"\x0fGetBulkTemplate\x12&.vca.backend.v1.GetBulkTemplateRequest\x1a'.vca.backend.v1.GetBulkTemplateResponse\x12_\n" +
 	"\x0eUploadBulkFile\x12%.vca.backend.v1.UploadBulkFileRequest\x1a&.vca.backend.v1.UploadBulkFileResponse\x12b\n" +
@@ -10977,7 +11304,7 @@ func file_vca_backend_v1_backend_proto_rawDescGZIP() []byte {
 }
 
 var file_vca_backend_v1_backend_proto_enumTypes = make([]protoimpl.EnumInfo, 11)
-var file_vca_backend_v1_backend_proto_msgTypes = make([]protoimpl.MessageInfo, 155)
+var file_vca_backend_v1_backend_proto_msgTypes = make([]protoimpl.MessageInfo, 160)
 var file_vca_backend_v1_backend_proto_goTypes = []any{
 	(Channel)(0),                                    // 0: vca.backend.v1.Channel
 	(Protocol)(0),                                   // 1: vca.backend.v1.Protocol
@@ -11127,125 +11454,130 @@ var file_vca_backend_v1_backend_proto_goTypes = []any{
 	(*GetWebhookRequest)(nil),                       // 145: vca.backend.v1.GetWebhookRequest
 	(*GetWebhookResponse)(nil),                      // 146: vca.backend.v1.GetWebhookResponse
 	(*SetWebhookRequest)(nil),                       // 147: vca.backend.v1.SetWebhookRequest
-	(*SetWebhookResponse)(nil),                      // 148: vca.backend.v1.SetWebhookResponse
-	(*ListVerifierConnectionsRequest)(nil),          // 149: vca.backend.v1.ListVerifierConnectionsRequest
-	(*ListVerifierConnectionsResponse)(nil),         // 150: vca.backend.v1.ListVerifierConnectionsResponse
-	(*ListProofRequestsRequest)(nil),                // 151: vca.backend.v1.ListProofRequestsRequest
-	(*ListProofRequestsResponse)(nil),               // 152: vca.backend.v1.ListProofRequestsResponse
-	(*ProofRequest)(nil),                            // 153: vca.backend.v1.ProofRequest
-	(*ListProofSchemasRequest)(nil),                 // 154: vca.backend.v1.ListProofSchemasRequest
-	(*ListProofSchemasResponse)(nil),                // 155: vca.backend.v1.ListProofSchemasResponse
-	(*ProofSchema)(nil),                             // 156: vca.backend.v1.ProofSchema
-	(*VerifyCredentialRequest)(nil),                 // 157: vca.backend.v1.VerifyCredentialRequest
-	(*VerifyCredentialResponse)(nil),                // 158: vca.backend.v1.VerifyCredentialResponse
-	nil,                                             // 159: vca.backend.v1.BulkPreviewRow.ClaimsEntry
-	(*IssueBatchResponse_Item)(nil),                 // 160: vca.backend.v1.IssueBatchResponse.Item
-	nil,                                             // 161: vca.backend.v1.ListIssuedCredentialsRequest.AttributesEntry
-	(*IssuerIdentity_Metadata)(nil),                 // 162: vca.backend.v1.IssuerIdentity.Metadata
-	(*IssuerIdentity_Key)(nil),                      // 163: vca.backend.v1.IssuerIdentity.Key
-	(*GetResultResponse_DpgCheck)(nil),              // 164: vca.backend.v1.GetResultResponse.DpgCheck
-	nil,                                             // 165: vca.backend.v1.ProofSchema.AttributeTypesEntry
-	(v1.Format)(0),                                  // 166: vca.common.v1.Format
-	(*v1.Pagination)(nil),                           // 167: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),                           // 168: vca.common.v1.PageResult
-	(*timestamppb.Timestamp)(nil),                   // 169: google.protobuf.Timestamp
-	(v1.Role)(0),                                    // 170: vca.common.v1.Role
-	(*v1.Subject)(nil),                              // 171: vca.common.v1.Subject
-	(*v1.ValidityWindow)(nil),                       // 172: vca.common.v1.ValidityWindow
-	(*v1.Credential)(nil),                           // 173: vca.common.v1.Credential
-	(*v1.Error)(nil),                                // 174: vca.common.v1.Error
+	(*NotificationEndpoint)(nil),                    // 148: vca.backend.v1.NotificationEndpoint
+	(*GetNotificationEndpointRequest)(nil),          // 149: vca.backend.v1.GetNotificationEndpointRequest
+	(*GetNotificationEndpointResponse)(nil),         // 150: vca.backend.v1.GetNotificationEndpointResponse
+	(*SetNotificationEndpointRequest)(nil),          // 151: vca.backend.v1.SetNotificationEndpointRequest
+	(*SetNotificationEndpointResponse)(nil),         // 152: vca.backend.v1.SetNotificationEndpointResponse
+	(*SetWebhookResponse)(nil),                      // 153: vca.backend.v1.SetWebhookResponse
+	(*ListVerifierConnectionsRequest)(nil),          // 154: vca.backend.v1.ListVerifierConnectionsRequest
+	(*ListVerifierConnectionsResponse)(nil),         // 155: vca.backend.v1.ListVerifierConnectionsResponse
+	(*ListProofRequestsRequest)(nil),                // 156: vca.backend.v1.ListProofRequestsRequest
+	(*ListProofRequestsResponse)(nil),               // 157: vca.backend.v1.ListProofRequestsResponse
+	(*ProofRequest)(nil),                            // 158: vca.backend.v1.ProofRequest
+	(*ListProofSchemasRequest)(nil),                 // 159: vca.backend.v1.ListProofSchemasRequest
+	(*ListProofSchemasResponse)(nil),                // 160: vca.backend.v1.ListProofSchemasResponse
+	(*ProofSchema)(nil),                             // 161: vca.backend.v1.ProofSchema
+	(*VerifyCredentialRequest)(nil),                 // 162: vca.backend.v1.VerifyCredentialRequest
+	(*VerifyCredentialResponse)(nil),                // 163: vca.backend.v1.VerifyCredentialResponse
+	nil,                                             // 164: vca.backend.v1.BulkPreviewRow.ClaimsEntry
+	(*IssueBatchResponse_Item)(nil),                 // 165: vca.backend.v1.IssueBatchResponse.Item
+	nil,                                             // 166: vca.backend.v1.ListIssuedCredentialsRequest.AttributesEntry
+	(*IssuerIdentity_Metadata)(nil),                 // 167: vca.backend.v1.IssuerIdentity.Metadata
+	(*IssuerIdentity_Key)(nil),                      // 168: vca.backend.v1.IssuerIdentity.Key
+	(*GetResultResponse_DpgCheck)(nil),              // 169: vca.backend.v1.GetResultResponse.DpgCheck
+	nil,                                             // 170: vca.backend.v1.ProofSchema.AttributeTypesEntry
+	(v1.Format)(0),                                  // 171: vca.common.v1.Format
+	(*v1.Pagination)(nil),                           // 172: vca.common.v1.Pagination
+	(*v1.PageResult)(nil),                           // 173: vca.common.v1.PageResult
+	(*timestamppb.Timestamp)(nil),                   // 174: google.protobuf.Timestamp
+	(v1.Role)(0),                                    // 175: vca.common.v1.Role
+	(*v1.Subject)(nil),                              // 176: vca.common.v1.Subject
+	(*v1.ValidityWindow)(nil),                       // 177: vca.common.v1.ValidityWindow
+	(*v1.Credential)(nil),                           // 178: vca.common.v1.Credential
+	(*v1.Error)(nil),                                // 179: vca.common.v1.Error
 }
 var file_vca_backend_v1_backend_proto_depIdxs = []int32{
-	166, // 0: vca.backend.v1.GetBulkTemplateRequest.format:type_name -> vca.common.v1.Format
-	166, // 1: vca.backend.v1.UploadBulkFileRequest.format:type_name -> vca.common.v1.Format
-	167, // 2: vca.backend.v1.PreviewBulkFileRequest.page:type_name -> vca.common.v1.Pagination
+	171, // 0: vca.backend.v1.GetBulkTemplateRequest.format:type_name -> vca.common.v1.Format
+	171, // 1: vca.backend.v1.UploadBulkFileRequest.format:type_name -> vca.common.v1.Format
+	172, // 2: vca.backend.v1.PreviewBulkFileRequest.page:type_name -> vca.common.v1.Pagination
 	17,  // 3: vca.backend.v1.PreviewBulkFileResponse.rows:type_name -> vca.backend.v1.BulkPreviewRow
-	168, // 4: vca.backend.v1.PreviewBulkFileResponse.page:type_name -> vca.common.v1.PageResult
-	159, // 5: vca.backend.v1.BulkPreviewRow.claims:type_name -> vca.backend.v1.BulkPreviewRow.ClaimsEntry
-	166, // 6: vca.backend.v1.IssueBulkFileRequest.format:type_name -> vca.common.v1.Format
-	167, // 7: vca.backend.v1.ListBulkFilesRequest.page:type_name -> vca.common.v1.Pagination
+	173, // 4: vca.backend.v1.PreviewBulkFileResponse.page:type_name -> vca.common.v1.PageResult
+	164, // 5: vca.backend.v1.BulkPreviewRow.claims:type_name -> vca.backend.v1.BulkPreviewRow.ClaimsEntry
+	171, // 6: vca.backend.v1.IssueBulkFileRequest.format:type_name -> vca.common.v1.Format
+	172, // 7: vca.backend.v1.ListBulkFilesRequest.page:type_name -> vca.common.v1.Pagination
 	22,  // 8: vca.backend.v1.ListBulkFilesResponse.files:type_name -> vca.backend.v1.BulkFile
-	168, // 9: vca.backend.v1.ListBulkFilesResponse.page:type_name -> vca.common.v1.PageResult
+	173, // 9: vca.backend.v1.ListBulkFilesResponse.page:type_name -> vca.common.v1.PageResult
 	4,   // 10: vca.backend.v1.BulkFile.state:type_name -> vca.backend.v1.BulkFile.State
-	169, // 11: vca.backend.v1.BulkFile.created_at:type_name -> google.protobuf.Timestamp
-	169, // 12: vca.backend.v1.BulkFile.updated_at:type_name -> google.protobuf.Timestamp
-	167, // 13: vca.backend.v1.ListBulkFileRowsRequest.page:type_name -> vca.common.v1.Pagination
+	174, // 11: vca.backend.v1.BulkFile.created_at:type_name -> google.protobuf.Timestamp
+	174, // 12: vca.backend.v1.BulkFile.updated_at:type_name -> google.protobuf.Timestamp
+	172, // 13: vca.backend.v1.ListBulkFileRowsRequest.page:type_name -> vca.common.v1.Pagination
 	25,  // 14: vca.backend.v1.ListBulkFileRowsResponse.rows:type_name -> vca.backend.v1.BulkFileRow
-	168, // 15: vca.backend.v1.ListBulkFileRowsResponse.page:type_name -> vca.common.v1.PageResult
-	166, // 16: vca.backend.v1.GetCapabilitiesResponse.formats:type_name -> vca.common.v1.Format
+	173, // 15: vca.backend.v1.ListBulkFileRowsResponse.page:type_name -> vca.common.v1.PageResult
+	171, // 16: vca.backend.v1.GetCapabilitiesResponse.formats:type_name -> vca.common.v1.Format
 	0,   // 17: vca.backend.v1.GetCapabilitiesResponse.channels:type_name -> vca.backend.v1.Channel
-	170, // 18: vca.backend.v1.GetCapabilitiesResponse.roles:type_name -> vca.common.v1.Role
+	175, // 18: vca.backend.v1.GetCapabilitiesResponse.roles:type_name -> vca.common.v1.Role
 	1,   // 19: vca.backend.v1.GetCapabilitiesResponse.protocols:type_name -> vca.backend.v1.Protocol
 	2,   // 20: vca.backend.v1.GetCapabilitiesResponse.features:type_name -> vca.backend.v1.Feature
 	36,  // 21: vca.backend.v1.GetCapabilitiesResponse.dpg_info:type_name -> vca.backend.v1.DpgInfo
 	5,   // 22: vca.backend.v1.GetCapabilitiesResponse.status_mechanisms:type_name -> vca.backend.v1.StatusListBinding.Kind
 	10,  // 23: vca.backend.v1.GetCapabilitiesResponse.tenant_agent_types:type_name -> vca.backend.v1.DpgTenant.AgentType
 	35,  // 24: vca.backend.v1.GetCapabilitiesResponse.ledgers:type_name -> vca.backend.v1.Ledger
-	166, // 25: vca.backend.v1.GetCapabilitiesResponse.schema_formats:type_name -> vca.common.v1.Format
+	171, // 25: vca.backend.v1.GetCapabilitiesResponse.schema_formats:type_name -> vca.common.v1.Format
 	31,  // 26: vca.backend.v1.GetCapabilitiesResponse.channel_formats:type_name -> vca.backend.v1.ChannelFormats
 	30,  // 27: vca.backend.v1.GetCapabilitiesResponse.bulk_import:type_name -> vca.backend.v1.BulkImport
 	0,   // 28: vca.backend.v1.BulkImport.channel:type_name -> vca.backend.v1.Channel
-	166, // 29: vca.backend.v1.BulkImport.formats:type_name -> vca.common.v1.Format
+	171, // 29: vca.backend.v1.BulkImport.formats:type_name -> vca.common.v1.Format
 	0,   // 30: vca.backend.v1.ChannelFormats.channel:type_name -> vca.backend.v1.Channel
-	166, // 31: vca.backend.v1.ChannelFormats.formats:type_name -> vca.common.v1.Format
-	167, // 32: vca.backend.v1.ListConnectionsRequest.page:type_name -> vca.common.v1.Pagination
+	171, // 31: vca.backend.v1.ChannelFormats.formats:type_name -> vca.common.v1.Format
+	172, // 32: vca.backend.v1.ListConnectionsRequest.page:type_name -> vca.common.v1.Pagination
 	34,  // 33: vca.backend.v1.ListConnectionsResponse.connections:type_name -> vca.backend.v1.DidcommConnection
-	168, // 34: vca.backend.v1.ListConnectionsResponse.page:type_name -> vca.common.v1.PageResult
-	169, // 35: vca.backend.v1.DidcommConnection.created_at:type_name -> google.protobuf.Timestamp
+	173, // 34: vca.backend.v1.ListConnectionsResponse.page:type_name -> vca.common.v1.PageResult
+	174, // 35: vca.backend.v1.DidcommConnection.created_at:type_name -> google.protobuf.Timestamp
 	37,  // 36: vca.backend.v1.DpgInfo.components:type_name -> vca.backend.v1.Component
-	166, // 37: vca.backend.v1.CredentialConfiguration.format:type_name -> vca.common.v1.Format
+	171, // 37: vca.backend.v1.CredentialConfiguration.format:type_name -> vca.common.v1.Format
 	39,  // 38: vca.backend.v1.CredentialConfiguration.render_templates:type_name -> vca.backend.v1.RenderTemplate
 	38,  // 39: vca.backend.v1.RegisterCredentialConfigurationRequest.configuration:type_name -> vca.backend.v1.CredentialConfiguration
 	5,   // 40: vca.backend.v1.StatusListBinding.kind:type_name -> vca.backend.v1.StatusListBinding.Kind
-	166, // 41: vca.backend.v1.IssueSpec.format:type_name -> vca.common.v1.Format
-	171, // 42: vca.backend.v1.IssueSpec.subject:type_name -> vca.common.v1.Subject
-	172, // 43: vca.backend.v1.IssueSpec.validity:type_name -> vca.common.v1.ValidityWindow
+	171, // 41: vca.backend.v1.IssueSpec.format:type_name -> vca.common.v1.Format
+	176, // 42: vca.backend.v1.IssueSpec.subject:type_name -> vca.common.v1.Subject
+	177, // 43: vca.backend.v1.IssueSpec.validity:type_name -> vca.common.v1.ValidityWindow
 	42,  // 44: vca.backend.v1.IssueSpec.status:type_name -> vca.backend.v1.StatusListBinding
 	45,  // 45: vca.backend.v1.IssueSpec.presentation_subject:type_name -> vca.backend.v1.PresentationSubject
 	44,  // 46: vca.backend.v1.IssueSpec.binding_rule:type_name -> vca.backend.v1.BindingRule
 	43,  // 47: vca.backend.v1.CreateOfferRequest.spec:type_name -> vca.backend.v1.IssueSpec
 	0,   // 48: vca.backend.v1.CreateOfferRequest.channel:type_name -> vca.backend.v1.Channel
 	0,   // 49: vca.backend.v1.CreateOfferResponse.channel:type_name -> vca.backend.v1.Channel
-	169, // 50: vca.backend.v1.CreateOfferResponse.expires_at:type_name -> google.protobuf.Timestamp
+	174, // 50: vca.backend.v1.CreateOfferResponse.expires_at:type_name -> google.protobuf.Timestamp
 	43,  // 51: vca.backend.v1.IssueRequest.spec:type_name -> vca.backend.v1.IssueSpec
-	173, // 52: vca.backend.v1.IssueResponse.credential:type_name -> vca.common.v1.Credential
+	178, // 52: vca.backend.v1.IssueResponse.credential:type_name -> vca.common.v1.Credential
 	43,  // 53: vca.backend.v1.IssueBatchRequest.specs:type_name -> vca.backend.v1.IssueSpec
-	160, // 54: vca.backend.v1.IssueBatchResponse.items:type_name -> vca.backend.v1.IssueBatchResponse.Item
+	165, // 54: vca.backend.v1.IssueBatchResponse.items:type_name -> vca.backend.v1.IssueBatchResponse.Item
 	42,  // 55: vca.backend.v1.RevokeRequest.status:type_name -> vca.backend.v1.StatusListBinding
 	6,   // 56: vca.backend.v1.RevokeRequest.action:type_name -> vca.backend.v1.RevokeRequest.Action
-	169, // 57: vca.backend.v1.RevokeResponse.revoked_at:type_name -> google.protobuf.Timestamp
+	174, // 57: vca.backend.v1.RevokeResponse.revoked_at:type_name -> google.protobuf.Timestamp
 	7,   // 58: vca.backend.v1.GetIssuanceStatusResponse.state:type_name -> vca.backend.v1.GetIssuanceStatusResponse.State
-	173, // 59: vca.backend.v1.GetIssuanceStatusResponse.credential:type_name -> vca.common.v1.Credential
-	169, // 60: vca.backend.v1.GetIssuanceStatusResponse.claimed_at:type_name -> google.protobuf.Timestamp
-	169, // 61: vca.backend.v1.GetIssuanceStatusResponse.expires_at:type_name -> google.protobuf.Timestamp
-	161, // 62: vca.backend.v1.ListIssuedCredentialsRequest.attributes:type_name -> vca.backend.v1.ListIssuedCredentialsRequest.AttributesEntry
-	167, // 63: vca.backend.v1.ListIssuedCredentialsRequest.page:type_name -> vca.common.v1.Pagination
+	178, // 59: vca.backend.v1.GetIssuanceStatusResponse.credential:type_name -> vca.common.v1.Credential
+	174, // 60: vca.backend.v1.GetIssuanceStatusResponse.claimed_at:type_name -> google.protobuf.Timestamp
+	174, // 61: vca.backend.v1.GetIssuanceStatusResponse.expires_at:type_name -> google.protobuf.Timestamp
+	166, // 62: vca.backend.v1.ListIssuedCredentialsRequest.attributes:type_name -> vca.backend.v1.ListIssuedCredentialsRequest.AttributesEntry
+	172, // 63: vca.backend.v1.ListIssuedCredentialsRequest.page:type_name -> vca.common.v1.Pagination
 	58,  // 64: vca.backend.v1.ListIssuedCredentialsResponse.credentials:type_name -> vca.backend.v1.LedgerEntry
-	168, // 65: vca.backend.v1.ListIssuedCredentialsResponse.page:type_name -> vca.common.v1.PageResult
-	169, // 66: vca.backend.v1.LedgerEntry.issued_at:type_name -> google.protobuf.Timestamp
-	169, // 67: vca.backend.v1.LedgerEntry.expires_at:type_name -> google.protobuf.Timestamp
+	173, // 65: vca.backend.v1.ListIssuedCredentialsResponse.page:type_name -> vca.common.v1.PageResult
+	174, // 66: vca.backend.v1.LedgerEntry.issued_at:type_name -> google.protobuf.Timestamp
+	174, // 67: vca.backend.v1.LedgerEntry.expires_at:type_name -> google.protobuf.Timestamp
 	42,  // 68: vca.backend.v1.LedgerEntry.status:type_name -> vca.backend.v1.StatusListBinding
-	169, // 69: vca.backend.v1.LedgerEntry.status_changed_at:type_name -> google.protobuf.Timestamp
+	174, // 69: vca.backend.v1.LedgerEntry.status_changed_at:type_name -> google.protobuf.Timestamp
 	38,  // 70: vca.backend.v1.GetIssuerMetadataResponse.configurations:type_name -> vca.backend.v1.CredentialConfiguration
-	162, // 71: vca.backend.v1.IssuerIdentity.metadata:type_name -> vca.backend.v1.IssuerIdentity.Metadata
-	163, // 72: vca.backend.v1.IssuerIdentity.key:type_name -> vca.backend.v1.IssuerIdentity.Key
+	167, // 71: vca.backend.v1.IssuerIdentity.metadata:type_name -> vca.backend.v1.IssuerIdentity.Metadata
+	168, // 72: vca.backend.v1.IssuerIdentity.key:type_name -> vca.backend.v1.IssuerIdentity.Key
 	61,  // 73: vca.backend.v1.GetIssuerIdentityResponse.identity:type_name -> vca.backend.v1.IssuerIdentity
 	61,  // 74: vca.backend.v1.ProvisionIssuerIdentityResponse.identity:type_name -> vca.backend.v1.IssuerIdentity
 	61,  // 75: vca.backend.v1.ImportIssuerIdentityResponse.identity:type_name -> vca.backend.v1.IssuerIdentity
-	166, // 76: vca.backend.v1.SetPresentationRequirementRequest.format:type_name -> vca.common.v1.Format
+	171, // 76: vca.backend.v1.SetPresentationRequirementRequest.format:type_name -> vca.common.v1.Format
 	68,  // 77: vca.backend.v1.GetPresentationRequirementResponse.requirement:type_name -> vca.backend.v1.SetPresentationRequirementRequest
 	72,  // 78: vca.backend.v1.GetHolderSignInSourceResponse.source:type_name -> vca.backend.v1.HolderSignInSource
 	72,  // 79: vca.backend.v1.SetHolderSignInSourceRequest.source:type_name -> vca.backend.v1.HolderSignInSource
 	72,  // 80: vca.backend.v1.SetHolderSignInSourceResponse.source:type_name -> vca.backend.v1.HolderSignInSource
-	173, // 81: vca.backend.v1.WalletCredential.credential:type_name -> vca.common.v1.Credential
-	169, // 82: vca.backend.v1.WalletCredential.received_at:type_name -> google.protobuf.Timestamp
-	167, // 83: vca.backend.v1.ListCredentialsRequest.page:type_name -> vca.common.v1.Pagination
+	178, // 81: vca.backend.v1.WalletCredential.credential:type_name -> vca.common.v1.Credential
+	174, // 82: vca.backend.v1.WalletCredential.received_at:type_name -> google.protobuf.Timestamp
+	172, // 83: vca.backend.v1.ListCredentialsRequest.page:type_name -> vca.common.v1.Pagination
 	79,  // 84: vca.backend.v1.ListCredentialsResponse.credentials:type_name -> vca.backend.v1.WalletCredential
-	168, // 85: vca.backend.v1.ListCredentialsResponse.page:type_name -> vca.common.v1.PageResult
+	173, // 85: vca.backend.v1.ListCredentialsResponse.page:type_name -> vca.common.v1.PageResult
 	79,  // 86: vca.backend.v1.AcceptOfferResponse.credential:type_name -> vca.backend.v1.WalletCredential
 	88,  // 87: vca.backend.v1.ListKeysResponse.keys:type_name -> vca.backend.v1.WalletKey
 	88,  // 88: vca.backend.v1.CreateKeyResponse.key:type_name -> vca.backend.v1.WalletKey
-	169, // 89: vca.backend.v1.WalletDid.created_at:type_name -> google.protobuf.Timestamp
+	174, // 89: vca.backend.v1.WalletDid.created_at:type_name -> google.protobuf.Timestamp
 	93,  // 90: vca.backend.v1.ListDidsResponse.dids:type_name -> vca.backend.v1.WalletDid
 	93,  // 91: vca.backend.v1.CreateDidResponse.did:type_name -> vca.backend.v1.WalletDid
 	3,   // 92: vca.backend.v1.GetWalletLockResponse.state:type_name -> vca.backend.v1.WalletLock
@@ -11253,171 +11585,178 @@ var file_vca_backend_v1_backend_proto_depIdxs = []int32{
 	34,  // 94: vca.backend.v1.ListWalletConnectionsResponse.connections:type_name -> vca.backend.v1.DidcommConnection
 	114, // 95: vca.backend.v1.ListInboxResponse.items:type_name -> vca.backend.v1.InboxItem
 	8,   // 96: vca.backend.v1.InboxItem.kind:type_name -> vca.backend.v1.InboxItem.Kind
-	169, // 97: vca.backend.v1.InboxItem.received_at:type_name -> google.protobuf.Timestamp
+	174, // 97: vca.backend.v1.InboxItem.received_at:type_name -> google.protobuf.Timestamp
 	115, // 98: vca.backend.v1.InboxItem.offered:type_name -> vca.backend.v1.OfferedValue
-	169, // 99: vca.backend.v1.WalletEvent.at:type_name -> google.protobuf.Timestamp
-	167, // 100: vca.backend.v1.ListEventsRequest.page:type_name -> vca.common.v1.Pagination
+	174, // 99: vca.backend.v1.WalletEvent.at:type_name -> google.protobuf.Timestamp
+	172, // 100: vca.backend.v1.ListEventsRequest.page:type_name -> vca.common.v1.Pagination
 	116, // 101: vca.backend.v1.ListEventsResponse.events:type_name -> vca.backend.v1.WalletEvent
-	168, // 102: vca.backend.v1.ListEventsResponse.page:type_name -> vca.common.v1.PageResult
-	169, // 103: vca.backend.v1.CreateRequestResponse.expires_at:type_name -> google.protobuf.Timestamp
+	173, // 102: vca.backend.v1.ListEventsResponse.page:type_name -> vca.common.v1.PageResult
+	174, // 103: vca.backend.v1.CreateRequestResponse.expires_at:type_name -> google.protobuf.Timestamp
 	9,   // 104: vca.backend.v1.GetResultResponse.state:type_name -> vca.backend.v1.GetResultResponse.State
-	173, // 105: vca.backend.v1.GetResultResponse.presented:type_name -> vca.common.v1.Credential
-	164, // 106: vca.backend.v1.GetResultResponse.dpg_checks:type_name -> vca.backend.v1.GetResultResponse.DpgCheck
-	169, // 107: vca.backend.v1.GetResultResponse.received_at:type_name -> google.protobuf.Timestamp
-	167, // 108: vca.backend.v1.ListCredentialTypesRequest.page:type_name -> vca.common.v1.Pagination
+	178, // 105: vca.backend.v1.GetResultResponse.presented:type_name -> vca.common.v1.Credential
+	169, // 106: vca.backend.v1.GetResultResponse.dpg_checks:type_name -> vca.backend.v1.GetResultResponse.DpgCheck
+	174, // 107: vca.backend.v1.GetResultResponse.received_at:type_name -> google.protobuf.Timestamp
+	172, // 108: vca.backend.v1.ListCredentialTypesRequest.page:type_name -> vca.common.v1.Pagination
 	38,  // 109: vca.backend.v1.ListCredentialTypesResponse.configurations:type_name -> vca.backend.v1.CredentialConfiguration
-	168, // 110: vca.backend.v1.ListCredentialTypesResponse.page:type_name -> vca.common.v1.PageResult
+	173, // 110: vca.backend.v1.ListCredentialTypesResponse.page:type_name -> vca.common.v1.PageResult
 	10,  // 111: vca.backend.v1.DpgTenant.agent_type:type_name -> vca.backend.v1.DpgTenant.AgentType
 	128, // 112: vca.backend.v1.DpgTenant.members:type_name -> vca.backend.v1.TenantMember
 	10,  // 113: vca.backend.v1.CreateTenantRequest.agent_type:type_name -> vca.backend.v1.DpgTenant.AgentType
 	127, // 114: vca.backend.v1.CreateTenantResponse.tenant:type_name -> vca.backend.v1.DpgTenant
 	127, // 115: vca.backend.v1.GetTenantResponse.tenant:type_name -> vca.backend.v1.DpgTenant
-	167, // 116: vca.backend.v1.ListTenantsRequest.page:type_name -> vca.common.v1.Pagination
+	172, // 116: vca.backend.v1.ListTenantsRequest.page:type_name -> vca.common.v1.Pagination
 	127, // 117: vca.backend.v1.ListTenantsResponse.tenants:type_name -> vca.backend.v1.DpgTenant
-	168, // 118: vca.backend.v1.ListTenantsResponse.page:type_name -> vca.common.v1.PageResult
-	169, // 119: vca.backend.v1.ClientCredential.created_at:type_name -> google.protobuf.Timestamp
+	173, // 118: vca.backend.v1.ListTenantsResponse.page:type_name -> vca.common.v1.PageResult
+	174, // 119: vca.backend.v1.ClientCredential.created_at:type_name -> google.protobuf.Timestamp
 	137, // 120: vca.backend.v1.ListClientCredentialsResponse.credentials:type_name -> vca.backend.v1.ClientCredential
 	137, // 121: vca.backend.v1.CreateClientCredentialResponse.credential:type_name -> vca.backend.v1.ClientCredential
-	169, // 122: vca.backend.v1.Webhook.updated_at:type_name -> google.protobuf.Timestamp
+	174, // 122: vca.backend.v1.Webhook.updated_at:type_name -> google.protobuf.Timestamp
 	144, // 123: vca.backend.v1.GetWebhookResponse.webhook:type_name -> vca.backend.v1.Webhook
-	144, // 124: vca.backend.v1.SetWebhookResponse.webhook:type_name -> vca.backend.v1.Webhook
-	167, // 125: vca.backend.v1.ListVerifierConnectionsRequest.page:type_name -> vca.common.v1.Pagination
-	34,  // 126: vca.backend.v1.ListVerifierConnectionsResponse.connections:type_name -> vca.backend.v1.DidcommConnection
-	168, // 127: vca.backend.v1.ListVerifierConnectionsResponse.page:type_name -> vca.common.v1.PageResult
-	167, // 128: vca.backend.v1.ListProofRequestsRequest.page:type_name -> vca.common.v1.Pagination
-	153, // 129: vca.backend.v1.ListProofRequestsResponse.requests:type_name -> vca.backend.v1.ProofRequest
-	168, // 130: vca.backend.v1.ListProofRequestsResponse.page:type_name -> vca.common.v1.PageResult
-	169, // 131: vca.backend.v1.ProofRequest.created_at:type_name -> google.protobuf.Timestamp
-	167, // 132: vca.backend.v1.ListProofSchemasRequest.page:type_name -> vca.common.v1.Pagination
-	156, // 133: vca.backend.v1.ListProofSchemasResponse.schemas:type_name -> vca.backend.v1.ProofSchema
-	168, // 134: vca.backend.v1.ListProofSchemasResponse.page:type_name -> vca.common.v1.PageResult
-	165, // 135: vca.backend.v1.ProofSchema.attribute_types:type_name -> vca.backend.v1.ProofSchema.AttributeTypesEntry
-	164, // 136: vca.backend.v1.VerifyCredentialResponse.dpg_checks:type_name -> vca.backend.v1.GetResultResponse.DpgCheck
-	173, // 137: vca.backend.v1.IssueBatchResponse.Item.credential:type_name -> vca.common.v1.Credential
-	174, // 138: vca.backend.v1.IssueBatchResponse.Item.error:type_name -> vca.common.v1.Error
-	28,  // 139: vca.backend.v1.CapabilityService.GetCapabilities:input_type -> vca.backend.v1.GetCapabilitiesRequest
-	40,  // 140: vca.backend.v1.IssuerBackendService.RegisterCredentialConfiguration:input_type -> vca.backend.v1.RegisterCredentialConfigurationRequest
-	46,  // 141: vca.backend.v1.IssuerBackendService.CreateOffer:input_type -> vca.backend.v1.CreateOfferRequest
-	48,  // 142: vca.backend.v1.IssuerBackendService.Issue:input_type -> vca.backend.v1.IssueRequest
-	50,  // 143: vca.backend.v1.IssuerBackendService.IssueBatch:input_type -> vca.backend.v1.IssueBatchRequest
-	54,  // 144: vca.backend.v1.IssuerBackendService.GetIssuanceStatus:input_type -> vca.backend.v1.GetIssuanceStatusRequest
-	52,  // 145: vca.backend.v1.IssuerBackendService.Revoke:input_type -> vca.backend.v1.RevokeRequest
-	56,  // 146: vca.backend.v1.IssuerBackendService.ListIssuedCredentials:input_type -> vca.backend.v1.ListIssuedCredentialsRequest
-	59,  // 147: vca.backend.v1.IssuerBackendService.GetIssuerMetadata:input_type -> vca.backend.v1.GetIssuerMetadataRequest
-	62,  // 148: vca.backend.v1.IssuerBackendService.GetIssuerIdentity:input_type -> vca.backend.v1.GetIssuerIdentityRequest
-	64,  // 149: vca.backend.v1.IssuerBackendService.ProvisionIssuerIdentity:input_type -> vca.backend.v1.ProvisionIssuerIdentityRequest
-	66,  // 150: vca.backend.v1.IssuerBackendService.ImportIssuerIdentity:input_type -> vca.backend.v1.ImportIssuerIdentityRequest
-	68,  // 151: vca.backend.v1.IssuerBackendService.SetPresentationRequirement:input_type -> vca.backend.v1.SetPresentationRequirementRequest
-	70,  // 152: vca.backend.v1.IssuerBackendService.GetPresentationRequirement:input_type -> vca.backend.v1.GetPresentationRequirementRequest
-	73,  // 153: vca.backend.v1.IssuerBackendService.GetHolderSignInSource:input_type -> vca.backend.v1.GetHolderSignInSourceRequest
-	75,  // 154: vca.backend.v1.IssuerBackendService.SetHolderSignInSource:input_type -> vca.backend.v1.SetHolderSignInSourceRequest
-	32,  // 155: vca.backend.v1.IssuerBackendService.ListConnections:input_type -> vca.backend.v1.ListConnectionsRequest
-	77,  // 156: vca.backend.v1.HolderBackendService.Register:input_type -> vca.backend.v1.RegisterRequest
-	80,  // 157: vca.backend.v1.HolderBackendService.ListCredentials:input_type -> vca.backend.v1.ListCredentialsRequest
-	82,  // 158: vca.backend.v1.HolderBackendService.AcceptOffer:input_type -> vca.backend.v1.AcceptOfferRequest
-	84,  // 159: vca.backend.v1.HolderBackendService.Present:input_type -> vca.backend.v1.PresentRequest
-	86,  // 160: vca.backend.v1.HolderBackendService.DeleteCredential:input_type -> vca.backend.v1.DeleteCredentialRequest
-	89,  // 161: vca.backend.v1.HolderBackendService.ListKeys:input_type -> vca.backend.v1.ListKeysRequest
-	91,  // 162: vca.backend.v1.HolderBackendService.CreateKey:input_type -> vca.backend.v1.CreateKeyRequest
-	94,  // 163: vca.backend.v1.HolderBackendService.ListDids:input_type -> vca.backend.v1.ListDidsRequest
-	96,  // 164: vca.backend.v1.HolderBackendService.CreateDid:input_type -> vca.backend.v1.CreateDidRequest
-	98,  // 165: vca.backend.v1.HolderBackendService.SetDefaultDid:input_type -> vca.backend.v1.SetDefaultDidRequest
-	100, // 166: vca.backend.v1.HolderBackendService.RejectOffer:input_type -> vca.backend.v1.RejectOfferRequest
-	117, // 167: vca.backend.v1.HolderBackendService.ListEvents:input_type -> vca.backend.v1.ListEventsRequest
-	102, // 168: vca.backend.v1.HolderBackendService.GetCredentialDocument:input_type -> vca.backend.v1.GetCredentialDocumentRequest
-	104, // 169: vca.backend.v1.HolderBackendService.GetWalletLock:input_type -> vca.backend.v1.GetWalletLockRequest
-	106, // 170: vca.backend.v1.HolderBackendService.UnlockWallet:input_type -> vca.backend.v1.UnlockWalletRequest
-	108, // 171: vca.backend.v1.HolderBackendService.OpenInvitation:input_type -> vca.backend.v1.OpenInvitationRequest
-	110, // 172: vca.backend.v1.HolderBackendService.ListWalletConnections:input_type -> vca.backend.v1.ListWalletConnectionsRequest
-	112, // 173: vca.backend.v1.HolderBackendService.ListInbox:input_type -> vca.backend.v1.ListInboxRequest
-	119, // 174: vca.backend.v1.VerifierBackendService.CreateRequest:input_type -> vca.backend.v1.CreateRequestRequest
-	123, // 175: vca.backend.v1.VerifierBackendService.GetResult:input_type -> vca.backend.v1.GetResultRequest
-	121, // 176: vca.backend.v1.VerifierBackendService.SubmitBrowserAnswer:input_type -> vca.backend.v1.SubmitBrowserAnswerRequest
-	157, // 177: vca.backend.v1.VerifierBackendService.VerifyCredential:input_type -> vca.backend.v1.VerifyCredentialRequest
-	151, // 178: vca.backend.v1.VerifierBackendService.ListProofRequests:input_type -> vca.backend.v1.ListProofRequestsRequest
-	154, // 179: vca.backend.v1.VerifierBackendService.ListProofSchemas:input_type -> vca.backend.v1.ListProofSchemasRequest
-	149, // 180: vca.backend.v1.VerifierBackendService.ListVerifierConnections:input_type -> vca.backend.v1.ListVerifierConnectionsRequest
-	125, // 181: vca.backend.v1.CatalogBackendService.ListCredentialTypes:input_type -> vca.backend.v1.ListCredentialTypesRequest
-	129, // 182: vca.backend.v1.TenantBackendService.CreateTenant:input_type -> vca.backend.v1.CreateTenantRequest
-	131, // 183: vca.backend.v1.TenantBackendService.GetTenant:input_type -> vca.backend.v1.GetTenantRequest
-	133, // 184: vca.backend.v1.TenantBackendService.ListTenants:input_type -> vca.backend.v1.ListTenantsRequest
-	135, // 185: vca.backend.v1.TenantBackendService.DeleteTenant:input_type -> vca.backend.v1.DeleteTenantRequest
-	138, // 186: vca.backend.v1.TenantBackendService.ListClientCredentials:input_type -> vca.backend.v1.ListClientCredentialsRequest
-	140, // 187: vca.backend.v1.TenantBackendService.CreateClientCredential:input_type -> vca.backend.v1.CreateClientCredentialRequest
-	142, // 188: vca.backend.v1.TenantBackendService.DeleteClientCredential:input_type -> vca.backend.v1.DeleteClientCredentialRequest
-	145, // 189: vca.backend.v1.NotificationBackendService.GetWebhook:input_type -> vca.backend.v1.GetWebhookRequest
-	147, // 190: vca.backend.v1.NotificationBackendService.SetWebhook:input_type -> vca.backend.v1.SetWebhookRequest
-	11,  // 191: vca.backend.v1.BulkImportBackendService.GetBulkTemplate:input_type -> vca.backend.v1.GetBulkTemplateRequest
-	13,  // 192: vca.backend.v1.BulkImportBackendService.UploadBulkFile:input_type -> vca.backend.v1.UploadBulkFileRequest
-	15,  // 193: vca.backend.v1.BulkImportBackendService.PreviewBulkFile:input_type -> vca.backend.v1.PreviewBulkFileRequest
-	18,  // 194: vca.backend.v1.BulkImportBackendService.IssueBulkFile:input_type -> vca.backend.v1.IssueBulkFileRequest
-	20,  // 195: vca.backend.v1.BulkImportBackendService.ListBulkFiles:input_type -> vca.backend.v1.ListBulkFilesRequest
-	23,  // 196: vca.backend.v1.BulkImportBackendService.ListBulkFileRows:input_type -> vca.backend.v1.ListBulkFileRowsRequest
-	26,  // 197: vca.backend.v1.BulkImportBackendService.RetryBulkFile:input_type -> vca.backend.v1.RetryBulkFileRequest
-	29,  // 198: vca.backend.v1.CapabilityService.GetCapabilities:output_type -> vca.backend.v1.GetCapabilitiesResponse
-	41,  // 199: vca.backend.v1.IssuerBackendService.RegisterCredentialConfiguration:output_type -> vca.backend.v1.RegisterCredentialConfigurationResponse
-	47,  // 200: vca.backend.v1.IssuerBackendService.CreateOffer:output_type -> vca.backend.v1.CreateOfferResponse
-	49,  // 201: vca.backend.v1.IssuerBackendService.Issue:output_type -> vca.backend.v1.IssueResponse
-	51,  // 202: vca.backend.v1.IssuerBackendService.IssueBatch:output_type -> vca.backend.v1.IssueBatchResponse
-	55,  // 203: vca.backend.v1.IssuerBackendService.GetIssuanceStatus:output_type -> vca.backend.v1.GetIssuanceStatusResponse
-	53,  // 204: vca.backend.v1.IssuerBackendService.Revoke:output_type -> vca.backend.v1.RevokeResponse
-	57,  // 205: vca.backend.v1.IssuerBackendService.ListIssuedCredentials:output_type -> vca.backend.v1.ListIssuedCredentialsResponse
-	60,  // 206: vca.backend.v1.IssuerBackendService.GetIssuerMetadata:output_type -> vca.backend.v1.GetIssuerMetadataResponse
-	63,  // 207: vca.backend.v1.IssuerBackendService.GetIssuerIdentity:output_type -> vca.backend.v1.GetIssuerIdentityResponse
-	65,  // 208: vca.backend.v1.IssuerBackendService.ProvisionIssuerIdentity:output_type -> vca.backend.v1.ProvisionIssuerIdentityResponse
-	67,  // 209: vca.backend.v1.IssuerBackendService.ImportIssuerIdentity:output_type -> vca.backend.v1.ImportIssuerIdentityResponse
-	69,  // 210: vca.backend.v1.IssuerBackendService.SetPresentationRequirement:output_type -> vca.backend.v1.SetPresentationRequirementResponse
-	71,  // 211: vca.backend.v1.IssuerBackendService.GetPresentationRequirement:output_type -> vca.backend.v1.GetPresentationRequirementResponse
-	74,  // 212: vca.backend.v1.IssuerBackendService.GetHolderSignInSource:output_type -> vca.backend.v1.GetHolderSignInSourceResponse
-	76,  // 213: vca.backend.v1.IssuerBackendService.SetHolderSignInSource:output_type -> vca.backend.v1.SetHolderSignInSourceResponse
-	33,  // 214: vca.backend.v1.IssuerBackendService.ListConnections:output_type -> vca.backend.v1.ListConnectionsResponse
-	78,  // 215: vca.backend.v1.HolderBackendService.Register:output_type -> vca.backend.v1.RegisterResponse
-	81,  // 216: vca.backend.v1.HolderBackendService.ListCredentials:output_type -> vca.backend.v1.ListCredentialsResponse
-	83,  // 217: vca.backend.v1.HolderBackendService.AcceptOffer:output_type -> vca.backend.v1.AcceptOfferResponse
-	85,  // 218: vca.backend.v1.HolderBackendService.Present:output_type -> vca.backend.v1.PresentResponse
-	87,  // 219: vca.backend.v1.HolderBackendService.DeleteCredential:output_type -> vca.backend.v1.DeleteCredentialResponse
-	90,  // 220: vca.backend.v1.HolderBackendService.ListKeys:output_type -> vca.backend.v1.ListKeysResponse
-	92,  // 221: vca.backend.v1.HolderBackendService.CreateKey:output_type -> vca.backend.v1.CreateKeyResponse
-	95,  // 222: vca.backend.v1.HolderBackendService.ListDids:output_type -> vca.backend.v1.ListDidsResponse
-	97,  // 223: vca.backend.v1.HolderBackendService.CreateDid:output_type -> vca.backend.v1.CreateDidResponse
-	99,  // 224: vca.backend.v1.HolderBackendService.SetDefaultDid:output_type -> vca.backend.v1.SetDefaultDidResponse
-	101, // 225: vca.backend.v1.HolderBackendService.RejectOffer:output_type -> vca.backend.v1.RejectOfferResponse
-	118, // 226: vca.backend.v1.HolderBackendService.ListEvents:output_type -> vca.backend.v1.ListEventsResponse
-	103, // 227: vca.backend.v1.HolderBackendService.GetCredentialDocument:output_type -> vca.backend.v1.GetCredentialDocumentResponse
-	105, // 228: vca.backend.v1.HolderBackendService.GetWalletLock:output_type -> vca.backend.v1.GetWalletLockResponse
-	107, // 229: vca.backend.v1.HolderBackendService.UnlockWallet:output_type -> vca.backend.v1.UnlockWalletResponse
-	109, // 230: vca.backend.v1.HolderBackendService.OpenInvitation:output_type -> vca.backend.v1.OpenInvitationResponse
-	111, // 231: vca.backend.v1.HolderBackendService.ListWalletConnections:output_type -> vca.backend.v1.ListWalletConnectionsResponse
-	113, // 232: vca.backend.v1.HolderBackendService.ListInbox:output_type -> vca.backend.v1.ListInboxResponse
-	120, // 233: vca.backend.v1.VerifierBackendService.CreateRequest:output_type -> vca.backend.v1.CreateRequestResponse
-	124, // 234: vca.backend.v1.VerifierBackendService.GetResult:output_type -> vca.backend.v1.GetResultResponse
-	122, // 235: vca.backend.v1.VerifierBackendService.SubmitBrowserAnswer:output_type -> vca.backend.v1.SubmitBrowserAnswerResponse
-	158, // 236: vca.backend.v1.VerifierBackendService.VerifyCredential:output_type -> vca.backend.v1.VerifyCredentialResponse
-	152, // 237: vca.backend.v1.VerifierBackendService.ListProofRequests:output_type -> vca.backend.v1.ListProofRequestsResponse
-	155, // 238: vca.backend.v1.VerifierBackendService.ListProofSchemas:output_type -> vca.backend.v1.ListProofSchemasResponse
-	150, // 239: vca.backend.v1.VerifierBackendService.ListVerifierConnections:output_type -> vca.backend.v1.ListVerifierConnectionsResponse
-	126, // 240: vca.backend.v1.CatalogBackendService.ListCredentialTypes:output_type -> vca.backend.v1.ListCredentialTypesResponse
-	130, // 241: vca.backend.v1.TenantBackendService.CreateTenant:output_type -> vca.backend.v1.CreateTenantResponse
-	132, // 242: vca.backend.v1.TenantBackendService.GetTenant:output_type -> vca.backend.v1.GetTenantResponse
-	134, // 243: vca.backend.v1.TenantBackendService.ListTenants:output_type -> vca.backend.v1.ListTenantsResponse
-	136, // 244: vca.backend.v1.TenantBackendService.DeleteTenant:output_type -> vca.backend.v1.DeleteTenantResponse
-	139, // 245: vca.backend.v1.TenantBackendService.ListClientCredentials:output_type -> vca.backend.v1.ListClientCredentialsResponse
-	141, // 246: vca.backend.v1.TenantBackendService.CreateClientCredential:output_type -> vca.backend.v1.CreateClientCredentialResponse
-	143, // 247: vca.backend.v1.TenantBackendService.DeleteClientCredential:output_type -> vca.backend.v1.DeleteClientCredentialResponse
-	146, // 248: vca.backend.v1.NotificationBackendService.GetWebhook:output_type -> vca.backend.v1.GetWebhookResponse
-	148, // 249: vca.backend.v1.NotificationBackendService.SetWebhook:output_type -> vca.backend.v1.SetWebhookResponse
-	12,  // 250: vca.backend.v1.BulkImportBackendService.GetBulkTemplate:output_type -> vca.backend.v1.GetBulkTemplateResponse
-	14,  // 251: vca.backend.v1.BulkImportBackendService.UploadBulkFile:output_type -> vca.backend.v1.UploadBulkFileResponse
-	16,  // 252: vca.backend.v1.BulkImportBackendService.PreviewBulkFile:output_type -> vca.backend.v1.PreviewBulkFileResponse
-	19,  // 253: vca.backend.v1.BulkImportBackendService.IssueBulkFile:output_type -> vca.backend.v1.IssueBulkFileResponse
-	21,  // 254: vca.backend.v1.BulkImportBackendService.ListBulkFiles:output_type -> vca.backend.v1.ListBulkFilesResponse
-	24,  // 255: vca.backend.v1.BulkImportBackendService.ListBulkFileRows:output_type -> vca.backend.v1.ListBulkFileRowsResponse
-	27,  // 256: vca.backend.v1.BulkImportBackendService.RetryBulkFile:output_type -> vca.backend.v1.RetryBulkFileResponse
-	198, // [198:257] is the sub-list for method output_type
-	139, // [139:198] is the sub-list for method input_type
-	139, // [139:139] is the sub-list for extension type_name
-	139, // [139:139] is the sub-list for extension extendee
-	0,   // [0:139] is the sub-list for field type_name
+	174, // 124: vca.backend.v1.NotificationEndpoint.updated_at:type_name -> google.protobuf.Timestamp
+	148, // 125: vca.backend.v1.GetNotificationEndpointResponse.endpoint:type_name -> vca.backend.v1.NotificationEndpoint
+	148, // 126: vca.backend.v1.SetNotificationEndpointResponse.endpoint:type_name -> vca.backend.v1.NotificationEndpoint
+	144, // 127: vca.backend.v1.SetWebhookResponse.webhook:type_name -> vca.backend.v1.Webhook
+	172, // 128: vca.backend.v1.ListVerifierConnectionsRequest.page:type_name -> vca.common.v1.Pagination
+	34,  // 129: vca.backend.v1.ListVerifierConnectionsResponse.connections:type_name -> vca.backend.v1.DidcommConnection
+	173, // 130: vca.backend.v1.ListVerifierConnectionsResponse.page:type_name -> vca.common.v1.PageResult
+	172, // 131: vca.backend.v1.ListProofRequestsRequest.page:type_name -> vca.common.v1.Pagination
+	158, // 132: vca.backend.v1.ListProofRequestsResponse.requests:type_name -> vca.backend.v1.ProofRequest
+	173, // 133: vca.backend.v1.ListProofRequestsResponse.page:type_name -> vca.common.v1.PageResult
+	174, // 134: vca.backend.v1.ProofRequest.created_at:type_name -> google.protobuf.Timestamp
+	172, // 135: vca.backend.v1.ListProofSchemasRequest.page:type_name -> vca.common.v1.Pagination
+	161, // 136: vca.backend.v1.ListProofSchemasResponse.schemas:type_name -> vca.backend.v1.ProofSchema
+	173, // 137: vca.backend.v1.ListProofSchemasResponse.page:type_name -> vca.common.v1.PageResult
+	170, // 138: vca.backend.v1.ProofSchema.attribute_types:type_name -> vca.backend.v1.ProofSchema.AttributeTypesEntry
+	169, // 139: vca.backend.v1.VerifyCredentialResponse.dpg_checks:type_name -> vca.backend.v1.GetResultResponse.DpgCheck
+	178, // 140: vca.backend.v1.IssueBatchResponse.Item.credential:type_name -> vca.common.v1.Credential
+	179, // 141: vca.backend.v1.IssueBatchResponse.Item.error:type_name -> vca.common.v1.Error
+	28,  // 142: vca.backend.v1.CapabilityService.GetCapabilities:input_type -> vca.backend.v1.GetCapabilitiesRequest
+	40,  // 143: vca.backend.v1.IssuerBackendService.RegisterCredentialConfiguration:input_type -> vca.backend.v1.RegisterCredentialConfigurationRequest
+	46,  // 144: vca.backend.v1.IssuerBackendService.CreateOffer:input_type -> vca.backend.v1.CreateOfferRequest
+	48,  // 145: vca.backend.v1.IssuerBackendService.Issue:input_type -> vca.backend.v1.IssueRequest
+	50,  // 146: vca.backend.v1.IssuerBackendService.IssueBatch:input_type -> vca.backend.v1.IssueBatchRequest
+	54,  // 147: vca.backend.v1.IssuerBackendService.GetIssuanceStatus:input_type -> vca.backend.v1.GetIssuanceStatusRequest
+	52,  // 148: vca.backend.v1.IssuerBackendService.Revoke:input_type -> vca.backend.v1.RevokeRequest
+	56,  // 149: vca.backend.v1.IssuerBackendService.ListIssuedCredentials:input_type -> vca.backend.v1.ListIssuedCredentialsRequest
+	59,  // 150: vca.backend.v1.IssuerBackendService.GetIssuerMetadata:input_type -> vca.backend.v1.GetIssuerMetadataRequest
+	62,  // 151: vca.backend.v1.IssuerBackendService.GetIssuerIdentity:input_type -> vca.backend.v1.GetIssuerIdentityRequest
+	64,  // 152: vca.backend.v1.IssuerBackendService.ProvisionIssuerIdentity:input_type -> vca.backend.v1.ProvisionIssuerIdentityRequest
+	66,  // 153: vca.backend.v1.IssuerBackendService.ImportIssuerIdentity:input_type -> vca.backend.v1.ImportIssuerIdentityRequest
+	68,  // 154: vca.backend.v1.IssuerBackendService.SetPresentationRequirement:input_type -> vca.backend.v1.SetPresentationRequirementRequest
+	70,  // 155: vca.backend.v1.IssuerBackendService.GetPresentationRequirement:input_type -> vca.backend.v1.GetPresentationRequirementRequest
+	73,  // 156: vca.backend.v1.IssuerBackendService.GetHolderSignInSource:input_type -> vca.backend.v1.GetHolderSignInSourceRequest
+	75,  // 157: vca.backend.v1.IssuerBackendService.SetHolderSignInSource:input_type -> vca.backend.v1.SetHolderSignInSourceRequest
+	32,  // 158: vca.backend.v1.IssuerBackendService.ListConnections:input_type -> vca.backend.v1.ListConnectionsRequest
+	77,  // 159: vca.backend.v1.HolderBackendService.Register:input_type -> vca.backend.v1.RegisterRequest
+	80,  // 160: vca.backend.v1.HolderBackendService.ListCredentials:input_type -> vca.backend.v1.ListCredentialsRequest
+	82,  // 161: vca.backend.v1.HolderBackendService.AcceptOffer:input_type -> vca.backend.v1.AcceptOfferRequest
+	84,  // 162: vca.backend.v1.HolderBackendService.Present:input_type -> vca.backend.v1.PresentRequest
+	86,  // 163: vca.backend.v1.HolderBackendService.DeleteCredential:input_type -> vca.backend.v1.DeleteCredentialRequest
+	89,  // 164: vca.backend.v1.HolderBackendService.ListKeys:input_type -> vca.backend.v1.ListKeysRequest
+	91,  // 165: vca.backend.v1.HolderBackendService.CreateKey:input_type -> vca.backend.v1.CreateKeyRequest
+	94,  // 166: vca.backend.v1.HolderBackendService.ListDids:input_type -> vca.backend.v1.ListDidsRequest
+	96,  // 167: vca.backend.v1.HolderBackendService.CreateDid:input_type -> vca.backend.v1.CreateDidRequest
+	98,  // 168: vca.backend.v1.HolderBackendService.SetDefaultDid:input_type -> vca.backend.v1.SetDefaultDidRequest
+	100, // 169: vca.backend.v1.HolderBackendService.RejectOffer:input_type -> vca.backend.v1.RejectOfferRequest
+	117, // 170: vca.backend.v1.HolderBackendService.ListEvents:input_type -> vca.backend.v1.ListEventsRequest
+	102, // 171: vca.backend.v1.HolderBackendService.GetCredentialDocument:input_type -> vca.backend.v1.GetCredentialDocumentRequest
+	104, // 172: vca.backend.v1.HolderBackendService.GetWalletLock:input_type -> vca.backend.v1.GetWalletLockRequest
+	106, // 173: vca.backend.v1.HolderBackendService.UnlockWallet:input_type -> vca.backend.v1.UnlockWalletRequest
+	108, // 174: vca.backend.v1.HolderBackendService.OpenInvitation:input_type -> vca.backend.v1.OpenInvitationRequest
+	110, // 175: vca.backend.v1.HolderBackendService.ListWalletConnections:input_type -> vca.backend.v1.ListWalletConnectionsRequest
+	112, // 176: vca.backend.v1.HolderBackendService.ListInbox:input_type -> vca.backend.v1.ListInboxRequest
+	119, // 177: vca.backend.v1.VerifierBackendService.CreateRequest:input_type -> vca.backend.v1.CreateRequestRequest
+	123, // 178: vca.backend.v1.VerifierBackendService.GetResult:input_type -> vca.backend.v1.GetResultRequest
+	121, // 179: vca.backend.v1.VerifierBackendService.SubmitBrowserAnswer:input_type -> vca.backend.v1.SubmitBrowserAnswerRequest
+	162, // 180: vca.backend.v1.VerifierBackendService.VerifyCredential:input_type -> vca.backend.v1.VerifyCredentialRequest
+	156, // 181: vca.backend.v1.VerifierBackendService.ListProofRequests:input_type -> vca.backend.v1.ListProofRequestsRequest
+	159, // 182: vca.backend.v1.VerifierBackendService.ListProofSchemas:input_type -> vca.backend.v1.ListProofSchemasRequest
+	154, // 183: vca.backend.v1.VerifierBackendService.ListVerifierConnections:input_type -> vca.backend.v1.ListVerifierConnectionsRequest
+	125, // 184: vca.backend.v1.CatalogBackendService.ListCredentialTypes:input_type -> vca.backend.v1.ListCredentialTypesRequest
+	129, // 185: vca.backend.v1.TenantBackendService.CreateTenant:input_type -> vca.backend.v1.CreateTenantRequest
+	131, // 186: vca.backend.v1.TenantBackendService.GetTenant:input_type -> vca.backend.v1.GetTenantRequest
+	133, // 187: vca.backend.v1.TenantBackendService.ListTenants:input_type -> vca.backend.v1.ListTenantsRequest
+	135, // 188: vca.backend.v1.TenantBackendService.DeleteTenant:input_type -> vca.backend.v1.DeleteTenantRequest
+	138, // 189: vca.backend.v1.TenantBackendService.ListClientCredentials:input_type -> vca.backend.v1.ListClientCredentialsRequest
+	140, // 190: vca.backend.v1.TenantBackendService.CreateClientCredential:input_type -> vca.backend.v1.CreateClientCredentialRequest
+	142, // 191: vca.backend.v1.TenantBackendService.DeleteClientCredential:input_type -> vca.backend.v1.DeleteClientCredentialRequest
+	145, // 192: vca.backend.v1.NotificationBackendService.GetWebhook:input_type -> vca.backend.v1.GetWebhookRequest
+	147, // 193: vca.backend.v1.NotificationBackendService.SetWebhook:input_type -> vca.backend.v1.SetWebhookRequest
+	149, // 194: vca.backend.v1.NotificationBackendService.GetNotificationEndpoint:input_type -> vca.backend.v1.GetNotificationEndpointRequest
+	151, // 195: vca.backend.v1.NotificationBackendService.SetNotificationEndpoint:input_type -> vca.backend.v1.SetNotificationEndpointRequest
+	11,  // 196: vca.backend.v1.BulkImportBackendService.GetBulkTemplate:input_type -> vca.backend.v1.GetBulkTemplateRequest
+	13,  // 197: vca.backend.v1.BulkImportBackendService.UploadBulkFile:input_type -> vca.backend.v1.UploadBulkFileRequest
+	15,  // 198: vca.backend.v1.BulkImportBackendService.PreviewBulkFile:input_type -> vca.backend.v1.PreviewBulkFileRequest
+	18,  // 199: vca.backend.v1.BulkImportBackendService.IssueBulkFile:input_type -> vca.backend.v1.IssueBulkFileRequest
+	20,  // 200: vca.backend.v1.BulkImportBackendService.ListBulkFiles:input_type -> vca.backend.v1.ListBulkFilesRequest
+	23,  // 201: vca.backend.v1.BulkImportBackendService.ListBulkFileRows:input_type -> vca.backend.v1.ListBulkFileRowsRequest
+	26,  // 202: vca.backend.v1.BulkImportBackendService.RetryBulkFile:input_type -> vca.backend.v1.RetryBulkFileRequest
+	29,  // 203: vca.backend.v1.CapabilityService.GetCapabilities:output_type -> vca.backend.v1.GetCapabilitiesResponse
+	41,  // 204: vca.backend.v1.IssuerBackendService.RegisterCredentialConfiguration:output_type -> vca.backend.v1.RegisterCredentialConfigurationResponse
+	47,  // 205: vca.backend.v1.IssuerBackendService.CreateOffer:output_type -> vca.backend.v1.CreateOfferResponse
+	49,  // 206: vca.backend.v1.IssuerBackendService.Issue:output_type -> vca.backend.v1.IssueResponse
+	51,  // 207: vca.backend.v1.IssuerBackendService.IssueBatch:output_type -> vca.backend.v1.IssueBatchResponse
+	55,  // 208: vca.backend.v1.IssuerBackendService.GetIssuanceStatus:output_type -> vca.backend.v1.GetIssuanceStatusResponse
+	53,  // 209: vca.backend.v1.IssuerBackendService.Revoke:output_type -> vca.backend.v1.RevokeResponse
+	57,  // 210: vca.backend.v1.IssuerBackendService.ListIssuedCredentials:output_type -> vca.backend.v1.ListIssuedCredentialsResponse
+	60,  // 211: vca.backend.v1.IssuerBackendService.GetIssuerMetadata:output_type -> vca.backend.v1.GetIssuerMetadataResponse
+	63,  // 212: vca.backend.v1.IssuerBackendService.GetIssuerIdentity:output_type -> vca.backend.v1.GetIssuerIdentityResponse
+	65,  // 213: vca.backend.v1.IssuerBackendService.ProvisionIssuerIdentity:output_type -> vca.backend.v1.ProvisionIssuerIdentityResponse
+	67,  // 214: vca.backend.v1.IssuerBackendService.ImportIssuerIdentity:output_type -> vca.backend.v1.ImportIssuerIdentityResponse
+	69,  // 215: vca.backend.v1.IssuerBackendService.SetPresentationRequirement:output_type -> vca.backend.v1.SetPresentationRequirementResponse
+	71,  // 216: vca.backend.v1.IssuerBackendService.GetPresentationRequirement:output_type -> vca.backend.v1.GetPresentationRequirementResponse
+	74,  // 217: vca.backend.v1.IssuerBackendService.GetHolderSignInSource:output_type -> vca.backend.v1.GetHolderSignInSourceResponse
+	76,  // 218: vca.backend.v1.IssuerBackendService.SetHolderSignInSource:output_type -> vca.backend.v1.SetHolderSignInSourceResponse
+	33,  // 219: vca.backend.v1.IssuerBackendService.ListConnections:output_type -> vca.backend.v1.ListConnectionsResponse
+	78,  // 220: vca.backend.v1.HolderBackendService.Register:output_type -> vca.backend.v1.RegisterResponse
+	81,  // 221: vca.backend.v1.HolderBackendService.ListCredentials:output_type -> vca.backend.v1.ListCredentialsResponse
+	83,  // 222: vca.backend.v1.HolderBackendService.AcceptOffer:output_type -> vca.backend.v1.AcceptOfferResponse
+	85,  // 223: vca.backend.v1.HolderBackendService.Present:output_type -> vca.backend.v1.PresentResponse
+	87,  // 224: vca.backend.v1.HolderBackendService.DeleteCredential:output_type -> vca.backend.v1.DeleteCredentialResponse
+	90,  // 225: vca.backend.v1.HolderBackendService.ListKeys:output_type -> vca.backend.v1.ListKeysResponse
+	92,  // 226: vca.backend.v1.HolderBackendService.CreateKey:output_type -> vca.backend.v1.CreateKeyResponse
+	95,  // 227: vca.backend.v1.HolderBackendService.ListDids:output_type -> vca.backend.v1.ListDidsResponse
+	97,  // 228: vca.backend.v1.HolderBackendService.CreateDid:output_type -> vca.backend.v1.CreateDidResponse
+	99,  // 229: vca.backend.v1.HolderBackendService.SetDefaultDid:output_type -> vca.backend.v1.SetDefaultDidResponse
+	101, // 230: vca.backend.v1.HolderBackendService.RejectOffer:output_type -> vca.backend.v1.RejectOfferResponse
+	118, // 231: vca.backend.v1.HolderBackendService.ListEvents:output_type -> vca.backend.v1.ListEventsResponse
+	103, // 232: vca.backend.v1.HolderBackendService.GetCredentialDocument:output_type -> vca.backend.v1.GetCredentialDocumentResponse
+	105, // 233: vca.backend.v1.HolderBackendService.GetWalletLock:output_type -> vca.backend.v1.GetWalletLockResponse
+	107, // 234: vca.backend.v1.HolderBackendService.UnlockWallet:output_type -> vca.backend.v1.UnlockWalletResponse
+	109, // 235: vca.backend.v1.HolderBackendService.OpenInvitation:output_type -> vca.backend.v1.OpenInvitationResponse
+	111, // 236: vca.backend.v1.HolderBackendService.ListWalletConnections:output_type -> vca.backend.v1.ListWalletConnectionsResponse
+	113, // 237: vca.backend.v1.HolderBackendService.ListInbox:output_type -> vca.backend.v1.ListInboxResponse
+	120, // 238: vca.backend.v1.VerifierBackendService.CreateRequest:output_type -> vca.backend.v1.CreateRequestResponse
+	124, // 239: vca.backend.v1.VerifierBackendService.GetResult:output_type -> vca.backend.v1.GetResultResponse
+	122, // 240: vca.backend.v1.VerifierBackendService.SubmitBrowserAnswer:output_type -> vca.backend.v1.SubmitBrowserAnswerResponse
+	163, // 241: vca.backend.v1.VerifierBackendService.VerifyCredential:output_type -> vca.backend.v1.VerifyCredentialResponse
+	157, // 242: vca.backend.v1.VerifierBackendService.ListProofRequests:output_type -> vca.backend.v1.ListProofRequestsResponse
+	160, // 243: vca.backend.v1.VerifierBackendService.ListProofSchemas:output_type -> vca.backend.v1.ListProofSchemasResponse
+	155, // 244: vca.backend.v1.VerifierBackendService.ListVerifierConnections:output_type -> vca.backend.v1.ListVerifierConnectionsResponse
+	126, // 245: vca.backend.v1.CatalogBackendService.ListCredentialTypes:output_type -> vca.backend.v1.ListCredentialTypesResponse
+	130, // 246: vca.backend.v1.TenantBackendService.CreateTenant:output_type -> vca.backend.v1.CreateTenantResponse
+	132, // 247: vca.backend.v1.TenantBackendService.GetTenant:output_type -> vca.backend.v1.GetTenantResponse
+	134, // 248: vca.backend.v1.TenantBackendService.ListTenants:output_type -> vca.backend.v1.ListTenantsResponse
+	136, // 249: vca.backend.v1.TenantBackendService.DeleteTenant:output_type -> vca.backend.v1.DeleteTenantResponse
+	139, // 250: vca.backend.v1.TenantBackendService.ListClientCredentials:output_type -> vca.backend.v1.ListClientCredentialsResponse
+	141, // 251: vca.backend.v1.TenantBackendService.CreateClientCredential:output_type -> vca.backend.v1.CreateClientCredentialResponse
+	143, // 252: vca.backend.v1.TenantBackendService.DeleteClientCredential:output_type -> vca.backend.v1.DeleteClientCredentialResponse
+	146, // 253: vca.backend.v1.NotificationBackendService.GetWebhook:output_type -> vca.backend.v1.GetWebhookResponse
+	153, // 254: vca.backend.v1.NotificationBackendService.SetWebhook:output_type -> vca.backend.v1.SetWebhookResponse
+	150, // 255: vca.backend.v1.NotificationBackendService.GetNotificationEndpoint:output_type -> vca.backend.v1.GetNotificationEndpointResponse
+	152, // 256: vca.backend.v1.NotificationBackendService.SetNotificationEndpoint:output_type -> vca.backend.v1.SetNotificationEndpointResponse
+	12,  // 257: vca.backend.v1.BulkImportBackendService.GetBulkTemplate:output_type -> vca.backend.v1.GetBulkTemplateResponse
+	14,  // 258: vca.backend.v1.BulkImportBackendService.UploadBulkFile:output_type -> vca.backend.v1.UploadBulkFileResponse
+	16,  // 259: vca.backend.v1.BulkImportBackendService.PreviewBulkFile:output_type -> vca.backend.v1.PreviewBulkFileResponse
+	19,  // 260: vca.backend.v1.BulkImportBackendService.IssueBulkFile:output_type -> vca.backend.v1.IssueBulkFileResponse
+	21,  // 261: vca.backend.v1.BulkImportBackendService.ListBulkFiles:output_type -> vca.backend.v1.ListBulkFilesResponse
+	24,  // 262: vca.backend.v1.BulkImportBackendService.ListBulkFileRows:output_type -> vca.backend.v1.ListBulkFileRowsResponse
+	27,  // 263: vca.backend.v1.BulkImportBackendService.RetryBulkFile:output_type -> vca.backend.v1.RetryBulkFileResponse
+	203, // [203:264] is the sub-list for method output_type
+	142, // [142:203] is the sub-list for method input_type
+	142, // [142:142] is the sub-list for extension type_name
+	142, // [142:142] is the sub-list for extension extendee
+	0,   // [0:142] is the sub-list for field type_name
 }
 
 func init() { file_vca_backend_v1_backend_proto_init() }
@@ -11435,7 +11774,7 @@ func file_vca_backend_v1_backend_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_backend_v1_backend_proto_rawDesc), len(file_vca_backend_v1_backend_proto_rawDesc)),
 			NumEnums:      11,
-			NumMessages:   155,
+			NumMessages:   160,
 			NumExtensions: 0,
 			NumServices:   8,
 		},

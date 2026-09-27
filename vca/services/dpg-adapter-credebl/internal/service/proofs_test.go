@@ -391,18 +391,24 @@ func TestProofRequestKeepsTheNamesItAsks(t *testing.T) {
 	wantCode(t, err, connect.CodeInternal)
 }
 
-// failingStore is a store whose reads and writes of proof records fail.
+// failingStore is a store whose reads and writes of proof records and
+// of notification addresses fail.
 type failingStore struct{ store.KeyValue }
 
+// fails reports a key whose reads and writes fail.
+func (failingStore) fails(key string) bool {
+	return strings.HasPrefix(key, "proof/") || strings.HasPrefix(key, "notify/")
+}
+
 func (f failingStore) Put(ctx context.Context, key string, value []byte) error {
-	if strings.HasPrefix(key, "proof/") {
+	if f.fails(key) {
 		return errors.New("disk full")
 	}
 	return f.KeyValue.Put(ctx, key, value)
 }
 
 func (f failingStore) Get(ctx context.Context, key string) ([]byte, error) {
-	if strings.HasPrefix(key, "proof/") {
+	if f.fails(key) {
 		return nil, errors.New("disk read failed")
 	}
 	return f.KeyValue.Get(ctx, key)

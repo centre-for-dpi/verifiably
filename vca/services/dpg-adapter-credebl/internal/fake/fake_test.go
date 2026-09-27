@@ -418,3 +418,57 @@ func TestFakeServesTheProofCalls(t *testing.T) {
 		}
 	}
 }
+
+// statusOf sends one request and returns its status code.
+func statusOf(t *testing.T, f *fake.Server, method, path, body string) int {
+	t.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), method, f.URL()+path, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := f.Client().Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, path, err)
+	}
+	if cerr := resp.Body.Close(); cerr != nil {
+		t.Errorf("the close failed: %v", cerr)
+	}
+	return resp.StatusCode
+}
+
+// TestFakeKeepsTheNotifySettings is P6-C8: the fake keeps the webhook,
+// the notification address and the client credential of each
+// organisation, as the platform does.
+func TestFakeKeepsTheNotifySettings(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	if body := get(t, f, "/v1/webhooks/orgs/webhookurl?orgId=org-2"); !strings.Contains(body, `"webhookUrl": null`) {
+		t.Errorf("no webhook = %s", body)
+	}
+	post(t, f, "/v1/webhooks/orgs/org-2/register", `{"webhookUrl":"https://hooks.example.org/vca"}`)
+	if body := get(t, f, "/v1/webhooks/orgs/webhookurl?orgId=org-2"); !strings.Contains(body, "hooks.example.org") {
+		t.Errorf("a webhook = %s", body)
+	}
+	path := "/v1/notification/register/webhook-endpoint"
+	if got := statusOf(t, f, http.MethodPost, path, `{"orgId":"org-2"}`); got != http.StatusCreated {
+		t.Errorf("first address = %d", got)
+	}
+	if got := statusOf(t, f, http.MethodPost, path, `{"orgId":"org-2"}`); got != http.StatusInternalServerError {
+		t.Errorf("second address = %d", got)
+	}
+	if got := statusOf(t, f, http.MethodPost, path, `{`); got != http.StatusInternalServerError {
+		t.Errorf("a broken body = %d", got)
+	}
+	creds := "/v1/orgs/org-2/client_credentials" //nolint:gosec // G101: this is a path, not a credential.
+	for _, step := range []struct {
+		method string
+		want   int
+	}{
+		{http.MethodGet, http.StatusNotFound}, {http.MethodPost, http.StatusCreated}, {http.MethodGet, http.StatusOK},
+		{http.MethodDelete, http.StatusAccepted}, {http.MethodGet, http.StatusNotFound}, {http.MethodPut, http.StatusMethodNotAllowed},
+	} {
+		if got := statusOf(t, f, step.method, creds, ""); got != step.want {
+			t.Errorf("%s %s = %d, want %d", step.method, creds, got, step.want)
+		}
+	}
+}

@@ -211,6 +211,12 @@ const (
 	// NotificationBackendServiceSetWebhookProcedure is the fully-qualified name of the
 	// NotificationBackendService's SetWebhook RPC.
 	NotificationBackendServiceSetWebhookProcedure = "/vca.backend.v1.NotificationBackendService/SetWebhook"
+	// NotificationBackendServiceGetNotificationEndpointProcedure is the fully-qualified name of the
+	// NotificationBackendService's GetNotificationEndpoint RPC.
+	NotificationBackendServiceGetNotificationEndpointProcedure = "/vca.backend.v1.NotificationBackendService/GetNotificationEndpoint"
+	// NotificationBackendServiceSetNotificationEndpointProcedure is the fully-qualified name of the
+	// NotificationBackendService's SetNotificationEndpoint RPC.
+	NotificationBackendServiceSetNotificationEndpointProcedure = "/vca.backend.v1.NotificationBackendService/SetNotificationEndpoint"
 	// BulkImportBackendServiceGetBulkTemplateProcedure is the fully-qualified name of the
 	// BulkImportBackendService's GetBulkTemplate RPC.
 	BulkImportBackendServiceGetBulkTemplateProcedure = "/vca.backend.v1.BulkImportBackendService/GetBulkTemplate"
@@ -2017,6 +2023,13 @@ type NotificationBackendServiceClient interface {
 	GetWebhook(context.Context, *connect.Request[v1.GetWebhookRequest]) (*connect.Response[v1.GetWebhookResponse], error)
 	// SetWebhook sets or clears the webhook of one DPG tenant.
 	SetWebhook(context.Context, *connect.Request[v1.SetWebhookRequest]) (*connect.Response[v1.SetWebhookResponse], error)
+	// GetNotificationEndpoint returns the holder notification address of
+	// one tenant. The notification service of the DPG posts the push
+	// notifications of the holders there. An adapter serves it when it lists
+	// FEATURE_HOLDER_NOTIFICATIONS.
+	GetNotificationEndpoint(context.Context, *connect.Request[v1.GetNotificationEndpointRequest]) (*connect.Response[v1.GetNotificationEndpointResponse], error)
+	// SetNotificationEndpoint registers that address for one tenant.
+	SetNotificationEndpoint(context.Context, *connect.Request[v1.SetNotificationEndpointRequest]) (*connect.Response[v1.SetNotificationEndpointResponse], error)
 }
 
 // NewNotificationBackendServiceClient constructs a client for the
@@ -2042,13 +2055,27 @@ func NewNotificationBackendServiceClient(httpClient connect.HTTPClient, baseURL 
 			connect.WithSchema(notificationBackendServiceMethods.ByName("SetWebhook")),
 			connect.WithClientOptions(opts...),
 		),
+		getNotificationEndpoint: connect.NewClient[v1.GetNotificationEndpointRequest, v1.GetNotificationEndpointResponse](
+			httpClient,
+			baseURL+NotificationBackendServiceGetNotificationEndpointProcedure,
+			connect.WithSchema(notificationBackendServiceMethods.ByName("GetNotificationEndpoint")),
+			connect.WithClientOptions(opts...),
+		),
+		setNotificationEndpoint: connect.NewClient[v1.SetNotificationEndpointRequest, v1.SetNotificationEndpointResponse](
+			httpClient,
+			baseURL+NotificationBackendServiceSetNotificationEndpointProcedure,
+			connect.WithSchema(notificationBackendServiceMethods.ByName("SetNotificationEndpoint")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // notificationBackendServiceClient implements NotificationBackendServiceClient.
 type notificationBackendServiceClient struct {
-	getWebhook *connect.Client[v1.GetWebhookRequest, v1.GetWebhookResponse]
-	setWebhook *connect.Client[v1.SetWebhookRequest, v1.SetWebhookResponse]
+	getWebhook              *connect.Client[v1.GetWebhookRequest, v1.GetWebhookResponse]
+	setWebhook              *connect.Client[v1.SetWebhookRequest, v1.SetWebhookResponse]
+	getNotificationEndpoint *connect.Client[v1.GetNotificationEndpointRequest, v1.GetNotificationEndpointResponse]
+	setNotificationEndpoint *connect.Client[v1.SetNotificationEndpointRequest, v1.SetNotificationEndpointResponse]
 }
 
 // GetWebhook calls vca.backend.v1.NotificationBackendService.GetWebhook.
@@ -2061,6 +2088,16 @@ func (c *notificationBackendServiceClient) SetWebhook(ctx context.Context, req *
 	return c.setWebhook.CallUnary(ctx, req)
 }
 
+// GetNotificationEndpoint calls vca.backend.v1.NotificationBackendService.GetNotificationEndpoint.
+func (c *notificationBackendServiceClient) GetNotificationEndpoint(ctx context.Context, req *connect.Request[v1.GetNotificationEndpointRequest]) (*connect.Response[v1.GetNotificationEndpointResponse], error) {
+	return c.getNotificationEndpoint.CallUnary(ctx, req)
+}
+
+// SetNotificationEndpoint calls vca.backend.v1.NotificationBackendService.SetNotificationEndpoint.
+func (c *notificationBackendServiceClient) SetNotificationEndpoint(ctx context.Context, req *connect.Request[v1.SetNotificationEndpointRequest]) (*connect.Response[v1.SetNotificationEndpointResponse], error) {
+	return c.setNotificationEndpoint.CallUnary(ctx, req)
+}
+
 // NotificationBackendServiceHandler is an implementation of the
 // vca.backend.v1.NotificationBackendService service.
 type NotificationBackendServiceHandler interface {
@@ -2068,6 +2105,13 @@ type NotificationBackendServiceHandler interface {
 	GetWebhook(context.Context, *connect.Request[v1.GetWebhookRequest]) (*connect.Response[v1.GetWebhookResponse], error)
 	// SetWebhook sets or clears the webhook of one DPG tenant.
 	SetWebhook(context.Context, *connect.Request[v1.SetWebhookRequest]) (*connect.Response[v1.SetWebhookResponse], error)
+	// GetNotificationEndpoint returns the holder notification address of
+	// one tenant. The notification service of the DPG posts the push
+	// notifications of the holders there. An adapter serves it when it lists
+	// FEATURE_HOLDER_NOTIFICATIONS.
+	GetNotificationEndpoint(context.Context, *connect.Request[v1.GetNotificationEndpointRequest]) (*connect.Response[v1.GetNotificationEndpointResponse], error)
+	// SetNotificationEndpoint registers that address for one tenant.
+	SetNotificationEndpoint(context.Context, *connect.Request[v1.SetNotificationEndpointRequest]) (*connect.Response[v1.SetNotificationEndpointResponse], error)
 }
 
 // NewNotificationBackendServiceHandler builds an HTTP handler from the service implementation. It
@@ -2089,12 +2133,28 @@ func NewNotificationBackendServiceHandler(svc NotificationBackendServiceHandler,
 		connect.WithSchema(notificationBackendServiceMethods.ByName("SetWebhook")),
 		connect.WithHandlerOptions(opts...),
 	)
+	notificationBackendServiceGetNotificationEndpointHandler := connect.NewUnaryHandler(
+		NotificationBackendServiceGetNotificationEndpointProcedure,
+		svc.GetNotificationEndpoint,
+		connect.WithSchema(notificationBackendServiceMethods.ByName("GetNotificationEndpoint")),
+		connect.WithHandlerOptions(opts...),
+	)
+	notificationBackendServiceSetNotificationEndpointHandler := connect.NewUnaryHandler(
+		NotificationBackendServiceSetNotificationEndpointProcedure,
+		svc.SetNotificationEndpoint,
+		connect.WithSchema(notificationBackendServiceMethods.ByName("SetNotificationEndpoint")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.backend.v1.NotificationBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case NotificationBackendServiceGetWebhookProcedure:
 			notificationBackendServiceGetWebhookHandler.ServeHTTP(w, r)
 		case NotificationBackendServiceSetWebhookProcedure:
 			notificationBackendServiceSetWebhookHandler.ServeHTTP(w, r)
+		case NotificationBackendServiceGetNotificationEndpointProcedure:
+			notificationBackendServiceGetNotificationEndpointHandler.ServeHTTP(w, r)
+		case NotificationBackendServiceSetNotificationEndpointProcedure:
+			notificationBackendServiceSetNotificationEndpointHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -2110,6 +2170,14 @@ func (UnimplementedNotificationBackendServiceHandler) GetWebhook(context.Context
 
 func (UnimplementedNotificationBackendServiceHandler) SetWebhook(context.Context, *connect.Request[v1.SetWebhookRequest]) (*connect.Response[v1.SetWebhookResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.NotificationBackendService.SetWebhook is not implemented"))
+}
+
+func (UnimplementedNotificationBackendServiceHandler) GetNotificationEndpoint(context.Context, *connect.Request[v1.GetNotificationEndpointRequest]) (*connect.Response[v1.GetNotificationEndpointResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.NotificationBackendService.GetNotificationEndpoint is not implemented"))
+}
+
+func (UnimplementedNotificationBackendServiceHandler) SetNotificationEndpoint(context.Context, *connect.Request[v1.SetNotificationEndpointRequest]) (*connect.Response[v1.SetNotificationEndpointResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.NotificationBackendService.SetNotificationEndpoint is not implemented"))
 }
 
 // BulkImportBackendServiceClient is a client for the vca.backend.v1.BulkImportBackendService

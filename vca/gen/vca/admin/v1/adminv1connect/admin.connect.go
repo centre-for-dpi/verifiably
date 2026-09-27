@@ -129,6 +129,9 @@ const (
 	// AdminServiceSetStackWebhookProcedure is the fully-qualified name of the AdminService's
 	// SetStackWebhook RPC.
 	AdminServiceSetStackWebhookProcedure = "/vca.admin.v1.AdminService/SetStackWebhook"
+	// AdminServiceSetStackNotificationEndpointProcedure is the fully-qualified name of the
+	// AdminService's SetStackNotificationEndpoint RPC.
+	AdminServiceSetStackNotificationEndpointProcedure = "/vca.admin.v1.AdminService/SetStackNotificationEndpoint"
 	// AdminServiceGetServiceHealthProcedure is the fully-qualified name of the AdminService's
 	// GetServiceHealth RPC.
 	AdminServiceGetServiceHealthProcedure = "/vca.admin.v1.AdminService/GetServiceHealth"
@@ -223,6 +226,11 @@ type AdminServiceClient interface {
 	ListStackWebhooks(context.Context, *connect.Request[v1.ListStackWebhooksRequest]) (*connect.Response[v1.ListStackWebhooksResponse], error)
 	// SetStackWebhook sets or clears the webhook of the tenant of one stack.
 	SetStackWebhook(context.Context, *connect.Request[v1.SetStackWebhookRequest]) (*connect.Response[v1.SetStackWebhookResponse], error)
+	// SetStackNotificationEndpoint registers the holder notification
+	// address of the tenant of one stack (ADR-067). The notification
+	// service of the stack posts the push notifications of the holders
+	// there.
+	SetStackNotificationEndpoint(context.Context, *connect.Request[v1.SetStackNotificationEndpointRequest]) (*connect.Response[v1.SetStackNotificationEndpointResponse], error)
 	// GetServiceHealth returns the health of every service in the deployment.
 	GetServiceHealth(context.Context, *connect.Request[v1.GetServiceHealthRequest]) (*connect.Response[v1.GetServiceHealthResponse], error)
 	// QueryAuditLog returns audit records that match a filter, newest first.
@@ -433,6 +441,12 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("SetStackWebhook")),
 			connect.WithClientOptions(opts...),
 		),
+		setStackNotificationEndpoint: connect.NewClient[v1.SetStackNotificationEndpointRequest, v1.SetStackNotificationEndpointResponse](
+			httpClient,
+			baseURL+AdminServiceSetStackNotificationEndpointProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("SetStackNotificationEndpoint")),
+			connect.WithClientOptions(opts...),
+		),
 		getServiceHealth: connect.NewClient[v1.GetServiceHealthRequest, v1.GetServiceHealthResponse](
 			httpClient,
 			baseURL+AdminServiceGetServiceHealthProcedure,
@@ -462,41 +476,42 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 
 // adminServiceClient implements AdminServiceClient.
 type adminServiceClient struct {
-	createTenant          *connect.Client[v1.CreateTenantRequest, v1.CreateTenantResponse]
-	getTenant             *connect.Client[v1.GetTenantRequest, v1.GetTenantResponse]
-	listTenants           *connect.Client[v1.ListTenantsRequest, v1.ListTenantsResponse]
-	updateTenant          *connect.Client[v1.UpdateTenantRequest, v1.UpdateTenantResponse]
-	deleteTenant          *connect.Client[v1.DeleteTenantRequest, v1.DeleteTenantResponse]
-	bindTenant            *connect.Client[v1.BindTenantRequest, v1.BindTenantResponse]
-	unbindTenant          *connect.Client[v1.UnbindTenantRequest, v1.UnbindTenantResponse]
-	upsertTrustEntry      *connect.Client[v1.UpsertTrustEntryRequest, v1.UpsertTrustEntryResponse]
-	getTrustEntry         *connect.Client[v1.GetTrustEntryRequest, v1.GetTrustEntryResponse]
-	listTrustEntries      *connect.Client[v1.ListTrustEntriesRequest, v1.ListTrustEntriesResponse]
-	deleteTrustEntry      *connect.Client[v1.DeleteTrustEntryRequest, v1.DeleteTrustEntryResponse]
-	approveTrustEntry     *connect.Client[v1.ApproveTrustEntryRequest, v1.ApproveTrustEntryResponse]
-	rejectTrustEntry      *connect.Client[v1.RejectTrustEntryRequest, v1.RejectTrustEntryResponse]
-	addTrustRegistry      *connect.Client[v1.AddTrustRegistryRequest, v1.AddTrustRegistryResponse]
-	listTrustRegistries   *connect.Client[v1.ListTrustRegistriesRequest, v1.ListTrustRegistriesResponse]
-	removeTrustRegistry   *connect.Client[v1.RemoveTrustRegistryRequest, v1.RemoveTrustRegistryResponse]
-	syncTrustRegistry     *connect.Client[v1.SyncTrustRegistryRequest, v1.SyncTrustRegistryResponse]
-	createAuthProvider    *connect.Client[v1.CreateAuthProviderRequest, v1.CreateAuthProviderResponse]
-	getAuthProvider       *connect.Client[v1.GetAuthProviderRequest, v1.GetAuthProviderResponse]
-	listAuthProviders     *connect.Client[v1.ListAuthProvidersRequest, v1.ListAuthProvidersResponse]
-	updateAuthProvider    *connect.Client[v1.UpdateAuthProviderRequest, v1.UpdateAuthProviderResponse]
-	deleteAuthProvider    *connect.Client[v1.DeleteAuthProviderRequest, v1.DeleteAuthProviderResponse]
-	onboardProvider       *connect.Client[v1.OnboardProviderRequest, v1.OnboardProviderResponse]
-	createApiKey          *connect.Client[v1.CreateApiKeyRequest, v1.CreateApiKeyResponse]
-	listApiKeys           *connect.Client[v1.ListApiKeysRequest, v1.ListApiKeysResponse]
-	revokeApiKey          *connect.Client[v1.RevokeApiKeyRequest, v1.RevokeApiKeyResponse]
-	listStackCredentials  *connect.Client[v1.ListStackCredentialsRequest, v1.ListStackCredentialsResponse]
-	createStackCredential *connect.Client[v1.CreateStackCredentialRequest, v1.CreateStackCredentialResponse]
-	deleteStackCredential *connect.Client[v1.DeleteStackCredentialRequest, v1.DeleteStackCredentialResponse]
-	listStackWebhooks     *connect.Client[v1.ListStackWebhooksRequest, v1.ListStackWebhooksResponse]
-	setStackWebhook       *connect.Client[v1.SetStackWebhookRequest, v1.SetStackWebhookResponse]
-	getServiceHealth      *connect.Client[v1.GetServiceHealthRequest, v1.GetServiceHealthResponse]
-	queryAuditLog         *connect.Client[v1.QueryAuditLogRequest, v1.QueryAuditLogResponse]
-	onboardAdmin          *connect.Client[v1.OnboardAdminRequest, v1.OnboardAdminResponse]
-	listCommands          *connect.Client[v1.ListCommandsRequest, v1.ListCommandsResponse]
+	createTenant                 *connect.Client[v1.CreateTenantRequest, v1.CreateTenantResponse]
+	getTenant                    *connect.Client[v1.GetTenantRequest, v1.GetTenantResponse]
+	listTenants                  *connect.Client[v1.ListTenantsRequest, v1.ListTenantsResponse]
+	updateTenant                 *connect.Client[v1.UpdateTenantRequest, v1.UpdateTenantResponse]
+	deleteTenant                 *connect.Client[v1.DeleteTenantRequest, v1.DeleteTenantResponse]
+	bindTenant                   *connect.Client[v1.BindTenantRequest, v1.BindTenantResponse]
+	unbindTenant                 *connect.Client[v1.UnbindTenantRequest, v1.UnbindTenantResponse]
+	upsertTrustEntry             *connect.Client[v1.UpsertTrustEntryRequest, v1.UpsertTrustEntryResponse]
+	getTrustEntry                *connect.Client[v1.GetTrustEntryRequest, v1.GetTrustEntryResponse]
+	listTrustEntries             *connect.Client[v1.ListTrustEntriesRequest, v1.ListTrustEntriesResponse]
+	deleteTrustEntry             *connect.Client[v1.DeleteTrustEntryRequest, v1.DeleteTrustEntryResponse]
+	approveTrustEntry            *connect.Client[v1.ApproveTrustEntryRequest, v1.ApproveTrustEntryResponse]
+	rejectTrustEntry             *connect.Client[v1.RejectTrustEntryRequest, v1.RejectTrustEntryResponse]
+	addTrustRegistry             *connect.Client[v1.AddTrustRegistryRequest, v1.AddTrustRegistryResponse]
+	listTrustRegistries          *connect.Client[v1.ListTrustRegistriesRequest, v1.ListTrustRegistriesResponse]
+	removeTrustRegistry          *connect.Client[v1.RemoveTrustRegistryRequest, v1.RemoveTrustRegistryResponse]
+	syncTrustRegistry            *connect.Client[v1.SyncTrustRegistryRequest, v1.SyncTrustRegistryResponse]
+	createAuthProvider           *connect.Client[v1.CreateAuthProviderRequest, v1.CreateAuthProviderResponse]
+	getAuthProvider              *connect.Client[v1.GetAuthProviderRequest, v1.GetAuthProviderResponse]
+	listAuthProviders            *connect.Client[v1.ListAuthProvidersRequest, v1.ListAuthProvidersResponse]
+	updateAuthProvider           *connect.Client[v1.UpdateAuthProviderRequest, v1.UpdateAuthProviderResponse]
+	deleteAuthProvider           *connect.Client[v1.DeleteAuthProviderRequest, v1.DeleteAuthProviderResponse]
+	onboardProvider              *connect.Client[v1.OnboardProviderRequest, v1.OnboardProviderResponse]
+	createApiKey                 *connect.Client[v1.CreateApiKeyRequest, v1.CreateApiKeyResponse]
+	listApiKeys                  *connect.Client[v1.ListApiKeysRequest, v1.ListApiKeysResponse]
+	revokeApiKey                 *connect.Client[v1.RevokeApiKeyRequest, v1.RevokeApiKeyResponse]
+	listStackCredentials         *connect.Client[v1.ListStackCredentialsRequest, v1.ListStackCredentialsResponse]
+	createStackCredential        *connect.Client[v1.CreateStackCredentialRequest, v1.CreateStackCredentialResponse]
+	deleteStackCredential        *connect.Client[v1.DeleteStackCredentialRequest, v1.DeleteStackCredentialResponse]
+	listStackWebhooks            *connect.Client[v1.ListStackWebhooksRequest, v1.ListStackWebhooksResponse]
+	setStackWebhook              *connect.Client[v1.SetStackWebhookRequest, v1.SetStackWebhookResponse]
+	setStackNotificationEndpoint *connect.Client[v1.SetStackNotificationEndpointRequest, v1.SetStackNotificationEndpointResponse]
+	getServiceHealth             *connect.Client[v1.GetServiceHealthRequest, v1.GetServiceHealthResponse]
+	queryAuditLog                *connect.Client[v1.QueryAuditLogRequest, v1.QueryAuditLogResponse]
+	onboardAdmin                 *connect.Client[v1.OnboardAdminRequest, v1.OnboardAdminResponse]
+	listCommands                 *connect.Client[v1.ListCommandsRequest, v1.ListCommandsResponse]
 }
 
 // CreateTenant calls vca.admin.v1.AdminService.CreateTenant.
@@ -654,6 +669,11 @@ func (c *adminServiceClient) SetStackWebhook(ctx context.Context, req *connect.R
 	return c.setStackWebhook.CallUnary(ctx, req)
 }
 
+// SetStackNotificationEndpoint calls vca.admin.v1.AdminService.SetStackNotificationEndpoint.
+func (c *adminServiceClient) SetStackNotificationEndpoint(ctx context.Context, req *connect.Request[v1.SetStackNotificationEndpointRequest]) (*connect.Response[v1.SetStackNotificationEndpointResponse], error) {
+	return c.setStackNotificationEndpoint.CallUnary(ctx, req)
+}
+
 // GetServiceHealth calls vca.admin.v1.AdminService.GetServiceHealth.
 func (c *adminServiceClient) GetServiceHealth(ctx context.Context, req *connect.Request[v1.GetServiceHealthRequest]) (*connect.Response[v1.GetServiceHealthResponse], error) {
 	return c.getServiceHealth.CallUnary(ctx, req)
@@ -754,6 +774,11 @@ type AdminServiceHandler interface {
 	ListStackWebhooks(context.Context, *connect.Request[v1.ListStackWebhooksRequest]) (*connect.Response[v1.ListStackWebhooksResponse], error)
 	// SetStackWebhook sets or clears the webhook of the tenant of one stack.
 	SetStackWebhook(context.Context, *connect.Request[v1.SetStackWebhookRequest]) (*connect.Response[v1.SetStackWebhookResponse], error)
+	// SetStackNotificationEndpoint registers the holder notification
+	// address of the tenant of one stack (ADR-067). The notification
+	// service of the stack posts the push notifications of the holders
+	// there.
+	SetStackNotificationEndpoint(context.Context, *connect.Request[v1.SetStackNotificationEndpointRequest]) (*connect.Response[v1.SetStackNotificationEndpointResponse], error)
 	// GetServiceHealth returns the health of every service in the deployment.
 	GetServiceHealth(context.Context, *connect.Request[v1.GetServiceHealthRequest]) (*connect.Response[v1.GetServiceHealthResponse], error)
 	// QueryAuditLog returns audit records that match a filter, newest first.
@@ -960,6 +985,12 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("SetStackWebhook")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceSetStackNotificationEndpointHandler := connect.NewUnaryHandler(
+		AdminServiceSetStackNotificationEndpointProcedure,
+		svc.SetStackNotificationEndpoint,
+		connect.WithSchema(adminServiceMethods.ByName("SetStackNotificationEndpoint")),
+		connect.WithHandlerOptions(opts...),
+	)
 	adminServiceGetServiceHealthHandler := connect.NewUnaryHandler(
 		AdminServiceGetServiceHealthProcedure,
 		svc.GetServiceHealth,
@@ -1048,6 +1079,8 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceListStackWebhooksHandler.ServeHTTP(w, r)
 		case AdminServiceSetStackWebhookProcedure:
 			adminServiceSetStackWebhookHandler.ServeHTTP(w, r)
+		case AdminServiceSetStackNotificationEndpointProcedure:
+			adminServiceSetStackNotificationEndpointHandler.ServeHTTP(w, r)
 		case AdminServiceGetServiceHealthProcedure:
 			adminServiceGetServiceHealthHandler.ServeHTTP(w, r)
 		case AdminServiceQueryAuditLogProcedure:
@@ -1187,6 +1220,10 @@ func (UnimplementedAdminServiceHandler) ListStackWebhooks(context.Context, *conn
 
 func (UnimplementedAdminServiceHandler) SetStackWebhook(context.Context, *connect.Request[v1.SetStackWebhookRequest]) (*connect.Response[v1.SetStackWebhookResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.SetStackWebhook is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) SetStackNotificationEndpoint(context.Context, *connect.Request[v1.SetStackNotificationEndpointRequest]) (*connect.Response[v1.SetStackNotificationEndpointResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.SetStackNotificationEndpoint is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) GetServiceHealth(context.Context, *connect.Request[v1.GetServiceHealthRequest]) (*connect.Response[v1.GetServiceHealthResponse], error) {

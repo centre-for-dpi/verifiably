@@ -1,0 +1,14 @@
+{
+  "statusCode": 201,
+  "message": "Notification webhook registration process completed successfully",
+  "data": {
+    "id": "2f3a4b5c-6d7e-4f8a-9b0c-1d2e3f4a5b6c",
+    "orgId": "org-2",
+    "notificationWebhook": "https://push.example.org/credebl",
+    "createDateTime": "2026-09-27T09:12:44.118Z",
+    "createdBy": "1",
+    "lastChangedDateTime": "2026-09-27T09:12:44.118Z",
+    "lastChangedBy": "1",
+    "deletedAt": null
+  }
+}

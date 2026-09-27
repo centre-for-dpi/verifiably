@@ -367,6 +367,7 @@ var Notices = map[string]components.Toast{
 	"stack-credential-deleted": {Level: "warn", Text: msg.T("admin.keys.stack.deleted")},
 	"webhook-saved":            {Level: "ok", Text: msg.T("admin.notifications.webhook.saved")},
 	"webhook-cleared":          {Level: "warn", Text: msg.T("admin.notifications.webhook.cleared")},
+	"notification-saved":       {Level: "ok", Text: msg.T("admin.notifications.holder.saved")},
 	"signed-out":               {Level: "info", Text: "You are signed out."},
 	"retention-saved":          {Level: "ok", Text: msg.T("admin.audit.retention.saved")},
 	"retention-partial":        {Level: "warn", Text: msg.T("admin.audit.retention.partial")},

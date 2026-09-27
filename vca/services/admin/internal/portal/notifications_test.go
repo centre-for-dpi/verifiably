@@ -128,3 +128,84 @@ func TestWebhookSectionWithoutABindingPointsAtTenants(t *testing.T) {
 		t.Error("the page offers a webhook form without a bound tenant")
 	}
 }
+
+// TestWebhookFormSendsTheSigningSecret is P6-C8: the form takes a
+// signing secret in a password field, the stack gets it, and the page
+// says the webhook is signed without showing the secret.
+func TestWebhookFormSendsTheSigningSecret(t *testing.T) {
+	h, tenancy, tenant := webhookHarness(t, backendv1.Feature_FEATURE_WEBHOOKS)
+	page := h.page(t, "/admin/notifications")
+	if !strings.Contains(page, `type="password"`) || !strings.Contains(page, `name="signing_secret"`) {
+		t.Fatal("the form has no password field for the signing secret")
+	}
+	secret := "[sixteen or more characters]"
+	status, _ := h.post(t, "/admin/notifications/webhook", url.Values{
+		"target": {tenant + "|DPG_CREDEBL"}, "url": {"https://hooks.health.example/vca"}, "signing_secret": {secret},
+	})
+	if status != http.StatusSeeOther || tenancy.secrets["org-1"] != secret {
+		t.Fatalf("set = %d, the stack holds %q", status, tenancy.secrets["org-1"])
+	}
+	saved := h.page(t, "/admin/notifications?notice=webhook-saved")
+	if !strings.Contains(saved, msg.T("admin.notifications.webhook.signed.label")) || strings.Contains(saved, secret) {
+		t.Error("the page does not say signed, or it shows the secret")
+	}
+}
+
+// TestFixedWebhookHasNoClearAction is P6-C8: a stack that keeps a
+// webhook once set gets no clear button, and the page says why.
+func TestFixedWebhookHasNoClearAction(t *testing.T) {
+	h, tenancy, tenant := webhookHarness(t, backendv1.Feature_FEATURE_WEBHOOKS)
+	tenancy.fixedHooks = true
+	if status, _ := h.post(t, "/admin/notifications/webhook", url.Values{
+		"target": {tenant + "|DPG_CREDEBL"}, "url": {"https://hooks.health.example/vca"},
+	}); status != http.StatusSeeOther {
+		t.Fatalf("set = %d", status)
+	}
+	page := h.page(t, "/admin/notifications")
+	if strings.Contains(page, msg.T("admin.notifications.webhook.clear.label")) || !strings.Contains(page, msg.T("admin.notifications.webhook.fixed")) {
+		t.Error("a fixed webhook offers a clear, or the page does not say it stays")
+	}
+}
+
+// TestHolderNotificationsOnlyWithFeature is P6-C8 (ADR-067): a stack
+// that lists holder notifications gets a section with the address of
+// each tenant and a form. The stack takes one address per tenant, so a
+// tenant with one leaves the form. Without the feature the section does
+// not show.
+func TestHolderNotificationsOnlyWithFeature(t *testing.T) {
+	h, tenancy, tenant := webhookHarness(t, backendv1.Feature_FEATURE_WEBHOOKS, backendv1.Feature_FEATURE_HOLDER_NOTIFICATIONS)
+	page := h.page(t, "/admin/notifications")
+	for _, want := range []string{msg.T("admin.notifications.holder.label"), `name="notification_url"`, msg.T("admin.notifications.holder.none.label")} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page misses %q", want)
+		}
+	}
+	status, _ := h.post(t, "/admin/notifications/holder", url.Values{
+		"target": {tenant + "|DPG_CREDEBL"}, "notification_url": {"https://push.health.example/credebl"},
+	})
+	if status != http.StatusSeeOther || tenancy.notify["org-1"] != "https://push.health.example/credebl" {
+		t.Fatalf("set = %d, the stack holds %q", status, tenancy.notify["org-1"])
+	}
+	saved := h.page(t, "/admin/notifications?notice=notification-saved")
+	for _, want := range []string{"https://push.health.example/credebl", msg.T("admin.notifications.holder.kept"), msg.T("admin.notifications.holder.saved")} {
+		if !strings.Contains(saved, want) {
+			t.Errorf("the saved page misses %q", want)
+		}
+	}
+	if strings.Contains(saved, `name="notification_url"`) {
+		t.Error("the page offers a second address for the only tenant")
+	}
+	for _, bad := range []url.Values{
+		{"target": {tenant + "|DPG_CREDEBL"}, "notification_url": {"http://push.example"}},
+		{"target": {tenant + "|NOPE"}, "notification_url": {"https://push.example"}},
+		{"target": {"no-separator"}},
+	} {
+		if status, _ := h.post(t, "/admin/notifications/holder", bad); status != http.StatusBadRequest {
+			t.Errorf("%v gave %d", bad, status)
+		}
+	}
+	without, _, _ := webhookHarness(t, backendv1.Feature_FEATURE_WEBHOOKS)
+	if page := without.page(t, "/admin/notifications"); strings.Contains(page, msg.T("admin.notifications.holder.label")) {
+		t.Error("a stack without the feature shows the section")
+	}
+}

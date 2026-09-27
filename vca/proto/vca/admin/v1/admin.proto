@@ -161,6 +161,13 @@ service AdminService {
   rpc SetStackWebhook(SetStackWebhookRequest) returns (SetStackWebhookResponse) {
     option (vca.common.v1.description) = "Sets or clears the webhook of a stack tenant.";
   }
+  // SetStackNotificationEndpoint registers the holder notification
+  // address of the tenant of one stack (ADR-067). The notification
+  // service of the stack posts the push notifications of the holders
+  // there.
+  rpc SetStackNotificationEndpoint(SetStackNotificationEndpointRequest) returns (SetStackNotificationEndpointResponse) {
+    option (vca.common.v1.description) = "Registers the holder notification address of a stack tenant.";
+  }
 
   // GetServiceHealth returns the health of every service in the deployment.
   rpc GetServiceHealth(GetServiceHealthRequest) returns (GetServiceHealthResponse) {
@@ -776,6 +783,12 @@ message StackWebhook {
   vca.backend.v1.Webhook webhook = 5;
   // Why the service could not read the webhook. Empty when it could.
   string error = 6;
+  // The holder notification address, on a stack that lists
+  // FEATURE_HOLDER_NOTIFICATIONS.
+  vca.backend.v1.NotificationEndpoint notification = 7;
+  // Why the service could not read the notification address. Empty when
+  // it could or when the stack has none.
+  string notification_error = 8;
 }
 
 // ListStackWebhooksRequest has no fields.
@@ -795,6 +808,26 @@ message SetStackWebhookRequest {
   vca.config.v1.Dpg stack = 2;
   // The https URL. Empty clears the webhook.
   string url = 3;
+  // The secret the stack signs each call with. Empty keeps the secret
+  // the stack holds. The service keeps no copy and writes no audit of it.
+  string signing_secret = 4;
+}
+
+// SetStackNotificationEndpointRequest names the tenant, the stack and
+// the address.
+message SetStackNotificationEndpointRequest {
+  // The VCA tenant id.
+  string tenant_id = 1;
+  // The stack. The tenant must hold a binding on it.
+  vca.config.v1.Dpg stack = 2;
+  // The https URL. Required.
+  string url = 3;
+}
+
+// SetStackNotificationEndpointResponse returns the stored address.
+message SetStackNotificationEndpointResponse {
+  // The webhook entry of the tenant with the new address.
+  StackWebhook webhook = 1;
 }
 
 // SetStackWebhookResponse returns the stored webhook.

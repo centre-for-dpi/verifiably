@@ -139,28 +139,35 @@ type Server struct {
 	// status forces a status code for one path. A path can carry more
 	// than one status, which the fake serves in order.
 	status map[string][]int
+	// hooked and credentialed hold the organisations with a webhook and
+	// with a client credential. notified holds the organisations with an
+	// address of the notification service.
+	hooked, credentialed, notified map[string]bool
 }
 
 // New starts a fake CREDEBL platform.
 func New(dir string) *Server {
 	f := &Server{
-		dir:         dir,
-		session:     SessionPending,
-		templates:   Templates,
-		orgs:        OrgList,
-		offer:       OfferPending,
-		connections: Connections,
-		record:      RecordOfferSent,
-		files:       BulkFiles,
-		proof:       ProofRequestSent,
-		verified:    VerifiedIndy,
-		proofs:      Proofs,
-		schemas:     PlatformSchemas,
-		types:       map[string]string{},
-		queries:     map[string]string{},
-		deleted:     map[string]bool{},
-		requests:    map[string][]byte{},
-		status:      map[string][]int{},
+		dir:          dir,
+		session:      SessionPending,
+		templates:    Templates,
+		orgs:         OrgList,
+		offer:        OfferPending,
+		connections:  Connections,
+		record:       RecordOfferSent,
+		files:        BulkFiles,
+		proof:        ProofRequestSent,
+		verified:     VerifiedIndy,
+		proofs:       Proofs,
+		schemas:      PlatformSchemas,
+		types:        map[string]string{},
+		queries:      map[string]string{},
+		deleted:      map[string]bool{},
+		requests:     map[string][]byte{},
+		status:       map[string][]int{},
+		hooked:       map[string]bool{},
+		credentialed: map[string]bool{},
+		notified:     map[string]bool{},
 	}
 	f.Server = httptest.NewServer(http.HandlerFunc(f.serve))
 	return f
@@ -361,6 +368,9 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	if f.serveBulk(w, r, files) {
 		return
 	}
+	if f.serveNotify(w, r) {
+		return
+	}
 	if f.serveOrgs(w, r, orgs) {
 		return
 	}
@@ -393,6 +403,65 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		f.send(w, string(session))
 	default:
 		http.NotFound(w, r)
+	}
+}
+
+// serveNotify answers the webhook, notification and client credential
+// calls of P6-C8 from the answers written from the platform sources
+// (testdata/doc). It keeps which organisation holds each, as the
+// platform does. It reports whether it answered.
+func (f *Server) serveNotify(w http.ResponseWriter, r *http.Request) bool {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	org := r.URL.Query().Get("orgId")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	switch {
+	case r.URL.Path == "/v1/webhooks/orgs/webhookurl" && r.Method == http.MethodGet:
+		if f.hooked[org] {
+			f.send(w, "doc/webhook-url.json")
+		} else {
+			f.send(w, "doc/webhook-url-none.json")
+		}
+	case len(parts) == 5 && parts[1] == "webhooks" && parts[4] == "register" && r.Method == http.MethodPost:
+		f.hooked[parts[3]] = true
+		f.sendStatus(w, http.StatusCreated, "doc/webhook-registered.json")
+	case r.URL.Path == "/v1/notification/register/webhook-endpoint" && r.Method == http.MethodPost:
+		var body struct {
+			OrgID string `json:"orgId"`
+		}
+		if json.Unmarshal(f.requests[r.URL.Path], &body) != nil || f.notified[body.OrgID] {
+			// The organisation column is unique, so a second row fails.
+			w.WriteHeader(http.StatusInternalServerError)
+			return true
+		}
+		f.notified[body.OrgID] = true
+		f.sendStatus(w, http.StatusCreated, "doc/notification-endpoint-registered.json")
+	case len(parts) == 4 && parts[1] == "orgs" && parts[3] == "client_credentials":
+		f.serveCredential(w, r, parts[2])
+	default:
+		return false
+	}
+	return true
+}
+
+// serveCredential answers the client credential calls of one
+// organisation. The caller holds the lock.
+func (f *Server) serveCredential(w http.ResponseWriter, r *http.Request, org string) {
+	switch r.Method {
+	case http.MethodGet:
+		if !f.credentialed[org] {
+			http.NotFound(w, r)
+			return
+		}
+		f.send(w, "doc/client-credentials.json")
+	case http.MethodPost:
+		f.credentialed[org] = true
+		f.sendStatus(w, http.StatusCreated, "doc/client-credentials-created.json")
+	case http.MethodDelete:
+		delete(f.credentialed, org)
+		f.sendStatus(w, http.StatusAccepted, "doc/client-credentials-deleted.json")
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 

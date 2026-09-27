@@ -21,11 +21,12 @@ import (
 // the stack file and a did:key that the agent makes, so it can sign at
 // once. The capability answer lists FEATURE_MULTI_TENANCY.
 
-// clientCredentialMessage says why the client credential RPCs answer
-// Unimplemented. The capability answer lists no
-// FEATURE_TENANT_CLIENT_CREDENTIALS, so the admin pages offer no stack
-// credential on this stack (ADR-038 decision 2).
-const clientCredentialMessage = "the adapter makes no client credential of a CREDEBL organisation yet"
+// An organisation holds one client credential: the client of the
+// organisation in the Keycloak of the platform (P6-C8, ADR-038 decision
+// 2). A create returns the secret once. The platform keeps the secret
+// masked and returns it masked, so the adapter drops it from a list and
+// keeps no copy. A second create would replace the secret of the client
+// that machines already use, so the adapter refuses it.
 
 // dedicatedMessage says why a dedicated agent is refused. The platform
 // starts a dedicated agent through the Docker socket, which the stack
@@ -188,23 +189,84 @@ func (s *Service) DeleteTenant(
 	return connect.NewResponse(&backendv1.DeleteTenantResponse{}), nil
 }
 
-// ListClientCredentials is not available. See clientCredentialMessage.
+// ListClientCredentials returns the client credential of one
+// organisation, without its secret.
 func (s *Service) ListClientCredentials(
-	context.Context, *connect.Request[backendv1.ListClientCredentialsRequest],
+	ctx context.Context, req *connect.Request[backendv1.ListClientCredentialsRequest],
 ) (*connect.Response[backendv1.ListClientCredentialsResponse], error) {
-	return nil, unimplemented(clientCredentialMessage)
+	tenant, err := tenantID(req.Msg.GetTenantId())
+	if err != nil {
+		return nil, err
+	}
+	cred, found, err := s.client.OrgClientCredential(ctx, tenant)
+	if err != nil {
+		return nil, failed("read the client credential of the organisation", err)
+	}
+	out := &backendv1.ListClientCredentialsResponse{}
+	if found {
+		out.Credentials = []*backendv1.ClientCredential{s.clientCredential(ctx, tenant, cred.ClientID)}
+	}
+	return connect.NewResponse(out), nil
 }
 
-// CreateClientCredential is not available. See clientCredentialMessage.
+// clientCredential names the client of an organisation after the
+// organisation, because the platform keeps no name of its own.
+func (s *Service) clientCredential(ctx context.Context, tenant, clientID string) *backendv1.ClientCredential {
+	name := tenant
+	if org, err := s.client.GetOrg(ctx, tenant); err == nil && org.Name != "" {
+		name = org.Name
+	}
+	return &backendv1.ClientCredential{Id: clientID, ClientId: clientID, Name: name}
+}
+
+// CreateClientCredential creates the client credential of one
+// organisation and returns its secret once.
 func (s *Service) CreateClientCredential(
-	context.Context, *connect.Request[backendv1.CreateClientCredentialRequest],
+	ctx context.Context, req *connect.Request[backendv1.CreateClientCredentialRequest],
 ) (*connect.Response[backendv1.CreateClientCredentialResponse], error) {
-	return nil, unimplemented(clientCredentialMessage)
+	tenant, err := tenantID(req.Msg.GetTenantId())
+	if err != nil {
+		return nil, err
+	}
+	_, found, err := s.client.OrgClientCredential(ctx, tenant)
+	if err != nil {
+		return nil, failed("read the client credential of the organisation", err)
+	}
+	if found {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(
+			"the organisation holds one client credential; delete it before you make a new one"))
+	}
+	clientID, secret, err := s.client.CreateOrgClientCredential(ctx, tenant)
+	if err != nil {
+		return nil, failed("create the client credential of the organisation", err)
+	}
+	return connect.NewResponse(&backendv1.CreateClientCredentialResponse{
+		Credential: s.clientCredential(ctx, tenant, clientID), ClientSecret: secret,
+	}), nil
 }
 
-// DeleteClientCredential is not available. See clientCredentialMessage.
+// DeleteClientCredential removes the client credential of one
+// organisation. The id must name its client.
 func (s *Service) DeleteClientCredential(
-	context.Context, *connect.Request[backendv1.DeleteClientCredentialRequest],
+	ctx context.Context, req *connect.Request[backendv1.DeleteClientCredentialRequest],
 ) (*connect.Response[backendv1.DeleteClientCredentialResponse], error) {
-	return nil, unimplemented(clientCredentialMessage)
+	tenant, err := tenantID(req.Msg.GetTenantId())
+	if err != nil {
+		return nil, err
+	}
+	id := strings.TrimSpace(req.Msg.GetId())
+	if id == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the call names no client credential"))
+	}
+	cred, found, err := s.client.OrgClientCredential(ctx, tenant)
+	if err != nil {
+		return nil, failed("read the client credential of the organisation", err)
+	}
+	if !found || cred.ClientID != id {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("the organisation holds no client credential of that client"))
+	}
+	if err := s.client.DeleteOrgClientCredential(ctx, tenant); err != nil {
+		return nil, failed("delete the client credential of the organisation", err)
+	}
+	return connect.NewResponse(&backendv1.DeleteClientCredentialResponse{}), nil
 }

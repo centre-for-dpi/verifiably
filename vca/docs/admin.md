@@ -363,8 +363,9 @@ form offers the tenants by name and an expiry of 30 days, 90 days, one
 year, or no end. The table names the tenant and the expiry, and marks a
 key past its expiry.
 
-A stack tenant can hold client credentials of its own. The page shows
-them only when a live adapter lists
+A stack tenant can hold client credentials of its own. CREDEBL keeps
+one per tenant and refuses a second until you delete the first. The
+page shows them only when a live adapter lists
 `FEATURE_TENANT_CLIENT_CREDENTIALS`. The form offers each tenant on
 such a stack. The stack makes the credential. The answer to the form
 shows the client ID and the secret once. The page never shows the
@@ -383,9 +384,27 @@ A stack can call a webhook on the events of one tenant. The page shows
 the stack webhooks only when a live adapter lists `FEATURE_WEBHOOKS`.
 The admin service reads each webhook through
 `vca.backend.v1.NotificationBackendService` and sets it with
-`SetStackWebhook`. A webhook must use https. An empty URL clears it.
+`SetStackWebhook`. A webhook must use https. An empty URL clears it
+where the stack allows a clear.
+
+The form takes a signing secret of 16 characters or more. The stack
+signs each call of the webhook with it. The admin service passes the
+secret on and keeps no copy. The table shows a "Signed" badge for a
+webhook with a secret. CREDEBL keeps a webhook once set, so its rows
+show a hint and no clear action (ADR-067). A new address replaces the
+old one.
+
+A stack that lists `FEATURE_HOLDER_NOTIFICATIONS` also posts the push
+notifications of the holders of a tenant to one address. The page shows
+a "Holder notifications" section for such a stack. The admin service
+sets the address with `SetStackNotificationEndpoint`. The address must
+use https. CREDEBL takes one address per tenant and no change. The
+adapter keeps the address it registered, and the table shows it.
+
 Each change writes one audit record. The CLI has the same actions under
-`vca admin webhook`.
+`vca admin webhook`, with `vca admin webhook holder` for the holder
+address. The CLI takes no signing secret, so a secret stays out of the
+shell history.
 
 ### Trust review
 

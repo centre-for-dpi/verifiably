@@ -836,6 +836,10 @@ func TestWebhookServiceUnimplementedWithoutFeature(t *testing.T) {
 	}
 	_, err = svc.SetWebhook(ctx, connect.NewRequest(&backendv1.SetWebhookRequest{TenantId: "t-1", Url: "https://hooks.example/vca"}))
 	wantCode(t, err, connect.CodeUnimplemented)
+	_, err = svc.GetNotificationEndpoint(ctx, connect.NewRequest(&backendv1.GetNotificationEndpointRequest{TenantId: "t-1"}))
+	wantCode(t, err, connect.CodeUnimplemented)
+	_, err = svc.SetNotificationEndpoint(ctx, connect.NewRequest(&backendv1.SetNotificationEndpointRequest{TenantId: "t-1", Url: "https://push.example/vca"}))
+	wantCode(t, err, connect.CodeUnimplemented)
 	caps, err := svc.GetCapabilities(ctx, connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
 	if err != nil {
 		t.Fatal(err)

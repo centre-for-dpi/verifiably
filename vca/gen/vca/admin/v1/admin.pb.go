@@ -3812,9 +3812,15 @@ type StackWebhook struct {
 	// The webhook. An empty URL means none.
 	Webhook *v11.Webhook `protobuf:"bytes,5,opt,name=webhook,proto3" json:"webhook,omitempty"`
 	// Why the service could not read the webhook. Empty when it could.
-	Error         string `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Error string `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`
+	// The holder notification address, on a stack that lists
+	// FEATURE_HOLDER_NOTIFICATIONS.
+	Notification *v11.NotificationEndpoint `protobuf:"bytes,7,opt,name=notification,proto3" json:"notification,omitempty"`
+	// Why the service could not read the notification address. Empty when
+	// it could or when the stack has none.
+	NotificationError string `protobuf:"bytes,8,opt,name=notification_error,json=notificationError,proto3" json:"notification_error,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *StackWebhook) Reset() {
@@ -3885,6 +3891,20 @@ func (x *StackWebhook) GetWebhook() *v11.Webhook {
 func (x *StackWebhook) GetError() string {
 	if x != nil {
 		return x.Error
+	}
+	return ""
+}
+
+func (x *StackWebhook) GetNotification() *v11.NotificationEndpoint {
+	if x != nil {
+		return x.Notification
+	}
+	return nil
+}
+
+func (x *StackWebhook) GetNotificationError() string {
+	if x != nil {
+		return x.NotificationError
 	}
 	return ""
 }
@@ -3980,7 +4000,10 @@ type SetStackWebhookRequest struct {
 	// The stack. The tenant must hold a binding on it.
 	Stack v1.Dpg `protobuf:"varint,2,opt,name=stack,proto3,enum=vca.config.v1.Dpg" json:"stack,omitempty"`
 	// The https URL. Empty clears the webhook.
-	Url           string `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
+	Url string `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
+	// The secret the stack signs each call with. Empty keeps the secret
+	// the stack holds. The service keeps no copy and writes no audit of it.
+	SigningSecret string `protobuf:"bytes,4,opt,name=signing_secret,json=signingSecret,proto3" json:"signing_secret,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4036,6 +4059,124 @@ func (x *SetStackWebhookRequest) GetUrl() string {
 	return ""
 }
 
+func (x *SetStackWebhookRequest) GetSigningSecret() string {
+	if x != nil {
+		return x.SigningSecret
+	}
+	return ""
+}
+
+// SetStackNotificationEndpointRequest names the tenant, the stack and
+// the address.
+type SetStackNotificationEndpointRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The VCA tenant id.
+	TenantId string `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	// The stack. The tenant must hold a binding on it.
+	Stack v1.Dpg `protobuf:"varint,2,opt,name=stack,proto3,enum=vca.config.v1.Dpg" json:"stack,omitempty"`
+	// The https URL. Required.
+	Url           string `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetStackNotificationEndpointRequest) Reset() {
+	*x = SetStackNotificationEndpointRequest{}
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[68]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetStackNotificationEndpointRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetStackNotificationEndpointRequest) ProtoMessage() {}
+
+func (x *SetStackNotificationEndpointRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[68]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetStackNotificationEndpointRequest.ProtoReflect.Descriptor instead.
+func (*SetStackNotificationEndpointRequest) Descriptor() ([]byte, []int) {
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{68}
+}
+
+func (x *SetStackNotificationEndpointRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *SetStackNotificationEndpointRequest) GetStack() v1.Dpg {
+	if x != nil {
+		return x.Stack
+	}
+	return v1.Dpg(0)
+}
+
+func (x *SetStackNotificationEndpointRequest) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+// SetStackNotificationEndpointResponse returns the stored address.
+type SetStackNotificationEndpointResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The webhook entry of the tenant with the new address.
+	Webhook       *StackWebhook `protobuf:"bytes,1,opt,name=webhook,proto3" json:"webhook,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetStackNotificationEndpointResponse) Reset() {
+	*x = SetStackNotificationEndpointResponse{}
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[69]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetStackNotificationEndpointResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetStackNotificationEndpointResponse) ProtoMessage() {}
+
+func (x *SetStackNotificationEndpointResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[69]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetStackNotificationEndpointResponse.ProtoReflect.Descriptor instead.
+func (*SetStackNotificationEndpointResponse) Descriptor() ([]byte, []int) {
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{69}
+}
+
+func (x *SetStackNotificationEndpointResponse) GetWebhook() *StackWebhook {
+	if x != nil {
+		return x.Webhook
+	}
+	return nil
+}
+
 // SetStackWebhookResponse returns the stored webhook.
 type SetStackWebhookResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -4047,7 +4188,7 @@ type SetStackWebhookResponse struct {
 
 func (x *SetStackWebhookResponse) Reset() {
 	*x = SetStackWebhookResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[68]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4059,7 +4200,7 @@ func (x *SetStackWebhookResponse) String() string {
 func (*SetStackWebhookResponse) ProtoMessage() {}
 
 func (x *SetStackWebhookResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[68]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4072,7 +4213,7 @@ func (x *SetStackWebhookResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetStackWebhookResponse.ProtoReflect.Descriptor instead.
 func (*SetStackWebhookResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{68}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *SetStackWebhookResponse) GetWebhook() *StackWebhook {
@@ -4091,7 +4232,7 @@ type GetServiceHealthRequest struct {
 
 func (x *GetServiceHealthRequest) Reset() {
 	*x = GetServiceHealthRequest{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[69]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4103,7 +4244,7 @@ func (x *GetServiceHealthRequest) String() string {
 func (*GetServiceHealthRequest) ProtoMessage() {}
 
 func (x *GetServiceHealthRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[69]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4116,7 +4257,7 @@ func (x *GetServiceHealthRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetServiceHealthRequest.ProtoReflect.Descriptor instead.
 func (*GetServiceHealthRequest) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{69}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{71}
 }
 
 // GetServiceHealthResponse lists every service and its health.
@@ -4130,7 +4271,7 @@ type GetServiceHealthResponse struct {
 
 func (x *GetServiceHealthResponse) Reset() {
 	*x = GetServiceHealthResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[70]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4142,7 +4283,7 @@ func (x *GetServiceHealthResponse) String() string {
 func (*GetServiceHealthResponse) ProtoMessage() {}
 
 func (x *GetServiceHealthResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[70]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4155,7 +4296,7 @@ func (x *GetServiceHealthResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetServiceHealthResponse.ProtoReflect.Descriptor instead.
 func (*GetServiceHealthResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{70}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *GetServiceHealthResponse) GetServices() []*GetServiceHealthResponse_ServiceHealth {
@@ -4188,7 +4329,7 @@ type AuditRecord struct {
 
 func (x *AuditRecord) Reset() {
 	*x = AuditRecord{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[71]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4200,7 +4341,7 @@ func (x *AuditRecord) String() string {
 func (*AuditRecord) ProtoMessage() {}
 
 func (x *AuditRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[71]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4213,7 +4354,7 @@ func (x *AuditRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditRecord.ProtoReflect.Descriptor instead.
 func (*AuditRecord) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{71}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *AuditRecord) GetId() string {
@@ -4284,7 +4425,7 @@ type QueryAuditLogRequest struct {
 
 func (x *QueryAuditLogRequest) Reset() {
 	*x = QueryAuditLogRequest{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[72]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4296,7 +4437,7 @@ func (x *QueryAuditLogRequest) String() string {
 func (*QueryAuditLogRequest) ProtoMessage() {}
 
 func (x *QueryAuditLogRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[72]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4309,7 +4450,7 @@ func (x *QueryAuditLogRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryAuditLogRequest.ProtoReflect.Descriptor instead.
 func (*QueryAuditLogRequest) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{72}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *QueryAuditLogRequest) GetPage() *v12.Pagination {
@@ -4360,7 +4501,7 @@ type QueryAuditLogResponse struct {
 
 func (x *QueryAuditLogResponse) Reset() {
 	*x = QueryAuditLogResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[73]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4372,7 +4513,7 @@ func (x *QueryAuditLogResponse) String() string {
 func (*QueryAuditLogResponse) ProtoMessage() {}
 
 func (x *QueryAuditLogResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[73]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4385,7 +4526,7 @@ func (x *QueryAuditLogResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueryAuditLogResponse.ProtoReflect.Descriptor instead.
 func (*QueryAuditLogResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{73}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *QueryAuditLogResponse) GetRecords() []*AuditRecord {
@@ -4417,7 +4558,7 @@ type OnboardAdminRequest struct {
 
 func (x *OnboardAdminRequest) Reset() {
 	*x = OnboardAdminRequest{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[74]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4429,7 +4570,7 @@ func (x *OnboardAdminRequest) String() string {
 func (*OnboardAdminRequest) ProtoMessage() {}
 
 func (x *OnboardAdminRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[74]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4442,7 +4583,7 @@ func (x *OnboardAdminRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OnboardAdminRequest.ProtoReflect.Descriptor instead.
 func (*OnboardAdminRequest) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{74}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *OnboardAdminRequest) GetBootstrapToken() string {
@@ -4479,7 +4620,7 @@ type OnboardAdminResponse struct {
 
 func (x *OnboardAdminResponse) Reset() {
 	*x = OnboardAdminResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[75]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4491,7 +4632,7 @@ func (x *OnboardAdminResponse) String() string {
 func (*OnboardAdminResponse) ProtoMessage() {}
 
 func (x *OnboardAdminResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[75]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4504,7 +4645,7 @@ func (x *OnboardAdminResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OnboardAdminResponse.ProtoReflect.Descriptor instead.
 func (*OnboardAdminResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{75}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *OnboardAdminResponse) GetIssuer() string {
@@ -4530,7 +4671,7 @@ type ListCommandsRequest struct {
 
 func (x *ListCommandsRequest) Reset() {
 	*x = ListCommandsRequest{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[76]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4542,7 +4683,7 @@ func (x *ListCommandsRequest) String() string {
 func (*ListCommandsRequest) ProtoMessage() {}
 
 func (x *ListCommandsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[76]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4555,7 +4696,7 @@ func (x *ListCommandsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCommandsRequest.ProtoReflect.Descriptor instead.
 func (*ListCommandsRequest) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{76}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{78}
 }
 
 // ListCommandsResponse returns the command tree.
@@ -4569,7 +4710,7 @@ type ListCommandsResponse struct {
 
 func (x *ListCommandsResponse) Reset() {
 	*x = ListCommandsResponse{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[77]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4581,7 +4722,7 @@ func (x *ListCommandsResponse) String() string {
 func (*ListCommandsResponse) ProtoMessage() {}
 
 func (x *ListCommandsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[77]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4594,7 +4735,7 @@ func (x *ListCommandsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCommandsResponse.ProtoReflect.Descriptor instead.
 func (*ListCommandsResponse) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{77}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *ListCommandsResponse) GetCommands() []*ListCommandsResponse_Command {
@@ -4623,7 +4764,7 @@ type GetServiceHealthResponse_ServiceHealth struct {
 
 func (x *GetServiceHealthResponse_ServiceHealth) Reset() {
 	*x = GetServiceHealthResponse_ServiceHealth{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[78]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4635,7 +4776,7 @@ func (x *GetServiceHealthResponse_ServiceHealth) String() string {
 func (*GetServiceHealthResponse_ServiceHealth) ProtoMessage() {}
 
 func (x *GetServiceHealthResponse_ServiceHealth) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[78]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4648,7 +4789,7 @@ func (x *GetServiceHealthResponse_ServiceHealth) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use GetServiceHealthResponse_ServiceHealth.ProtoReflect.Descriptor instead.
 func (*GetServiceHealthResponse_ServiceHealth) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{70, 0}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{72, 0}
 }
 
 func (x *GetServiceHealthResponse_ServiceHealth) GetName() string {
@@ -4705,7 +4846,7 @@ type ListCommandsResponse_Command struct {
 
 func (x *ListCommandsResponse_Command) Reset() {
 	*x = ListCommandsResponse_Command{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[79]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4717,7 +4858,7 @@ func (x *ListCommandsResponse_Command) String() string {
 func (*ListCommandsResponse_Command) ProtoMessage() {}
 
 func (x *ListCommandsResponse_Command) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[79]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4730,7 +4871,7 @@ func (x *ListCommandsResponse_Command) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCommandsResponse_Command.ProtoReflect.Descriptor instead.
 func (*ListCommandsResponse_Command) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{77, 0}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{79, 0}
 }
 
 func (x *ListCommandsResponse_Command) GetPath() string {
@@ -4785,7 +4926,7 @@ type ListCommandsResponse_Flag struct {
 
 func (x *ListCommandsResponse_Flag) Reset() {
 	*x = ListCommandsResponse_Flag{}
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[80]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4797,7 +4938,7 @@ func (x *ListCommandsResponse_Flag) String() string {
 func (*ListCommandsResponse_Flag) ProtoMessage() {}
 
 func (x *ListCommandsResponse_Flag) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_admin_v1_admin_proto_msgTypes[80]
+	mi := &file_vca_admin_v1_admin_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4810,7 +4951,7 @@ func (x *ListCommandsResponse_Flag) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCommandsResponse_Flag.ProtoReflect.Descriptor instead.
 func (*ListCommandsResponse_Flag) Descriptor() ([]byte, []int) {
-	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{77, 1}
+	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{79, 1}
 }
 
 func (x *ListCommandsResponse_Flag) GetName() string {
@@ -5071,7 +5212,7 @@ const file_vca_admin_v1_admin_proto_rawDesc = "" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12(\n" +
 	"\x05stack\x18\x02 \x01(\x0e2\x12.vca.config.v1.DpgR\x05stack\x12\x0e\n" +
 	"\x02id\x18\x03 \x01(\tR\x02id\"\x1f\n" +
-	"\x1dDeleteStackCredentialResponse\"\xde\x01\n" +
+	"\x1dDeleteStackCredentialResponse\"\xd7\x02\n" +
 	"\fStackWebhook\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1f\n" +
 	"\vtenant_name\x18\x02 \x01(\tR\n" +
@@ -5080,14 +5221,23 @@ const file_vca_admin_v1_admin_proto_rawDesc = "" +
 	"\n" +
 	"stack_name\x18\x04 \x01(\tR\tstackName\x121\n" +
 	"\awebhook\x18\x05 \x01(\v2\x17.vca.backend.v1.WebhookR\awebhook\x12\x14\n" +
-	"\x05error\x18\x06 \x01(\tR\x05error\"\x1a\n" +
+	"\x05error\x18\x06 \x01(\tR\x05error\x12H\n" +
+	"\fnotification\x18\a \x01(\v2$.vca.backend.v1.NotificationEndpointR\fnotification\x12-\n" +
+	"\x12notification_error\x18\b \x01(\tR\x11notificationError\"\x1a\n" +
 	"\x18ListStackWebhooksRequest\"S\n" +
 	"\x19ListStackWebhooksResponse\x126\n" +
-	"\bwebhooks\x18\x01 \x03(\v2\x1a.vca.admin.v1.StackWebhookR\bwebhooks\"q\n" +
+	"\bwebhooks\x18\x01 \x03(\v2\x1a.vca.admin.v1.StackWebhookR\bwebhooks\"\x98\x01\n" +
 	"\x16SetStackWebhookRequest\x12\x1b\n" +
 	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12(\n" +
 	"\x05stack\x18\x02 \x01(\x0e2\x12.vca.config.v1.DpgR\x05stack\x12\x10\n" +
-	"\x03url\x18\x03 \x01(\tR\x03url\"O\n" +
+	"\x03url\x18\x03 \x01(\tR\x03url\x12%\n" +
+	"\x0esigning_secret\x18\x04 \x01(\tR\rsigningSecret\"~\n" +
+	"#SetStackNotificationEndpointRequest\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12(\n" +
+	"\x05stack\x18\x02 \x01(\x0e2\x12.vca.config.v1.DpgR\x05stack\x12\x10\n" +
+	"\x03url\x18\x03 \x01(\tR\x03url\"\\\n" +
+	"$SetStackNotificationEndpointResponse\x124\n" +
+	"\awebhook\x18\x01 \x01(\v2\x1a.vca.admin.v1.StackWebhookR\awebhook\"O\n" +
 	"\x17SetStackWebhookResponse\x124\n" +
 	"\awebhook\x18\x01 \x01(\v2\x1a.vca.admin.v1.StackWebhookR\awebhook\"\x19\n" +
 	"\x17GetServiceHealthRequest\"\x93\x02\n" +
@@ -5156,7 +5306,7 @@ const file_vca_admin_v1_admin_proto_rawDesc = "" +
 	"\x1eTOKEN_AUTH_CLIENT_SECRET_BASIC\x10\x01\x12!\n" +
 	"\x1dTOKEN_AUTH_CLIENT_SECRET_POST\x10\x02\x12\x1e\n" +
 	"\x1aTOKEN_AUTH_PRIVATE_KEY_JWT\x10\x03\x12\x13\n" +
-	"\x0fTOKEN_AUTH_NONE\x10\x042\xcd&\n" +
+	"\x0fTOKEN_AUTH_NONE\x10\x042\x97(\n" +
 	"\fAdminService\x12n\n" +
 	"\fCreateTenant\x12!.vca.admin.v1.CreateTenantRequest\x1a\".vca.admin.v1.CreateTenantResponse\"\x17\xca\xf3\x18\x13Creates one tenant.\x12k\n" +
 	"\tGetTenant\x12\x1e.vca.admin.v1.GetTenantRequest\x1a\x1f.vca.admin.v1.GetTenantResponse\"\x1d\xca\xf3\x18\x19Returns one tenant by id.\x12q\n" +
@@ -5189,7 +5339,8 @@ const file_vca_admin_v1_admin_proto_rawDesc = "" +
 	"\x15CreateStackCredential\x12*.vca.admin.v1.CreateStackCredentialRequest\x1a+.vca.admin.v1.CreateStackCredentialResponse\"4\xca\xf3\x180Creates one client credential on a stack tenant.\x12\xa6\x01\n" +
 	"\x15DeleteStackCredential\x12*.vca.admin.v1.DeleteStackCredentialRequest\x1a+.vca.admin.v1.DeleteStackCredentialResponse\"4\xca\xf3\x180Removes one client credential of a stack tenant.\x12\x93\x01\n" +
 	"\x11ListStackWebhooks\x12&.vca.admin.v1.ListStackWebhooksRequest\x1a'.vca.admin.v1.ListStackWebhooksResponse\"-\xca\xf3\x18)Returns the webhook of each stack tenant.\x12\x91\x01\n" +
-	"\x0fSetStackWebhook\x12$.vca.admin.v1.SetStackWebhookRequest\x1a%.vca.admin.v1.SetStackWebhookResponse\"1\xca\xf3\x18-Sets or clears the webhook of a stack tenant.\x12\x9d\x01\n" +
+	"\x0fSetStackWebhook\x12$.vca.admin.v1.SetStackWebhookRequest\x1a%.vca.admin.v1.SetStackWebhookResponse\"1\xca\xf3\x18-Sets or clears the webhook of a stack tenant.\x12\xc7\x01\n" +
+	"\x1cSetStackNotificationEndpoint\x121.vca.admin.v1.SetStackNotificationEndpointRequest\x1a2.vca.admin.v1.SetStackNotificationEndpointResponse\"@\xca\xf3\x18<Registers the holder notification address of a stack tenant.\x12\x9d\x01\n" +
 	"\x10GetServiceHealth\x12%.vca.admin.v1.GetServiceHealthRequest\x1a&.vca.admin.v1.GetServiceHealthResponse\":\xca\xf3\x186Returns the health of every service in the deployment.\x12\x96\x01\n" +
 	"\rQueryAuditLog\x12\".vca.admin.v1.QueryAuditLogRequest\x1a#.vca.admin.v1.QueryAuditLogResponse\"<\xca\xf3\x188Returns audit records that match a filter, newest first.\x12\x90\x01\n" +
 	"\fOnboardAdmin\x12!.vca.admin.v1.OnboardAdminRequest\x1a\".vca.admin.v1.OnboardAdminResponse\"9\xca\xf3\x185Binds the first super admin with the bootstrap token.\x12\x86\x01\n" +
@@ -5210,7 +5361,7 @@ func file_vca_admin_v1_admin_proto_rawDescGZIP() []byte {
 }
 
 var file_vca_admin_v1_admin_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_vca_admin_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 81)
+var file_vca_admin_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 83)
 var file_vca_admin_v1_admin_proto_goTypes = []any{
 	(ProviderKind)(0),                              // 0: vca.admin.v1.ProviderKind
 	(Registration)(0),                              // 1: vca.admin.v1.Registration
@@ -5284,201 +5435,209 @@ var file_vca_admin_v1_admin_proto_goTypes = []any{
 	(*ListStackWebhooksRequest)(nil),               // 69: vca.admin.v1.ListStackWebhooksRequest
 	(*ListStackWebhooksResponse)(nil),              // 70: vca.admin.v1.ListStackWebhooksResponse
 	(*SetStackWebhookRequest)(nil),                 // 71: vca.admin.v1.SetStackWebhookRequest
-	(*SetStackWebhookResponse)(nil),                // 72: vca.admin.v1.SetStackWebhookResponse
-	(*GetServiceHealthRequest)(nil),                // 73: vca.admin.v1.GetServiceHealthRequest
-	(*GetServiceHealthResponse)(nil),               // 74: vca.admin.v1.GetServiceHealthResponse
-	(*AuditRecord)(nil),                            // 75: vca.admin.v1.AuditRecord
-	(*QueryAuditLogRequest)(nil),                   // 76: vca.admin.v1.QueryAuditLogRequest
-	(*QueryAuditLogResponse)(nil),                  // 77: vca.admin.v1.QueryAuditLogResponse
-	(*OnboardAdminRequest)(nil),                    // 78: vca.admin.v1.OnboardAdminRequest
-	(*OnboardAdminResponse)(nil),                   // 79: vca.admin.v1.OnboardAdminResponse
-	(*ListCommandsRequest)(nil),                    // 80: vca.admin.v1.ListCommandsRequest
-	(*ListCommandsResponse)(nil),                   // 81: vca.admin.v1.ListCommandsResponse
-	(*GetServiceHealthResponse_ServiceHealth)(nil), // 82: vca.admin.v1.GetServiceHealthResponse.ServiceHealth
-	(*ListCommandsResponse_Command)(nil),           // 83: vca.admin.v1.ListCommandsResponse.Command
-	(*ListCommandsResponse_Flag)(nil),              // 84: vca.admin.v1.ListCommandsResponse.Flag
-	(*timestamppb.Timestamp)(nil),                  // 85: google.protobuf.Timestamp
-	(v1.Dpg)(0),                                    // 86: vca.config.v1.Dpg
-	(*v11.DpgTenant)(nil),                          // 87: vca.backend.v1.DpgTenant
-	(v11.DpgTenant_AgentType)(0),                   // 88: vca.backend.v1.DpgTenant.AgentType
-	(*v12.Pagination)(nil),                         // 89: vca.common.v1.Pagination
-	(*v12.PageResult)(nil),                         // 90: vca.common.v1.PageResult
-	(*v13.TrustEntry)(nil),                         // 91: vca.trust.v1.TrustEntry
-	(*v13.TrustEntry_Identifier)(nil),              // 92: vca.trust.v1.TrustEntry.Identifier
-	(v12.Role)(0),                                  // 93: vca.common.v1.Role
-	(v13.Status)(0),                                // 94: vca.trust.v1.Status
-	(*v13.Registry)(nil),                           // 95: vca.trust.v1.Registry
-	(*v13.PublishResponse_Publication)(nil),        // 96: vca.trust.v1.PublishResponse.Publication
-	(*v12.SecretRef)(nil),                          // 97: vca.common.v1.SecretRef
-	(*v11.ClientCredential)(nil),                   // 98: vca.backend.v1.ClientCredential
-	(*v11.Webhook)(nil),                            // 99: vca.backend.v1.Webhook
+	(*SetStackNotificationEndpointRequest)(nil),    // 72: vca.admin.v1.SetStackNotificationEndpointRequest
+	(*SetStackNotificationEndpointResponse)(nil),   // 73: vca.admin.v1.SetStackNotificationEndpointResponse
+	(*SetStackWebhookResponse)(nil),                // 74: vca.admin.v1.SetStackWebhookResponse
+	(*GetServiceHealthRequest)(nil),                // 75: vca.admin.v1.GetServiceHealthRequest
+	(*GetServiceHealthResponse)(nil),               // 76: vca.admin.v1.GetServiceHealthResponse
+	(*AuditRecord)(nil),                            // 77: vca.admin.v1.AuditRecord
+	(*QueryAuditLogRequest)(nil),                   // 78: vca.admin.v1.QueryAuditLogRequest
+	(*QueryAuditLogResponse)(nil),                  // 79: vca.admin.v1.QueryAuditLogResponse
+	(*OnboardAdminRequest)(nil),                    // 80: vca.admin.v1.OnboardAdminRequest
+	(*OnboardAdminResponse)(nil),                   // 81: vca.admin.v1.OnboardAdminResponse
+	(*ListCommandsRequest)(nil),                    // 82: vca.admin.v1.ListCommandsRequest
+	(*ListCommandsResponse)(nil),                   // 83: vca.admin.v1.ListCommandsResponse
+	(*GetServiceHealthResponse_ServiceHealth)(nil), // 84: vca.admin.v1.GetServiceHealthResponse.ServiceHealth
+	(*ListCommandsResponse_Command)(nil),           // 85: vca.admin.v1.ListCommandsResponse.Command
+	(*ListCommandsResponse_Flag)(nil),              // 86: vca.admin.v1.ListCommandsResponse.Flag
+	(*timestamppb.Timestamp)(nil),                  // 87: google.protobuf.Timestamp
+	(v1.Dpg)(0),                                    // 88: vca.config.v1.Dpg
+	(*v11.DpgTenant)(nil),                          // 89: vca.backend.v1.DpgTenant
+	(v11.DpgTenant_AgentType)(0),                   // 90: vca.backend.v1.DpgTenant.AgentType
+	(*v12.Pagination)(nil),                         // 91: vca.common.v1.Pagination
+	(*v12.PageResult)(nil),                         // 92: vca.common.v1.PageResult
+	(*v13.TrustEntry)(nil),                         // 93: vca.trust.v1.TrustEntry
+	(*v13.TrustEntry_Identifier)(nil),              // 94: vca.trust.v1.TrustEntry.Identifier
+	(v12.Role)(0),                                  // 95: vca.common.v1.Role
+	(v13.Status)(0),                                // 96: vca.trust.v1.Status
+	(*v13.Registry)(nil),                           // 97: vca.trust.v1.Registry
+	(*v13.PublishResponse_Publication)(nil),        // 98: vca.trust.v1.PublishResponse.Publication
+	(*v12.SecretRef)(nil),                          // 99: vca.common.v1.SecretRef
+	(*v11.ClientCredential)(nil),                   // 100: vca.backend.v1.ClientCredential
+	(*v11.Webhook)(nil),                            // 101: vca.backend.v1.Webhook
+	(*v11.NotificationEndpoint)(nil),               // 102: vca.backend.v1.NotificationEndpoint
 }
 var file_vca_admin_v1_admin_proto_depIdxs = []int32{
 	3,   // 0: vca.admin.v1.Tenant.state:type_name -> vca.admin.v1.Tenant.State
-	85,  // 1: vca.admin.v1.Tenant.created_at:type_name -> google.protobuf.Timestamp
-	85,  // 2: vca.admin.v1.Tenant.updated_at:type_name -> google.protobuf.Timestamp
+	87,  // 1: vca.admin.v1.Tenant.created_at:type_name -> google.protobuf.Timestamp
+	87,  // 2: vca.admin.v1.Tenant.updated_at:type_name -> google.protobuf.Timestamp
 	5,   // 3: vca.admin.v1.Tenant.bindings:type_name -> vca.admin.v1.TenantBinding
-	86,  // 4: vca.admin.v1.TenantBinding.stack:type_name -> vca.config.v1.Dpg
-	87,  // 5: vca.admin.v1.TenantBinding.tenant:type_name -> vca.backend.v1.DpgTenant
-	85,  // 6: vca.admin.v1.TenantBinding.bound_at:type_name -> google.protobuf.Timestamp
-	86,  // 7: vca.admin.v1.CreateTenantRequest.stacks:type_name -> vca.config.v1.Dpg
-	88,  // 8: vca.admin.v1.CreateTenantRequest.agent_type:type_name -> vca.backend.v1.DpgTenant.AgentType
+	88,  // 4: vca.admin.v1.TenantBinding.stack:type_name -> vca.config.v1.Dpg
+	89,  // 5: vca.admin.v1.TenantBinding.tenant:type_name -> vca.backend.v1.DpgTenant
+	87,  // 6: vca.admin.v1.TenantBinding.bound_at:type_name -> google.protobuf.Timestamp
+	88,  // 7: vca.admin.v1.CreateTenantRequest.stacks:type_name -> vca.config.v1.Dpg
+	90,  // 8: vca.admin.v1.CreateTenantRequest.agent_type:type_name -> vca.backend.v1.DpgTenant.AgentType
 	4,   // 9: vca.admin.v1.CreateTenantResponse.tenant:type_name -> vca.admin.v1.Tenant
 	4,   // 10: vca.admin.v1.GetTenantResponse.tenant:type_name -> vca.admin.v1.Tenant
-	89,  // 11: vca.admin.v1.ListTenantsRequest.page:type_name -> vca.common.v1.Pagination
+	91,  // 11: vca.admin.v1.ListTenantsRequest.page:type_name -> vca.common.v1.Pagination
 	4,   // 12: vca.admin.v1.ListTenantsResponse.tenants:type_name -> vca.admin.v1.Tenant
-	90,  // 13: vca.admin.v1.ListTenantsResponse.page:type_name -> vca.common.v1.PageResult
+	92,  // 13: vca.admin.v1.ListTenantsResponse.page:type_name -> vca.common.v1.PageResult
 	3,   // 14: vca.admin.v1.UpdateTenantRequest.state:type_name -> vca.admin.v1.Tenant.State
 	4,   // 15: vca.admin.v1.UpdateTenantResponse.tenant:type_name -> vca.admin.v1.Tenant
-	86,  // 16: vca.admin.v1.BindTenantRequest.stack:type_name -> vca.config.v1.Dpg
-	88,  // 17: vca.admin.v1.BindTenantRequest.agent_type:type_name -> vca.backend.v1.DpgTenant.AgentType
+	88,  // 16: vca.admin.v1.BindTenantRequest.stack:type_name -> vca.config.v1.Dpg
+	90,  // 17: vca.admin.v1.BindTenantRequest.agent_type:type_name -> vca.backend.v1.DpgTenant.AgentType
 	4,   // 18: vca.admin.v1.BindTenantResponse.tenant:type_name -> vca.admin.v1.Tenant
-	86,  // 19: vca.admin.v1.UnbindTenantRequest.stack:type_name -> vca.config.v1.Dpg
+	88,  // 19: vca.admin.v1.UnbindTenantRequest.stack:type_name -> vca.config.v1.Dpg
 	4,   // 20: vca.admin.v1.UnbindTenantResponse.tenant:type_name -> vca.admin.v1.Tenant
-	91,  // 21: vca.admin.v1.UpsertTrustEntryRequest.entry:type_name -> vca.trust.v1.TrustEntry
-	91,  // 22: vca.admin.v1.UpsertTrustEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
-	92,  // 23: vca.admin.v1.GetTrustEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
-	91,  // 24: vca.admin.v1.GetTrustEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
-	89,  // 25: vca.admin.v1.ListTrustEntriesRequest.page:type_name -> vca.common.v1.Pagination
-	93,  // 26: vca.admin.v1.ListTrustEntriesRequest.role:type_name -> vca.common.v1.Role
-	94,  // 27: vca.admin.v1.ListTrustEntriesRequest.status:type_name -> vca.trust.v1.Status
-	91,  // 28: vca.admin.v1.ListTrustEntriesResponse.entries:type_name -> vca.trust.v1.TrustEntry
-	90,  // 29: vca.admin.v1.ListTrustEntriesResponse.page:type_name -> vca.common.v1.PageResult
-	92,  // 30: vca.admin.v1.DeleteTrustEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
-	92,  // 31: vca.admin.v1.ApproveTrustEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
-	91,  // 32: vca.admin.v1.ApproveTrustEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
-	92,  // 33: vca.admin.v1.RejectTrustEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
-	95,  // 34: vca.admin.v1.AddTrustRegistryRequest.registry:type_name -> vca.trust.v1.Registry
-	95,  // 35: vca.admin.v1.AddTrustRegistryResponse.registry:type_name -> vca.trust.v1.Registry
-	95,  // 36: vca.admin.v1.ListTrustRegistriesResponse.registries:type_name -> vca.trust.v1.Registry
-	96,  // 37: vca.admin.v1.ListTrustRegistriesResponse.local:type_name -> vca.trust.v1.PublishResponse.Publication
-	95,  // 38: vca.admin.v1.SyncTrustRegistryResponse.registry:type_name -> vca.trust.v1.Registry
-	97,  // 39: vca.admin.v1.AuthProvider.client_secret:type_name -> vca.common.v1.SecretRef
-	93,  // 40: vca.admin.v1.AuthProvider.roles:type_name -> vca.common.v1.Role
-	85,  // 41: vca.admin.v1.AuthProvider.created_at:type_name -> google.protobuf.Timestamp
+	93,  // 21: vca.admin.v1.UpsertTrustEntryRequest.entry:type_name -> vca.trust.v1.TrustEntry
+	93,  // 22: vca.admin.v1.UpsertTrustEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
+	94,  // 23: vca.admin.v1.GetTrustEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
+	93,  // 24: vca.admin.v1.GetTrustEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
+	91,  // 25: vca.admin.v1.ListTrustEntriesRequest.page:type_name -> vca.common.v1.Pagination
+	95,  // 26: vca.admin.v1.ListTrustEntriesRequest.role:type_name -> vca.common.v1.Role
+	96,  // 27: vca.admin.v1.ListTrustEntriesRequest.status:type_name -> vca.trust.v1.Status
+	93,  // 28: vca.admin.v1.ListTrustEntriesResponse.entries:type_name -> vca.trust.v1.TrustEntry
+	92,  // 29: vca.admin.v1.ListTrustEntriesResponse.page:type_name -> vca.common.v1.PageResult
+	94,  // 30: vca.admin.v1.DeleteTrustEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
+	94,  // 31: vca.admin.v1.ApproveTrustEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
+	93,  // 32: vca.admin.v1.ApproveTrustEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
+	94,  // 33: vca.admin.v1.RejectTrustEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
+	97,  // 34: vca.admin.v1.AddTrustRegistryRequest.registry:type_name -> vca.trust.v1.Registry
+	97,  // 35: vca.admin.v1.AddTrustRegistryResponse.registry:type_name -> vca.trust.v1.Registry
+	97,  // 36: vca.admin.v1.ListTrustRegistriesResponse.registries:type_name -> vca.trust.v1.Registry
+	98,  // 37: vca.admin.v1.ListTrustRegistriesResponse.local:type_name -> vca.trust.v1.PublishResponse.Publication
+	97,  // 38: vca.admin.v1.SyncTrustRegistryResponse.registry:type_name -> vca.trust.v1.Registry
+	99,  // 39: vca.admin.v1.AuthProvider.client_secret:type_name -> vca.common.v1.SecretRef
+	95,  // 40: vca.admin.v1.AuthProvider.roles:type_name -> vca.common.v1.Role
+	87,  // 41: vca.admin.v1.AuthProvider.created_at:type_name -> google.protobuf.Timestamp
 	0,   // 42: vca.admin.v1.AuthProvider.kind:type_name -> vca.admin.v1.ProviderKind
 	1,   // 43: vca.admin.v1.AuthProvider.registration:type_name -> vca.admin.v1.Registration
-	86,  // 44: vca.admin.v1.AuthProvider.stacks:type_name -> vca.config.v1.Dpg
+	88,  // 44: vca.admin.v1.AuthProvider.stacks:type_name -> vca.config.v1.Dpg
 	2,   // 45: vca.admin.v1.AuthProvider.token_auth_method:type_name -> vca.admin.v1.TokenAuth
-	97,  // 46: vca.admin.v1.AuthProvider.private_key:type_name -> vca.common.v1.SecretRef
+	99,  // 46: vca.admin.v1.AuthProvider.private_key:type_name -> vca.common.v1.SecretRef
 	40,  // 47: vca.admin.v1.CreateAuthProviderRequest.provider:type_name -> vca.admin.v1.AuthProvider
 	40,  // 48: vca.admin.v1.CreateAuthProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
 	43,  // 49: vca.admin.v1.CreateAuthProviderResponse.pushes:type_name -> vca.admin.v1.PushResult
-	97,  // 50: vca.admin.v1.OnboardProviderRequest.client_secret:type_name -> vca.common.v1.SecretRef
+	99,  // 50: vca.admin.v1.OnboardProviderRequest.client_secret:type_name -> vca.common.v1.SecretRef
 	40,  // 51: vca.admin.v1.OnboardProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
 	40,  // 52: vca.admin.v1.GetAuthProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
-	89,  // 53: vca.admin.v1.ListAuthProvidersRequest.page:type_name -> vca.common.v1.Pagination
+	91,  // 53: vca.admin.v1.ListAuthProvidersRequest.page:type_name -> vca.common.v1.Pagination
 	40,  // 54: vca.admin.v1.ListAuthProvidersResponse.providers:type_name -> vca.admin.v1.AuthProvider
-	90,  // 55: vca.admin.v1.ListAuthProvidersResponse.page:type_name -> vca.common.v1.PageResult
+	92,  // 55: vca.admin.v1.ListAuthProvidersResponse.page:type_name -> vca.common.v1.PageResult
 	40,  // 56: vca.admin.v1.UpdateAuthProviderRequest.provider:type_name -> vca.admin.v1.AuthProvider
 	40,  // 57: vca.admin.v1.UpdateAuthProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
 	43,  // 58: vca.admin.v1.UpdateAuthProviderResponse.pushes:type_name -> vca.admin.v1.PushResult
-	93,  // 59: vca.admin.v1.ApiKey.roles:type_name -> vca.common.v1.Role
-	85,  // 60: vca.admin.v1.ApiKey.created_at:type_name -> google.protobuf.Timestamp
-	85,  // 61: vca.admin.v1.ApiKey.expires_at:type_name -> google.protobuf.Timestamp
-	85,  // 62: vca.admin.v1.ApiKey.revoked_at:type_name -> google.protobuf.Timestamp
-	93,  // 63: vca.admin.v1.CreateApiKeyRequest.roles:type_name -> vca.common.v1.Role
-	85,  // 64: vca.admin.v1.CreateApiKeyRequest.expires_at:type_name -> google.protobuf.Timestamp
+	95,  // 59: vca.admin.v1.ApiKey.roles:type_name -> vca.common.v1.Role
+	87,  // 60: vca.admin.v1.ApiKey.created_at:type_name -> google.protobuf.Timestamp
+	87,  // 61: vca.admin.v1.ApiKey.expires_at:type_name -> google.protobuf.Timestamp
+	87,  // 62: vca.admin.v1.ApiKey.revoked_at:type_name -> google.protobuf.Timestamp
+	95,  // 63: vca.admin.v1.CreateApiKeyRequest.roles:type_name -> vca.common.v1.Role
+	87,  // 64: vca.admin.v1.CreateApiKeyRequest.expires_at:type_name -> google.protobuf.Timestamp
 	54,  // 65: vca.admin.v1.CreateApiKeyResponse.key:type_name -> vca.admin.v1.ApiKey
-	89,  // 66: vca.admin.v1.ListApiKeysRequest.page:type_name -> vca.common.v1.Pagination
+	91,  // 66: vca.admin.v1.ListApiKeysRequest.page:type_name -> vca.common.v1.Pagination
 	54,  // 67: vca.admin.v1.ListApiKeysResponse.keys:type_name -> vca.admin.v1.ApiKey
-	90,  // 68: vca.admin.v1.ListApiKeysResponse.page:type_name -> vca.common.v1.PageResult
-	86,  // 69: vca.admin.v1.StackCredential.stack:type_name -> vca.config.v1.Dpg
-	98,  // 70: vca.admin.v1.StackCredential.credential:type_name -> vca.backend.v1.ClientCredential
+	92,  // 68: vca.admin.v1.ListApiKeysResponse.page:type_name -> vca.common.v1.PageResult
+	88,  // 69: vca.admin.v1.StackCredential.stack:type_name -> vca.config.v1.Dpg
+	100, // 70: vca.admin.v1.StackCredential.credential:type_name -> vca.backend.v1.ClientCredential
 	61,  // 71: vca.admin.v1.ListStackCredentialsResponse.credentials:type_name -> vca.admin.v1.StackCredential
-	86,  // 72: vca.admin.v1.CreateStackCredentialRequest.stack:type_name -> vca.config.v1.Dpg
+	88,  // 72: vca.admin.v1.CreateStackCredentialRequest.stack:type_name -> vca.config.v1.Dpg
 	61,  // 73: vca.admin.v1.CreateStackCredentialResponse.credential:type_name -> vca.admin.v1.StackCredential
-	86,  // 74: vca.admin.v1.DeleteStackCredentialRequest.stack:type_name -> vca.config.v1.Dpg
-	86,  // 75: vca.admin.v1.StackWebhook.stack:type_name -> vca.config.v1.Dpg
-	99,  // 76: vca.admin.v1.StackWebhook.webhook:type_name -> vca.backend.v1.Webhook
-	68,  // 77: vca.admin.v1.ListStackWebhooksResponse.webhooks:type_name -> vca.admin.v1.StackWebhook
-	86,  // 78: vca.admin.v1.SetStackWebhookRequest.stack:type_name -> vca.config.v1.Dpg
-	68,  // 79: vca.admin.v1.SetStackWebhookResponse.webhook:type_name -> vca.admin.v1.StackWebhook
-	82,  // 80: vca.admin.v1.GetServiceHealthResponse.services:type_name -> vca.admin.v1.GetServiceHealthResponse.ServiceHealth
-	85,  // 81: vca.admin.v1.AuditRecord.at:type_name -> google.protobuf.Timestamp
-	89,  // 82: vca.admin.v1.QueryAuditLogRequest.page:type_name -> vca.common.v1.Pagination
-	85,  // 83: vca.admin.v1.QueryAuditLogRequest.from:type_name -> google.protobuf.Timestamp
-	85,  // 84: vca.admin.v1.QueryAuditLogRequest.to:type_name -> google.protobuf.Timestamp
-	75,  // 85: vca.admin.v1.QueryAuditLogResponse.records:type_name -> vca.admin.v1.AuditRecord
-	90,  // 86: vca.admin.v1.QueryAuditLogResponse.page:type_name -> vca.common.v1.PageResult
-	83,  // 87: vca.admin.v1.ListCommandsResponse.commands:type_name -> vca.admin.v1.ListCommandsResponse.Command
-	85,  // 88: vca.admin.v1.GetServiceHealthResponse.ServiceHealth.checked_at:type_name -> google.protobuf.Timestamp
-	84,  // 89: vca.admin.v1.ListCommandsResponse.Command.flags:type_name -> vca.admin.v1.ListCommandsResponse.Flag
-	6,   // 90: vca.admin.v1.AdminService.CreateTenant:input_type -> vca.admin.v1.CreateTenantRequest
-	8,   // 91: vca.admin.v1.AdminService.GetTenant:input_type -> vca.admin.v1.GetTenantRequest
-	10,  // 92: vca.admin.v1.AdminService.ListTenants:input_type -> vca.admin.v1.ListTenantsRequest
-	12,  // 93: vca.admin.v1.AdminService.UpdateTenant:input_type -> vca.admin.v1.UpdateTenantRequest
-	14,  // 94: vca.admin.v1.AdminService.DeleteTenant:input_type -> vca.admin.v1.DeleteTenantRequest
-	16,  // 95: vca.admin.v1.AdminService.BindTenant:input_type -> vca.admin.v1.BindTenantRequest
-	18,  // 96: vca.admin.v1.AdminService.UnbindTenant:input_type -> vca.admin.v1.UnbindTenantRequest
-	20,  // 97: vca.admin.v1.AdminService.UpsertTrustEntry:input_type -> vca.admin.v1.UpsertTrustEntryRequest
-	22,  // 98: vca.admin.v1.AdminService.GetTrustEntry:input_type -> vca.admin.v1.GetTrustEntryRequest
-	24,  // 99: vca.admin.v1.AdminService.ListTrustEntries:input_type -> vca.admin.v1.ListTrustEntriesRequest
-	26,  // 100: vca.admin.v1.AdminService.DeleteTrustEntry:input_type -> vca.admin.v1.DeleteTrustEntryRequest
-	28,  // 101: vca.admin.v1.AdminService.ApproveTrustEntry:input_type -> vca.admin.v1.ApproveTrustEntryRequest
-	30,  // 102: vca.admin.v1.AdminService.RejectTrustEntry:input_type -> vca.admin.v1.RejectTrustEntryRequest
-	32,  // 103: vca.admin.v1.AdminService.AddTrustRegistry:input_type -> vca.admin.v1.AddTrustRegistryRequest
-	34,  // 104: vca.admin.v1.AdminService.ListTrustRegistries:input_type -> vca.admin.v1.ListTrustRegistriesRequest
-	36,  // 105: vca.admin.v1.AdminService.RemoveTrustRegistry:input_type -> vca.admin.v1.RemoveTrustRegistryRequest
-	38,  // 106: vca.admin.v1.AdminService.SyncTrustRegistry:input_type -> vca.admin.v1.SyncTrustRegistryRequest
-	41,  // 107: vca.admin.v1.AdminService.CreateAuthProvider:input_type -> vca.admin.v1.CreateAuthProviderRequest
-	46,  // 108: vca.admin.v1.AdminService.GetAuthProvider:input_type -> vca.admin.v1.GetAuthProviderRequest
-	48,  // 109: vca.admin.v1.AdminService.ListAuthProviders:input_type -> vca.admin.v1.ListAuthProvidersRequest
-	50,  // 110: vca.admin.v1.AdminService.UpdateAuthProvider:input_type -> vca.admin.v1.UpdateAuthProviderRequest
-	52,  // 111: vca.admin.v1.AdminService.DeleteAuthProvider:input_type -> vca.admin.v1.DeleteAuthProviderRequest
-	44,  // 112: vca.admin.v1.AdminService.OnboardProvider:input_type -> vca.admin.v1.OnboardProviderRequest
-	55,  // 113: vca.admin.v1.AdminService.CreateApiKey:input_type -> vca.admin.v1.CreateApiKeyRequest
-	57,  // 114: vca.admin.v1.AdminService.ListApiKeys:input_type -> vca.admin.v1.ListApiKeysRequest
-	59,  // 115: vca.admin.v1.AdminService.RevokeApiKey:input_type -> vca.admin.v1.RevokeApiKeyRequest
-	62,  // 116: vca.admin.v1.AdminService.ListStackCredentials:input_type -> vca.admin.v1.ListStackCredentialsRequest
-	64,  // 117: vca.admin.v1.AdminService.CreateStackCredential:input_type -> vca.admin.v1.CreateStackCredentialRequest
-	66,  // 118: vca.admin.v1.AdminService.DeleteStackCredential:input_type -> vca.admin.v1.DeleteStackCredentialRequest
-	69,  // 119: vca.admin.v1.AdminService.ListStackWebhooks:input_type -> vca.admin.v1.ListStackWebhooksRequest
-	71,  // 120: vca.admin.v1.AdminService.SetStackWebhook:input_type -> vca.admin.v1.SetStackWebhookRequest
-	73,  // 121: vca.admin.v1.AdminService.GetServiceHealth:input_type -> vca.admin.v1.GetServiceHealthRequest
-	76,  // 122: vca.admin.v1.AdminService.QueryAuditLog:input_type -> vca.admin.v1.QueryAuditLogRequest
-	78,  // 123: vca.admin.v1.AdminService.OnboardAdmin:input_type -> vca.admin.v1.OnboardAdminRequest
-	80,  // 124: vca.admin.v1.AdminService.ListCommands:input_type -> vca.admin.v1.ListCommandsRequest
-	7,   // 125: vca.admin.v1.AdminService.CreateTenant:output_type -> vca.admin.v1.CreateTenantResponse
-	9,   // 126: vca.admin.v1.AdminService.GetTenant:output_type -> vca.admin.v1.GetTenantResponse
-	11,  // 127: vca.admin.v1.AdminService.ListTenants:output_type -> vca.admin.v1.ListTenantsResponse
-	13,  // 128: vca.admin.v1.AdminService.UpdateTenant:output_type -> vca.admin.v1.UpdateTenantResponse
-	15,  // 129: vca.admin.v1.AdminService.DeleteTenant:output_type -> vca.admin.v1.DeleteTenantResponse
-	17,  // 130: vca.admin.v1.AdminService.BindTenant:output_type -> vca.admin.v1.BindTenantResponse
-	19,  // 131: vca.admin.v1.AdminService.UnbindTenant:output_type -> vca.admin.v1.UnbindTenantResponse
-	21,  // 132: vca.admin.v1.AdminService.UpsertTrustEntry:output_type -> vca.admin.v1.UpsertTrustEntryResponse
-	23,  // 133: vca.admin.v1.AdminService.GetTrustEntry:output_type -> vca.admin.v1.GetTrustEntryResponse
-	25,  // 134: vca.admin.v1.AdminService.ListTrustEntries:output_type -> vca.admin.v1.ListTrustEntriesResponse
-	27,  // 135: vca.admin.v1.AdminService.DeleteTrustEntry:output_type -> vca.admin.v1.DeleteTrustEntryResponse
-	29,  // 136: vca.admin.v1.AdminService.ApproveTrustEntry:output_type -> vca.admin.v1.ApproveTrustEntryResponse
-	31,  // 137: vca.admin.v1.AdminService.RejectTrustEntry:output_type -> vca.admin.v1.RejectTrustEntryResponse
-	33,  // 138: vca.admin.v1.AdminService.AddTrustRegistry:output_type -> vca.admin.v1.AddTrustRegistryResponse
-	35,  // 139: vca.admin.v1.AdminService.ListTrustRegistries:output_type -> vca.admin.v1.ListTrustRegistriesResponse
-	37,  // 140: vca.admin.v1.AdminService.RemoveTrustRegistry:output_type -> vca.admin.v1.RemoveTrustRegistryResponse
-	39,  // 141: vca.admin.v1.AdminService.SyncTrustRegistry:output_type -> vca.admin.v1.SyncTrustRegistryResponse
-	42,  // 142: vca.admin.v1.AdminService.CreateAuthProvider:output_type -> vca.admin.v1.CreateAuthProviderResponse
-	47,  // 143: vca.admin.v1.AdminService.GetAuthProvider:output_type -> vca.admin.v1.GetAuthProviderResponse
-	49,  // 144: vca.admin.v1.AdminService.ListAuthProviders:output_type -> vca.admin.v1.ListAuthProvidersResponse
-	51,  // 145: vca.admin.v1.AdminService.UpdateAuthProvider:output_type -> vca.admin.v1.UpdateAuthProviderResponse
-	53,  // 146: vca.admin.v1.AdminService.DeleteAuthProvider:output_type -> vca.admin.v1.DeleteAuthProviderResponse
-	45,  // 147: vca.admin.v1.AdminService.OnboardProvider:output_type -> vca.admin.v1.OnboardProviderResponse
-	56,  // 148: vca.admin.v1.AdminService.CreateApiKey:output_type -> vca.admin.v1.CreateApiKeyResponse
-	58,  // 149: vca.admin.v1.AdminService.ListApiKeys:output_type -> vca.admin.v1.ListApiKeysResponse
-	60,  // 150: vca.admin.v1.AdminService.RevokeApiKey:output_type -> vca.admin.v1.RevokeApiKeyResponse
-	63,  // 151: vca.admin.v1.AdminService.ListStackCredentials:output_type -> vca.admin.v1.ListStackCredentialsResponse
-	65,  // 152: vca.admin.v1.AdminService.CreateStackCredential:output_type -> vca.admin.v1.CreateStackCredentialResponse
-	67,  // 153: vca.admin.v1.AdminService.DeleteStackCredential:output_type -> vca.admin.v1.DeleteStackCredentialResponse
-	70,  // 154: vca.admin.v1.AdminService.ListStackWebhooks:output_type -> vca.admin.v1.ListStackWebhooksResponse
-	72,  // 155: vca.admin.v1.AdminService.SetStackWebhook:output_type -> vca.admin.v1.SetStackWebhookResponse
-	74,  // 156: vca.admin.v1.AdminService.GetServiceHealth:output_type -> vca.admin.v1.GetServiceHealthResponse
-	77,  // 157: vca.admin.v1.AdminService.QueryAuditLog:output_type -> vca.admin.v1.QueryAuditLogResponse
-	79,  // 158: vca.admin.v1.AdminService.OnboardAdmin:output_type -> vca.admin.v1.OnboardAdminResponse
-	81,  // 159: vca.admin.v1.AdminService.ListCommands:output_type -> vca.admin.v1.ListCommandsResponse
-	125, // [125:160] is the sub-list for method output_type
-	90,  // [90:125] is the sub-list for method input_type
-	90,  // [90:90] is the sub-list for extension type_name
-	90,  // [90:90] is the sub-list for extension extendee
-	0,   // [0:90] is the sub-list for field type_name
+	88,  // 74: vca.admin.v1.DeleteStackCredentialRequest.stack:type_name -> vca.config.v1.Dpg
+	88,  // 75: vca.admin.v1.StackWebhook.stack:type_name -> vca.config.v1.Dpg
+	101, // 76: vca.admin.v1.StackWebhook.webhook:type_name -> vca.backend.v1.Webhook
+	102, // 77: vca.admin.v1.StackWebhook.notification:type_name -> vca.backend.v1.NotificationEndpoint
+	68,  // 78: vca.admin.v1.ListStackWebhooksResponse.webhooks:type_name -> vca.admin.v1.StackWebhook
+	88,  // 79: vca.admin.v1.SetStackWebhookRequest.stack:type_name -> vca.config.v1.Dpg
+	88,  // 80: vca.admin.v1.SetStackNotificationEndpointRequest.stack:type_name -> vca.config.v1.Dpg
+	68,  // 81: vca.admin.v1.SetStackNotificationEndpointResponse.webhook:type_name -> vca.admin.v1.StackWebhook
+	68,  // 82: vca.admin.v1.SetStackWebhookResponse.webhook:type_name -> vca.admin.v1.StackWebhook
+	84,  // 83: vca.admin.v1.GetServiceHealthResponse.services:type_name -> vca.admin.v1.GetServiceHealthResponse.ServiceHealth
+	87,  // 84: vca.admin.v1.AuditRecord.at:type_name -> google.protobuf.Timestamp
+	91,  // 85: vca.admin.v1.QueryAuditLogRequest.page:type_name -> vca.common.v1.Pagination
+	87,  // 86: vca.admin.v1.QueryAuditLogRequest.from:type_name -> google.protobuf.Timestamp
+	87,  // 87: vca.admin.v1.QueryAuditLogRequest.to:type_name -> google.protobuf.Timestamp
+	77,  // 88: vca.admin.v1.QueryAuditLogResponse.records:type_name -> vca.admin.v1.AuditRecord
+	92,  // 89: vca.admin.v1.QueryAuditLogResponse.page:type_name -> vca.common.v1.PageResult
+	85,  // 90: vca.admin.v1.ListCommandsResponse.commands:type_name -> vca.admin.v1.ListCommandsResponse.Command
+	87,  // 91: vca.admin.v1.GetServiceHealthResponse.ServiceHealth.checked_at:type_name -> google.protobuf.Timestamp
+	86,  // 92: vca.admin.v1.ListCommandsResponse.Command.flags:type_name -> vca.admin.v1.ListCommandsResponse.Flag
+	6,   // 93: vca.admin.v1.AdminService.CreateTenant:input_type -> vca.admin.v1.CreateTenantRequest
+	8,   // 94: vca.admin.v1.AdminService.GetTenant:input_type -> vca.admin.v1.GetTenantRequest
+	10,  // 95: vca.admin.v1.AdminService.ListTenants:input_type -> vca.admin.v1.ListTenantsRequest
+	12,  // 96: vca.admin.v1.AdminService.UpdateTenant:input_type -> vca.admin.v1.UpdateTenantRequest
+	14,  // 97: vca.admin.v1.AdminService.DeleteTenant:input_type -> vca.admin.v1.DeleteTenantRequest
+	16,  // 98: vca.admin.v1.AdminService.BindTenant:input_type -> vca.admin.v1.BindTenantRequest
+	18,  // 99: vca.admin.v1.AdminService.UnbindTenant:input_type -> vca.admin.v1.UnbindTenantRequest
+	20,  // 100: vca.admin.v1.AdminService.UpsertTrustEntry:input_type -> vca.admin.v1.UpsertTrustEntryRequest
+	22,  // 101: vca.admin.v1.AdminService.GetTrustEntry:input_type -> vca.admin.v1.GetTrustEntryRequest
+	24,  // 102: vca.admin.v1.AdminService.ListTrustEntries:input_type -> vca.admin.v1.ListTrustEntriesRequest
+	26,  // 103: vca.admin.v1.AdminService.DeleteTrustEntry:input_type -> vca.admin.v1.DeleteTrustEntryRequest
+	28,  // 104: vca.admin.v1.AdminService.ApproveTrustEntry:input_type -> vca.admin.v1.ApproveTrustEntryRequest
+	30,  // 105: vca.admin.v1.AdminService.RejectTrustEntry:input_type -> vca.admin.v1.RejectTrustEntryRequest
+	32,  // 106: vca.admin.v1.AdminService.AddTrustRegistry:input_type -> vca.admin.v1.AddTrustRegistryRequest
+	34,  // 107: vca.admin.v1.AdminService.ListTrustRegistries:input_type -> vca.admin.v1.ListTrustRegistriesRequest
+	36,  // 108: vca.admin.v1.AdminService.RemoveTrustRegistry:input_type -> vca.admin.v1.RemoveTrustRegistryRequest
+	38,  // 109: vca.admin.v1.AdminService.SyncTrustRegistry:input_type -> vca.admin.v1.SyncTrustRegistryRequest
+	41,  // 110: vca.admin.v1.AdminService.CreateAuthProvider:input_type -> vca.admin.v1.CreateAuthProviderRequest
+	46,  // 111: vca.admin.v1.AdminService.GetAuthProvider:input_type -> vca.admin.v1.GetAuthProviderRequest
+	48,  // 112: vca.admin.v1.AdminService.ListAuthProviders:input_type -> vca.admin.v1.ListAuthProvidersRequest
+	50,  // 113: vca.admin.v1.AdminService.UpdateAuthProvider:input_type -> vca.admin.v1.UpdateAuthProviderRequest
+	52,  // 114: vca.admin.v1.AdminService.DeleteAuthProvider:input_type -> vca.admin.v1.DeleteAuthProviderRequest
+	44,  // 115: vca.admin.v1.AdminService.OnboardProvider:input_type -> vca.admin.v1.OnboardProviderRequest
+	55,  // 116: vca.admin.v1.AdminService.CreateApiKey:input_type -> vca.admin.v1.CreateApiKeyRequest
+	57,  // 117: vca.admin.v1.AdminService.ListApiKeys:input_type -> vca.admin.v1.ListApiKeysRequest
+	59,  // 118: vca.admin.v1.AdminService.RevokeApiKey:input_type -> vca.admin.v1.RevokeApiKeyRequest
+	62,  // 119: vca.admin.v1.AdminService.ListStackCredentials:input_type -> vca.admin.v1.ListStackCredentialsRequest
+	64,  // 120: vca.admin.v1.AdminService.CreateStackCredential:input_type -> vca.admin.v1.CreateStackCredentialRequest
+	66,  // 121: vca.admin.v1.AdminService.DeleteStackCredential:input_type -> vca.admin.v1.DeleteStackCredentialRequest
+	69,  // 122: vca.admin.v1.AdminService.ListStackWebhooks:input_type -> vca.admin.v1.ListStackWebhooksRequest
+	71,  // 123: vca.admin.v1.AdminService.SetStackWebhook:input_type -> vca.admin.v1.SetStackWebhookRequest
+	72,  // 124: vca.admin.v1.AdminService.SetStackNotificationEndpoint:input_type -> vca.admin.v1.SetStackNotificationEndpointRequest
+	75,  // 125: vca.admin.v1.AdminService.GetServiceHealth:input_type -> vca.admin.v1.GetServiceHealthRequest
+	78,  // 126: vca.admin.v1.AdminService.QueryAuditLog:input_type -> vca.admin.v1.QueryAuditLogRequest
+	80,  // 127: vca.admin.v1.AdminService.OnboardAdmin:input_type -> vca.admin.v1.OnboardAdminRequest
+	82,  // 128: vca.admin.v1.AdminService.ListCommands:input_type -> vca.admin.v1.ListCommandsRequest
+	7,   // 129: vca.admin.v1.AdminService.CreateTenant:output_type -> vca.admin.v1.CreateTenantResponse
+	9,   // 130: vca.admin.v1.AdminService.GetTenant:output_type -> vca.admin.v1.GetTenantResponse
+	11,  // 131: vca.admin.v1.AdminService.ListTenants:output_type -> vca.admin.v1.ListTenantsResponse
+	13,  // 132: vca.admin.v1.AdminService.UpdateTenant:output_type -> vca.admin.v1.UpdateTenantResponse
+	15,  // 133: vca.admin.v1.AdminService.DeleteTenant:output_type -> vca.admin.v1.DeleteTenantResponse
+	17,  // 134: vca.admin.v1.AdminService.BindTenant:output_type -> vca.admin.v1.BindTenantResponse
+	19,  // 135: vca.admin.v1.AdminService.UnbindTenant:output_type -> vca.admin.v1.UnbindTenantResponse
+	21,  // 136: vca.admin.v1.AdminService.UpsertTrustEntry:output_type -> vca.admin.v1.UpsertTrustEntryResponse
+	23,  // 137: vca.admin.v1.AdminService.GetTrustEntry:output_type -> vca.admin.v1.GetTrustEntryResponse
+	25,  // 138: vca.admin.v1.AdminService.ListTrustEntries:output_type -> vca.admin.v1.ListTrustEntriesResponse
+	27,  // 139: vca.admin.v1.AdminService.DeleteTrustEntry:output_type -> vca.admin.v1.DeleteTrustEntryResponse
+	29,  // 140: vca.admin.v1.AdminService.ApproveTrustEntry:output_type -> vca.admin.v1.ApproveTrustEntryResponse
+	31,  // 141: vca.admin.v1.AdminService.RejectTrustEntry:output_type -> vca.admin.v1.RejectTrustEntryResponse
+	33,  // 142: vca.admin.v1.AdminService.AddTrustRegistry:output_type -> vca.admin.v1.AddTrustRegistryResponse
+	35,  // 143: vca.admin.v1.AdminService.ListTrustRegistries:output_type -> vca.admin.v1.ListTrustRegistriesResponse
+	37,  // 144: vca.admin.v1.AdminService.RemoveTrustRegistry:output_type -> vca.admin.v1.RemoveTrustRegistryResponse
+	39,  // 145: vca.admin.v1.AdminService.SyncTrustRegistry:output_type -> vca.admin.v1.SyncTrustRegistryResponse
+	42,  // 146: vca.admin.v1.AdminService.CreateAuthProvider:output_type -> vca.admin.v1.CreateAuthProviderResponse
+	47,  // 147: vca.admin.v1.AdminService.GetAuthProvider:output_type -> vca.admin.v1.GetAuthProviderResponse
+	49,  // 148: vca.admin.v1.AdminService.ListAuthProviders:output_type -> vca.admin.v1.ListAuthProvidersResponse
+	51,  // 149: vca.admin.v1.AdminService.UpdateAuthProvider:output_type -> vca.admin.v1.UpdateAuthProviderResponse
+	53,  // 150: vca.admin.v1.AdminService.DeleteAuthProvider:output_type -> vca.admin.v1.DeleteAuthProviderResponse
+	45,  // 151: vca.admin.v1.AdminService.OnboardProvider:output_type -> vca.admin.v1.OnboardProviderResponse
+	56,  // 152: vca.admin.v1.AdminService.CreateApiKey:output_type -> vca.admin.v1.CreateApiKeyResponse
+	58,  // 153: vca.admin.v1.AdminService.ListApiKeys:output_type -> vca.admin.v1.ListApiKeysResponse
+	60,  // 154: vca.admin.v1.AdminService.RevokeApiKey:output_type -> vca.admin.v1.RevokeApiKeyResponse
+	63,  // 155: vca.admin.v1.AdminService.ListStackCredentials:output_type -> vca.admin.v1.ListStackCredentialsResponse
+	65,  // 156: vca.admin.v1.AdminService.CreateStackCredential:output_type -> vca.admin.v1.CreateStackCredentialResponse
+	67,  // 157: vca.admin.v1.AdminService.DeleteStackCredential:output_type -> vca.admin.v1.DeleteStackCredentialResponse
+	70,  // 158: vca.admin.v1.AdminService.ListStackWebhooks:output_type -> vca.admin.v1.ListStackWebhooksResponse
+	74,  // 159: vca.admin.v1.AdminService.SetStackWebhook:output_type -> vca.admin.v1.SetStackWebhookResponse
+	73,  // 160: vca.admin.v1.AdminService.SetStackNotificationEndpoint:output_type -> vca.admin.v1.SetStackNotificationEndpointResponse
+	76,  // 161: vca.admin.v1.AdminService.GetServiceHealth:output_type -> vca.admin.v1.GetServiceHealthResponse
+	79,  // 162: vca.admin.v1.AdminService.QueryAuditLog:output_type -> vca.admin.v1.QueryAuditLogResponse
+	81,  // 163: vca.admin.v1.AdminService.OnboardAdmin:output_type -> vca.admin.v1.OnboardAdminResponse
+	83,  // 164: vca.admin.v1.AdminService.ListCommands:output_type -> vca.admin.v1.ListCommandsResponse
+	129, // [129:165] is the sub-list for method output_type
+	93,  // [93:129] is the sub-list for method input_type
+	93,  // [93:93] is the sub-list for extension type_name
+	93,  // [93:93] is the sub-list for extension extendee
+	0,   // [0:93] is the sub-list for field type_name
 }
 
 func init() { file_vca_admin_v1_admin_proto_init() }
@@ -5492,7 +5651,7 @@ func file_vca_admin_v1_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_admin_v1_admin_proto_rawDesc), len(file_vca_admin_v1_admin_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   81,
+			NumMessages:   83,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

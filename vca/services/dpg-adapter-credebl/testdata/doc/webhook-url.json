@@ -1,0 +1,8 @@
+{
+  "statusCode": 200,
+  "message": "Webhook Url fetched successfully",
+  "data": {
+    "webhookUrl": "https://hooks.example.org/vca",
+    "webhookSecret": "[encrypted signing secret]"
+  }
+}

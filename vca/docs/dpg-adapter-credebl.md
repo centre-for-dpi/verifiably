@@ -24,8 +24,8 @@ DIDComm wallet for each holder in the shared agent of the stack.
 | `HolderBackendService` | Served with the address and the API key of the shared agent: a DIDComm wallet per holder (ADR-062). |
 | `VerifierBackendService` | Served: OID4VP with DCQL, and DIDComm proof requests. |
 | `CatalogBackendService` | Served. |
-| `TenantBackendService` | Served for organisations. The client credential RPCs answer `unimplemented`. |
-| `NotificationBackendService` | Never served yet. The adapter sets no organisation webhook. It lists no webhooks. |
+| `TenantBackendService` | Served for organisations, with one client credential per organisation (ADR-067). |
+| `NotificationBackendService` | Served: the webhook of an organisation and its holder notification address (ADR-067). |
 | `BulkImportBackendService` | Served when the stack names a mail provider. The platform mails each row of a file an offer. |
 
 ## The CREDEBL endpoints
@@ -73,6 +73,12 @@ DIDComm wallet for each holder in the shared agent of the stack.
 | `POST /v1/orgs/{org}/oid4vp/verifier` | Creates the OID4VP verifier. |
 | `POST /v1/orgs/{org}/oid4vp/presentation` | Starts an OID4VP transaction. |
 | `GET /v1/orgs/{org}/oid4vp/verifier-presentation` | Reads the answer of a transaction. |
+| `GET /v1/webhooks/orgs/webhookurl` | Reads the webhook of an organisation. The adapter reads only whether a signing secret exists. |
+| `POST /v1/webhooks/orgs/{org}/register` | Sets the address of the webhook, and the signing secret when the admin names one. |
+| `POST /v1/notification/register/webhook-endpoint` | Registers the holder notification address of an organisation. |
+| `GET /v1/orgs/{org}/client_credentials` | Reads the client id of an organisation. The platform answers not found for none. |
+| `POST /v1/orgs/{org}/client_credentials` | Makes the client credential of an organisation. The answer holds the secret once. |
+| `DELETE /v1/orgs/{org}/client_credentials` | Removes the client credential and its Keycloak client. |
 
 ## What the adapter can do
 
@@ -84,7 +90,7 @@ The answer of `GetCapabilities` reports what the platform supports.
 | Channels | OID4VCI pre-authorized code for SD-JWT. A DIDComm invitation for AnonCreds and W3C JSON-LD. An email from the stack for the same two, when the stack names a mail provider. |
 | Protocols | OID4VCI, OID4VP, OID4VP with DCQL, DIDComm issue credential 2.0, DIDComm present proof 2.0 |
 | Roles | Issuer and verifier. Holder too with the agent. |
-| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUANCE_STATUS`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ANONCREDS_PROOF`, `FEATURE_BULK_NATIVE` with a mail provider, and `FEATURE_WALLET_DIDCOMM` and `FEATURE_WALLET_DIDS` with the agent |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUANCE_STATUS`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ANONCREDS_PROOF`, `FEATURE_WEBHOOKS`, `FEATURE_HOLDER_NOTIFICATIONS`, `FEATURE_TENANT_CLIENT_CREDENTIALS`, `FEATURE_BULK_NATIVE` with a mail provider, and `FEATURE_WALLET_DIDCOMM` and `FEATURE_WALLET_DIDS` with the agent |
 | Wallet DID methods | `did:key`, with the agent |
 | Bulk import | With a mail provider: the email channel, AnonCreds and W3C JSON-LD, and the address column `email_identifier` |
 | DID methods | `did:key` |
@@ -95,14 +101,35 @@ The answer of `GetCapabilities` reports what the platform supports.
 | DPG information | The platform name, `v2.2.1-alpha.4` with the digest of the api gateway, every platform service, the shared Credo agent, and Keycloak |
 
 Each component carries its pinned version, its repository, its
-documentation, and its licence. CREDEBL publishes from its main branch.
-The stack file pins each image by the digest that `latest` named on
-2026-09-26, beside the release tag of that image. A component shows the
-tag and the first twelve digits of the digest. A test binds the adapter
+documentation, and its licence. Every platform image comes from the
+release line `v2.2.1`, pinned by the digest of its release tag
+(ADR-066). A component shows the tag and the first twelve digits of the
+digest. A test binds the adapter
 to the stack file. A page shows a feature on this stack only when the
 answer lists it (ADR-034).
 
 CREDEBL is the only one of the three DPGs that reads DCQL.
+
+## Webhooks, notifications and client credentials
+
+A tenant is an organisation of the platform (ADR-037). The platform
+calls the webhook of an organisation on each event of its exchanges.
+The admin can set a signing secret of 16 characters or more. The
+platform then signs each call with that secret. The adapter passes the
+secret on and keeps no copy. A read shows only whether a secret exists.
+The platform clears no webhook, so the adapter marks each one as fixed.
+
+The notification service of the platform posts the push notifications
+of the holders of an organisation to one address. The platform keeps
+the first address and reads it back through no call. The adapter keeps
+the address it registered in its store. The admin portal shows the
+address as kept by the adapter. The notification route of the gateway
+has no guard. Keep that route on the host, as the deploy document says.
+
+The platform keeps one client credential per organisation. The adapter
+lists it by its client id, with the name of the organisation. The
+answer of a create holds the secret once. Neither the adapter nor the
+admin service stores it.
 
 ## What the adapter does not do
 
@@ -118,12 +145,13 @@ CREDEBL is the only one of the three DPGs that reads DCQL.
 | A decline of an offer or a proof request | The agent has no decline call. The wallet portal forgets a scanned invitation, and an inbox entry waits. |
 | Basic messages | The pinned agent has no basic message call. |
 | `CreateKey`, `ListKeys` and `SetDefaultDid` | The agent makes the key of each DID itself and binds no credential to a default DID. |
-| Every client credential RPC | The adapter makes no client credential of an organisation yet. The admin pages offer no stack credential. |
+| A second client credential of an organisation | The platform keeps one per organisation. Delete the credential, then make a new one. |
 | `CreateTenant` with a dedicated agent | The platform starts a dedicated agent through the Docker socket. The stack file mounts none, so every tenant gets the shared agent. |
 | `ImportIssuerIdentity` | The agent keeps every key and takes no key reference. Set another primary DID in the platform. |
 | A revocable credential definition | The adapter writes every credential definition without a revocation registry. |
 | `ProvisionIssuerIdentity` for `did:indy` and `did:web` | The agent takes the private key in the request for those methods. The adapter never holds a key, so it makes `did:key` only. |
-| Every webhook RPC | The adapter sets no organisation webhook. |
+| A clear of a webhook | The platform has no call that clears one. Set another address instead. |
+| A change of the holder notification address | The platform keeps the first address and has no change call. |
 | `VerifyCredential` | The adapter does not send an uploaded credential to the platform. The scanner shows no stack check. |
 | A DIDComm proof request by email | The platform answers a request by email with the thread of the exchange alone. No call of the platform reads a proof by its thread, so VCA could not show the answer. Send the invitation as a QR code or a link, or over a connection. |
 

@@ -45,10 +45,17 @@ type fakeAdapter struct {
 	hooks map[string]string
 	// hookErr, when set, fails every webhook call.
 	hookErr error
+	// secrets holds the last signing secret per stack tenant id.
+	secrets map[string]string
+	// notify holds the notification address per stack tenant id.
+	notify map[string]string
+	// notifyErr, when set, fails every notification address call.
+	notifyErr error
 }
 
 func newFakeAdapter() *fakeAdapter {
-	return &fakeAdapter{tenants: map[string]*backendv1.DpgTenant{}, creds: map[string][]*backendv1.ClientCredential{}, hooks: map[string]string{}}
+	return &fakeAdapter{tenants: map[string]*backendv1.DpgTenant{}, creds: map[string][]*backendv1.ClientCredential{}, hooks: map[string]string{},
+		secrets: map[string]string{}, notify: map[string]string{}}
 }
 
 func (f *fakeAdapter) CreateTenant(_ context.Context, req *connect.Request[backendv1.CreateTenantRequest]) (*connect.Response[backendv1.CreateTenantResponse], error) {

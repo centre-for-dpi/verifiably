@@ -31,7 +31,123 @@ func (f *fakeAdapter) SetWebhook(_ context.Context, req *connect.Request[backend
 		return nil, f.hookErr
 	}
 	f.hooks[req.Msg.GetTenantId()] = req.Msg.GetUrl()
-	return connect.NewResponse(&backendv1.SetWebhookResponse{Webhook: &backendv1.Webhook{Url: req.Msg.GetUrl()}}), nil
+	f.secrets[req.Msg.GetTenantId()] = req.Msg.GetSigningSecret()
+	return connect.NewResponse(&backendv1.SetWebhookResponse{Webhook: &backendv1.Webhook{
+		Url: req.Msg.GetUrl(), Signed: req.Msg.GetSigningSecret() != "", Fixed: true,
+	}}), nil
+}
+
+func (f *fakeAdapter) GetNotificationEndpoint(_ context.Context, req *connect.Request[backendv1.GetNotificationEndpointRequest]) (*connect.Response[backendv1.GetNotificationEndpointResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.notifyErr != nil {
+		return nil, f.notifyErr
+	}
+	return connect.NewResponse(&backendv1.GetNotificationEndpointResponse{Endpoint: &backendv1.NotificationEndpoint{
+		Url: f.notify[req.Msg.GetTenantId()], KeptByAdapter: true, Fixed: true,
+	}}), nil
+}
+
+func (f *fakeAdapter) SetNotificationEndpoint(_ context.Context, req *connect.Request[backendv1.SetNotificationEndpointRequest]) (*connect.Response[backendv1.SetNotificationEndpointResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.notifyErr != nil {
+		return nil, f.notifyErr
+	}
+	f.notify[req.Msg.GetTenantId()] = req.Msg.GetUrl()
+	return connect.NewResponse(&backendv1.SetNotificationEndpointResponse{Endpoint: &backendv1.NotificationEndpoint{
+		Url: req.Msg.GetUrl(), KeptByAdapter: true, Fixed: true,
+	}}), nil
+}
+
+// TestStackWebhookPassesTheSigningSecret is P6-C8: the secret of a set
+// reaches the stack, the entry says the webhook is signed, and the audit
+// record holds no secret.
+func TestStackWebhookPassesTheSigningSecret(t *testing.T) {
+	h := newHarness(t)
+	fake, _ := withStacks(t, h, backendv1.Feature_FEATURE_WEBHOOKS)
+	ctx := context.Background()
+	if _, err := h.svc.BindTenant(ctx, request(h, &adminv1.BindTenantRequest{Id: h.tenantID, Stack: configv1.Dpg_DPG_CREDEBL})); err != nil {
+		t.Fatal(err)
+	}
+	secret := "[sixteen or more characters]"
+	set, err := h.svc.SetStackWebhook(ctx, request(h, &adminv1.SetStackWebhookRequest{
+		TenantId: h.tenantID, Stack: configv1.Dpg_DPG_CREDEBL, Url: "https://hooks.health.example/vca", SigningSecret: secret,
+	}))
+	if err != nil || !set.Msg.GetWebhook().GetWebhook().GetSigned() || fake.secrets["org-1"] != secret {
+		t.Fatalf("SetStackWebhook = %+v, %v, stack got %q", set, err, fake.secrets["org-1"])
+	}
+	for _, rec := range auditActions(t, h, "admin.SetStackWebhook") {
+		if strings.Contains(rec.Target+rec.Detail, secret) {
+			t.Errorf("the audit record holds the secret: %+v", rec)
+		}
+	}
+}
+
+// TestStackNotificationEndpointRPCs is P6-C8 (ADR-067): on a stack that
+// lists holder notifications, the webhook entry of a tenant carries its
+// notification address, and the admin registers one. A stack without
+// the feature takes none.
+func TestStackNotificationEndpointRPCs(t *testing.T) {
+	h := newHarness(t)
+	fake, _ := withStacks(t, h, backendv1.Feature_FEATURE_WEBHOOKS, backendv1.Feature_FEATURE_HOLDER_NOTIFICATIONS)
+	ctx := context.Background()
+	if _, err := h.svc.BindTenant(ctx, request(h, &adminv1.BindTenantRequest{Id: h.tenantID, Stack: configv1.Dpg_DPG_CREDEBL})); err != nil {
+		t.Fatal(err)
+	}
+	set, err := h.svc.SetStackNotificationEndpoint(ctx, request(h, &adminv1.SetStackNotificationEndpointRequest{
+		TenantId: h.tenantID, Stack: configv1.Dpg_DPG_CREDEBL, Url: " https://push.health.example/credebl ",
+	}))
+	if err != nil || set.Msg.GetWebhook().GetNotification().GetUrl() != "https://push.health.example/credebl" || fake.notify["org-1"] != "https://push.health.example/credebl" {
+		t.Fatalf("SetStackNotificationEndpoint = %+v, %v", set, err)
+	}
+	list, err := h.svc.ListStackWebhooks(ctx, request(h, &adminv1.ListStackWebhooksRequest{}))
+	if err != nil || len(list.Msg.GetWebhooks()) != 1 || list.Msg.GetWebhooks()[0].GetNotification().GetUrl() != "https://push.health.example/credebl" {
+		t.Fatalf("ListStackWebhooks = %+v, %v", list, err)
+	}
+	if recs := auditActions(t, h, "admin.SetStackNotificationEndpoint"); len(recs) != 1 || !recs[0].OK || recs[0].Target != h.tenantID {
+		t.Errorf("audit = %+v", recs)
+	}
+	fake.notifyErr = connect.NewError(connect.CodeUnavailable, errors.New("the notification service is down"))
+	list, err = h.svc.ListStackWebhooks(ctx, request(h, &adminv1.ListStackWebhooksRequest{}))
+	if err != nil || !strings.Contains(list.Msg.GetWebhooks()[0].GetNotificationError(), "down") {
+		t.Errorf("a failed read gave %+v, %v", list, err)
+	}
+	_, err = h.svc.SetStackNotificationEndpoint(ctx, request(h, &adminv1.SetStackNotificationEndpointRequest{
+		TenantId: h.tenantID, Stack: configv1.Dpg_DPG_CREDEBL, Url: "https://push.health.example/credebl",
+	}))
+	if connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Errorf("a failed set gave %v", err)
+	}
+	for _, m := range []*adminv1.SetStackNotificationEndpointRequest{
+		{TenantId: h.tenantID, Stack: configv1.Dpg_DPG_CREDEBL, Url: "http://push.health.example"},
+		{TenantId: h.tenantID, Stack: configv1.Dpg_DPG_CREDEBL},
+	} {
+		if _, err := h.svc.SetStackNotificationEndpoint(ctx, request(h, m)); connect.CodeOf(err) != connect.CodeInvalidArgument {
+			t.Errorf("%+v gave %v", m, err)
+		}
+	}
+	if _, err := h.svc.SetStackNotificationEndpoint(ctx, request(h, &adminv1.SetStackNotificationEndpointRequest{
+		TenantId: h.tenantID, Stack: configv1.Dpg_DPG_WALTID, Url: "https://push.health.example",
+	})); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Errorf("a stack with no binding gave %v", err)
+	}
+	if _, err := h.svc.SetStackNotificationEndpoint(ctx, connect.NewRequest(&adminv1.SetStackNotificationEndpointRequest{})); connect.CodeOf(err) != connect.CodeUnauthenticated {
+		t.Errorf("an anonymous caller gave %v", err)
+	}
+	plain := newHarness(t)
+	_, _ = withStacks(t, plain, backendv1.Feature_FEATURE_WEBHOOKS)
+	if _, err := plain.svc.BindTenant(ctx, request(plain, &adminv1.BindTenantRequest{Id: plain.tenantID, Stack: configv1.Dpg_DPG_CREDEBL})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := plain.svc.SetStackNotificationEndpoint(ctx, request(plain, &adminv1.SetStackNotificationEndpointRequest{
+		TenantId: plain.tenantID, Stack: configv1.Dpg_DPG_CREDEBL, Url: "https://push.health.example",
+	})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Errorf("a stack without the feature gave %v", err)
+	}
+	if list, err := plain.svc.ListStackWebhooks(ctx, request(plain, &adminv1.ListStackWebhooksRequest{})); err != nil || list.Msg.GetWebhooks()[0].GetNotification() != nil {
+		t.Errorf("a stack without the feature listed %+v, %v", list, err)
+	}
 }
 
 // TestStackWebhookRPCs is ADR-040 decision 2: the webhook of a stack

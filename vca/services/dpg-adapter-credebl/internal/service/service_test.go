@@ -619,6 +619,14 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 			_, err := svc.GetWebhook(ctx, connect.NewRequest(&backendv1.GetWebhookRequest{}))
 			return err
 		}, true},
+		{backendv1.Feature_FEATURE_HOLDER_NOTIFICATIONS, func() error {
+			_, err := svc.GetNotificationEndpoint(ctx, connect.NewRequest(&backendv1.GetNotificationEndpointRequest{}))
+			return err
+		}, true},
+		{backendv1.Feature_FEATURE_TENANT_CLIENT_CREDENTIALS, func() error {
+			_, err := svc.ListClientCredentials(ctx, connect.NewRequest(&backendv1.ListClientCredentialsRequest{}))
+			return err
+		}, true},
 	}
 	listed := map[backendv1.Feature]bool{}
 	for _, f := range resp.Msg.GetFeatures() {
@@ -638,72 +646,6 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 	for f := range listed {
 		if !known[f] {
 			t.Errorf("the feature %v has no RPC behind it yet, so the answer must not list it", f)
-		}
-	}
-}
-
-// TestClientCredentialsUnimplementedWithoutFeature is ADR-038 decision
-// 2: the adapter makes no client credential of an organisation yet, so
-// the three credential RPCs answer Unimplemented with a reason, and the
-// answer lists no stack credential. Tenancy works (P6-C1).
-func TestClientCredentialsUnimplementedWithoutFeature(t *testing.T) {
-	svc, _ := newService(t, nil)
-	ctx := context.Background()
-	calls := []func() error{
-		func() error {
-			_, err := svc.ListClientCredentials(ctx, connect.NewRequest(&backendv1.ListClientCredentialsRequest{TenantId: "t-1"}))
-			return err
-		},
-		func() error {
-			_, err := svc.CreateClientCredential(ctx, connect.NewRequest(&backendv1.CreateClientCredentialRequest{TenantId: "t-1", Name: "ci"}))
-			return err
-		},
-		func() error {
-			_, err := svc.DeleteClientCredential(ctx, connect.NewRequest(&backendv1.DeleteClientCredentialRequest{TenantId: "t-1", Id: "c-1"}))
-			return err
-		},
-	}
-	for i, call := range calls {
-		err := call()
-		wantCode(t, err, connect.CodeUnimplemented)
-		if !strings.Contains(err.Error(), "client credential") {
-			t.Errorf("call %d: the message %q does not say why", i, err)
-		}
-	}
-	caps, err := svc.GetCapabilities(ctx, connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	listed := map[backendv1.Feature]bool{}
-	for _, f := range caps.Msg.GetFeatures() {
-		listed[f] = true
-	}
-	if listed[backendv1.Feature_FEATURE_TENANT_CLIENT_CREDENTIALS] || !listed[backendv1.Feature_FEATURE_MULTI_TENANCY] {
-		t.Errorf("features = %v, want tenancy without client credentials", caps.Msg.GetFeatures())
-	}
-}
-
-// TestWebhookServiceUnimplementedWithoutFeature is ADR-040 decision 2:
-// the adapter sets no DPG webhook yet, so both notification RPCs answer
-// Unimplemented with a reason, and the answer lists no webhooks. The
-// admin notifications page then shows no webhook form for this stack.
-func TestWebhookServiceUnimplementedWithoutFeature(t *testing.T) {
-	svc, _ := newService(t, nil)
-	ctx := context.Background()
-	_, err := svc.GetWebhook(ctx, connect.NewRequest(&backendv1.GetWebhookRequest{TenantId: "t-1"}))
-	wantCode(t, err, connect.CodeUnimplemented)
-	if !strings.Contains(err.Error(), "webhook") {
-		t.Errorf("the message %q does not say why", err)
-	}
-	_, err = svc.SetWebhook(ctx, connect.NewRequest(&backendv1.SetWebhookRequest{TenantId: "t-1", Url: "https://hooks.example/vca"}))
-	wantCode(t, err, connect.CodeUnimplemented)
-	caps, err := svc.GetCapabilities(ctx, connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range caps.Msg.GetFeatures() {
-		if f == backendv1.Feature_FEATURE_WEBHOOKS {
-			t.Errorf("the answer lists %v", f)
 		}
 	}
 }

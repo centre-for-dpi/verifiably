@@ -61,6 +61,11 @@ func (s *Service) features() []backendv1.Feature {
 		// The verifier asks for AnonCreds proofs with predicates over
 		// DIDComm (P6-C6).
 		backendv1.Feature_FEATURE_ANONCREDS_PROOF,
+		// The webhook, the notification address and the client
+		// credential of an organisation (P6-C8).
+		backendv1.Feature_FEATURE_WEBHOOKS,
+		backendv1.Feature_FEATURE_HOLDER_NOTIFICATIONS,
+		backendv1.Feature_FEATURE_TENANT_CLIENT_CREDENTIALS,
 	}
 	if s.mailOffers {
 		out = append(out, backendv1.Feature_FEATURE_BULK_NATIVE)

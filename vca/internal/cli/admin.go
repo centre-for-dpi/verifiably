@@ -89,6 +89,7 @@ var adminPaths = []struct{ path, method string }{
 	{"stack-credential delete", "DeleteStackCredential"},
 	{"webhook list", "ListStackWebhooks"},
 	{"webhook set", "SetStackWebhook"},
+	{"webhook holder", "SetStackNotificationEndpoint"},
 	{"health", "GetServiceHealth"},
 	{"audit", "QueryAuditLog"},
 	{"bind", "OnboardAdmin"},

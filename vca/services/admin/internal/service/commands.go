@@ -182,11 +182,18 @@ var commands = []command{
 	}},
 	{path: "admin webhook list", rpc: "ListStackWebhooks"},
 	{path: "admin webhook set", rpc: "SetStackWebhook",
-		long: "Sets the webhook that a stack calls on the events of one tenant. An empty URL clears it. The stack must list webhooks.",
+		long: "Sets the webhook that a stack calls on the events of one tenant. The stack must list webhooks. A stack that keeps a webhook once set refuses an empty URL. Set a signing secret in the portal, so that it stays out of the shell history.",
 		flags: []flag{
 			{name: "tenant", text: "The tenant id.", mandatory: true},
 			{name: "stack", text: "The stack, for example DPG_CREDEBL.", mandatory: true},
-			{name: "url", text: "The https URL. Leave it out to clear the webhook."},
+			{name: "url", text: "The https URL. Leave it out to clear the webhook where the stack allows it."},
+		}},
+	{path: "admin webhook holder", rpc: "SetStackNotificationEndpoint",
+		long: "Registers the address that the notification service of a stack posts the push notifications of the holders of one tenant to. The stack takes one address per tenant.",
+		flags: []flag{
+			{name: "tenant", text: "The tenant id.", mandatory: true},
+			{name: "stack", text: "The stack, for example DPG_CREDEBL.", mandatory: true},
+			{name: "url", text: "The https URL.", mandatory: true},
 		}},
 	{path: "admin health", rpc: "GetServiceHealth"},
 	{path: "admin audit", rpc: "QueryAuditLog", flags: []flag{

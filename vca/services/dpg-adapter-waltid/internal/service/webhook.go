@@ -30,3 +30,17 @@ func (s *Service) SetWebhook(
 ) (*connect.Response[backendv1.SetWebhookResponse], error) {
 	return nil, unimplemented(webhookMessage)
 }
+
+// GetNotificationEndpoint is not available. See webhookMessage.
+func (s *Service) GetNotificationEndpoint(
+	context.Context, *connect.Request[backendv1.GetNotificationEndpointRequest],
+) (*connect.Response[backendv1.GetNotificationEndpointResponse], error) {
+	return nil, unimplemented(webhookMessage)
+}
+
+// SetNotificationEndpoint is not available. See webhookMessage.
+func (s *Service) SetNotificationEndpoint(
+	context.Context, *connect.Request[backendv1.SetNotificationEndpointRequest],
+) (*connect.Response[backendv1.SetNotificationEndpointResponse], error) {
+	return nil, unimplemented(webhookMessage)
+}
