@@ -290,7 +290,11 @@ name per referent and never reads a revealed group. So the adapter turns
 a group of `names` into one referent per name, with the restrictions of
 the group. A DIF PE request needs the schema of each
 input descriptor. The adapter reads it from the filter of the descriptor
-on `$.type`. The platform keeps only the path of each field. The agent
+on `$.type`. The platform keeps only the path of each field. It reads
+the first field of each descriptor only. So the adapter puts the claim
+field before the type filter. It refuses a descriptor with more than one
+claim, because the platform would drop the others. Ask for each claim in
+its own descriptor, or ask over OID4VP. The agent
 verifies each presentation as it arrives. A presentation that waits gets
 the check call of the platform. The state of a request is
 `didcomm-proof:` and the id of the proof exchange.

@@ -208,7 +208,29 @@ func TestPeProofRequestOverDidcomm(t *testing.T) {
 	d := body.Definition
 	if d.ID != "farmer-check" || len(d.Descriptors) != 1 || len(d.Descriptors[0].Schema) != 1 ||
 		d.Descriptors[0].Schema[0].URI != "FarmerCredential" || len(d.Descriptors[0].Constraints.Fields) != 2 {
-		t.Errorf("definition = %+v", d)
+		t.Fatalf("definition = %+v", d)
+	}
+	// Finding 3.1 of the CREDEBL review: the platform reads the path of
+	// the first field of each descriptor only, so the claim goes first
+	// and the type filter after it.
+	if fields := d.Descriptors[0].Constraints.Fields; strings.Join(fields[0].Path, ",") != "$.credentialSubject.fullName" ||
+		strings.Join(fields[1].Path, ",") != "$.type" {
+		t.Errorf("fields = %+v", fields)
+	}
+}
+
+// TestPeProofRequestRefusesTwoClaimsInOneDescriptor is finding 3.1 of
+// the CREDEBL review: the platform reads one claim per input descriptor,
+// so a descriptor with two claims would lose one. The adapter refuses it
+// and says why.
+func TestPeProofRequestRefusesTwoClaimsInOneDescriptor(t *testing.T) {
+	svc, _ := newService(t, nil)
+	two := `{"id":"x","input_descriptors":[{"id":"farmer","constraints":{"fields":[` +
+		`{"path":["$.type"],"filter":{"const":"FarmerCredential"}},` +
+		`{"path":["$.credentialSubject.fullName"]},{"path":["$.credentialSubject.district"]}]}}]}`
+	_, err := svc.CreateRequest(context.Background(), connect.NewRequest(&backendv1.CreateRequestRequest{Didcomm: true, PresentationDefinition: two}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument || !strings.Contains(err.Error(), "one claim") {
+		t.Fatalf("two claims: %v", err)
 	}
 }
 

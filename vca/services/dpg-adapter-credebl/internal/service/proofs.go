@@ -301,12 +301,18 @@ func platformDefinition(raw string) (json.RawMessage, []string, error) {
 		if !isObject {
 			return nil, nil, errors.New("an input descriptor is not an object")
 		}
-		for _, name := range claimNames(d) {
+		claims := claimNames(d)
+		if len(claims) > 1 {
+			return nil, nil, fmt.Errorf("the platform reads one claim per input descriptor, and %q asks for %s; "+
+				"put each claim in its own descriptor or ask over OID4VP", text(d["id"]), strings.Join(claims, ", "))
+		}
+		for _, name := range claims {
 			if err := askable(name); err != nil {
 				return nil, nil, err
 			}
 			names = append(names, name)
 		}
+		claimFirst(d)
 		if _, has := d["schema"]; has {
 			continue
 		}
@@ -354,6 +360,33 @@ func claimNames(d map[string]any) []string {
 		}
 	}
 	return out
+}
+
+// claimFirst moves the fields on a claim before the fields on the type
+// of the credential. The platform reads the path of the first field of
+// a descriptor only (verification.service.ts), and the PE form of a DCQL
+// query puts the type filter first.
+func claimFirst(d map[string]any) {
+	constraints, ok := d["constraints"].(map[string]any)
+	if !ok {
+		return
+	}
+	fields := anyval.As[[]any](constraints["fields"])
+	var claims, rest []any
+	for _, item := range fields {
+		onType := false
+		for _, p := range anyval.As[[]any](anyval.As[map[string]any](item)["path"]) {
+			onType = onType || typePath(text(p))
+		}
+		if onType {
+			rest = append(rest, item)
+		} else {
+			claims = append(claims, item)
+		}
+	}
+	if len(fields) > 0 {
+		constraints["fields"] = append(claims, rest...)
+	}
 }
 
 // typePath reports a path on the type of the credential.
