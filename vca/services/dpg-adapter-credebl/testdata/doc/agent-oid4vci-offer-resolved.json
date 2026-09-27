@@ -1,0 +1,29 @@
+{
+  "metadata": {
+    "credentialIssuer": {
+      "credential_issuer": "https://credebl.example.org/oid4vci/org-1"
+    }
+  },
+  "credentialOfferPayload": {
+    "credential_issuer": "https://credebl.example.org/oid4vci/org-1",
+    "credential_configuration_ids": [
+      "FarmerCredential-sdjwt"
+    ],
+    "grants": {
+      "urn:ietf:params:oauth:grant-type:pre-authorized_code": {
+        "pre-authorized_code": "[pre-authorized code]",
+        "tx_code": {
+          "input_mode": "numeric",
+          "length": 4
+        }
+      }
+    }
+  },
+  "offeredCredentialConfigurations": {
+    "FarmerCredential-sdjwt": {
+      "format": "dc+sd-jwt",
+      "vct": "FarmerCredential"
+    }
+  },
+  "version": "v1"
+}

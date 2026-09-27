@@ -1,0 +1,101 @@
+{
+  "authorizationRequestPayload": {
+    "response_type": "vp_token",
+    "client_id": "x509_san_dns:verifier.example.org",
+    "response_uri": "https://verifier.example.org/oid4vp/response",
+    "response_mode": "direct_post",
+    "nonce": "[nonce]",
+    "dcql_query": {
+      "credentials": [
+        {
+          "id": "farmer",
+          "format": "dc+sd-jwt",
+          "meta": {
+            "vct_values": [
+              "FarmerCredential"
+            ]
+          },
+          "claims": [
+            {
+              "path": [
+                "fullName"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "verifier": {
+    "clientIdPrefix": "x509_san_dns",
+    "effectiveClientId": "x509_san_dns:verifier.example.org"
+  },
+  "dcql": {
+    "queryResult": {
+      "credentials": [
+        {
+          "id": "farmer",
+          "format": "dc+sd-jwt",
+          "meta": {
+            "vct_values": [
+              "FarmerCredential"
+            ]
+          },
+          "claims": [
+            {
+              "path": [
+                "fullName"
+              ]
+            }
+          ]
+        }
+      ],
+      "can_be_satisfied": true,
+      "credential_matches": {
+        "farmer": {
+          "success": true,
+          "credential_query_id": "farmer",
+          "valid_credentials": [
+            {
+              "success": true,
+              "input_credential_index": 0,
+              "record": {
+                "_tags": {
+                  "vct": "FarmerCredential",
+                  "alg": "EdDSA",
+                  "sdAlg": "sha-256",
+                  "multiInstanceState": "SingleInstanceUnused"
+                },
+                "metadata": {},
+                "id": "e1f2a3b4-c5d6-4e7f-8a9b-0c1d2e3f4a5b",
+                "createdAt": "2026-09-27T11:40:12.330Z",
+                "type": "SdJwtVcRecord",
+                "credentialInstances": [
+                  {
+                    "compactSdJwtVc": "eyJhbGciOiJFZERTQSIsInR5cCI6ImRjK3NkLWp3dCIsImtpZCI6ImRpZDprZXk6ejZNa3dwQ2kzSHU2RVp0Y2JXVHJLNEdXRnh0Z2Y0WnZ5bkNqaEV0RnFHakJWNVhpI3o2TWt3cENpM0h1NkVadGNiV1RySzRHV0Z4dGdmNFp2eW5DamhFdEZxR2pCVjVYaSJ9.eyJ2Y3QiOiJGYXJtZXJDcmVkZW50aWFsIiwiaXNzIjoiaHR0cHM6Ly9jcmVkZWJsLmV4YW1wbGUub3JnL29pZDR2Y2kvb3JnLTEiLCJpYXQiOjE3OTA1MDMyMDAsImNuZiI6eyJqd2siOnsia3R5IjoiT0tQIiwiY3J2IjoiRWQyNTUxOSIsIngiOiJbcHVibGljIGtleV0ifX0sIl9zZF9hbGciOiJzaGEtMjU2IiwiX3NkIjpbIltkaWdlc3Qgb25lXSIsIltkaWdlc3QgdHdvXSJdfQ.[signature]~WyJbc2FsdCBvbmVdIiwiZnVsbE5hbWUiLCJbaG9sZGVyXSJd~WyJbc2FsdCB0d29dIiwiaGVjdGFyZXMiLCIxMiJd~",
+                    "kmsKeyId": "3d2e1f0a-9b8c-4d7e-8f6a-5b4c3d2e1f0a"
+                  }
+                ],
+                "multiInstanceState": "SingleInstanceUnused",
+                "updatedAt": "2026-09-27T11:40:12.330Z"
+              },
+              "claims": {
+                "success": true,
+                "valid_claims": [
+                  {
+                    "success": true,
+                    "claim_id": "0",
+                    "output": {
+                      "fullName": "[holder]"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "failed_credentials": []
+        }
+      }
+    }
+  }
+}

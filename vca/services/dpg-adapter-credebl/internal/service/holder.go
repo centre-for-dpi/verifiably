@@ -46,6 +46,8 @@ var WalletDidMethods = []string{"did:key"}
 const (
 	anonCredsPrefix = "anoncreds:"
 	w3cPrefix       = "w3c:"
+	sdJwtPrefix     = "sd-jwt:"
+	mdocPrefix      = "mdoc:"
 )
 
 // The exchange states the holder reads (Credo 0.6.2).
@@ -231,6 +233,14 @@ func (s *Service) held(ctx context.Context, tenant string) ([]*backendv1.WalletC
 	if err != nil {
 		return nil, failed("list the W3C credentials of the wallet", err)
 	}
+	sdJwt, err := s.agent.SdJwtCredentials(ctx, tenant)
+	if err != nil {
+		return nil, failed("list the SD-JWT credentials of the wallet", err)
+	}
+	mdoc, err := s.agent.MdocCredentials(ctx, tenant)
+	if err != nil {
+		return nil, failed("list the mdoc credentials of the wallet", err)
+	}
 	var out []*backendv1.WalletCredential
 	for _, rec := range done {
 		if rec.RecordOf("anoncreds") != "" && rec.AnonCreds() != nil {
@@ -239,6 +249,9 @@ func (s *Service) held(ctx context.Context, tenant string) ([]*backendv1.WalletC
 	}
 	for _, rec := range stored {
 		out = append(out, w3cCredential(rec))
+	}
+	for _, rec := range append(sdJwt, mdoc...) {
+		out = append(out, storedCredential(rec))
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		return out[i].GetReceivedAt().AsTime().After(out[j].GetReceivedAt().AsTime())
@@ -294,15 +307,18 @@ func (s *Service) receive(ctx context.Context, tenant, uri string, match func(cr
 	return "", connect.NewError(connect.CodeInvalidArgument, errors.New(missing))
 }
 
-// AcceptOffer takes a DIDComm offer into the wallet: from an invitation
-// the holder scanned, or from the inbox (ADR-062 decision 3). It waits
-// for the credential.
+// AcceptOffer takes an offer into the wallet: a DIDComm offer from an
+// invitation the holder scanned or from the inbox (ADR-062 decision 3),
+// or an OID4VCI offer (decision 8). It waits for the credential.
 func (s *Service) AcceptOffer(
 	ctx context.Context, req *connect.Request[backendv1.AcceptOfferRequest],
 ) (*connect.Response[backendv1.AcceptOfferResponse], error) {
 	tenant, err := s.wallet(ctx, req.Msg.GetWalletId())
 	if err != nil {
 		return nil, err
+	}
+	if uri := strings.TrimSpace(req.Msg.GetOfferUri()); req.Msg.GetInboxId() == "" && isOid4vciOffer(uri) {
+		return s.claimOid4vci(ctx, tenant, uri, strings.TrimSpace(req.Msg.GetPin()))
 	}
 	record, err := s.offerRecord(ctx, tenant, req.Msg)
 	if err != nil {
@@ -348,8 +364,8 @@ func (s *Service) offerRecord(ctx context.Context, tenant string, msg *backendv1
 	case uri == "":
 		return "", connect.NewError(connect.CodeInvalidArgument, errors.New("the request needs an offer_uri or an inbox_id"))
 	case !isInvitation(uri):
-		return "", connect.NewError(connect.CodeFailedPrecondition,
-			errors.New("the wallet of this stack takes DIDComm offers; ask the issuer for a DIDComm invitation"))
+		return "", connect.NewError(connect.CodeInvalidArgument,
+			errors.New("the offer_uri is neither a DIDComm invitation nor an OID4VCI offer"))
 	}
 	thread, err := s.receive(ctx, tenant, uri, credebl.Attached.IsOffer, "the invitation carries no credential offer")
 	if err != nil {
@@ -402,6 +418,9 @@ func (s *Service) Present(
 	if err != nil {
 		return nil, err
 	}
+	if uri, ok := oid4vpRequest(req.Msg.GetRequestUri()); req.Msg.GetInboxId() == "" && ok {
+		return s.presentOid4vp(ctx, tenant, uri, req.Msg)
+	}
 	record, err := s.proofRecord(ctx, tenant, req.Msg)
 	if err != nil {
 		return nil, err
@@ -443,8 +462,8 @@ func (s *Service) proofRecord(ctx context.Context, tenant string, msg *backendv1
 	}
 	uri := strings.TrimSpace(msg.GetRequestUri())
 	if !isInvitation(uri) {
-		return "", connect.NewError(connect.CodeFailedPrecondition,
-			errors.New("the wallet of this stack answers DIDComm proof requests; ask the verifier for a DIDComm invitation"))
+		return "", connect.NewError(connect.CodeInvalidArgument,
+			errors.New("the request_uri is neither a DIDComm invitation nor an OID4VP request"))
 	}
 	thread, err := s.receive(ctx, tenant, uri, credebl.Attached.IsProofRequest, "the invitation carries no proof request")
 	if err != nil {
@@ -479,13 +498,14 @@ func (s *Service) DeleteCredential(
 		return nil, err
 	}
 	id := strings.TrimSpace(req.Msg.GetCredentialId())
-	switch {
-	case strings.HasPrefix(id, anonCredsPrefix):
+	if strings.HasPrefix(id, anonCredsPrefix) {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("the agent of this stack cannot remove an AnonCreds credential"))
-	case !strings.HasPrefix(id, w3cPrefix):
+	}
+	kind, record := heldKind(id)
+	if kind == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the request needs a credential_id from ListCredentials"))
 	}
-	if err := s.agent.DeleteW3c(ctx, tenant, strings.TrimPrefix(id, w3cPrefix)); err != nil {
+	if err := s.agent.DeleteHeld(ctx, tenant, kind, record); err != nil {
 		return nil, failed("remove the credential", err)
 	}
 	return connect.NewResponse(&backendv1.DeleteCredentialResponse{}), nil

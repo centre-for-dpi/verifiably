@@ -112,7 +112,8 @@ CREDEBL is the only one of the three DPGs that reads DCQL.
 | `Revoke` | The platform revokes an OID4VC session only with a status list host. The stack file runs none, so the status services of VCA own the status bits. |
 | Every holder RPC without the agent | The holder role needs the admin address and the API key of the shared agent. `vca setup` writes both into a holder pair. |
 | The cloud wallet service of the platform | The pinned cloud wallet service reads the agent with a call that the pinned agent refuses. Its proof paths hold a stray brace. Its holder account also needs a mail check. The adapter keeps each holder wallet in the shared agent instead (ADR-062). |
-| `AcceptOffer` with an OID4VCI offer, and `Present` with an OID4VP request | The wallet of the stack speaks DIDComm. Ask the issuer or the verifier for a DIDComm invitation. |
+| `AcceptOffer` with an OID4VCI offer that has an authorization code grant only | The agent redeems a pre-authorized code only. Ask the issuer for an offer with such a code. |
+| An OID4VP answer with another matching credential | The agent answers with the first credential that matches each query. The adapter refuses a pick that differs, so the answer never differs from the consent. |
 | `DeleteCredential` of an AnonCreds credential | The agent has no call that removes one. The wallet portal offers no remove button for it. |
 | A decline of an offer or a proof request | The agent has no decline call. The wallet portal forgets a scanned invitation, and an inbox entry waits. |
 | Basic messages | The pinned agent has no basic message call. |
@@ -324,6 +325,12 @@ carries. On accept the adapter hands the invitation to the tenant. The
 agent makes the connection and takes the message it carries. The adapter
 finds the exchange by the thread of that message and accepts it. It then
 waits for the credential or the answer of the verifier.
+
+**The same wallet holds OID4VC credentials.** The tenant claims an
+OID4VCI offer with a pre-authorized code through the holder API of the
+agent. It answers an OID4VP request there too. The agent picks the first
+credential that matches each query. The adapter reads that pick first
+and refuses an answer when the holder picked another credential.
 
 **An AnonCreds credential reads from its exchange.** The agent lists no
 AnonCreds credential. The finished exchange holds the values of the

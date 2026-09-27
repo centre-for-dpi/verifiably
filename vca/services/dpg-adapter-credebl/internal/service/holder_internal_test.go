@@ -39,3 +39,56 @@ func TestHolderHelpers(t *testing.T) {
 		t.Errorf("a cancelled poll: %v after %d calls", err, calls)
 	}
 }
+
+// TestOid4vcHelpers pins the helpers of the OID4VC side of the wallet
+// (ADR-062 decision 8): the offer and request checks and the form of
+// each stored record.
+func TestOid4vcHelpers(t *testing.T) {
+	for uri, want := range map[string]bool{
+		"openid-credential-offer://?credential_offer_uri=x": true, "https://wallet.example/?credential_offer=%7B%7D": true,
+		"https://issuer.example/": false, "%": false,
+	} {
+		if isOid4vciOffer(uri) != want {
+			t.Errorf("isOid4vciOffer(%q) != %v", uri, want)
+		}
+	}
+	for uri, want := range map[string]string{
+		"openid4vp://?request_uri=x":             "openid4vp://?request_uri=x",
+		"haip://?request_uri=x":                  "haip://?request_uri=x",
+		"https://verifier.example/request/1":     "openid4vp://authorize?request_uri=https%3A%2F%2Fverifier.example%2Frequest%2F1",
+		"https://verifier.example/?client_id=v1": "https://verifier.example/?client_id=v1",
+		"https://verifier.example/?page=2":       "",
+		"https://agent.example/?oob=abc":         "",
+		"ftp://verifier.example/x":               "",
+		"%":                                      "",
+	} {
+		if got, ok := oid4vpRequest(uri); got != want || ok != (want != "") {
+			t.Errorf("oid4vpRequest(%q) = %q, %v", uri, got, ok)
+		}
+	}
+	w3c := credebl.AgentStored{ID: "w-1", Type: credebl.RecordW3c}
+	w3c.Instances = append(w3c.Instances, struct {
+		SdJwt      string          `json:"compactSdJwtVc"`
+		Mdoc       string          `json:"issuerSignedBase64Url"`
+		Credential json.RawMessage `json:"credential"`
+	}{Credential: json.RawMessage(`{"type":["VerifiableCredential","Licence"],"issuer":"did:web:ministry"}`)})
+	if got := storedCredential(w3c); got.GetId() != "w3c:w-1" || got.GetType() != "Licence" {
+		t.Errorf("w3c = %+v", got)
+	}
+	if got := storedCredential(credebl.AgentStored{ID: "w-2", Type: credebl.RecordW3c}); got.GetId() != "w3c:w-2" {
+		t.Errorf("an empty w3c record = %+v", got)
+	}
+	vc := credebl.AgentStored{ID: "s-1", Type: credebl.RecordSdJwt, Tags: map[string]any{"vct": 7}}
+	vc.Instances = append(vc.Instances, struct {
+		SdJwt      string          `json:"compactSdJwtVc"`
+		Mdoc       string          `json:"issuerSignedBase64Url"`
+		Credential json.RawMessage `json:"credential"`
+	}{SdJwt: "eyJ0eXAiOiJ2YytzZC1qd3QifQ.eyJpc3MiOiJodHRwczovL2kiLCJ2Y3QiOiJMaWNlbmNlIn0.c2ln~"})
+	if got := storedCredential(vc); got.GetCredential().GetFormat().String() != "FORMAT_VC_SD_JWT" || got.GetIssuer() != "https://i" || got.GetType() != "Licence" {
+		t.Errorf("vc+sd-jwt = %+v", got)
+	}
+	vc.Instances[0].SdJwt = "not a token"
+	if got := storedCredential(vc); got.GetIssuer() != "" || got.GetType() != "" {
+		t.Errorf("a bad token = %+v", got)
+	}
+}

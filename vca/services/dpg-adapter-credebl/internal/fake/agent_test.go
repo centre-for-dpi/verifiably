@@ -64,6 +64,12 @@ func TestFakeAgentServesTheHolderCalls(t *testing.T) {
 		"GET /didcomm/credentials":                                    "[]",
 		"GET /didcomm/proofs":                                         "[]",
 		"GET /nothing":                                                "404",
+		"POST /openid4vc/holder/resolve-credential-offer":             "pre-authorized_code",
+		"POST /openid4vc/holder/request-credential":                   "SdJwtVcRecord",
+		"GET /openid4vc/holder/sd-jwt-vcs":                            fake.SdJwtRecord,
+		"GET /openid4vc/holder/mdoc-vcs":                              fake.MdocRecord,
+		"POST /openid4vc/holder/resolve-proof-request":                "dcql_query",
+		"POST /openid4vc/holder/accept-proof-request":                 `"status": 200`,
 	} {
 		method, target, _ := strings.Cut(path, " ")
 		if _, body := agentCall(t, a, method, target, "{}", bearer); !strings.Contains(body, want) {
@@ -102,6 +108,10 @@ func TestFakeAgentServesTheHolderCalls(t *testing.T) {
 	}
 	if _, body := agentCall(t, a, http.MethodGet, "/didcomm/proofs/"+fake.ProofRecord, "", bearer); !strings.Contains(body, "abandoned") {
 		t.Errorf("proof end: %s", body)
+	}
+	a.SetOid4vc(fake.OfferAuthorizationCode, fake.Oid4vpRefused)
+	if _, body := agentCall(t, a, http.MethodPost, "/openid4vc/holder/accept-proof-request", "{}", bearer); !strings.Contains(body, `"status": 400`) {
+		t.Errorf("refused answer: %s", body)
 	}
 	a.SetInbox(true)
 	if _, body := agentCall(t, a, http.MethodGet, "/didcomm/credentials?state=offer-received", "", bearer); body != "[]" {

@@ -1,0 +1,7 @@
+{
+  "status": 400,
+  "body": {
+    "error": "invalid_request",
+    "error_description": "The presentation does not match the query."
+  }
+}

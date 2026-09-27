@@ -58,7 +58,23 @@ const (
 	HolderProofAbandoned Answer = "doc/agent-proof-abandoned.json"
 	// HolderProofSent is a proof the verifier did not answer yet.
 	HolderProofSent Answer = "doc/agent-proof-presentation-sent.json"
+	// OfferPreAuthorized is an OID4VCI offer with a pre-authorized code
+	// that needs a transaction code.
+	OfferPreAuthorized Answer = "doc/agent-oid4vci-offer-resolved.json"
+	// OfferAuthorizationCode is an OID4VCI offer with an authorization
+	// code grant only.
+	OfferAuthorizationCode Answer = "doc/agent-oid4vci-offer-authorization-code.json"
+	// Oid4vpAccepted is an OID4VP answer the verifier took.
+	Oid4vpAccepted Answer = "doc/agent-oid4vp-request-accepted.json"
+	// Oid4vpRefused is an OID4VP answer the verifier refused.
+	Oid4vpRefused Answer = "doc/agent-oid4vp-request-refused.json"
 )
+
+// SdJwtRecord is the stored SD-JWT VC of the agent answers.
+const SdJwtRecord = "e1f2a3b4-c5d6-4e7f-8a9b-0c1d2e3f4a5b"
+
+// MdocRecord is the stored mdoc of the agent answers.
+const MdocRecord = "f2a3b4c5-d6e7-4f8a-9b0c-1d2e3f4a5b6c"
 
 // Invitation returns one recorded invitation URL of the agent answers:
 // offer, request, or connection.
@@ -92,6 +108,8 @@ type Agent struct {
 	accepted, answered bool
 	// credentialEnd and proofEnd are the answers after an accept.
 	credentialEnd, proofEnd Answer
+	// offer and vpEnd are the OID4VCI offer and the OID4VP answer.
+	offer, vpEnd Answer
 	// inbox reports that an offer and a request wait over a connection.
 	inbox bool
 	// calls records the method and path of every call, in order.
@@ -104,7 +122,7 @@ type Agent struct {
 
 // NewAgent starts a fake agent.
 func NewAgent(dir string) *Agent {
-	a := &Agent{dir: dir, credentialEnd: OfferDone, proofEnd: HolderProofDone,
+	a := &Agent{dir: dir, credentialEnd: OfferDone, proofEnd: HolderProofDone, offer: OfferPreAuthorized, vpEnd: Oid4vpAccepted,
 		bodies: map[string][]byte{}, status: map[string][]int{}}
 	a.Server = httptest.NewServer(http.HandlerFunc(a.serve))
 	return a
@@ -131,6 +149,14 @@ func (a *Agent) SetProofEnd(end Answer) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.proofEnd = end
+}
+
+// SetOid4vc selects the OID4VCI offer and the answer of the OID4VP
+// verifier.
+func (a *Agent) SetOid4vc(offer, vpEnd Answer) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.offer, a.vpEnd = offer, vpEnd
 }
 
 // SetInbox makes an offer and a proof request wait over a connection.
@@ -222,7 +248,7 @@ func (a *Agent) serve(w http.ResponseWriter, r *http.Request) {
 	case key == "POST /didcomm/oob/receive-invitation-url":
 		a.receive(w, body)
 	default:
-		if !a.serveCredentials(w, r, key) && !a.serveProofs(w, r, key) {
+		if !a.serveCredentials(w, r, key) && !a.serveProofs(w, r, key) && !a.serveOid4vc(w, key) {
 			http.NotFound(w, r)
 		}
 	}
@@ -325,6 +351,30 @@ func (a *Agent) serveProofs(w http.ResponseWriter, r *http.Request, key string) 
 		a.send(w, string(a.proofEnd))
 	case key == "GET /didcomm/proofs/"+ProofRecord:
 		a.send(w, "doc/agent-proof-request-received.json")
+	default:
+		return false
+	}
+	return true
+}
+
+// serveOid4vc answers the OID4VC holder calls. It reports whether it
+// answered.
+func (a *Agent) serveOid4vc(w http.ResponseWriter, key string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	switch key {
+	case "POST /openid4vc/holder/resolve-credential-offer":
+		a.send(w, string(a.offer))
+	case "POST /openid4vc/holder/request-credential":
+		a.send(w, "doc/agent-oid4vci-credential-stored.json")
+	case "GET /openid4vc/holder/sd-jwt-vcs":
+		a.send(w, "doc/agent-sd-jwt-vcs.json")
+	case "GET /openid4vc/holder/mdoc-vcs":
+		a.send(w, "doc/agent-mdoc-vcs.json")
+	case "POST /openid4vc/holder/resolve-proof-request":
+		a.send(w, "doc/agent-oid4vp-request-resolved.json")
+	case "POST /openid4vc/holder/accept-proof-request":
+		a.send(w, string(a.vpEnd))
 	default:
 		return false
 	}

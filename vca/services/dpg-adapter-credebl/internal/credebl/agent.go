@@ -539,10 +539,7 @@ func (a *Agent) W3cCredentials(ctx context.Context, tenant string) ([]AgentW3c, 
 // DeleteW3c removes one stored W3C credential of a tenant through the
 // holder API of the agent.
 func (a *Agent) DeleteW3c(ctx context.Context, tenant, id string) error {
-	body := map[string]any{"credentialType": "w3c-vc", "credentialId": id}
-	return a.asTenant(ctx, tenant, func(c *dpgclient.Client) error {
-		return c.JSON(ctx, http.MethodDelete, "/openid4vc/holder/credential", body, nil)
-	})
+	return a.DeleteHeld(ctx, tenant, HeldW3c, id)
 }
 
 // AgentProof is one proof exchange record of a prover.

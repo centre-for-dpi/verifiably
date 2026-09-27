@@ -1,0 +1,20 @@
+[
+  {
+    "_tags": {
+      "docType": "org.iso.18013.5.1.mDL",
+      "multiInstanceState": "SingleInstanceUnused"
+    },
+    "metadata": {},
+    "id": "f2a3b4c5-d6e7-4f8a-9b0c-1d2e3f4a5b6c",
+    "createdAt": "2026-09-25T08:12:40.101Z",
+    "type": "MdocRecord",
+    "credentialInstances": [
+      {
+        "issuerSignedBase64Url": "[issuer signed]",
+        "kmsKeyId": "4e3f2a1b-0c9d-4e8f-9a7b-6c5d4e3f2a1b"
+      }
+    ],
+    "multiInstanceState": "SingleInstanceUnused",
+    "updatedAt": "2026-09-25T08:12:40.101Z"
+  }
+]

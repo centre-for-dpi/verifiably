@@ -674,13 +674,14 @@ A row that is not `Done` carries a note.
 | ADR-062 | 5 AnonCreds and W3C credentials, and permanent ones | Done | `vca/services/dpg-adapter-credebl/internal/service/holder.go`, `vca/services/wallet-portal/internal/portal/home.go` | `TestListCloudCredentials` and `TestPermanentCardHasNoRemoveButton` pin it. |
 | ADR-062 | 6 The keys page with DIDs alone | Done | `vca/services/dpg-adapter-credebl/internal/service/holder.go`, `vca/services/wallet-portal/internal/portal/keys.go` | `TestWalletDids` and `TestKeysPageOnlyWithFeature` pin it. |
 | ADR-062 | 7 The holder role with the agent, and setup | Done | `vca/services/dpg-adapter-credebl/internal/service/service.go`, `vca/internal/cli/credebl.go` | `TestCapabilitiesListHolderRole` and `TestCredeblHolderPairReachesTheAgent` pin it. |
+| ADR-062 | 8 OID4VCI claims and OID4VP answers through the same wallet | Done | `vca/services/dpg-adapter-credebl/internal/service/holder_oid4vc.go` | `TestAcceptOid4vciOfferThroughTheAgent` and `TestPresentOid4vpThroughTheAgent` pin it. |
 
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 294 |
+| Done | 295 |
 | Partial | 25 |
 | Deferred | 3 |
 | Not started | 26 |
-| Total | 348 |
+| Total | 349 |

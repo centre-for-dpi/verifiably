@@ -142,8 +142,14 @@ label and every value is a placeholder in square brackets.
 | `agent-proofs-request-received.json`, `agent-proof-request-received.json`, `agent-proof-presentation-sent.json`, `agent-proof-done.json`, `agent-proof-abandoned.json` | `GET /didcomm/proofs`, `GET /didcomm/proofs/{id}`, `POST /didcomm/proofs/{id}/accept-request` | [ProofController.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/controllers/didcomm/proofs/ProofController.ts), which picks the credentials of the answer itself, and `DidCommProofExchangeRecord` of Credo |
 | `agent-proof-form-data.json` | `GET /didcomm/proofs/{id}/form-data` | the same controller, and `getFormatData` of Credo, which answers with the request per format |
 
+| `agent-oid4vci-offer-resolved.json`, `agent-oid4vci-offer-authorization-code.json` | `POST /openid4vc/holder/resolve-credential-offer` | [holder.service.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/controllers/openid4vc/holder/holder.service.ts) `resolveCredentialOffer`, which answers with the resolved offer of Credo, with `credentialOfferPayload` |
+| `agent-oid4vci-credential-stored.json`, `agent-sd-jwt-vcs.json`, `agent-mdoc-vcs.json` | `POST /openid4vc/holder/request-credential`, `GET /openid4vc/holder/sd-jwt-vcs`, `GET /openid4vc/holder/mdoc-vcs` | the same service `requestCredential`, which stores and returns the records, and `SdJwtVcRecord` and `MdocRecord` of Credo 0.6, which keep the credential in `credentialInstances` |
+| `agent-oid4vp-request-resolved.json` | `POST /openid4vc/holder/resolve-proof-request` | the same service `resolveProofRequest`, and `resolveAuthorizationRequest` of the OID4VP holder service of Credo, which answers with the DCQL query result per credential query |
+| `agent-oid4vp-request-accepted.json`, `agent-oid4vp-request-refused.json` | `POST /openid4vc/holder/accept-proof-request` | the same service `acceptPresentationRequest`, which picks the first valid credential of each query with `selectCredentialsForDcqlRequest` and answers with the status and the body of the verifier |
+
 The removal of a W3C credential goes through `DELETE
 /openid4vc/holder/credential` of
 [holder.service.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/controllers/openid4vc/holder/holder.service.ts),
-with the type `w3c-vc`. The agent has no call that removes an AnonCreds
+with the type `w3c-vc`, and of an SD-JWT or an mdoc credential with
+`sd-jwt-vc` or `mso_mdoc`. The agent has no call that removes an AnonCreds
 credential, no decline call, and no basic message call.

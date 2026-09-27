@@ -11,7 +11,8 @@
   5. The adapter lists an AnonCreds credential from its finished exchange as the JSON view of ADR-061 decision 3. It lists a W3C credential as the agent keeps it. The agent removes a W3C credential and cannot remove an AnonCreds credential. `WalletCredential.permanent` marks such a credential, and the wallet portal offers no remove button for it.
   6. The keys page shows with `FEATURE_WALLET_DIDS`. It lists keys and makes a key only with `FEATURE_WALLET_KEYS`. It offers a default DID only with `FEATURE_WALLET_DEFAULT_DID`. The CREDEBL adapter lists the DIDs of the tenant and makes a `did:key`.
   7. The adapter answer lists `ROLE_HOLDER` only when the adapter has the agent URL and the agent API key. `vca setup` writes both into the `.env` of a CREDEBL holder pair. The holder pair runs no extra service, so the memory floor does not change.
+  8. The same tenant claims an OID4VCI offer with a pre-authorized code through the OID4VC holder API of the agent. It answers an OID4VP request there too. The agent picks the first credential that matches each query. The adapter refuses an answer when the holder picked another credential. It refuses an offer with an authorization code grant only. The wallet lists the SD-JWT and the mdoc credentials of the tenant beside the others.
 - Consequences:
-  1. A citizen holds AnonCreds and W3C JSON-LD credentials from a CREDEBL issuer. The citizen answers a DIDComm proof request from the pages of VCA.
+  1. A citizen holds AnonCreds, W3C JSON-LD, and SD-JWT credentials from a CREDEBL issuer in one wallet of the stack. The citizen answers a DIDComm proof request and an OID4VP request from the pages of VCA.
   2. The holder sees an offer or a request before the wallet contacts the other party.
   3. The pinned agent has no basic message call, so VCA offers no basic messages.

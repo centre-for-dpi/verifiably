@@ -1,0 +1,14 @@
+{
+  "credentialOfferPayload": {
+    "credential_issuer": "https://credebl.example.org/oid4vci/org-1",
+    "credential_configuration_ids": [
+      "FarmerCredential-sdjwt"
+    ],
+    "grants": {
+      "authorization_code": {
+        "issuer_state": "[issuer state]"
+      }
+    }
+  },
+  "offeredCredentialConfigurations": {}
+}

@@ -209,12 +209,12 @@ func TestAcceptOfferRefusals(t *testing.T) {
 		code   connect.Code
 		text   string
 	}{
-		"withdrawn":     {func(a *fake.Agent) { a.SetCredentialEnd(fake.OfferAbandoned) }, "offer", connect.CodeFailedPrecondition, "withdrew"},
-		"no offer":      {nil, "request", connect.CodeInvalidArgument, "no credential offer"},
-		"no answer":     {func(a *fake.Agent) { a.SetCredentialEnd(fake.OfferRequestSent) }, "offer", connect.CodeDeadlineExceeded, "did not send"},
-		"bad invite":    {nil, "", connect.CodeInvalidArgument, "offer"},
-		"refused":       {func(a *fake.Agent) { a.SetStatus("POST /didcomm/oob/receive-invitation-url", http.StatusBadRequest) }, "offer", connect.CodeInvalidArgument, "invitation"},
-		"oid4vci offer": {nil, "openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer%2Foffer", connect.CodeFailedPrecondition, "DIDComm"},
+		"withdrawn":  {func(a *fake.Agent) { a.SetCredentialEnd(fake.OfferAbandoned) }, "offer", connect.CodeFailedPrecondition, "withdrew"},
+		"no offer":   {nil, "request", connect.CodeInvalidArgument, "no credential offer"},
+		"no answer":  {func(a *fake.Agent) { a.SetCredentialEnd(fake.OfferRequestSent) }, "offer", connect.CodeDeadlineExceeded, "did not send"},
+		"bad invite": {nil, "", connect.CodeInvalidArgument, "offer"},
+		"refused":    {func(a *fake.Agent) { a.SetStatus("POST /didcomm/oob/receive-invitation-url", http.StatusBadRequest) }, "offer", connect.CodeInvalidArgument, "invitation"},
+		"odd uri":    {nil, "https://example.org/not-an-offer", connect.CodeInvalidArgument, "neither"},
 	} {
 		svc, agent, _ := newHolder(t, nil)
 		if c.change != nil {
@@ -234,10 +234,10 @@ func TestAcceptOfferRefusals(t *testing.T) {
 	wantCode(t, err, connect.CodeNotFound)
 }
 
-// TestListCloudCredentials is ADR-062 decision 5: the wallet lists the
-// AnonCreds credential of each finished exchange and each stored W3C
-// credential, newest first. The agent removes a W3C credential and
-// keeps an AnonCreds one.
+// TestListCloudCredentials is ADR-062 decisions 5 and 8: the wallet
+// lists the AnonCreds credential of each finished exchange, each stored
+// W3C credential, and each SD-JWT VC and mdoc, newest first. The agent
+// removes each but the AnonCreds one.
 func TestListCloudCredentials(t *testing.T) {
 	svc, agent, _ := newHolder(t, func(o *service.Options) { o.PageSizeMax = 10 })
 	ctx := context.Background()
@@ -247,10 +247,14 @@ func TestListCloudCredentials(t *testing.T) {
 		t.Fatalf("ListCredentials: %v", err)
 	}
 	list := res.Msg.GetCredentials()
-	if len(list) != 2 || res.Msg.GetPage().GetTotalSize() != 2 {
+	if len(list) != 4 || res.Msg.GetPage().GetTotalSize() != 4 {
 		t.Fatalf("credentials = %+v", list)
 	}
-	anon, w3c := list[0], list[1]
+	sd, anon, w3c, mdoc := list[0], list[1], list[2], list[3]
+	if sd.GetId() != "sd-jwt:"+fake.SdJwtRecord || sd.GetCredential().GetFormat() != commonv1.Format_FORMAT_DC_SD_JWT || sd.GetType() != "FarmerCredential" ||
+		sd.GetIssuer() != "https://credebl.example.org/oid4vci/org-1" || sd.GetPermanent() {
+		t.Errorf("sd-jwt = %+v", sd)
+	}
 	if anon.GetId() != "anoncreds:"+fake.OfferRecord || !anon.GetPermanent() || anon.GetReceivedAt() == nil {
 		t.Errorf("anoncreds = %+v", anon)
 	}
@@ -259,11 +263,20 @@ func TestListCloudCredentials(t *testing.T) {
 		!strings.Contains(string(w3c.GetCredential().GetPayload()), `"@context"`) {
 		t.Errorf("w3c = %+v", w3c)
 	}
-	if _, err = svc.DeleteCredential(ctx, connect.NewRequest(&backendv1.DeleteCredentialRequest{WalletId: wallet, CredentialId: w3c.GetId()})); err != nil {
-		t.Fatalf("DeleteCredential: %v", err)
+	if mdoc.GetId() != "mdoc:"+fake.MdocRecord || mdoc.GetCredential().GetFormat() != commonv1.Format_FORMAT_MSO_MDOC || mdoc.GetType() != "org.iso.18013.5.1.mDL" {
+		t.Errorf("mdoc = %+v", mdoc)
 	}
-	if body := string(agent.Body("DELETE /openid4vc/holder/credential")); body != `{"credentialId":"`+fake.W3cRecord+`","credentialType":"w3c-vc"}` {
-		t.Errorf("delete %s", body)
+	for id, body := range map[string]string{
+		w3c.GetId():  `{"credentialId":"` + fake.W3cRecord + `","credentialType":"w3c-vc"}`,
+		sd.GetId():   `{"credentialId":"` + fake.SdJwtRecord + `","credentialType":"sd-jwt-vc"}`,
+		mdoc.GetId(): `{"credentialId":"` + fake.MdocRecord + `","credentialType":"mso_mdoc"}`,
+	} {
+		if _, err = svc.DeleteCredential(ctx, connect.NewRequest(&backendv1.DeleteCredentialRequest{WalletId: wallet, CredentialId: id})); err != nil {
+			t.Fatalf("DeleteCredential %s: %v", id, err)
+		}
+		if got := string(agent.Body("DELETE /openid4vc/holder/credential")); got != body {
+			t.Errorf("delete %s: %s", id, got)
+		}
 	}
 	_, err = svc.DeleteCredential(ctx, connect.NewRequest(&backendv1.DeleteCredentialRequest{WalletId: wallet, CredentialId: anon.GetId()}))
 	wantCode(t, err, connect.CodeFailedPrecondition)
@@ -277,19 +290,89 @@ func TestListCloudCredentialsPages(t *testing.T) {
 	svc, _, _ := newHolder(t, nil)
 	ctx := context.Background()
 	wallet := registerHolder(t, svc)
-	first, err := svc.ListCredentials(ctx, connect.NewRequest(&backendv1.ListCredentialsRequest{WalletId: wallet}))
-	if err != nil || len(first.Msg.GetCredentials()) != 1 || first.Msg.GetPage().GetNextPageToken() == "" {
-		t.Fatalf("first page = %+v, %v", first, err)
+	seen := map[string]bool{}
+	token := ""
+	for page := 0; page < 4; page++ {
+		res, err := svc.ListCredentials(ctx, connect.NewRequest(&backendv1.ListCredentialsRequest{WalletId: wallet,
+			Page: &commonv1.Pagination{PageToken: token}}))
+		if err != nil || len(res.Msg.GetCredentials()) != 1 {
+			t.Fatalf("page %d = %+v, %v", page, res, err)
+		}
+		seen[res.Msg.GetCredentials()[0].GetId()] = true
+		token = res.Msg.GetPage().GetNextPageToken()
 	}
-	second, err := svc.ListCredentials(ctx, connect.NewRequest(&backendv1.ListCredentialsRequest{WalletId: wallet,
-		Page: &commonv1.Pagination{PageToken: first.Msg.GetPage().GetNextPageToken()}}))
-	if err != nil || len(second.Msg.GetCredentials()) != 1 || second.Msg.GetPage().GetNextPageToken() != "" ||
-		second.Msg.GetCredentials()[0].GetId() == first.Msg.GetCredentials()[0].GetId() {
-		t.Fatalf("second page = %+v, %v", second, err)
+	if len(seen) != 4 || token != "" {
+		t.Errorf("pages saw %v, last token %q", seen, token)
 	}
-	_, err = svc.ListCredentials(ctx, connect.NewRequest(&backendv1.ListCredentialsRequest{WalletId: wallet,
+	_, err := svc.ListCredentials(ctx, connect.NewRequest(&backendv1.ListCredentialsRequest{WalletId: wallet,
 		Page: &commonv1.Pagination{PageToken: "x"}}))
 	wantCode(t, err, connect.CodeInvalidArgument)
+}
+
+// oid4vciOffer is an OID4VCI offer by reference, as a CREDEBL issuer
+// makes it.
+const oid4vciOffer = "openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fcredebl.example.org%2Foffer%2F1"
+
+// TestAcceptOid4vciOfferThroughTheAgent is ADR-062 decision 8: the
+// stack wallet claims an OID4VCI offer with a pre-authorized code and
+// the transaction code. It refuses an offer with an authorization code
+// grant only, and an offer whose code the holder did not give.
+func TestAcceptOid4vciOfferThroughTheAgent(t *testing.T) {
+	ctx := context.Background()
+	svc, agent, _ := newHolder(t, nil)
+	wallet := registerHolder(t, svc)
+	res, err := svc.AcceptOffer(ctx, connect.NewRequest(&backendv1.AcceptOfferRequest{WalletId: wallet, OfferUri: oid4vciOffer, Pin: "1234"}))
+	if err != nil {
+		t.Fatalf("AcceptOffer: %v", err)
+	}
+	cred := res.Msg.GetCredential()
+	if cred.GetId() != "sd-jwt:"+fake.SdJwtRecord || cred.GetType() != "FarmerCredential" || cred.GetCredential().GetFormat() != commonv1.Format_FORMAT_DC_SD_JWT {
+		t.Fatalf("credential = %+v", cred)
+	}
+	if body := string(agent.Body("POST /openid4vc/holder/request-credential")); !strings.Contains(body, `"txCode":"1234"`) || !strings.Contains(body, `"FarmerCredential-sdjwt"`) {
+		t.Errorf("request %s", body)
+	}
+	_, err = svc.AcceptOffer(ctx, connect.NewRequest(&backendv1.AcceptOfferRequest{WalletId: wallet, OfferUri: oid4vciOffer}))
+	wantCode(t, err, connect.CodeInvalidArgument)
+	agent.SetOid4vc(fake.OfferAuthorizationCode, fake.Oid4vpAccepted)
+	_, err = svc.AcceptOffer(ctx, connect.NewRequest(&backendv1.AcceptOfferRequest{WalletId: wallet, OfferUri: oid4vciOffer, AuthorizationGrant: "token"}))
+	wantCode(t, err, connect.CodeFailedPrecondition)
+	for _, key := range []string{"POST /openid4vc/holder/resolve-credential-offer", "POST /openid4vc/holder/request-credential"} {
+		agent.SetOid4vc(fake.OfferPreAuthorized, fake.Oid4vpAccepted)
+		agent.SetStatus(key, http.StatusBadRequest)
+		_, err = svc.AcceptOffer(ctx, connect.NewRequest(&backendv1.AcceptOfferRequest{WalletId: wallet, OfferUri: oid4vciOffer, Pin: "1234"}))
+		wantCode(t, err, connect.CodeInvalidArgument)
+	}
+}
+
+// TestPresentOid4vpThroughTheAgent is ADR-062 decision 8: the stack
+// wallet answers an OID4VP request with the credential the agent picks.
+// It refuses when the holder picked another credential, so the answer
+// never differs from the consent.
+func TestPresentOid4vpThroughTheAgent(t *testing.T) {
+	ctx := context.Background()
+	svc, agent, _ := newHolder(t, nil)
+	wallet := registerHolder(t, svc)
+	request := "openid4vp://?client_id=x509_san_dns%3Averifier.example.org&request_uri=https%3A%2F%2Fverifier.example.org%2Frequest%2F1"
+	res, err := svc.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{WalletId: wallet, RequestUri: request,
+		CredentialIds: []string{"sd-jwt:" + fake.SdJwtRecord}, DisclosedClaims: []string{"fullName"}}))
+	if err != nil || !res.Msg.GetAccepted() || strings.Join(res.Msg.GetSharedClaims(), ",") != "fullName" {
+		t.Fatalf("Present = %+v, %v", res, err)
+	}
+	_, err = svc.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{WalletId: wallet, RequestUri: request,
+		CredentialIds: []string{"w3c:" + fake.W3cRecord}}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "first") {
+		t.Errorf("another credential: %v", err)
+	}
+	agent.SetOid4vc(fake.OfferPreAuthorized, fake.Oid4vpRefused)
+	if res, err = svc.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{WalletId: wallet, RequestUri: request})); err != nil || res.Msg.GetAccepted() {
+		t.Errorf("a refused answer = %+v, %v", res, err)
+	}
+	for _, key := range []string{"POST /openid4vc/holder/resolve-proof-request", "POST /openid4vc/holder/accept-proof-request"} {
+		agent.SetStatus(key, http.StatusBadRequest)
+		_, err = svc.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{WalletId: wallet, RequestUri: request}))
+		wantCode(t, err, connect.CodeInvalidArgument)
+	}
 }
 
 // TestAcceptProofRequest is ADR-062 decision 3: the wallet takes the
@@ -334,8 +417,8 @@ func TestAcceptProofRequestStates(t *testing.T) {
 	}
 	_, err = svc.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{WalletId: registerHolder(t, svc), RequestUri: fake.Invitation(testdata, "offer")}))
 	wantCode(t, err, connect.CodeInvalidArgument)
-	_, err = svc.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{WalletId: registerHolder(t, svc), RequestUri: "openid4vp://?request_uri=https%3A%2F%2Fverifier%2Fr"}))
-	wantCode(t, err, connect.CodeFailedPrecondition)
+	_, err = svc.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{WalletId: registerHolder(t, svc), RequestUri: "https://example.org/?page=1"}))
+	wantCode(t, err, connect.CodeInvalidArgument)
 }
 
 // TestOpenInvitationKeepsTheConnection: an invitation with no message
