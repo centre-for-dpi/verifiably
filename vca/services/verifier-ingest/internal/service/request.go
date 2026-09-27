@@ -239,6 +239,9 @@ func (s *Service) createThroughStack(ctx context.Context, msg *ingestv1.CreateOi
 	resp, err := s.opts.StackClient(stack.Adapter).CreateRequest(ctx, connect.NewRequest(&backendv1.CreateRequestRequest{
 		Dcql: dcqlText, PresentationDefinition: peText, Nonce: nonce, DcApi: msg.GetDcApi(), ExpectedOrigins: origins,
 		AnoncredsRequest: anonText, Didcomm: didcomm, ConnectionId: msg.GetConnectionId(),
+		// A template without the trusted issuer rule accepts any issuer.
+		// The stack refuses an unbound part otherwise (ADR-064).
+		AnyIssuer: !t.GetRequireTrustedIssuer(),
 	}))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("service: the stack %q did not create the request: %w", stack.Pair, err))

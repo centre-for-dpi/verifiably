@@ -181,7 +181,9 @@ attribute can take a predicate instead: an operator and a whole number.
 The holder then proves the comparison and keeps the value. A select
 limits the request to one credential definition of the schema. The
 trust rule asks the policy service to check the issuer against the
-trust list. The stack checks the proof itself.
+trust list. The stack checks the proof itself. A template with the trust
+rule needs a credential definition, because anyone can publish one on a
+schema (ADR-064 decision 1).
 
 The preview shows the proof request of the AnonCreds specification that
 the wallet receives. It names each revealed attribute `attr1` and on,

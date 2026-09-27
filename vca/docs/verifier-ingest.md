@@ -196,8 +196,10 @@ for an AnonCreds query of the builder when the adapter lists
 `FEATURE_ANONCREDS_PROOF`. It shows for a PE query, and for a DCQL
 query with a lossless PE form, too. The VCA verifier speaks no DIDComm,
 so it does not answer an AnonCreds query. The request carries the flag
-`didcomm`. The QR code, the link, and the document then carry the out
-of band invitation of the stack. The delivery "Connected wallet" sends
+`didcomm`. It carries `any_issuer` for a template without the trusted
+issuer rule. The stack then takes a part that binds no issuer, and its
+result says so (ADR-064). The QR code, the link, and the document then
+carry the out of band invitation of the stack. The delivery "Connected wallet" sends
 the request over a connection of the stack instead. The form lists the
 connections of each such stack through `ListVerifierConnections`. The
 page of such a request shows no code. The stack checks a DIDComm proof,

@@ -7633,7 +7633,12 @@ type CreateRequestRequest struct {
 	// The DIDComm connection of the holder. The adapter then sends the
 	// request over that connection, and request_uri stays empty. Empty
 	// makes an out of band invitation that carries the request.
-	ConnectionId  string `protobuf:"bytes,10,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
+	ConnectionId string `protobuf:"bytes,10,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
+	// The template accepts a credential of any issuer. Without it an
+	// adapter refuses an AnonCreds part that binds no issuer. A part binds
+	// its issuer with one restriction that names a credential definition
+	// or an issuer DID (ADR-064).
+	AnyIssuer     bool `protobuf:"varint,11,opt,name=any_issuer,json=anyIssuer,proto3" json:"any_issuer,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7736,6 +7741,13 @@ func (x *CreateRequestRequest) GetConnectionId() string {
 		return x.ConnectionId
 	}
 	return ""
+}
+
+func (x *CreateRequestRequest) GetAnyIssuer() bool {
+	if x != nil {
+		return x.AnyIssuer
+	}
+	return false
 }
 
 // CreateRequestResponse describes the transaction.
@@ -10651,7 +10663,7 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PaginationR\x04page\"x\n" +
 	"\x12ListEventsResponse\x123\n" +
 	"\x06events\x18\x01 \x03(\v2\x1b.vca.backend.v1.WalletEventR\x06events\x12-\n" +
-	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page\"\xeb\x02\n" +
+	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page\"\x8a\x03\n" +
 	"\x14CreateRequestRequest\x12\x12\n" +
 	"\x04dcql\x18\x01 \x01(\tR\x04dcql\x127\n" +
 	"\x17presentation_definition\x18\x02 \x01(\tR\x16presentationDefinition\x12\x14\n" +
@@ -10664,7 +10676,9 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\x11anoncreds_request\x18\b \x01(\tR\x10anoncredsRequest\x12\x18\n" +
 	"\adidcomm\x18\t \x01(\bR\adidcomm\x12#\n" +
 	"\rconnection_id\x18\n" +
-	" \x01(\tR\fconnectionId\"\xaf\x01\n" +
+	" \x01(\tR\fconnectionId\x12\x1d\n" +
+	"\n" +
+	"any_issuer\x18\v \x01(\bR\tanyIssuer\"\xaf\x01\n" +
 	"\x15CreateRequestResponse\x12\x1f\n" +
 	"\vrequest_uri\x18\x01 \x01(\tR\n" +
 	"requestUri\x12\x14\n" +

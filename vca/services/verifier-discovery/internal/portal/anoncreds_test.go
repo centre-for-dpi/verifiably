@@ -170,6 +170,9 @@ func TestAnonCredsBuilderRefuses(t *testing.T) {
 		"not a number": func(f url.Values) { f.Set("value:acres", "ten") },
 		"both":         func(f url.Values) { f.Add("reveal", "acres") },
 		"nothing":      func(f url.Values) { f.Del("reveal"); f.Del("op:acres") },
+		// Finding 3.2 of the CREDEBL review: a trusted issuer needs a
+		// credential definition.
+		"trusted issuer on any credential definition": func(f url.Values) { f.Set("creddef", "") },
 	} {
 		form := anonCredsForm("save")
 		change(form)
@@ -178,6 +181,12 @@ func TestAnonCredsBuilderRefuses(t *testing.T) {
 			t.Errorf("%s: %d", name, rec.Code)
 		}
 		a11ytest.AssertPage(t, rec.Body.String())
+	}
+	open := anonCredsForm("save")
+	open.Set("creddef", "")
+	open.Del("trust")
+	if rec := postForm(mux, "/discovery/anoncreds/", open, false); rec.Code != http.StatusSeeOther {
+		t.Errorf("any issuer without the trust rule: %d %s", rec.Code, rec.Body.String())
 	}
 	none := do(mux, httptest.NewRequest(http.MethodGet, "/discovery/anoncreds/", nil))
 	if none.Code != http.StatusOK || !strings.Contains(none.Body.String(), "Pick a schema") {

@@ -112,6 +112,28 @@ func TestAnonCredsRequestGoesOverDidcomm(t *testing.T) {
 	}
 }
 
+// TestDidcommRequestNamesAnyIssuer is finding 3.2 of the CREDEBL
+// review: the stack binds each part of an AnonCreds request to an issuer
+// unless the template accepts any issuer, which a template without the
+// trusted issuer rule does.
+func TestDidcommRequestNamesAnyIssuer(t *testing.T) {
+	ctx := context.Background()
+	for _, trusted := range []bool{true, false} {
+		tpl := anonTemplate()
+		tpl.RequireTrustedIssuer = trusted
+		a := &adapter{}
+		svc := didcommService(t, tpl, a, &keeper{})
+		if _, err := svc.CreateOid4VpRequest(ctx, connect.NewRequest(&ingestv1.CreateOid4VpRequestRequest{
+			TemplateId: "farmer-check", Stack: "verifier-credebl",
+		})); err != nil {
+			t.Fatal(err)
+		}
+		if a.created[0].GetAnyIssuer() == trusted {
+			t.Errorf("trusted %v: any issuer %v", trusted, a.created[0].GetAnyIssuer())
+		}
+	}
+}
+
 // TestDidcommRequestOverAConnection: a DCQL template goes to a connected
 // wallet as a DIF PE request over DIDComm.
 func TestDidcommRequestOverAConnection(t *testing.T) {

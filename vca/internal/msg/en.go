@@ -2113,7 +2113,7 @@ var en = map[string]string{
 	"verifier.anoncreds.value.hint":               "A whole number. The holder proves the comparison and keeps the value.",
 	"verifier.anoncreds.creddef.any.label":        "Any credential definition",
 	"verifier.anoncreds.creddef.label":            "Credential definition",
-	"verifier.anoncreds.creddef.hint":             "Pick one to accept only the credentials of one issuer.",
+	"verifier.anoncreds.creddef.hint":             "Pick one to accept only the credentials of one issuer. The trusted issuer rule needs one.",
 	"verifier.anoncreds.schema.about":             "{1} of {2}. A predicate compares a number attribute only.",
 	"verifier.anoncreds.reveal.label":             "Reveal",
 	"verifier.anoncreds.reveal.hint":              "Tick each attribute that the holder reveals.",

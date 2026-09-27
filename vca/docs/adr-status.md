@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-063, one row per decision.
+ADR-064, one row per decision.
 
 The status values are:
 
@@ -684,12 +684,21 @@ A row that is not `Done` carries a note.
 | ADR-063 | 2 A request by value stays with the browser store | Done | `vca/services/wallet-portal/internal/service/service.go` | `TestStackWalletRefusesARequestByValue` and `TestPresentFromUploadedRequestFile` pin it. |
 | ADR-063 | 3 The two fetches of a request URI | Done | `vca/docs/dpg-adapter-credebl.md` | The adapter document names the fetches and the allowlist that bounds them. |
 
+## ADR-064: The issuer of an AnonCreds proof over DIDComm
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-064 | 1 A trusted template binds each part to a credential definition | Done | `vca/core/anoncreds/anoncreds.go`, `vca/services/verifier-discovery/internal/template/template.go` | `TestCheckBoundNeedsACredentialDefinition`, `TestTrustedAnonCredsTemplateNeedsACredentialDefinition` and `TestAnonCredsBuilderRefuses` pin it. |
+| ADR-064 | 2 `any_issuer` and the refusal of an unbound part | Done | `vca/services/dpg-adapter-credebl/internal/service/proofs.go`, `vca/services/verifier-ingest/internal/service/request.go` | `TestProofRequestNeedsABoundIssuer` and `TestDidcommRequestNamesAnyIssuer` pin it. |
+| ADR-064 | 3 The issuer of the view comes from the recorded request | Done | `vca/services/dpg-adapter-credebl/internal/service/proofs.go` | `TestProofViewIssuerComesFromTheRequest` pins it. |
+| ADR-064 | 4 No issuer and a failed check for an unbound part | Done | `vca/services/dpg-adapter-credebl/internal/service/proofs.go` | `TestProofViewNamesNoIssuerWhenTheRequestBindsNone` pins it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 298 |
+| Done | 302 |
 | Partial | 25 |
 | Deferred | 3 |
 | Not started | 26 |
-| Total | 352 |
+| Total | 356 |

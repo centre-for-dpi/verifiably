@@ -167,6 +167,25 @@ func (r Request) Check() error {
 	return nil
 }
 
+// CheckBound reports the first part of the request that names no
+// credential definition. On a ledger anyone can publish a credential
+// definition on a schema, so a part restricted to a schema alone admits
+// a credential of any issuer. A request whose template asks for a
+// trusted issuer passes it (ADR-064 decision 1).
+func (r Request) CheckBound() error {
+	for _, a := range r.Attributes {
+		if a.Restriction.CredDefID == "" {
+			return fmt.Errorf("anoncreds: the part on %q names no credential definition, so any issuer could answer", strings.Join(a.Names, ", "))
+		}
+	}
+	for _, p := range r.Predicates {
+		if p.Restriction.CredDefID == "" {
+			return fmt.Errorf("anoncreds: the part on %q names no credential definition, so any issuer could answer", p.Name)
+		}
+	}
+	return nil
+}
+
 // specAttribute is one requested attribute of the specification.
 type specAttribute struct {
 	Name         string        `json:"name"`

@@ -113,6 +113,27 @@ func TestCheckRefusesWhatAWalletRefuses(t *testing.T) {
 	}
 }
 
+// TestCheckBoundNeedsACredentialDefinition is finding 3.2 of the
+// CREDEBL review: on a ledger anyone can publish a credential
+// definition on a schema, so a part restricted to a schema alone admits
+// any issuer. A template that asks for a trusted issuer binds every part
+// to a credential definition.
+func TestCheckBoundNeedsACredentialDefinition(t *testing.T) {
+	err := farmerCheck().Normal().CheckBound()
+	if err == nil || !strings.Contains(err.Error(), `"acres"`) {
+		t.Fatalf("a predicate on a schema alone: %v", err)
+	}
+	bound := farmerCheck()
+	bound.Predicates[0].Restriction.CredDefID = credDef
+	if err := bound.Normal().CheckBound(); err != nil {
+		t.Fatalf("a bound request: %v", err)
+	}
+	bound.Attributes[0].Restriction.CredDefID = ""
+	if err := bound.Normal().CheckBound(); err == nil || !strings.Contains(err.Error(), `"fullName"`) {
+		t.Fatalf("an attribute on a schema alone: %v", err)
+	}
+}
+
 // TestProtoRoundTrip: the proto message of a template holds the whole
 // request, and a nil message is an empty request.
 func TestProtoRoundTrip(t *testing.T) {

@@ -39,6 +39,10 @@ const DidcommProofPrefix = "didcomm-proof:"
 // ProofCheckName names the check the agent runs on a proof.
 const ProofCheckName = "credebl-proof-verified"
 
+// IssuerBoundCheckName names the check that fails when the request
+// bound no issuer, so any issuer on the ledger could answer (ADR-064).
+const IssuerBoundCheckName = "credebl-issuer-bound"
+
 // proofComment is the text the wallet shows with a proof request.
 const proofComment = "A verifier asks for a proof."
 
@@ -49,6 +53,46 @@ var predicateOps = map[string]bool{">=": true, ">": true, "<=": true, "<": true}
 type anonCredsRestriction struct {
 	SchemaID  string `json:"schema_id,omitempty"`
 	CredDefID string `json:"cred_def_id,omitempty"`
+	// IssuerDID binds the issuer without a credential definition.
+	IssuerDID string `json:"issuer_did,omitempty"`
+	// IssuerID is the name of IssuerDID in later AnonCreds releases.
+	IssuerID string `json:"issuer_id,omitempty"`
+}
+
+// issuer returns the issuer that a restriction binds: the issuer of its
+// credential definition, or its issuer DID. Empty binds none.
+func (r anonCredsRestriction) issuer() string {
+	switch {
+	case r.CredDefID != "":
+		return issuerOf(r.CredDefID)
+	case r.IssuerDID != "":
+		return r.IssuerDID
+	}
+	return r.IssuerID
+}
+
+// proofPart is one attribute or predicate of a request, with the
+// credential it binds. A part binds its issuer only with one
+// restriction that names a credential definition or an issuer DID.
+type proofPart struct {
+	// Name is the attribute name.
+	Name string `json:"name"`
+	// SchemaID is the schema the part restricts to.
+	SchemaID string `json:"schema_id,omitempty"`
+	// CredDefID is the credential definition the part restricts to.
+	CredDefID string `json:"cred_def_id,omitempty"`
+	// Issuer is the issuer the part binds. Empty means any issuer.
+	Issuer string `json:"issuer,omitempty"`
+}
+
+// partOf returns the part of one name and its restrictions.
+func partOf(name string, list []anonCredsRestriction) proofPart {
+	p := proofPart{Name: strings.TrimSpace(name)}
+	if len(list) == 1 {
+		r := list[0]
+		p.SchemaID, p.CredDefID, p.Issuer = r.SchemaID, r.CredDefID, r.issuer()
+	}
+	return p
 }
 
 // anonCredsAttribute is one requested attribute. A request may name a
@@ -76,8 +120,10 @@ type anonCredsRequest struct {
 }
 
 // parseAnonCreds reads and checks an AnonCreds proof request. It fills
-// the name and the version when the request has none.
-func parseAnonCreds(raw string) (anonCredsRequest, error) {
+// the name and the version when the request has none. Unless the
+// template accepts any issuer, every part binds its issuer (ADR-064
+// decision 2).
+func parseAnonCreds(raw string, anyIssuer bool) (anonCredsRequest, error) {
 	var req anonCredsRequest
 	if err := json.Unmarshal([]byte(raw), &req); err != nil {
 		return req, fmt.Errorf("read the AnonCreds proof request: %w", err)
@@ -103,6 +149,12 @@ func parseAnonCreds(raw string) (anonCredsRequest, error) {
 	for ref, p := range req.Predicates {
 		if strings.TrimSpace(p.Name) == "" || !predicateOps[p.Type] {
 			return req, fmt.Errorf("the predicate %q needs an attribute and one of >=, >, <=, <", ref)
+		}
+	}
+	for _, p := range req.parts() {
+		if !anyIssuer && p.Issuer == "" {
+			return req, fmt.Errorf("the part on %q binds no issuer; name one credential definition or issuer DID, "+
+				"or accept any issuer in the template", p.Name)
 		}
 	}
 	if req.Name == "" {
@@ -134,11 +186,21 @@ func askable(name string) error {
 // then the predicates, each in referent order.
 func (r anonCredsRequest) names() []string {
 	var out []string
+	for _, p := range r.parts() {
+		out = append(out, p.Name)
+	}
+	return out
+}
+
+// parts returns the parts of the request with what each binds: the
+// attributes, then the predicates, each in referent order.
+func (r anonCredsRequest) parts() []proofPart {
+	var out []proofPart
 	for _, ref := range sortedKeys(r.Attributes) {
-		out = append(out, strings.TrimSpace(r.Attributes[ref].Name))
+		out = append(out, partOf(r.Attributes[ref].Name, r.Attributes[ref].Restrictions))
 	}
 	for _, ref := range sortedKeys(r.Predicates) {
-		out = append(out, strings.TrimSpace(r.Predicates[ref].Name))
+		out = append(out, partOf(r.Predicates[ref].Name, r.Predicates[ref].Restrictions))
 	}
 	return out
 }
@@ -218,13 +280,24 @@ func (r anonCredsRequest) attributes() []credebl.ProofAttribute {
 // returns the request and the record the adapter keeps of it.
 func proofRequestOf(msg *backendv1.CreateRequestRequest, connection bool) (credebl.ProofRequest, proofRecord, error) {
 	if raw := strings.TrimSpace(msg.GetAnoncredsRequest()); raw != "" {
-		req, err := parseAnonCreds(raw)
+		req, err := parseAnonCreds(raw, msg.GetAnyIssuer())
 		if err != nil {
 			return credebl.ProofRequest{}, proofRecord{}, err
 		}
 		out := credebl.ProofRequest{Type: credebl.ProofTypeIndy, Comment: proofComment}
-		record := proofRecord{Names: req.names()}
+		record := proofRecord{Names: req.names(), Indy: true, Parts: req.parts()}
 		if connection {
+			// The attribute list of the platform carries a credential
+			// definition and a schema only, so an issuer DID stays out.
+			for i, p := range record.Parts {
+				if p.CredDefID == "" {
+					if !msg.GetAnyIssuer() {
+						return credebl.ProofRequest{}, proofRecord{}, fmt.Errorf(
+							"over a connection the platform binds the issuer by credential definition only; name one for %q", p.Name)
+					}
+					record.Parts[i].Issuer = ""
+				}
+			}
 			out.Attributes = req.attributes()
 			return out, record, nil
 		}
@@ -248,6 +321,22 @@ type proofRecord struct {
 	// Names are the attribute names of the request, in request order.
 	// The result reads each value by its name.
 	Names []string `json:"names"`
+	// Indy marks an AnonCreds request.
+	Indy bool `json:"indy,omitempty"`
+	// Parts are the parts of an AnonCreds request with what each binds.
+	// The view names the issuer the request bound, never the restriction
+	// that the platform reports (ADR-064 decision 3).
+	Parts []proofPart `json:"parts,omitempty"`
+}
+
+// part returns the part of a name, or an unbound part.
+func (r proofRecord) part(name string) proofPart {
+	for _, p := range r.Parts {
+		if p.Name == name {
+			return p
+		}
+	}
+	return proofPart{Name: name}
 }
 
 // proofKey is the store key of the record of a proof exchange.
@@ -488,7 +577,7 @@ func (s *Service) didcommResult(ctx context.Context, id string) (*connect.Respon
 	if record.IsVerified == nil || !*record.IsVerified {
 		return connect.NewResponse(rejected("the proof is not valid")), nil
 	}
-	kept, _, err := s.proofOf(ctx, id)
+	kept, known, err := s.proofOf(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -498,7 +587,14 @@ func (s *Service) didcommResult(ctx context.Context, id string) (*connect.Respon
 	}
 	out.State = backendv1.GetResultResponse_STATE_ACCEPTED
 	out.DpgChecks = []*backendv1.GetResultResponse_DpgCheck{{Name: ProofCheckName, Passed: true}}
-	out.Presented = proofViews(revealed)
+	var bound bool
+	out.Presented, bound = proofViews(revealed, kept, known)
+	if !bound {
+		out.DpgChecks = append(out.DpgChecks, &backendv1.GetResultResponse_DpgCheck{
+			Name: IssuerBoundCheckName, Passed: false,
+			Reason: "the request bound no credential definition or issuer DID, so a credential of any issuer could answer; the view names no issuer",
+		})
+	}
 	out.ReceivedAt = timestamp(record.UpdatedAt)
 	if out.ReceivedAt == nil {
 		out.ReceivedAt = timestamp(s.now().UTC())
@@ -516,23 +612,46 @@ func rejected(reason string) *backendv1.GetResultResponse {
 
 // proofViews groups the revealed values by the credential they came
 // from. Each group is a JSON view of the revealed values: the type of
-// the schema, the issuer of the credential definition, the schema, and
-// the values in credentialSubject. The view carries no proof, because
-// the agent checked the proof. An AnonCreds group has the format
-// AnonCreds. A DIF PE group names no format, because the view is not the
-// credential that the holder presented.
-func proofViews(revealed []credebl.Revealed) []*commonv1.Credential {
+// the schema, the issuer, the schema, and the values in
+// credentialSubject. The view carries no proof, because the agent
+// checked the proof. An AnonCreds group has the format AnonCreds, and
+// its issuer is the credential definition or the issuer DID that the
+// request bound the part to. The agent checked that the proof meets
+// that restriction. The platform reports the restriction of the request
+// too, but with no restriction it reports the first credential of the
+// proof, so the adapter never takes the issuer from it (ADR-064). A
+// DIF PE group names no format, because the view is not the credential
+// that the holder presented. The second value is false when an
+// AnonCreds value came from a part that bound no issuer.
+func proofViews(revealed []credebl.Revealed, rec proofRecord, known bool) ([]*commonv1.Credential, bool) {
 	type group struct {
-		schema, credDef string
-		values          map[string]string
+		schema, credDef, issuer string
+		values                  map[string]string
 	}
+	indy := rec.Indy
+	if !known {
+		for _, r := range revealed {
+			indy = indy || r.CredDefID != ""
+		}
+	}
+	bound := true
 	var order []string
 	groups := map[string]*group{}
 	for _, r := range revealed {
-		key := r.SchemaID + "|" + r.CredDefID
+		src := group{schema: r.SchemaID}
+		if indy {
+			p := rec.part(r.Name)
+			src.credDef, src.issuer = p.CredDefID, p.Issuer
+			if p.SchemaID != "" {
+				src.schema = p.SchemaID
+			}
+			bound = bound && src.issuer != ""
+		}
+		key := src.schema + "|" + src.credDef + "|" + src.issuer
 		g, ok := groups[key]
 		if !ok {
-			g = &group{schema: r.SchemaID, credDef: r.CredDefID, values: map[string]string{}}
+			src.values = map[string]string{}
+			g = &src
 			groups[key] = g
 			order = append(order, key)
 		}
@@ -543,17 +662,21 @@ func proofViews(revealed []credebl.Revealed) []*commonv1.Credential {
 		g := groups[key]
 		view := map[string]any{"type": []string{schemaName(g.schema)}, "credentialSubject": g.values}
 		format := commonv1.Format_FORMAT_UNSPECIFIED
+		if indy {
+			format = commonv1.Format_FORMAT_ANONCREDS
+		}
 		if g.schema != "" {
 			view["credentialSchema"] = map[string]string{"id": g.schema}
 		}
 		if g.credDef != "" {
-			format = commonv1.Format_FORMAT_ANONCREDS
 			view["credentialDefinitionId"] = g.credDef
-			view["issuer"] = issuerOf(g.credDef)
+		}
+		if g.issuer != "" {
+			view["issuer"] = g.issuer
 		}
 		out = append(out, &commonv1.Credential{Format: format, Payload: anyval.Must(json.Marshal(view))})
 	}
-	return out
+	return out, bound
 }
 
 // schemaName returns the name of a schema: the name part of an

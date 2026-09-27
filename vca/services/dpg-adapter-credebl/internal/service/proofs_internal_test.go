@@ -30,7 +30,7 @@ func TestProofHelpers(t *testing.T) {
 	if text(3) != "" || text("a") != "a" {
 		t.Error("text")
 	}
-	req, err := parseAnonCreds(`{"requested_attributes":{"a":{"names":["x","y"]}}}`)
+	req, err := parseAnonCreds(`{"requested_attributes":{"a":{"names":["x","y"]}}}`, true)
 	if err != nil || req.Name == "" || req.Version != "1.0" || req.Predicates == nil {
 		t.Fatalf("request = %+v, %v", req, err)
 	}
@@ -43,10 +43,10 @@ func TestProofHelpers(t *testing.T) {
 	if len(lines) != 2 || lines[0].Name != "x" || lines[1].Name != "y" || lines[0].SchemaID != "" {
 		t.Errorf("lines = %+v", lines)
 	}
-	if _, twice := parseAnonCreds(`{"requested_attributes":{"a":{"names":["x"]},"a_1":{"name":"y"}}}`); twice == nil {
+	if _, twice := parseAnonCreds(`{"requested_attributes":{"a":{"names":["x"]},"a_1":{"name":"y"}}}`, true); twice == nil {
 		t.Error("a referent named twice passed")
 	}
-	if _, _, perr := proofRequestOf(&backendv1.CreateRequestRequest{AnoncredsRequest: `{"requested_predicates":{"p":{"name":"a","p_type":">","p_value":1}}}`}, false); perr != nil {
+	if _, _, perr := proofRequestOf(&backendv1.CreateRequestRequest{AnoncredsRequest: `{"requested_predicates":{"p":{"name":"a","p_type":">","p_value":1}}}`, AnyIssuer: true}, false); perr != nil {
 		t.Errorf("a request with a predicate alone: %v", perr)
 	}
 	if _, _, derr := platformDefinition(`{"id":"x","input_descriptors":[1]}`); derr == nil {

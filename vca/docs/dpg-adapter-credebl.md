@@ -305,7 +305,19 @@ keeps the attribute names of each request it makes, under the id of the
 proof exchange. It reads each value of the answer by one of those names.
 The platform writes `schemaId`, `credDefId` and `certificateTemplate`
 beside each value, so the adapter refuses to ask for an attribute of
-such a name. The adapter
+such a name.
+
+**The issuer of the view is the issuer the request bound.** A part of an
+AnonCreds request binds its issuer with one restriction. The restriction
+names a credential definition or an issuer DID. The issuer of the view is the
+issuer of that credential definition, or that DID. The agent checked
+that the proof meets the restriction. The adapter never takes the issuer
+from the answer of the platform. With no restriction the platform names
+the first credential of the proof there. Without `any_issuer` the
+adapter refuses a part that binds no issuer. Over a connection it takes
+a credential definition only. A value from a part that binds no issuer
+gives a view with no issuer and the failed check `credebl-issuer-bound`
+(ADR-064). The adapter
 returns one JSON view per credential, with the revealed values under
 `credentialSubject`. A predicate reads as the operator and the number,
 such as `>=10`, and never as the value of the holder. The view carries
@@ -383,4 +395,4 @@ The contract set targets a real platform. It carries the build tag
 
 - Service folder: `services/dpg-adapter-credebl`
 - Contract: `proto/vca/backend/v1/backend.proto`
-- Decisions: ADR-002 decisions 2 and 4, ADR-016 decision 6, ADR-022 decision 3, ADR-030 decision 2, ADR-059, ADR-060, ADR-061, ADR-062, ADR-063
+- Decisions: ADR-002 decisions 2 and 4, ADR-016 decision 6, ADR-022 decision 3, ADR-030 decision 2, ADR-059, ADR-060, ADR-061, ADR-062, ADR-063, ADR-064

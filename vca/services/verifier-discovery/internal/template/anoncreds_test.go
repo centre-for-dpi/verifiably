@@ -14,11 +14,32 @@ import (
 
 const farmerSchema = "did:indy:bcovrin:testnet:Ra8F/anoncreds/v0/SCHEMA/Farmer/1.0"
 
-// farmerRequest reveals the name and proves at least 10 acres.
+// farmerCredDef is the credential definition of the farmer schema.
+const farmerCredDef = "did:indy:bcovrin:testnet:Ra8F/anoncreds/v0/CLAIM_DEF/2107/default" //nolint:gosec // G101: a credential definition id, not a credential.
+
+// farmerRequest reveals the name and proves at least 10 acres, both
+// from the one credential definition of the schema.
 func farmerRequest() *anoncreds.Request {
+	bound := anoncreds.Restriction{SchemaID: farmerSchema, CredDefID: farmerCredDef}
 	return &anoncreds.Request{
-		Attributes: []anoncreds.Attribute{{Names: []string{"fullName"}, Restriction: anoncreds.Restriction{SchemaID: farmerSchema}}},
-		Predicates: []anoncreds.Predicate{{Name: "acres", Op: ">=", Value: 10, Restriction: anoncreds.Restriction{SchemaID: farmerSchema}}},
+		Attributes: []anoncreds.Attribute{{Names: []string{"fullName"}, Restriction: bound}},
+		Predicates: []anoncreds.Predicate{{Name: "acres", Op: ">=", Value: 10, Restriction: bound}},
+	}
+}
+
+// TestTrustedAnonCredsTemplateNeedsACredentialDefinition is finding 3.2
+// of the CREDEBL review: a template that asks for a trusted issuer binds
+// every part to a credential definition. A template open to any issuer
+// may restrict a schema alone.
+func TestTrustedAnonCredsTemplateNeedsACredentialDefinition(t *testing.T) {
+	open := farmerRequest()
+	open.Predicates[0].Restriction.CredDefID = ""
+	_, err := template.Build(template.Template{DisplayName: "Farmer check", Kind: template.KindNative, AnonCreds: open, RequireTrustedIssuer: true})
+	if err == nil || !strings.Contains(err.Error(), "credential definition") {
+		t.Fatalf("a trusted template on a schema alone: %v", err)
+	}
+	if _, err := template.Build(template.Template{DisplayName: "Farmer check", Kind: template.KindNative, AnonCreds: open}); err != nil {
+		t.Fatalf("a template open to any issuer: %v", err)
 	}
 }
 

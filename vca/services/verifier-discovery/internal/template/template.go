@@ -249,6 +249,13 @@ func buildNative(t Template) (Template, error) {
 	if err := req.Check(); err != nil {
 		return Template{}, fmt.Errorf("template: %w", err)
 	}
+	// A trusted issuer needs a bound issuer. A schema alone admits the
+	// credential definition of anyone (ADR-064 decision 1).
+	if t.RequireTrustedIssuer {
+		if err := req.CheckBound(); err != nil {
+			return Template{}, fmt.Errorf("template: %w", err)
+		}
+	}
 	t.AnonCreds, t.DCQL, t.PresentationDefinition = &req, "", ""
 	t.Queries = anonCredsQueries(req)
 	return t, nil

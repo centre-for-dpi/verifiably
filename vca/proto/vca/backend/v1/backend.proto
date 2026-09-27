@@ -1590,6 +1590,11 @@ message CreateRequestRequest {
   // request over that connection, and request_uri stays empty. Empty
   // makes an out of band invitation that carries the request.
   string connection_id = 10;
+  // The template accepts a credential of any issuer. Without it an
+  // adapter refuses an AnonCreds part that binds no issuer. A part binds
+  // its issuer with one restriction that names a credential definition
+  // or an issuer DID (ADR-064).
+  bool any_issuer = 11;
 }
 
 // CreateRequestResponse describes the transaction.

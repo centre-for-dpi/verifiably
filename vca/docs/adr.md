@@ -43,3 +43,4 @@ each decision of each record.
 - [ADR-061: DIDComm proof requests and the AnonCreds proof request builder](adr/ADR-061-didcomm-proof-requests.md)
 - [ADR-062: The DIDComm holder wallet of a CREDEBL stack](adr/ADR-062-didcomm-holder-wallet.md)
 - [ADR-063: The consent of a stack wallet that picks the claims itself](adr/ADR-063-stack-wallet-consent.md)
+- [ADR-064: The issuer of an AnonCreds proof over DIDComm](adr/ADR-064-anoncreds-proof-issuer.md)

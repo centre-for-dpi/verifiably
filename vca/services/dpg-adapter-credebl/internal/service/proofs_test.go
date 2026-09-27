@@ -43,7 +43,7 @@ const anonCredsRequest = `{
     "attr1": {"name": "fullName", "restrictions": [{"schema_id": "` + proofSchemaID + `", "cred_def_id": "` + proofCredDef + `"}]}
   },
   "requested_predicates": {
-    "pred1": {"name": "acres", "p_type": ">=", "p_value": 10, "restrictions": [{"schema_id": "` + proofSchemaID + `"}]}
+    "pred1": {"name": "acres", "p_type": ">=", "p_value": 10, "restrictions": [{"schema_id": "` + proofSchemaID + `", "cred_def_id": "` + proofCredDef + `"}]}
   }
 }`
 
@@ -408,6 +408,128 @@ func (f failingStore) Get(ctx context.Context, key string) ([]byte, error) {
 	return f.KeyValue.Get(ctx, key)
 }
 
+// TestProofRequestNeedsABoundIssuer is finding 3.2 of the CREDEBL
+// review: a part of an AnonCreds request binds its issuer with one
+// restriction that names a credential definition or an issuer DID.
+// Without that the request goes out only when the template accepts any
+// issuer. Over a connection the platform takes a credential definition
+// only.
+func TestProofRequestNeedsABoundIssuer(t *testing.T) {
+	svc, _ := newService(t, nil)
+	schemaOnly := `{"requested_attributes":{"a":{"name":"fullName","restrictions":[{"schema_id":"` + proofSchemaID + `"}]}}}`
+	for name, req := range map[string]*backendv1.CreateRequestRequest{
+		"a schema alone":   {AnoncredsRequest: schemaOnly},
+		"no restriction":   {AnoncredsRequest: `{"requested_predicates":{"p":{"name":"acres","p_type":">","p_value":1}}}`},
+		"two restrictions": {AnoncredsRequest: `{"requested_attributes":{"a":{"name":"x","restrictions":[{"cred_def_id":"a"},{"cred_def_id":"b"}]}}}`},
+		"an issuer over a connection": {AnoncredsRequest: `{"requested_attributes":{"a":{"name":"x","restrictions":[{"issuer_did":"` + proofIssuer + `"}]}}}`,
+			ConnectionId: holderConn},
+	} {
+		_, err := svc.CreateRequest(context.Background(), connect.NewRequest(req))
+		if connect.CodeOf(err) != connect.CodeInvalidArgument || !strings.Contains(err.Error(), "issuer") {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	for name, req := range map[string]*backendv1.CreateRequestRequest{
+		"any issuer":    {AnoncredsRequest: schemaOnly, AnyIssuer: true},
+		"an issuer did": {AnoncredsRequest: `{"requested_attributes":{"a":{"name":"x","restrictions":[{"issuer_did":"` + proofIssuer + `"}]}}}`},
+		"an issuer id":  {AnoncredsRequest: `{"requested_attributes":{"a":{"name":"x","restrictions":[{"issuer_id":"` + proofIssuer + `"}]}}}`},
+	} {
+		if _, err := svc.CreateRequest(context.Background(), connect.NewRequest(req)); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// proofView is the JSON view of the revealed values of one credential.
+type proofView struct {
+	Issuer  string            `json:"issuer"`
+	Schema  map[string]string `json:"credentialSchema"`
+	CredDef string            `json:"credentialDefinitionId"`
+	Subject map[string]string `json:"credentialSubject"`
+}
+
+// viewsOf reads the views of a result.
+func viewsOf(t *testing.T, m *backendv1.GetResultResponse) []proofView {
+	t.Helper()
+	var out []proofView
+	for _, c := range m.GetPresented() {
+		var v proofView
+		if err := json.Unmarshal(c.GetPayload(), &v); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+// issuerBound returns the check of the issuer binding, if any.
+func issuerBound(m *backendv1.GetResultResponse) *backendv1.GetResultResponse_DpgCheck {
+	for _, c := range m.GetDpgChecks() {
+		if c.GetName() == service.IssuerBoundCheckName {
+			return c
+		}
+	}
+	return nil
+}
+
+// TestProofViewIssuerComesFromTheRequest is finding 3.2 of the CREDEBL
+// review: the issuer of the view is the credential definition or the
+// issuer DID that the request bound each part to. The agent checked that
+// the proof meets that restriction.
+func TestProofViewIssuerComesFromTheRequest(t *testing.T) {
+	other := "did:indy:bcovrin:testnet:Xy12/anoncreds/v0/CLAIM_DEF/9/default"
+	svc, f := newService(t, nil)
+	req := `{"requested_attributes":{"a":{"name":"fullName","restrictions":[{"cred_def_id":"` + other + `"}]}},` +
+		`"requested_predicates":{"p":{"name":"acres","p_type":">=","p_value":10,"restrictions":[{"issuer_did":"did:web:farms.example"}]}}}`
+	if _, err := svc.CreateRequest(context.Background(), connect.NewRequest(&backendv1.CreateRequestRequest{AnoncredsRequest: req})); err != nil {
+		t.Fatal(err)
+	}
+	f.SetProof(fake.ProofDone)
+	m := getResult(t, svc, oobProofID)
+	views := viewsOf(t, m)
+	if len(views) != 2 || views[0].Issuer != "did:indy:bcovrin:testnet:Xy12" || views[0].CredDef != other || views[0].Subject["fullName"] != "[holder]" ||
+		views[1].Issuer != "did:web:farms.example" || views[1].CredDef != "" || views[1].Subject["acres"] != ">=10" {
+		t.Fatalf("views = %+v", views)
+	}
+	if issuerBound(m) != nil {
+		t.Errorf("a bound request has the check %+v", issuerBound(m))
+	}
+}
+
+// TestProofViewNamesNoIssuerWhenTheRequestBindsNone is finding 3.2 of
+// the CREDEBL review: a request open to any issuer, and a request the
+// adapter did not record, name no issuer. A failed check says so plainly.
+func TestProofViewNamesNoIssuerWhenTheRequestBindsNone(t *testing.T) {
+	svc, f := newService(t, nil)
+	open := `{"requested_attributes":{"a":{"name":"fullName","restrictions":[{"schema_id":"` + proofSchemaID + `"}]}},` +
+		`"requested_predicates":{"p":{"name":"acres","p_type":">=","p_value":10}}}`
+	if _, err := svc.CreateRequest(context.Background(), connect.NewRequest(&backendv1.CreateRequestRequest{AnoncredsRequest: open, AnyIssuer: true})); err != nil {
+		t.Fatal(err)
+	}
+	f.SetProof(fake.ProofDone)
+	for name, svc := range map[string]*service.Service{"any issuer": svc} {
+		m := getResult(t, svc, oobProofID)
+		for _, v := range viewsOf(t, m) {
+			if v.Issuer != "" || v.CredDef != "" {
+				t.Errorf("%s: view %+v", name, v)
+			}
+		}
+		check := issuerBound(m)
+		if m.GetState() != backendv1.GetResultResponse_STATE_ACCEPTED || check == nil || check.GetPassed() || !strings.Contains(check.GetReason(), "any issuer") {
+			t.Errorf("%s: state %v, check %+v", name, m.GetState(), check)
+		}
+	}
+	legacy, lf := newService(t, nil)
+	lf.SetProof(fake.ProofDone)
+	m := getResult(t, legacy, oobProofID)
+	if views := viewsOf(t, m); len(views) != 1 || views[0].Issuer != "" || views[0].CredDef != "" || views[0].Subject["fullName"] != "[holder]" {
+		t.Errorf("an unrecorded request: %+v", views)
+	}
+	if check := issuerBound(m); check == nil || check.GetPassed() {
+		t.Errorf("an unrecorded request: check %+v", check)
+	}
+}
+
 // getResult reads the result of one DIDComm proof request.
 func getResult(t *testing.T, svc *service.Service, id string) *backendv1.GetResultResponse {
 	t.Helper()
@@ -423,6 +545,9 @@ func getResult(t *testing.T, svc *service.Service, id string) *backendv1.GetResu
 // name, and the predicate the holder proved without the number.
 func TestProofResultVerified(t *testing.T) {
 	svc, f := newService(t, nil)
+	if _, err := svc.CreateRequest(context.Background(), connect.NewRequest(&backendv1.CreateRequestRequest{AnoncredsRequest: anonCredsRequest})); err != nil {
+		t.Fatal(err)
+	}
 	f.SetProof(fake.ProofDone)
 	m := getResult(t, svc, oobProofID)
 	if m.GetState() != backendv1.GetResultResponse_STATE_ACCEPTED || m.GetReceivedAt() == nil {
