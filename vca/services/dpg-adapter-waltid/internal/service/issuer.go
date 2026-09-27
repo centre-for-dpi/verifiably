@@ -61,6 +61,7 @@ func (s *Service) CreateOffer(
 		OfferUri: uri,
 		OfferId:  offerID,
 		Channel:  channel,
+		Status:   issuance.status,
 	}), nil
 }
 
@@ -68,6 +69,9 @@ func (s *Service) CreateOffer(
 type built struct {
 	request waltid.IssuanceRequest
 	format  waltid.Format
+	// status is the entry of the spec that the body embeds. It is nil
+	// for an mdoc and for a body of the caller, which embed none.
+	status *backendv1.StatusListBinding
 }
 
 func issuanceFormat(b built) string { return string(b.format) }
@@ -99,6 +103,10 @@ func (s *Service) buildIssuance(ctx context.Context, spec *backendv1.IssueSpec, 
 	}
 	status := statusEntry(spec.GetStatus())
 	validity := validityWindow(spec.GetValidity())
+	var carried *backendv1.StatusListBinding
+	if status.URL != "" {
+		carried = spec.GetStatus()
+	}
 	switch {
 	case waltid.IsSdJwt(format):
 		body, berr := waltid.BuildSdJwtCredential(subject, status, validity)
@@ -114,6 +122,7 @@ func (s *Service) buildIssuance(ctx context.Context, spec *backendv1.IssueSpec, 
 			return built{}, connect.NewError(connect.CodeInvalidArgument, berr)
 		}
 		request.MdocData = body
+		carried = nil
 	default:
 		if raw := strings.TrimSpace(spec.GetCredentialData()); raw != "" {
 			// The caller sent a whole credential body. Only a VCDM
@@ -123,6 +132,7 @@ func (s *Service) buildIssuance(ctx context.Context, spec *backendv1.IssueSpec, 
 					errors.New("credential_data is not valid JSON"))
 			}
 			request.CredentialData = json.RawMessage(raw)
+			carried = nil
 			break
 		}
 		body, berr := waltid.BuildVcdmCredential(reg.Types, subject, status, validity)
@@ -131,7 +141,7 @@ func (s *Service) buildIssuance(ctx context.Context, spec *backendv1.IssueSpec, 
 		}
 		request.CredentialData = body
 	}
-	return built{request: request, format: format}, nil
+	return built{request: request, format: format, status: carried}, nil
 }
 
 // registrationFor returns the stored registration of the configuration.

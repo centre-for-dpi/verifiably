@@ -49,7 +49,8 @@ func (s *Service) holderOffer(ctx context.Context, spec *backendv1.IssueSpec, is
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("the binding rule needs the claim of the ID token and the claim of the subject"))
 	}
-	if _, _, err := s.buildRow(ctx, spec, "check"); err != nil {
+	_, cfg, err := s.buildRow(ctx, spec, "check")
+	if err != nil {
 		return nil, err
 	}
 	subject, err := subjectOf(spec)
@@ -65,7 +66,7 @@ func (s *Service) holderOffer(ctx context.Context, spec *backendv1.IssueSpec, is
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return s.hostOffer(ctx, spec, issuer, s.authzIssuer, hostedOffer{Spec: string(raw), Binding: &binding})
+	return s.hostOffer(ctx, spec, issuer, s.authzIssuer, hostedOffer{Spec: string(raw), Binding: &binding}, carriedStatus(spec, cfg.Format))
 }
 
 // subjectOf reads the subject claims of a spec.

@@ -15,6 +15,7 @@ import (
 	issuancev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
+	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/clients"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/offers"
 )
 
@@ -132,6 +133,7 @@ type nativeRun struct {
 	schema  *schemav1.Schema
 	format  commonv1.Format
 	channel backendv1.Channel
+	caps    clients.Capabilities
 }
 
 // mails reports whether the stack mails each row an offer, so each row
@@ -174,7 +176,7 @@ func (s *Service) prepareNative(ctx context.Context, msg *issuancev1.IssueBatchR
 	if !caps.SupportsFormat(format) || !caps.BulkIssues(format) {
 		return nil, badRequest(fmt.Sprintf("the bulk import of the DPG cannot issue the format %s", format))
 	}
-	return &nativeRun{schema: schema, format: format, channel: channel}, nil
+	return &nativeRun{schema: schema, format: format, channel: channel, caps: caps}, nil
 }
 
 // nativeRow is one row of a native batch that passed the schema.
@@ -209,7 +211,7 @@ func (s *Service) runNative(ctx context.Context, run *batchRun, bulk *nativeRun,
 				err = errors.New("the row has no email address, and the stack mails each offer")
 			}
 		} else if err == nil {
-			n.binding, err = s.allocateStatus(ctx, "", bulk.format)
+			n.binding, err = s.allocateStatus(ctx, bulk.caps, "", bulk.format)
 		}
 		if err != nil {
 			s.opts.Audit.Record(ctx, nil, ActionIssue, bulk.schema.GetId(), "", err)

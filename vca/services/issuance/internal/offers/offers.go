@@ -44,26 +44,29 @@ const (
 
 // Offer is the stored state of one issuance.
 type Offer struct {
-	ID            string            `json:"id"`
-	Channel       string            `json:"channel"`
-	State         State             `json:"state"`
-	OfferURI      string            `json:"offer_uri,omitempty"`
-	Pin           string            `json:"pin,omitempty"`
-	PdfRef        string            `json:"pdf_ref,omitempty"`
-	Link          string            `json:"link,omitempty"`
-	RecordID      string            `json:"record_id,omitempty"`
-	TransactionID string            `json:"transaction_id,omitempty"`
-	DPGOfferID    string            `json:"dpg_offer_id,omitempty"`
-	Credential    []byte            `json:"credential,omitempty"`
-	Format        int32             `json:"format,omitempty"`
-	SchemaID      string            `json:"schema_id,omitempty"`
-	SchemaVersion int32             `json:"schema_version,omitempty"`
-	SubjectRef    string            `json:"subject_ref,omitempty"`
-	Claims        map[string]string `json:"claims,omitempty"`
-	Error         string            `json:"error,omitempty"`
-	CreatedAt     time.Time         `json:"created_at"`
-	ExpiresAt     time.Time         `json:"expires_at"`
-	ClaimedAt     time.Time         `json:"claimed_at,omitempty"`
+	ID            string `json:"id"`
+	Channel       string `json:"channel"`
+	State         State  `json:"state"`
+	OfferURI      string `json:"offer_uri,omitempty"`
+	Pin           string `json:"pin,omitempty"`
+	PdfRef        string `json:"pdf_ref,omitempty"`
+	Link          string `json:"link,omitempty"`
+	RecordID      string `json:"record_id,omitempty"`
+	TransactionID string `json:"transaction_id,omitempty"`
+	DPGOfferID    string `json:"dpg_offer_id,omitempty"`
+	// DPGCredentialID is the id a stack with a status list of its own
+	// revokes the credential by.
+	DPGCredentialID string            `json:"dpg_credential_id,omitempty"`
+	Credential      []byte            `json:"credential,omitempty"`
+	Format          int32             `json:"format,omitempty"`
+	SchemaID        string            `json:"schema_id,omitempty"`
+	SchemaVersion   int32             `json:"schema_version,omitempty"`
+	SubjectRef      string            `json:"subject_ref,omitempty"`
+	Claims          map[string]string `json:"claims,omitempty"`
+	Error           string            `json:"error,omitempty"`
+	CreatedAt       time.Time         `json:"created_at"`
+	ExpiresAt       time.Time         `json:"expires_at"`
+	ClaimedAt       time.Time         `json:"claimed_at,omitempty"`
 	// IdentityQR is the Claim 169 code of the identity QR channel.
 	IdentityQR string `json:"identity_qr,omitempty"`
 }

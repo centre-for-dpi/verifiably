@@ -121,7 +121,8 @@ func (s *Service) ListIssuedCredentials(
 // statusBinding returns the status list entry that the agent wrote into
 // the credential of one type of a revocable session: an IETF Token
 // Status List with the list of the agent, the index and the address a
-// verifier fetches. A session with no entry gives nil (P6-C5b).
+// verifier fetches. The list belongs to the stack, so the entry sets
+// dpg_list. A session with no entry gives nil (P6-C5b).
 func statusBinding(session credebl.IssuanceSession, credType string) *backendv1.StatusListBinding {
 	var listID string
 	for _, info := range session.Metadata.StatusLists {
@@ -142,6 +143,7 @@ func statusBinding(session credebl.IssuanceSession, credType string) *backendv1.
 			ListId:     listID,
 			Index:      entry.StatusList.Index,
 			PublishUrl: entry.StatusList.URI,
+			DpgList:    true,
 		}
 	}
 	return nil

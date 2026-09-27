@@ -89,6 +89,7 @@ func BindingOf(p *backendv1.StatusListBinding) record.Binding {
 		ListID:     p.GetListId(),
 		Index:      p.GetIndex(),
 		PublishURL: p.GetPublishUrl(),
+		DPGList:    p.GetDpgList(),
 	}
 }
 
@@ -146,6 +147,7 @@ func bindingProto(b record.Binding) *backendv1.StatusListBinding {
 		ListId:     b.ListID,
 		Index:      b.Index,
 		PublishUrl: b.PublishURL,
+		DpgList:    b.DPGList,
 	}
 }
 

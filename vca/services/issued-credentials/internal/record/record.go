@@ -56,6 +56,10 @@ type Binding struct {
 	ListID     string     `json:"list_id,omitempty"`
 	Index      int64      `json:"index,omitempty"`
 	PublishURL string     `json:"publish_url,omitempty"`
+	// DPGList reports that a list of the DPG holds the entry, not a
+	// status service of VCA. The field is new, so an older record leaves
+	// it out and keeps its hash.
+	DPGList bool `json:"dpg_list,omitempty"`
 }
 
 // IsZero reports whether the credential has no status list entry.

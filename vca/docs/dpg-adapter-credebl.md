@@ -143,6 +143,12 @@ So the organisation needs a primary DID, which the operator makes.
 `Revoke` takes the issuance session as the credential id.
 It calls the revoke route of the platform, and the agent sets the revoked
 bit and publishes the list again.
+The agent writes the entry of a credential when it creates the offer.
+`CreateOffer` reads the session and names that entry in its answer, with
+`dpg_list` set and the session as `credential_id` (ADR-072).
+The record of the offer then holds the entry of the stack.
+A revoke of that record goes to `Revoke`, never to a list of VCA.
+The adapter lists no status mechanism, so VCA allocates no index for it.
 The issued list reads the entry of each credential from its session.
 So a synced record carries its list, its index and the list address.
 A verifier fetches the list at that address.

@@ -172,12 +172,42 @@ func (s *Service) CreateOffer(
 	if oerr != nil {
 		return nil, failed("create the offer", oerr)
 	}
-	return connect.NewResponse(&backendv1.CreateOfferResponse{
+	out := &backendv1.CreateOfferResponse{
 		OfferUri: credebl.RewritePublic(offer.URI, s.internalURL, s.publicURL),
 		OfferId:  offer.SessionID,
 		Channel:  backendv1.Channel_CHANNEL_OID4VCI_PREAUTH,
 		Pin:      offer.PIN,
-	}), nil
+	}
+	if s.statusList {
+		// The credential carries an entry of the status list of the
+		// stack, never the entry of VCA in the spec. The answer names
+		// it, so VCA revokes through Revoke and not through a list no
+		// verifier reads.
+		entry, serr := s.offerStatus(ctx, offer.SessionID)
+		if serr != nil {
+			return nil, serr
+		}
+		out.Status, out.CredentialId = entry, offer.SessionID
+	}
+	return connect.NewResponse(out), nil
+}
+
+// offerStatus reads the status entry that the agent wrote into the
+// credential of a revocable offer. The agent writes it when it creates
+// the offer, so the session holds it before a wallet claims.
+func (s *Service) offerStatus(ctx context.Context, sessionID string) (*backendv1.StatusListBinding, error) {
+	session, err := s.client.OfferSession(ctx, sessionID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf(
+			"CREDEBL created the offer %s, but its status entry cannot be read: %w", sessionID, err))
+	}
+	for _, c := range session.Metadata.Credentials {
+		if entry := statusBinding(session, c.SupportedID); entry != nil {
+			return entry, nil
+		}
+	}
+	return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf(
+		"CREDEBL created the revocable offer %s with no status entry; check the status list host of the stack", sessionID))
 }
 
 // hasWindow reports whether the caller asked for a validity window.

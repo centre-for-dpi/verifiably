@@ -9,9 +9,11 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/fake"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/service"
 )
 
@@ -87,6 +89,7 @@ func TestRevokeRefusesWhatThePlatformCannotDo(t *testing.T) {
 func TestOfferIsRevocableWithAStatusList(t *testing.T) {
 	for _, on := range []bool{true, false} {
 		svc, f := newService(t, func(o *service.Options) { o.StatusList = on })
+		f.SetOfferSession(fake.OfferRevocable)
 		_, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
 			Spec: &backendv1.IssueSpec{ConfigurationId: "FarmerCredential", SubjectData: `{"name":"[HOLDER NAME]"}`},
 		}))
@@ -154,5 +157,75 @@ func TestLedgerEntryCarriesTheStatusListEntry(t *testing.T) {
 	}
 	if len(plain.Msg.GetCredentials()) != 1 || plain.Msg.GetCredentials()[0].GetStatus() != nil {
 		t.Errorf("a session with no entry = %v", plain.Msg.GetCredentials())
+	}
+}
+
+// createdSession is the issuance session of the create offer answer.
+const createdSession = "5f2c1d7b-6a09-4e83-9c14-2b7d8e0f3a56"
+
+// TestCreateOfferNamesTheStatusEntryOfTheStack: the credential of a
+// revocable offer carries an entry of the status list of the stack, not
+// the entry of VCA in the spec. The answer names that entry and the
+// session that Revoke takes.
+func TestCreateOfferNamesTheStatusEntryOfTheStack(t *testing.T) {
+	svc, f := newService(t, withStatusList)
+	f.SetOfferSession(fake.OfferRevocable)
+	resp, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
+		Spec: &backendv1.IssueSpec{
+			ConfigurationId: "FarmerCredential", SubjectData: `{"name":"[HOLDER NAME]"}`,
+			Status: &backendv1.StatusListBinding{Kind: backendv1.StatusListBinding_KIND_TOKEN, ListId: "vca-list", Index: 7},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("CreateOffer: %v", err)
+	}
+	want := &backendv1.StatusListBinding{
+		Kind:       backendv1.StatusListBinding_KIND_TOKEN,
+		ListId:     "6f1e2d3c-4b5a-4968-8778-a1b2c3d4e5f6",
+		Index:      4211,
+		PublishUrl: "http://credebl-status-list:3000/status-lists/6f1e2d3c-4b5a-4968-8778-a1b2c3d4e5f6",
+		DpgList:    true,
+	}
+	if !proto.Equal(resp.Msg.GetStatus(), want) {
+		t.Fatalf("status = %v, want the entry of the stack %v", resp.Msg.GetStatus(), want)
+	}
+	if resp.Msg.GetCredentialId() != createdSession {
+		t.Fatalf("credential id = %q, want the session %s that Revoke takes", resp.Msg.GetCredentialId(), createdSession)
+	}
+}
+
+// TestCreateOfferWithoutAStatusListNamesNoEntry: without the status list
+// host the platform writes no status entry, and the credential carries
+// none of VCA either.
+func TestCreateOfferWithoutAStatusListNamesNoEntry(t *testing.T) {
+	svc, _ := newService(t, nil)
+	resp, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
+		Spec: &backendv1.IssueSpec{
+			ConfigurationId: "FarmerCredential", SubjectData: `{"name":"[HOLDER NAME]"}`,
+			Status: &backendv1.StatusListBinding{Kind: backendv1.StatusListBinding_KIND_TOKEN, ListId: "vca-list", Index: 7},
+		},
+	}))
+	if err != nil {
+		t.Fatalf("CreateOffer: %v", err)
+	}
+	if resp.Msg.GetStatus() != nil || resp.Msg.GetCredentialId() != "" {
+		t.Fatalf("status = %v, credential id = %q, want none", resp.Msg.GetStatus(), resp.Msg.GetCredentialId())
+	}
+}
+
+// TestCreateOfferReportsAnUnreadableStatusEntry: the offer names its
+// status entry, or it fails. A revocable credential never goes out as
+// one that VCA cannot revoke.
+func TestCreateOfferReportsAnUnreadableStatusEntry(t *testing.T) {
+	for name, answer := range map[string]fake.Answer{"no entry": fake.OfferPending, "unreadable": fake.OfferRevocable} {
+		svc, f := newService(t, withStatusList)
+		f.SetOfferSession(answer)
+		if name == "unreadable" {
+			f.SetStatus("/v1/orgs/org-1/oid4vc/credential-offer/"+createdSession, 500)
+		}
+		_, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
+			Spec: &backendv1.IssueSpec{ConfigurationId: "FarmerCredential", SubjectData: `{"name":"[HOLDER NAME]"}`},
+		}))
+		wantCode(t, err, connect.CodeUnavailable)
 	}
 }

@@ -49,6 +49,22 @@ func answer() *backendv1.GetCapabilitiesResponse {
 		},
 		Channels: []backendv1.Channel{backendv1.Channel_CHANNEL_OID4VCI_PREAUTH},
 		Roles:    []commonv1.Role{commonv1.Role_ROLE_ISSUER},
+
+		StatusMechanisms: []backendv1.StatusListBinding_Kind{backendv1.StatusListBinding_KIND_TOKEN},
+	}
+}
+
+func TestCapabilitiesNameTheStatusListsTheAdapterEmbeds(t *testing.T) {
+	client := &fakeCapability{answer: answer()}
+	caps, err := clients.NewCapabilityCache(client, time.Minute, nil).Get(context.Background())
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !caps.Embeds(backendv1.StatusListBinding_KIND_TOKEN) {
+		t.Fatal("the adapter embeds a token status list entry of VCA")
+	}
+	if caps.Embeds(backendv1.StatusListBinding_KIND_BITSTRING) {
+		t.Fatal("the adapter embeds no bitstring entry of VCA")
 	}
 }
 

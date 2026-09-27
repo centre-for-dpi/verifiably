@@ -97,7 +97,8 @@ func (s *Service) preAuthorizedOffer(ctx context.Context, spec *backendv1.IssueS
 	*connect.Response[backendv1.CreateOfferResponse], error,
 ) {
 	stagingID := s.newID()
-	if _, err := s.stageRow(ctx, spec, claims.Key(stagingID)); err != nil {
+	cfg, err := s.stageRow(ctx, spec, claims.Key(stagingID))
+	if err != nil {
 		return nil, err
 	}
 	offerURI, serr := s.certify.Stage(ctx, spec.GetConfigurationId(), map[string]any{inji.StagingClaim: stagingID})
@@ -109,7 +110,18 @@ func (s *Service) preAuthorizedOffer(ctx context.Context, spec *backendv1.IssueS
 		OfferId:   offerIDOf(offerURI),
 		Channel:   backendv1.Channel_CHANNEL_OID4VCI_PREAUTH,
 		ExpiresAt: timestamp(s.now().UTC().Add(s.offerTTL)),
+		Status:    carriedStatus(spec, cfg.Format),
 	}), nil
+}
+
+// carriedStatus returns the status entry of the spec when the claims row
+// of the configuration format carries it. Certify then writes it into
+// the credential. Any other format carries no entry.
+func carriedStatus(spec *backendv1.IssueSpec, format string) *backendv1.StatusListBinding {
+	if !inji.StatusMarkers(format) || spec.GetStatus().GetPublishUrl() == "" {
+		return nil
+	}
+	return spec.GetStatus()
 }
 
 // presentationOffer builds an authorization code offer whose
@@ -141,7 +153,8 @@ func (s *Service) presentationOffer(ctx context.Context, spec *backendv1.IssueSp
 			"name the holder: presentation_subject needs a value and one of the identity claims %s",
 			strings.Join(s.iarIdentity, ", ")))
 	}
-	if _, err := s.stageRow(ctx, spec, value); err != nil {
+	cfg, err := s.stageRow(ctx, spec, value)
+	if err != nil {
 		return nil, err
 	}
 	server, err := s.certify.InteractiveServer(ctx)
@@ -161,7 +174,7 @@ func (s *Service) presentationOffer(ctx context.Context, spec *backendv1.IssueSp
 	if issuer == "" {
 		issuer = s.certify.BaseURL()
 	}
-	return s.hostOffer(ctx, spec, issuer, server.Issuer, hostedOffer{})
+	return s.hostOffer(ctx, spec, issuer, server.Issuer, hostedOffer{}, carriedStatus(spec, cfg.Format))
 }
 
 // authorizationCodeOffer builds and stores the offer document. With the
@@ -192,7 +205,9 @@ func (s *Service) authorizationCodeOffer(ctx context.Context, spec *backendv1.Is
 		}
 		server = meta.AuthorizationServers[0]
 	}
-	return s.hostOffer(ctx, spec, issuer, server, hostedOffer{})
+	// The identity provider hands the claims over, so no row carries a
+	// status entry.
+	return s.hostOffer(ctx, spec, issuer, server, hostedOffer{}, nil)
 }
 
 // hostOffer builds and stores the authorization code offer document of
@@ -200,7 +215,9 @@ func (s *Service) authorizationCodeOffer(ctx context.Context, spec *backendv1.Is
 // the issuer_state of the document, so the authorization server finds
 // the offer when the wallet names it. extra carries what the holder
 // authorization server needs.
-func (s *Service) hostOffer(ctx context.Context, spec *backendv1.IssueSpec, issuer, authorizationServer string, extra hostedOffer) (
+func (s *Service) hostOffer(ctx context.Context, spec *backendv1.IssueSpec, issuer, authorizationServer string, extra hostedOffer,
+	status *backendv1.StatusListBinding,
+) (
 	*connect.Response[backendv1.CreateOfferResponse], error,
 ) {
 	if s.publicURL == "" {
@@ -228,6 +245,7 @@ func (s *Service) hostOffer(ctx context.Context, spec *backendv1.IssueSpec, issu
 		OfferId:   id,
 		Channel:   backendv1.Channel_CHANNEL_OID4VCI_AUTHCODE,
 		ExpiresAt: timestamp(expires),
+		Status:    status,
 	}), nil
 }
 

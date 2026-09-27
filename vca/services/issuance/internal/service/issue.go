@@ -190,7 +190,7 @@ func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 		// A DIDComm credential carries no status entry of VCA.
 		statusPurpose = "none"
 	}
-	binding, err := s.allocateStatus(ctx, statusPurpose, format)
+	binding, err := s.allocateStatus(ctx, caps, statusPurpose, format)
 	if err != nil {
 		return offers.Offer{}, err
 	}
@@ -224,18 +224,24 @@ func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 		ExpiresAt:     now.Add(s.opts.OfferTTL),
 	}
 	r.channel = channel
+	var carried carriedStatus
 	switch {
 	case channel == backendv1.Channel_CHANNEL_CLAIM169_QR:
 		err = s.issueIdentityQR(ctx, &offer, spec, schema, r)
 	case isDocument(channel) && caps.SupportsChannel(backendv1.Channel_CHANNEL_PDF):
 		err = s.issueDocument(ctx, &offer, spec, schema, r)
 	case isDocument(channel):
-		err = s.issueOfferDocument(ctx, &offer, spec, schema, r)
+		err = s.issueOfferDocument(ctx, &offer, spec, schema, r, &carried)
 	default:
-		err = s.issueOffer(ctx, &offer, spec, channel, r)
+		err = s.issueOffer(ctx, &offer, spec, channel, r, &carried)
 	}
 	if err != nil {
 		return offers.Offer{}, err
+	}
+	if carried.named {
+		// The adapter named the entry the credential carries.
+		binding = carried.entry
+		offer.DPGCredentialID = carried.credentialID
 	}
 	if rerr := s.record(ctx, &offer, binding, r.validity); rerr != nil {
 		s.opts.Log.Warn("the issued record did not reach the log", "error", rerr)
@@ -244,6 +250,31 @@ func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 		return offers.Offer{}, internal("store the offer", perr)
 	}
 	return offer, nil
+}
+
+// carriedStatus is the status entry the credential of an offer
+// carries, as the adapter named it in its answer to CreateOffer.
+type carriedStatus struct {
+	// named is false when the credential came from Issue, which embeds
+	// the entry of the spec.
+	named bool
+	// entry is nil when the credential carries no status entry.
+	entry *backendv1.StatusListBinding
+	// credentialID is the id a stack with a list of its own revokes the
+	// credential by.
+	credentialID string
+}
+
+// carry keeps the status entry of an answer of CreateOffer (ADR-018,
+// ADR-019). The adapter names the entry the credential carries. A stack
+// with a list of its own names an entry of that list and the id it
+// revokes the credential by. An adapter that names no entry issues a
+// credential that no status list can revoke, so the record names none.
+func (c *carriedStatus) carry(resp *backendv1.CreateOfferResponse) {
+	c.named, c.entry = true, resp.GetStatus()
+	if c.entry.GetDpgList() {
+		c.credentialID = resp.GetCredentialId()
+	}
 }
 
 // isDocument reports whether the channel carries a rendered page.
@@ -323,7 +354,7 @@ func checkPresentation(caps clients.Capabilities, channel backendv1.Channel, r r
 
 // issueOffer asks the adapter for an OID4VCI offer and delivers it.
 func (s *Service) issueOffer(ctx context.Context, offer *offers.Offer,
-	spec *backendv1.IssueSpec, channel backendv1.Channel, r request,
+	spec *backendv1.IssueSpec, channel backendv1.Channel, r request, carried *carriedStatus,
 ) error {
 	caps, err := s.opts.Capabilities.Get(ctx)
 	if err != nil {
@@ -353,6 +384,7 @@ func (s *Service) issueOffer(ctx context.Context, offer *offers.Offer,
 		// adapter can switch the flow.
 		offer.Channel = resp.Msg.GetChannel().String()
 	}
+	carried.carry(resp.Msg)
 	offer.OfferURI = resp.Msg.GetOfferUri()
 	offer.Pin = resp.Msg.GetPin()
 	offer.DPGOfferID = resp.Msg.GetOfferId()
@@ -500,7 +532,7 @@ func (s *Service) keepDocument(ctx context.Context, offer *offers.Offer, documen
 // signs only when a wallet claims gets the document channel this way.
 // The offer stays pending until a wallet claims it.
 func (s *Service) issueOfferDocument(ctx context.Context, offer *offers.Offer,
-	spec *backendv1.IssueSpec, schema *schemav1.Schema, r request,
+	spec *backendv1.IssueSpec, schema *schemav1.Schema, r request, carried *carriedStatus,
 ) error {
 	resp, err := s.opts.Issuer.CreateOffer(ctx, connect.NewRequest(&backendv1.CreateOfferRequest{
 		Spec: spec, Channel: backendv1.Channel_CHANNEL_OID4VCI_PREAUTH,
@@ -510,8 +542,10 @@ func (s *Service) issueOfferDocument(ctx context.Context, offer *offers.Offer,
 		offer.Error = err.Error()
 		return connect.NewError(connect.CodeOf(err), fmt.Errorf("create the offer: %w", err))
 	}
+	carried.carry(resp.Msg)
 	offer.OfferURI = resp.Msg.GetOfferUri()
 	offer.Pin = resp.Msg.GetPin()
+	offer.DPGOfferID = resp.Msg.GetOfferId()
 	if expires := resp.Msg.GetExpiresAt(); expires != nil {
 		offer.ExpiresAt = expires.AsTime()
 	}
@@ -717,8 +751,10 @@ func searchable(schema *schemav1.Schema, claims map[string]string) map[string]st
 }
 
 // allocateStatus reserves the status list entry of a credential. The
-// purpose none makes the credential not revocable.
-func (s *Service) allocateStatus(ctx context.Context, purpose string, format commonv1.Format) (
+// purpose none makes the credential not revocable. An adapter that
+// embeds no entry of VCA of the list kind gets none: its stack keeps
+// its own list, or issues no status entry at all.
+func (s *Service) allocateStatus(ctx context.Context, caps clients.Capabilities, purpose string, format commonv1.Format) (
 	*backendv1.StatusListBinding, error,
 ) {
 	name := strings.ToLower(strings.TrimSpace(purpose))
@@ -734,6 +770,9 @@ func (s *Service) allocateStatus(ctx context.Context, purpose string, format com
 		lists = s.opts.StatusToken
 		kind = statusv1.Kind_KIND_TOKEN
 		bindingKind = backendv1.StatusListBinding_KIND_TOKEN
+	}
+	if !caps.Embeds(bindingKind) {
+		return nil, nil
 	}
 	if lists == nil {
 		s.opts.Log.Warn("no status service of the list kind, so the credential is not revocable", "kind", kind.String())
@@ -793,6 +832,7 @@ func (s *Service) record(ctx context.Context, offer *offers.Offer,
 		Validity:         validity,
 		OfferId:          offer.ID,
 		DpgOfferId:       offer.DPGOfferID,
+		DpgCredentialId:  offer.DPGCredentialID,
 	})
 	if err != nil {
 		return err

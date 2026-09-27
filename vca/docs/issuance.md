@@ -259,10 +259,16 @@ then names the staff member (ADR-039 decision 1).
    entry from `VCA_ISSUANCE_STATUS_TOKEN_URL`. Another format gets a
    bitstring status list entry from `VCA_ISSUANCE_STATUS_URL`. The
    bitstring service refuses a token list. Without the service of its
-   kind, the credential has no entry and stays valid for good.
-6. It asks the adapter for an offer, or for a signed credential.
+   kind, the credential has no entry and stays valid for good. It
+   reserves none when the adapter lists no status mechanism of the kind.
+   Such a stack keeps its own list, or writes no entry at all.
+6. It asks the adapter for an offer, or for a signed credential. The
+   answer of an offer names the status entry that the credential
+   carries (ADR-072). That entry can sit in a list of the stack.
 7. It renders the page, when the channel needs one.
-8. It records the issuance in the issued credentials service. A request
+8. It records the issuance in the issued credentials service, with the
+   entry the credential carries. An entry of the stack comes with the
+   id that the adapter revokes by. A request
    that names no subject, such as one of the issue page, records the
    offer as the subject reference. The record then holds no personal
    data.

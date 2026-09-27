@@ -133,8 +133,12 @@ func (p *Pages) renderDetail(pg page, id string, v view) error {
 	if r.GetStatusBinding() != nil {
 		actions = allowed(r.GetStatus())
 	}
-	if r.GetDpgCredentialId() != "" {
-		actions = p.stackActions(ctx, actions)
+	switch {
+	case r.GetStatusBinding().GetDpgList():
+		// Only the stack can change an entry of its own list.
+		actions = p.stackActions(ctx, actions, true)
+	case r.GetDpgCredentialId() != "":
+		actions = p.stackActions(ctx, actions, false)
 	}
 	act := canAct(ctx)
 	var buttons []template.HTML
@@ -154,7 +158,7 @@ func (p *Pages) renderDetail(pg page, id string, v view) error {
 		parts = append(parts, p.dialog(ctx, b, pg, id, v))
 	}
 	status := p.statusBadge(ctx, b, r, p.has(ctx, backendv1.Feature_FEATURE_ISSUANCE_STATUS))
-	parts = append(parts, p.fields(b, r), p.recordBlock(b, r, status), p.history(b, r, history))
+	parts = append(parts, p.fields(b, r), p.recordBlock(ctx, b, r, status), p.history(b, r, history))
 	if b.err != nil {
 		return b.err
 	}
@@ -174,9 +178,11 @@ func (p *Pages) renderDetail(pg page, id string, v view) error {
 // suspension and a reinstatement with FEATURE_SUSPENSION. An adapter
 // that lists neither leaves every change to the status services of VCA
 // (ADR-034 decision 5). One that lists one of them holds the status
-// entry, so the other change has no service that can make it.
-func (p *Pages) stackActions(ctx context.Context, actions []string) []string {
-	if !p.has(ctx, backendv1.Feature_FEATURE_REVOCATION) && !p.has(ctx, backendv1.Feature_FEATURE_SUSPENSION) {
+// entry, so the other change has no service that can make it. With
+// strict set, the list of the stack holds the entry, so an adapter that
+// lists neither leaves no action.
+func (p *Pages) stackActions(ctx context.Context, actions []string, strict bool) []string {
+	if !strict && !p.has(ctx, backendv1.Feature_FEATURE_REVOCATION) && !p.has(ctx, backendv1.Feature_FEATURE_SUSPENSION) {
 		return actions
 	}
 	out := make([]string, 0, len(actions))
@@ -268,7 +274,7 @@ func (p *Pages) fields(b *blocks, r *issuedv1.IssuedRecord) template.HTML {
 
 // recordBlock is the block of the log entry: the status, ids, format,
 // adapter, status list entry, validity, last reason, hash, retention.
-func (p *Pages) recordBlock(b *blocks, r *issuedv1.IssuedRecord, status template.HTML) template.HTML {
+func (p *Pages) recordBlock(ctx context.Context, b *blocks, r *issuedv1.IssuedRecord, status template.HTML) template.HTML {
 	entry := msg.T("issuer.issued.record.no_status_list")
 	if sb := r.GetStatusBinding(); sb != nil {
 		kind := strings.ToLower(strings.TrimPrefix(sb.GetKind().String(), "KIND_"))
@@ -280,6 +286,15 @@ func (p *Pages) recordBlock(b *blocks, r *issuedv1.IssuedRecord, status template
 		{{Text: msg.T("issuer.issued.record.format.label")}, {Text: formatText(r)}},
 		{{Text: msg.T("issuer.issued.record.adapter.label")}, {Text: r.GetDpg()}},
 		{{Text: msg.T("issuer.issued.record.status_list.label")}, {Text: entry}},
+	}
+	if sb := r.GetStatusBinding(); sb != nil {
+		// Say which list holds the status, so an operator knows where a
+		// change lands and which list a verifier reads.
+		holder := msg.T("issuer.issued.record.holder.vca")
+		if sb.GetDpgList() {
+			holder = msg.T("issuer.issued.record.holder.stack", p.stackName(ctx))
+		}
+		rows = append(rows, components.Row{{Text: msg.T("issuer.issued.record.holder.label")}, {Text: holder}})
 	}
 	optional := []struct {
 		key   string

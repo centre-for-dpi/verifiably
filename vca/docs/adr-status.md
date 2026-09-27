@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-071, one row per decision.
+ADR-072, one row per decision.
 
 The status values are:
 
@@ -763,12 +763,21 @@ A row that is not `Done` carries a note.
 | ADR-071 | 3 The evidence names the key set | Done | `vca/core/policy/status.go` | `TestStatusListSignedUnderItsAddress` pins it. |
 | ADR-071 | 4 The cache reads a self resolving DID | Done | `vca/services/verifier-policy/internal/cache/sync.go` | `TestStatusListOfASelfResolvingIssuer` and the CREDEBL walkthrough pin it. |
 
+## ADR-072: An offer names the status entry its credential carries
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-072 | 1 The offer answer names the entry | Done | `proto/vca/backend/v1/backend.proto`, `vca/services/dpg-adapter-*/internal/service/issuer.go` | `TestCreateOfferNamesTheStatusEntryOfTheStack`, `TestCreateOfferNamesTheStatusEntryTheCredentialCarries` and `TestCreateOfferNamesTheStatusEntryOfTheRow` pin it. |
+| ADR-072 | 2 The record holds the entry the credential carries | Done | `vca/services/issuance/internal/service/issue.go` | `TestAnOfferOfAStackWithItsOwnListRecordsTheStackEntry` and `TestAnOfferWhoseCredentialCarriesNoStatusRecordsNone` pin it. |
+| ADR-072 | 3 A change of a stack entry goes to the adapter or fails | Done | `vca/services/issued-credentials/internal/service/service.go` | `TestAStackListEntryChangesThroughTheAdapter` and `TestAStackListEntryTheStackCannotChangeIsRefused` pin it. |
+| ADR-072 | 4 The record page names the holder of the list | Done | `vca/services/issued-credentials/internal/pages/detail.go` | `TestDetailNamesTheListThatHoldsTheStatus`, `TestAStackListRecordOffersOnlyWhatTheStackDoes` and the CREDEBL walkthrough pin it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 363 |
+| Done | 367 |
 | Partial | 20 |
 | Deferred | 3 |
 | Not started | 5 |
-| Total | 391 |
+| Total | 395 |

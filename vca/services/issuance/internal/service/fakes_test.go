@@ -11,6 +11,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/fxamacker/cbor/v2"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/pixelpass"
@@ -33,6 +34,10 @@ type fakeAdapter struct {
 	offer *backendv1.CreateOfferResponse
 	// offerErr fails CreateOffer.
 	offerErr error
+	// noEcho makes CreateOffer name no status entry, as for a stack
+	// that embeds none. Else an offer with no status of its own names
+	// the status entry of the spec, as a stack that embeds it does.
+	noEcho bool
 	// credential is the answer of Issue.
 	credential *backendv1.IssueResponse
 	// issueErr fails Issue.
@@ -81,7 +86,11 @@ func (f *fakeAdapter) CreateOffer(
 	if f.offerErr != nil {
 		return nil, f.offerErr
 	}
-	return connect.NewResponse(f.offer), nil
+	out, ok := proto.Clone(f.offer).(*backendv1.CreateOfferResponse)
+	if ok && out.GetStatus() == nil && !f.noEcho {
+		out.Status = req.Msg.GetSpec().GetStatus()
+	}
+	return connect.NewResponse(out), nil
 }
 
 func (f *fakeAdapter) Issue(
@@ -213,6 +222,9 @@ func allChannels() *backendv1.GetCapabilitiesResponse {
 			backendv1.Channel_CHANNEL_PDF,
 		},
 		Roles: []commonv1.Role{commonv1.Role_ROLE_ISSUER},
+		StatusMechanisms: []backendv1.StatusListBinding_Kind{
+			backendv1.StatusListBinding_KIND_BITSTRING, backendv1.StatusListBinding_KIND_TOKEN,
+		},
 	}
 }
 

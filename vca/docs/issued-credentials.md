@@ -124,8 +124,18 @@ to `VCA_ISSUED_STATUS_URL`. Without the URL of the kind, the service
 reports a failed precondition. An operator then sees the missing
 setting at once.
 
+A stack can keep the status of a credential in a list of its own. The
+entry of such a record sets `dpg_list` (ADR-072). The record page names
+the holder of the list: the list of the stack, or a status list service
+of VCA. A change of such an entry goes to `Revoke` of the adapter. When
+the adapter lists no feature for the change, the service refuses it.
+A status service of VCA never changes such an entry, since no verifier
+reads it there.
+
 A stack can change the status of a credential in its own ledger. A
 record from that ledger carries the ledger id in `dpg_credential_id`.
+The record of an offer carries it too when the stack names an entry of
+its own list.
 For such a record, a revoke goes to `Revoke` of the adapter when it
 lists `FEATURE_REVOCATION` (ADR-034 decision 5). A suspension and a
 reinstatement go there when it lists `FEATURE_SUSPENSION`. The request

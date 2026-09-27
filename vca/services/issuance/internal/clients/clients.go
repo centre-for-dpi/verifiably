@@ -94,6 +94,20 @@ type Capabilities struct {
 	// BulkFormats are the formats of the bulk import. Empty means every
 	// format of Formats.
 	BulkFormats []commonv1.Format
+	// StatusMechanisms are the status list kinds the adapter embeds in a
+	// credential. A stack that keeps its own list embeds none of VCA.
+	StatusMechanisms []backendv1.StatusListBinding_Kind
+}
+
+// Embeds reports whether the adapter embeds a status entry of VCA of
+// the kind in a credential.
+func (c Capabilities) Embeds(kind backendv1.StatusListBinding_Kind) bool {
+	for _, item := range c.StatusMechanisms {
+		if item == kind {
+			return true
+		}
+	}
+	return false
 }
 
 // BulkChannel returns the channel of the bulk import: CHANNEL_PDF for
@@ -227,6 +241,8 @@ func (c *CapabilityCache) Get(ctx context.Context) (Capabilities, error) {
 		DpgVersion: resp.Msg.GetDpgVersion(),
 		Features:   resp.Msg.GetFeatures(),
 		BulkImport: resp.Msg.GetBulkImport(),
+
+		StatusMechanisms: resp.Msg.GetStatusMechanisms(),
 	}
 	value.BulkFormats = value.BulkImport.GetFormats()
 	if list := resp.Msg.GetChannelFormats(); len(list) > 0 {

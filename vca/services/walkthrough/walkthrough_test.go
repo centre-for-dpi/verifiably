@@ -321,20 +321,21 @@ func TestWalkthroughCredebl(t *testing.T) {
 		"the issuer did not set the status of the credential")
 	w.check(credential).has(t, "Verdict valid", "issuer trusted")
 
-	// The issuer takes the credential from the ledger of the platform
-	// into the log and revokes it there. The agent sets the bit in the
-	// status list of the stack. The verifier syncs its cache, and the
-	// check turns to invalid.
+	// The credential carries an entry of the status list of the stack,
+	// and the record of the offer names that entry. The issuer revokes
+	// the record, and the agent sets the bit in the list of the stack.
+	// A sync from the ledger adds no second record of the credential.
+	// The verifier syncs its cache, and the check turns to invalid.
 	issued := w.staff.get(w.issuer.public+"/issued/").must(t).has(t, "1 of 1 credentials")
-	sync := w.staff.get(issued.link(t, "Sync from stack")).must(t).has(t, "CREDEBL keeps a ledger of the credentials it issued.")
-	synced := w.staff.submit(sync.form(t, "/issued/sync"),
-		"type", "FarmerRegistration_dc+sd-jwt", "attribute", "farmerID", "value", "FM-0042").
-		must(t).has(t, "The log added 1 of 1 credentials.")
-	ledger := regexp.MustCompile(`href="(/issued/[0-9a-f]{32})"`).FindStringSubmatch(synced.body)
-	if ledger == nil {
-		t.Fatalf("the sync page links no record: %s", text(synced.body))
+	own := regexp.MustCompile(`href="(/issued/[0-9a-f]{32})"`).FindStringSubmatch(issued.body)
+	if own == nil {
+		t.Fatalf("the issued page links no record: %s", text(issued.body))
 	}
-	record := w.staff.get(w.issuer.public+ledger[1]).must(t).has(t, "Issuing adapter CREDEBL", "index 4211")
+	sync := w.staff.get(issued.link(t, "Sync from stack")).must(t).has(t, "CREDEBL keeps a ledger of the credentials it issued.")
+	w.staff.submit(sync.form(t, "/issued/sync"),
+		"type", "FarmerRegistration_dc+sd-jwt", "attribute", "farmerID", "value", "FM-0042").
+		must(t).has(t, "The log added 0 of 1 credentials.")
+	record := w.staff.get(w.issuer.public+own[1]).must(t).has(t, "index 4211", "The status list of CREDEBL.")
 	dialog := w.staff.get(record.link(t, "Revoke")).must(t)
 	w.staff.submit(dialog.form(t, "/revoke"), "reason", "The farm registration ended.").
 		must(t).has(t, "You revoked the credential.", "The stack made the change.")

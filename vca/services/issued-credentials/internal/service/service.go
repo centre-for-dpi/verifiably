@@ -497,6 +497,12 @@ func (s *Service) change(ctx context.Context, id string, want record.Status, rea
 	if stack {
 		return s.changeInStack(ctx, id, current, want, reason)
 	}
+	if current.Binding.DPGList {
+		// No status service of VCA holds the entry, so a change there
+		// flips a bit that no verifier reads.
+		return record.Record{}, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+			"the status list of the stack %s holds this status, and the stack cannot make this change", current.DPG))
+	}
 	lists := s.opts.Status
 	if current.Binding.Kind == record.KindToken {
 		lists = s.opts.StatusToken
@@ -545,12 +551,13 @@ func (s *Service) changeInStack(ctx context.Context, id string, current record.R
 }
 
 // stackChanges reports whether the DPG adapter of the pair makes a
-// change itself: the record came from the stack ledger, and the adapter
-// lists FEATURE_REVOCATION for a revoke or FEATURE_SUSPENSION for a
-// suspension and a reinstatement (ADR-034 decision 5). A record with a
-// status entry of VCA stays with the status services.
+// change itself: the record came from the stack ledger, or its entry
+// sits in a list of the stack, and the adapter lists FEATURE_REVOCATION
+// for a revoke or FEATURE_SUSPENSION for a suspension and a
+// reinstatement (ADR-034 decision 5). A record with a status entry of
+// VCA stays with the status services.
 func (s *Service) stackChanges(ctx context.Context, r record.Record, want record.Status) bool {
-	if s.opts.Stack == nil || r.DPGCredentialID == "" {
+	if s.opts.Stack == nil || (r.DPGCredentialID == "" && !r.Binding.DPGList) {
 		return false
 	}
 	feature := backendv1.Feature_FEATURE_SUSPENSION

@@ -774,6 +774,10 @@ message StatusListBinding {
   int64 index = 3;
   // The public URL that a verifier fetches.
   string publish_url = 4;
+  // True when a list of the DPG holds the entry, and no status service
+  // of VCA does. The DPG adapter then changes the status through Revoke.
+  // Revoke names the credential by its id in the ledger of the DPG.
+  bool dpg_list = 5;
 
   // Kind names the status list standard.
   enum Kind {
@@ -865,6 +869,16 @@ message CreateOfferResponse {
   google.protobuf.Timestamp expires_at = 4;
   // The transaction code the citizen types in the wallet. Empty when not needed.
   string pin = 5;
+  // The status entry the credential carries. The adapter returns
+  // spec.status when the DPG embeds that entry. It returns an entry with
+  // dpg_list set when the DPG writes an entry of its own list. Empty
+  // means the credential carries no status entry, so VCA cannot revoke
+  // it.
+  StatusListBinding status = 6;
+  // The id of the credential in the ledger of the DPG. Revoke names it
+  // for an entry of a list of the DPG. Empty when status names no such
+  // entry.
+  string credential_id = 7;
 }
 
 // IssueRequest asks for one signed credential.

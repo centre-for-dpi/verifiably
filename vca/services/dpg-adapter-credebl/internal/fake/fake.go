@@ -52,6 +52,9 @@ const (
 	OfferCompleted Answer = "doc/offer-session-completed.json"
 	// OfferError is an issuance session the agent ended in error.
 	OfferError Answer = "doc/offer-session-error.json"
+	// OfferRevocable is the session of a revocable offer that no wallet
+	// claimed yet. Its credential carries the status entry of the stack.
+	OfferRevocable Answer = "doc/offer-session-revocable.json"
 	// Connections is the list of the DIDComm connections.
 	Connections Answer = "doc/connections.json"
 	// NoConnections makes the list of connections answer the status not
