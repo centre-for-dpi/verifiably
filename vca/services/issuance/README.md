@@ -43,7 +43,7 @@ in the log.
 | `VCA_ISSUANCE_LISTEN` | The address to bind. The default is `:8080`. |
 | `VCA_ISSUANCE_PUBLIC_URL` | The address a citizen reaches this service on. |
 | `VCA_ISSUANCE_ADAPTER_URL` | The base URL of the DPG adapter. Set it. |
-| `VCA_ISSUANCE_ADAPTER_NAME` | The name of the DPG in the issued record. |
+| `VCA_ISSUANCE_ADAPTER_NAME` | The name of the DPG adapter in the issued record. Setup writes the service name of the adapter of the pair. |
 | `VCA_ISSUANCE_SCHEMA_URL` | The base URL of the schema registry. Empty skips the claim check. |
 | `VCA_ISSUANCE_STATUS_URL` | The base URL of the Bitstring Status List service. Empty makes every W3C credential permanent. |
 | `VCA_ISSUANCE_STATUS_TOKEN_URL` | The base URL of the Token Status List service. Empty makes every SD-JWT VC permanent. |

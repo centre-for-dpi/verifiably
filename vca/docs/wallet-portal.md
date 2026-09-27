@@ -302,7 +302,8 @@ The wallet then reads the request:
 1. A link with a `request_uri` names the address of the request object.
    The host of that address must be on the allowlist in
    `REQUEST_HOSTS`. The allowlist stops a request URI that points at a
-   private address.
+   private address. Setup of a localhost pair names `localhost` and
+   `127.0.0.1`. A public host names its verifier hosts itself.
 2. The wallet reads the request object. It reads a DCQL query, or a
    Presentation Exchange definition, which it maps to the same shape.
    An optional field of a definition becomes a claim that a smaller

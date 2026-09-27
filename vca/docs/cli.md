@@ -195,6 +195,21 @@ repeats it.
 A localhost answer does not carry over, because each pair has its own
 host port.
 
+On a laptop every pair answers on the loopback address over plain http.
+So setup of a localhost pair writes three settings that a public host
+leaves out:
+
+| Pair | Setting | Value |
+|---|---|---|
+| Holder | `VCA_WALLET_PORTAL_REQUEST_HOSTS` | `localhost,127.0.0.1`, so the wallet reads the request links of the local verifier |
+| Verifier | `VCA_DISCOVERY_ALLOW_PLAIN_HTTP` | `true`, so the crawl reads the local issuer pairs over http |
+| Verifier | `VCA_DISCOVERY_ALLOW_PRIVATE_NETWORK` | `true`, so the crawl reads the loopback address |
+
+A public host keeps both guards strict. Its operator names the request
+hosts of the wallet with `--set`.
+Every issuer pair gets `VCA_ISSUANCE_ADAPTER_NAME`, the service name of
+its DPG adapter. The issued record names that adapter.
+
 The questions come from one place: the `Config` message in
 `proto/vca/config/v1/config.proto`.
 Each field carries a `setting` option.

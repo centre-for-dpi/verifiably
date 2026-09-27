@@ -38,7 +38,7 @@ rule to the ingestion service).
 | Scheme | `https` only. `http` needs `ALLOW_PLAIN_HTTP`. |
 | User name | The guard rejects a URL with a user name. |
 | Host | The host must be on `ALLOWED_HOSTS` when the list is not empty. |
-| Address | The guard rejects a loopback, private, link local, multicast, unspecified, or carrier shared address. `ALLOW_PRIVATE_NETWORK` turns the rule off for development. |
+| Address | The guard rejects a loopback, private, link local, multicast, unspecified, or carrier shared address. `ALLOW_PRIVATE_NETWORK` turns the rule off for development. Setup of a localhost pair sets it and `ALLOW_PLAIN_HTTP`. |
 | Size | The body stops at `MAX_DOCUMENT_BYTES`. |
 
 The fetcher caches each document. It answers from the cache while the

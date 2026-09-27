@@ -46,11 +46,10 @@ type walk struct {
 }
 
 // newWalk prepares the four pairs of one DPG. The holder pair names no
-// DPG wallet, so the credentials stay in the browser store, and the
-// wallet reads the requests of the verifier on this host. A laptop
-// deployment reads its own pairs over plain http on the loopback
-// address, which the fetch guard of the discovery service allows only
-// on request (docs/verifier-discovery.md).
+// DPG wallet, so the credentials stay in the browser store. Setup of a
+// laptop deployment lets the wallet read the requests of the verifier
+// on this host, and the discovery service read the pairs over plain
+// http on the loopback address (docs/verifier-discovery.md).
 func newWalk(ctx context.Context, t *testing.T, dpg configv1.Dpg, stack string, dpgURLs map[string]string) *walk {
 	t.Helper()
 	var pairs []cli.Pair
@@ -58,12 +57,9 @@ func newWalk(ctx context.Context, t *testing.T, dpg configv1.Dpg, stack string, 
 		pairs = append(pairs, cli.Pair{Role: role, Dpg: dpg})
 	}
 	d := newDeployment(t, pairs, dpgURLs)
-	holder, verifier := pairs[1].Name(), pairs[2].Name()
+	holder := pairs[1].Name()
 	d.set(holder, "VCA_WALLET_PORTAL_DPG_ADAPTERS", "")
 	d.set(holder, "VCA_WALLET_AUTH_HOLDER_BACKEND_URL", "")
-	d.set(holder, "VCA_WALLET_PORTAL_REQUEST_HOSTS", "localhost")
-	d.set(verifier, "VCA_DISCOVERY_ALLOW_PLAIN_HTTP", "true")
-	d.set(verifier, "VCA_DISCOVERY_ALLOW_PRIVATE_NETWORK", "true")
 	w := &walk{t: t, ctx: ctx, d: d, stack: stack}
 	w.staff, w.citizen, w.checker, w.operator = newBrowser(ctx, t), newBrowser(ctx, t), newBrowser(ctx, t), newBrowser(ctx, t)
 	for role, claims := range map[commonv1.Role]map[string]any{
@@ -332,7 +328,8 @@ func TestWalkthroughCredebl(t *testing.T) {
 	w.staff.submit(sync.form(t, "/issued/sync"),
 		"type", "FarmerRegistration_dc+sd-jwt", "attribute", "farmerID", "value", "FM-0042").
 		must(t).has(t, "The log added 0 of 1 credentials.")
-	record := w.staff.get(w.issuer.public+own[1]).must(t).has(t, "index 4211", "The status list of CREDEBL.")
+	record := w.staff.get(w.issuer.public+own[1]).must(t).
+		has(t, "Issuing adapter dpg-adapter-credebl", "index 4211", "The status list of CREDEBL.")
 	dialog := w.staff.get(record.link(t, "Revoke")).must(t)
 	w.staff.submit(dialog.form(t, "/revoke"), "reason", "The farm registration ended.").
 		must(t).has(t, "You revoked the credential.", "The stack made the change.")

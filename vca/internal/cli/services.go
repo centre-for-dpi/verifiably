@@ -158,6 +158,9 @@ const (
 	// sign in chooser of an auth service links back to its role picker
 	// (ADR-035).
 	LinkLandingURL
+	// LinkAdapterName is the service name of the DPG adapter of the pair.
+	// The issued record names the adapter that issued each credential.
+	LinkAdapterName
 )
 
 // Link is one variable that names another service.
@@ -198,6 +201,11 @@ type FixedValue struct {
 	// Roles limits the value to some roles. Empty means every role that
 	// runs the service.
 	Roles []commonv1.Role
+	// Local writes the value only for a deployment on a local host, such
+	// as a laptop, where every pair runs on the loopback address. A
+	// public host leaves the line out, so the service keeps its strict
+	// default.
+	Local bool
 }
 
 // appliesTo reports whether a fixed value is written for one role.
@@ -402,6 +410,7 @@ func Catalog() []Service {
 			Links: append([]Link{
 				{Env: "VCA_ISSUANCE_PUBLIC_URL", Kind: LinkPublicURL},
 				{Env: "VCA_ISSUANCE_ADAPTER_URL", Kind: LinkAdapterURL},
+				{Env: "VCA_ISSUANCE_ADAPTER_NAME", Kind: LinkAdapterName},
 				{Env: "VCA_ISSUANCE_SCHEMA_URL", Target: "schema-registry", Kind: LinkURL},
 				// An SD-JWT VC takes a Token Status List entry, and every
 				// other credential a Bitstring entry.
@@ -548,7 +557,11 @@ func Catalog() []Service {
 			// holds, so the pair moves them to /discovery. The pages link
 			// with absolute paths, so a prefix that the proxy removes would
 			// break them.
-			Fixed: append(state("VCA_DISCOVERY_STATE_DIR"), FixedValue{Env: "VCA_DISCOVERY_PORTAL_PREFIX", Value: "/discovery"}),
+			// On a laptop the issuer pairs answer on the loopback address
+			// over plain http, so the crawl reads them there.
+			Fixed: append(state("VCA_DISCOVERY_STATE_DIR"), FixedValue{Env: "VCA_DISCOVERY_PORTAL_PREFIX", Value: "/discovery"},
+				FixedValue{Env: "VCA_DISCOVERY_ALLOW_PLAIN_HTTP", Value: "true", Local: true},
+				FixedValue{Env: "VCA_DISCOVERY_ALLOW_PRIVATE_NETWORK", Value: "true", Local: true}),
 			// A wallet reads the catalogue over plain HTTP. The pages call
 			// the DiscoveryService in process (ADR-047).
 			Routes: []Route{{Match: "/catalog"}, {Match: "/catalog/*"}, {Match: "/discovery/*", Page: "Issuer discovery"}}},
@@ -617,7 +630,10 @@ func Catalog() []Service {
 				{Env: "VCA_WALLET_PORTAL_DPG_ADAPTERS", Kind: LinkAdapterMap},
 				peers,
 			},
-			Fixed: state("VCA_WALLET_PORTAL_STATE_DIR"),
+			// On a laptop the verifier pair answers on the loopback
+			// address, so the wallet reads its request links there.
+			Fixed: append(state("VCA_WALLET_PORTAL_STATE_DIR"),
+				FixedValue{Env: "VCA_WALLET_PORTAL_REQUEST_HOSTS", Value: "localhost,127.0.0.1", Local: true}),
 			// The pages call the WalletPortalService in process and the
 			// browser reaches /wallet/blobs, so the proxy does not publish
 			// the Connect service (ADR-047).
@@ -857,6 +873,13 @@ func deploymentServices(d configv1.Dpg) []Service {
 // overrides and the public URL of each of them.
 type PeerOverrides map[string]map[string]string
 
+// LocalDeployment reports whether the public URL of a pair names a
+// local host, as on a laptop, or no host at all.
+func LocalDeployment(values map[string]string) bool {
+	host := hostOf(values["VCA_PUBLIC_URL"])
+	return host == "" || isLocalHost(host)
+}
+
 // LinkValues returns every cross service variable of one pair, keyed by
 // variable name. The values point at the container names of the compose
 // file, so a role reaches the services of another role of the same DPG.
@@ -871,7 +894,7 @@ func LinkValuesWith(p Pair, values map[string]string, peers PeerOverrides) map[s
 	out := map[string]string{}
 	for _, s := range ServicesFor(p) {
 		for _, f := range s.Fixed {
-			if f.appliesTo(p.Role) {
+			if f.appliesTo(p.Role) && (!f.Local || LocalDeployment(values)) {
 				out[f.Env] = f.Value
 			}
 		}
@@ -1024,6 +1047,11 @@ func linkValue(p Pair, s Service, link Link, values map[string]string, peers Pee
 		return topology.Format(Peers(p, values, peers)), true
 	case LinkLandingURL:
 		return LandingPublicURL(values[DomainEnv]) + link.Path, true
+	case LinkAdapterName:
+		if p.Dpg == configv1.Dpg_DPG_UNSPECIFIED {
+			return "", false
+		}
+		return "dpg-adapter-" + ShortName(p.Dpg.String()), true
 	default:
 		return "", false
 	}
