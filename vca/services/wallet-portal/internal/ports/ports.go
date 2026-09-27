@@ -403,6 +403,42 @@ func FormPoster(client *http.Client, maxBytes int64) func(context.Context, strin
 	}
 }
 
+// BearerPoster returns a poster that sends a JSON body with an access
+// token, as the credential request of OID4VCI needs. An empty token
+// sends no Authorization header, as the nonce endpoint takes it.
+func BearerPoster(client *http.Client, maxBytes int64) func(ctx context.Context, target, accessToken string, body []byte) ([]byte, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	return func(ctx context.Context, target, accessToken string, body []byte) ([]byte, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
+		if err != nil {
+			return nil, fmt.Errorf("ports: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		if accessToken != "" {
+			req.Header.Set("Authorization", "Bearer "+accessToken)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("ports: %w", err)
+		}
+		// Nothing can act on a close fault of a response body.
+		defer func() { ignored := resp.Body.Close(); _ = ignored }()
+		if resp.StatusCode >= 400 {
+			// The body of a refusal names the reason, such as an OAuth
+			// error of the issuer.
+			refusal, rerr := read(resp.Body, maxBytes)
+			if rerr != nil {
+				refusal = nil
+			}
+			return nil, &StatusError{URL: target, Status: resp.StatusCode, Body: refusal}
+		}
+		return read(resp.Body, maxBytes)
+	}
+}
+
 // StatusError is an answer with an HTTP status of 400 or more. It keeps
 // the body up to the size cap.
 type StatusError struct {

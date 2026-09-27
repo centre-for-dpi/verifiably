@@ -74,6 +74,12 @@ type record struct {
 	Carries string `json:"carries,omitempty"`
 	// Asked is what the proof request of a DIDComm invitation asks for.
 	Asked []string `json:"asked,omitempty"`
+	// AccessToken is the access token of a claim into the browser store.
+	AccessToken string `json:"access_token,omitempty"`
+	// SigningInput is the proof of that claim that the browser signs.
+	SigningInput string `json:"signing_input,omitempty"`
+	// HolderKey is the public holder key of the browser, as a JWK.
+	HolderKey string `json:"holder_key,omitempty"`
 	// ExpiresAt is the time the record stops working.
 	ExpiresAt time.Time `json:"expires_at"`
 }

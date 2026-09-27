@@ -393,8 +393,14 @@ func (p *Portal) offerCard(b *pen, offerID string, needsPIN bool, issuer string)
 			Autocomplete: "one-time-code", Attrs: map[string]string{"inputmode": "numeric"},
 		}))
 	}
-	parts := []template.HTML{b.form(p.opts.Prefix+"/accept", map[string]string{"offer_id": offerID},
-		components.Button{Text: msg.T("holder.offer.accept.label"), Type: "submit", Variant: "primary"}, fields...)}
+	flag, script := "", template.HTML("")
+	if p.opts.Service.BrowserStorage() {
+		// The browser claims with its own key: wallet.js signs the proof
+		// and seals the credential into the browser store (ADR-073).
+		flag, script = "data-browser-claim", p.signingScript(b)
+	}
+	parts := []template.HTML{b.formWith(p.opts.Prefix+"/accept", flag, map[string]string{"offer_id": offerID},
+		components.Button{Text: msg.T("holder.offer.accept.label"), Type: "submit", Variant: "primary"}, fields...) + script}
 	if b.frame.Has(backendv1.Feature_FEATURE_WALLET_REJECT_OFFER) {
 		parts = append(parts, b.form(p.opts.Prefix+"/reject", map[string]string{"offer_id": offerID},
 			components.Button{Text: msg.T("holder.offer.decline.label"), Type: "submit", Variant: "secondary"}))
@@ -412,6 +418,10 @@ func (p *Portal) offerCard(b *pen, offerID string, needsPIN bool, issuer string)
 func (p *Portal) accept(w http.ResponseWriter, r *http.Request) error {
 	if _, ok := p.writer(w, r); !ok {
 		return nil
+	}
+	if p.opts.Service.BrowserStorage() {
+		// The claim form reached the server with no script to sign it.
+		return p.problem(w, r, msg.T("holder.offer.title.label"), msg.T("holder.claim.problem.title"), msg.T("holder.offer.script"))
 	}
 	resp, err := p.opts.Service.Accept(r.Context(), connect.NewRequest(&walletportalv1.AcceptRequest{
 		OfferId: r.PostFormValue("offer_id"), Pin: r.PostFormValue("pin"),

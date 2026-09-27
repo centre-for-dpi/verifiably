@@ -52,3 +52,4 @@ each decision of each record.
 - [ADR-070: The operator makes each DID of a CREDEBL organisation](adr/ADR-070-credebl-operator-dids.md)
 - [ADR-071: A verifier checks a status list with the key set under its address](adr/ADR-071-status-list-key-set.md)
 - [ADR-072: An offer names the status entry its credential carries](adr/ADR-072-offer-names-its-status-entry.md)
+- [ADR-073: The browser store signs with a holder key of its own](adr/ADR-073-browser-holder-signing-key.md)

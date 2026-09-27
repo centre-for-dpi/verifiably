@@ -21,6 +21,9 @@ func TestScriptCarriesTheWalletFunctions(t *testing.T) {
 		"SPDX-License-Identifier: Apache-2.0",
 		"A256GCM", "HKDF-SHA256", "vca-wallet-blob-v1", "vca-wallet-portal",
 		"AES-GCM", "deriveBits", "wallet-file", "wallet-paste", "/blobs",
+		// The signing key and the two signing steps of ADR-073.
+		`name: "ECDSA", namedCurve: "P-256"`, "holder-signing", "data-browser-claim", "data-key-binding",
+		"/claim/proof", "/claim/finish", "/present/binding", "key_binding",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("wallet.js misses %q", want)

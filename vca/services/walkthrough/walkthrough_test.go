@@ -43,6 +43,9 @@ type walk struct {
 	stack                             string
 	issuer, holder, verifier, admin   *runningPair
 	staff, citizen, checker, operator *browser
+	// key is the signing key that wallet.js keeps in the browser of the
+	// farmer (ADR-073).
+	key holderKey
 }
 
 // newWalk prepares the four pairs of one DPG. The holder pair names no
@@ -60,7 +63,7 @@ func newWalk(ctx context.Context, t *testing.T, dpg configv1.Dpg, stack string, 
 	holder := pairs[1].Name()
 	d.set(holder, "VCA_WALLET_PORTAL_DPG_ADAPTERS", "")
 	d.set(holder, "VCA_WALLET_AUTH_HOLDER_BACKEND_URL", "")
-	w := &walk{t: t, ctx: ctx, d: d, stack: stack}
+	w := &walk{t: t, ctx: ctx, d: d, stack: stack, key: newHolderKey(t)}
 	w.staff, w.citizen, w.checker, w.operator = newBrowser(ctx, t), newBrowser(ctx, t), newBrowser(ctx, t), newBrowser(ctx, t)
 	for role, claims := range map[commonv1.Role]map[string]any{
 		commonv1.Role_ROLE_ISSUER:   {"name": "Amina Odhiambo", "realm_access": map[string]any{"roles": []string{"issuer-admin"}}},
@@ -139,13 +142,24 @@ func (w *walk) issue() (string, string) {
 	return offer, pin
 }
 
-// load signs the farmer in to the wallet and loads the credential into
-// the browser store. The card names the trust of the issuer.
-func (w *walk) load(credential, trust string) {
+// claimInBrowser signs the farmer in to the wallet and claims the offer
+// into the browser store, as wallet.js does (ADR-073). The portal trades
+// the code, the browser signs the proof with its key, and the issuer
+// binds the credential to that key. The card names the trust of the
+// issuer. It returns the credential.
+func (w *walk) claimInBrowser(offer, pin, trust string) string {
 	w.t.Helper()
 	w.signIn(w.citizen, w.holder).has(w.t, "Your browser keeps these credentials.")
-	form := w.citizen.get(w.holder.public+"/wallet/claim").must(w.t).form(w.t, "/wallet/claim/offer")
-	w.citizen.submit(form, "offer", credential).must(w.t).has(w.t, "Farmer registration", "Wanjiku Njeri", trust)
+	paste := w.citizen.get(w.holder.public+"/wallet/claim").must(w.t).form(w.t, "/wallet/claim/offer")
+	accept := w.citizen.submit(paste, "offer", offer).must(w.t).has(w.t, "data-browser-claim").form(w.t, "/wallet/accept")
+	if pin != "" {
+		accept.values.Set("pin", pin)
+	}
+	step := w.citizen.script(accept, "/wallet/claim/proof", "jwk", w.key.jwk)
+	done := w.citizen.script(accept, "/wallet/claim/finish",
+		"claim", step["claim"], "signature", w.key.sign(w.t, step["signing_input"]))
+	w.citizen.get(w.holder.public+"/wallet/").must(w.t).has(w.t, "Farmer registration", "Wanjiku Njeri", trust)
+	return done["credential"]
 }
 
 // check pastes the credential into the public check page of the
@@ -192,7 +206,14 @@ func (w *walk) request() page {
 	link := html.UnescapeString(regexp.MustCompile(`openid4vp://[^"<\s]+`).FindString(sent.body))
 	paste := w.citizen.get(w.holder.public+"/wallet/claim").must(w.t).form(w.t, "/wallet/claim/offer")
 	consent := w.citizen.submit(paste, "offer", link).must(w.t).has(w.t, "Matched credential", "Farmer registration")
-	w.citizen.submit(consent.form(w.t, "/wallet/present")).must(w.t).has(w.t, "The verifier has your answer.")
+	// The credential is bound to the key of the browser, so wallet.js
+	// signs the key binding of the answer first (ADR-073).
+	answer := consent.has(w.t, "data-key-binding").form(w.t, "/wallet/present")
+	input := w.citizen.script(answer, "/wallet/present/binding")["signing_input"]
+	if input == "" {
+		w.t.Fatal("the wallet asks for no key binding of a bound credential")
+	}
+	w.citizen.submit(answer, "key_binding", input+"."+w.key.sign(w.t, input)).must(w.t).has(w.t, "The verifier has your answer.")
 	return w.checker.get(sent.url.String()).must(w.t)
 }
 
@@ -236,10 +257,9 @@ func TestWalkthroughWaltid(t *testing.T) {
 	w.publish()
 	offer, pin := w.issue()
 
-	// The phone wallet of the farmer redeems the offer, and the farmer
-	// loads the credential into the browser store of the wallet.
-	credential := claim(t, offer, pin)
-	w.load(credential, "No trust list names")
+	// The farmer claims the offer into the browser store of the wallet.
+	// The browser signs the proof with its own key (ADR-073).
+	credential := w.claimInBrowser(offer, pin, "No trust list names")
 
 	// The verifier checks the credential. No trust list names the issuer.
 	w.signIn(w.checker, w.verifier).has(t, "Queries you saved, requests in flight and recent results.", "Otieno Kamau")
@@ -249,12 +269,16 @@ func TestWalkthroughWaltid(t *testing.T) {
 	trust := w.operator.get(w.adminSignIn().link(t, "Trust")).must(t).has(t, "1 pending review")
 	w.operator.submit(trust.form(t, "/admin/trust/approve")).must(t).has(t, "The entry is active.")
 
-	// The verifier asks the farmer for the credential. The verdict is
-	// valid, and the check of the same credential turns too.
+	// The verifier asks the farmer for the credential. The wallet signs
+	// the key binding of the answer, and the verdict is valid. The check
+	// of the same credential turns to issuer trusted too.
 	w.query()
 	w.request().has(t, "Verified at", "Valid", "the issuer is on an enabled trust list",
 		"the issuer did not set the status of the credential")
-	w.check(credential).has(t, "Verdict valid", "issuer trusted")
+	// A pasted credential carries no key binding, so the check page
+	// names the trusted issuer and the missing binding. The answer of
+	// the wallet above holds the binding and reads valid.
+	w.check(credential).has(t, "issuer trusted", "the presentation carries no key binding JWT")
 	w.citizen.get(w.holder.public+"/wallet/").must(t).has(t, "Issuer: trusted")
 	if api.onboarded != 1 {
 		t.Errorf("the issuer API onboarded %d keys, want 1", api.onboarded)
@@ -298,8 +322,7 @@ func TestWalkthroughCredebl(t *testing.T) {
 	if pin == "" {
 		t.Fatal("the result page shows no transaction code")
 	}
-	credential := claim(t, offer, pin)
-	w.load(credential, "No trust list names")
+	credential := w.claimInBrowser(offer, pin, "No trust list names")
 	w.signIn(w.checker, w.verifier).has(t, "Otieno Kamau")
 	w.check(credential).has(t, "Verdict invalid", "issuer untrusted")
 
@@ -312,7 +335,10 @@ func TestWalkthroughCredebl(t *testing.T) {
 	w.query()
 	w.request().has(t, "Verified at", "Valid", "the issuer is on an enabled trust list",
 		"the issuer did not set the status of the credential")
-	w.check(credential).has(t, "Verdict valid", "issuer trusted")
+	// A pasted credential carries no key binding, so the check page
+	// names the trusted issuer and the missing binding. The answer of
+	// the wallet above holds the binding and reads valid.
+	w.check(credential).has(t, "issuer trusted", "the presentation carries no key binding JWT")
 
 	// The credential carries an entry of the status list of the stack,
 	// and the record of the offer names that entry. The issuer revokes

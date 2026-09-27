@@ -72,11 +72,11 @@ type credeblTemplate struct {
 
 // credeblSession is one issuance session of the agent.
 type credeblSession struct {
-	id, template, vct, format, pin, code, state string
-	payload                                     map[string]any
-	revocable                                   bool
-	index                                       int
-	created, updated                            time.Time
+	id, template, vct, format, pin, code, state, nonce string
+	payload                                            map[string]any
+	revocable                                          bool
+	index                                              int
+	created, updated                                   time.Time
 }
 
 // statusListID is the one list of the status list host.
@@ -201,7 +201,7 @@ func (c *credeblStack) serve(rw http.ResponseWriter, r *http.Request) {
 	case path == agent+"/token" && r.Method == http.MethodPost:
 		c.token(rw, body)
 	case path == agent+"/credential" && r.Method == http.MethodPost:
-		c.credential(rw, r)
+		c.credential(rw, r, body)
 	case path == "/status-lists/"+statusListID && r.Method == http.MethodGet:
 		c.statusList(rw)
 	default:
@@ -367,13 +367,13 @@ func (c *credeblStack) token(rw http.ResponseWriter, body []byte) {
 	delete(c.codes, form.Get("pre-authorized_code"))
 	access := randomID()
 	c.tokens[access] = id
-	c.sessions[id].state = "AccessTokenCreated"
-	writeJSON(rw, map[string]any{"access_token": access, "token_type": "bearer", "expires_in": 300, "c_nonce": randomID()})
+	c.sessions[id].state, c.sessions[id].nonce = "AccessTokenCreated", randomID()
+	writeJSON(rw, map[string]any{"access_token": access, "token_type": "bearer", "expires_in": 300, "c_nonce": c.sessions[id].nonce})
 }
 
 // credential signs the SD-JWT VC of the session with the key of the DID
 // of the organisation.
-func (c *credeblStack) credential(rw http.ResponseWriter, r *http.Request) {
+func (c *credeblStack) credential(rw http.ResponseWriter, r *http.Request, body []byte) {
 	access := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -384,6 +384,13 @@ func (c *credeblStack) credential(rw http.ResponseWriter, r *http.Request) {
 	}
 	delete(c.tokens, access)
 	s := c.sessions[id]
+	holder, err := proofKey(body, c.srv.URL+"/oid4vci/"+c.issuer, s.nonce)
+	if err != nil {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusBadRequest)
+		writeJSON(rw, map[string]any{"error": "invalid_proof", "error_description": err.Error()})
+		return
+	}
 	claims := map[string]any{}
 	names := make([]string, 0, len(s.payload))
 	for k, v := range s.payload {
@@ -399,6 +406,10 @@ func (c *credeblStack) credential(rw http.ResponseWriter, r *http.Request) {
 	payload["iss"] = c.did
 	payload["iat"] = time.Now().Unix()
 	payload["vct"] = s.vct
+	if holder != nil {
+		// The agent binds the credential to the key of the proof.
+		payload["cnf"] = map[string]any{"jwk": holder}
+	}
 	if s.revocable {
 		payload["status"] = map[string]any{"status_list": map[string]any{"uri": c.listURL(), "idx": s.index}}
 	}

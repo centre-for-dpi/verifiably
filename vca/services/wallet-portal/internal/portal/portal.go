@@ -169,6 +169,9 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+p.opts.Prefix+"/claim", p.handle(p.claim))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/claim/callback", p.handle(p.callback))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/claim/offer", p.handle(p.claimOffer))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/claim/proof", p.handle(p.claimProof))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/claim/finish", p.handle(p.claimFinish))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/present/binding", p.handle(p.presentBinding))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/claimable", p.moved("/claim"))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/scan", p.moved("/claim"))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/scan", p.handle(p.scan))
@@ -244,6 +247,14 @@ func (b *pen) hidden(name, value string) template.HTML {
 func (b *pen) form(action string, values map[string]string, submit components.Button,
 	extra ...template.HTML,
 ) template.HTML {
+	return b.formWith(action, "", values, submit, extra...)
+}
+
+// formWith is form with one attribute of the form element that names no
+// value, such as a hook of wallet.js.
+func (b *pen) formWith(action, flag string, values map[string]string, submit components.Button,
+	extra ...template.HTML,
+) template.HTML {
 	parts := []template.HTML{b.hidden(session.Field, b.guard.Token(b.who))}
 	names := make([]string, 0, len(values))
 	for name := range values {
@@ -255,8 +266,11 @@ func (b *pen) form(action string, values map[string]string, submit components.Bu
 	}
 	parts = append(parts, extra...)
 	parts = append(parts, b.part("button", submit))
-	return b.raw(`<form method="post" action="`+template.HTMLEscapeString(action)+`">`) +
-		components.Join(parts...) + b.raw(`</form>`)
+	open := `<form method="post" action="` + template.HTMLEscapeString(action) + `"`
+	if flag != "" {
+		open += " " + template.HTMLEscapeString(flag)
+	}
+	return b.raw(open+`>`) + components.Join(parts...) + b.raw(`</form>`)
 }
 
 // render writes one page, or returns the render error of the pen.

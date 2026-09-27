@@ -96,6 +96,9 @@ type Options struct {
 	// Post sends the direct_post answer and the token request of the
 	// authorization code flow. Nil blocks both.
 	Post present.Poster
+	// PostCredential sends the credential request of a claim into the
+	// browser store (ADR-073). Nil turns such a claim off.
+	PostCredential CredentialPoster
 	// Endpoints returns the authorization and token endpoints of an
 	// issuer. Nil, or an issuer with none, leaves the sign in to the DPG
 	// wallet.
@@ -411,6 +414,14 @@ func (s *Service) read(ctx context.Context, text string) (*walletportalv1.Detect
 	}
 	switch got.Kind {
 	case detect.Offer:
+		if got.Offer.ByReference && s.BrowserStorage() {
+			// The browser store claims the offer itself, so the page
+			// asks for the transaction code the offer names (ADR-073).
+			if grant, ok := s.readOffer(ctx, got.Offer.URI); ok {
+				got.Offer.CredentialIssuer, got.Offer.ConfigurationIDs = grant.Issuer, grant.IDs
+				got.Offer.NeedsPIN = len(grant.Grants.PreAuthorized.TxCode) > 0
+			}
+		}
 		rec := record{ID: id, URI: got.Offer.URI, Issuer: got.Offer.CredentialIssuer,
 			Types: got.Offer.ConfigurationIDs, NeedsPIN: got.Offer.NeedsPIN}
 		if err := s.put(ctx, KindOffer, citizen.WalletKey(), rec); err != nil {
@@ -808,7 +819,7 @@ func (s *Service) PresentConfirm(ctx context.Context,
 	case s.opts.Holder != nil && !s.inBrowser(ctx, citizen, chosen[0]):
 		answer, shared, err = s.presentWithBackend(ctx, citizen, parsed, chosen, disclosed)
 	default:
-		answer, err = s.presentDirect(ctx, citizen, parsed, chosen, disclosed)
+		answer, err = s.presentDirect(ctx, citizen, parsed, chosen, disclosed, req.Msg.GetKeyBinding())
 	}
 	result := walletportalv1.PresentationRecord_RESULT_FAILED
 	switch {
@@ -893,17 +904,21 @@ func (s *Service) presentWithBackend(ctx context.Context, citizen session.Citize
 // presentDirect builds the vp_token from a credential the citizen
 // pasted and posts it with direct_post (ADR-021 decision 5).
 func (s *Service) presentDirect(ctx context.Context, citizen session.Citizen,
-	parsed present.Request, chosen, disclosed []string,
+	parsed present.Request, chosen, disclosed []string, keyBinding string,
 ) (*walletportalv1.PresentConfirmResponse, error) {
 	rec, err := s.get(ctx, KindHeld, citizen.WalletKey(), chosen[0])
 	if err != nil {
 		return nil, recordError(err)
 	}
-	token := string(rec.Payload)
-	if rec.Format == commonv1.Format_FORMAT_DC_SD_JWT || rec.Format == commonv1.Format_FORMAT_VC_SD_JWT {
-		token, err = present.Disclosed(string(rec.Payload), disclosed)
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	token, key, bound, err := disclosedToken(rec, disclosed)
+	if err != nil {
+		return nil, err
+	}
+	if bound {
+		// A holder bound SD-JWT needs the key binding of the browser
+		// (ADR-073).
+		if token, err = bind(token, keyBinding, key, parsed); err != nil {
+			return nil, err
 		}
 	}
 	result, err := present.Submit(ctx, parsed, token, s.opts.Post)

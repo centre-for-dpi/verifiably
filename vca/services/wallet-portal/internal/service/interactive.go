@@ -62,6 +62,12 @@ type offerGrant struct {
 			IssuerState string `json:"issuer_state"`
 			Server      string `json:"authorization_server"`
 		} `json:"authorization_code"`
+		// PreAuthorized is the grant a claim into the browser store
+		// trades for an access token (ADR-073).
+		PreAuthorized struct {
+			Code   string          `json:"pre-authorized_code"`
+			TxCode json.RawMessage `json:"tx_code"`
+		} `json:"urn:ietf:params:oauth:grant-type:pre-authorized_code"`
 	} `json:"grants"`
 }
 

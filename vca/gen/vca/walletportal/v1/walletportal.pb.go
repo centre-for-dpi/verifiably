@@ -2157,7 +2157,11 @@ type PresentConfirmRequest struct {
 	// The chosen card per query id.
 	SelectedCards map[string]string `protobuf:"bytes,2,rep,name=selected_cards,json=selectedCards,proto3" json:"selected_cards,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// The claim paths the citizen agreed to disclose, per query id.
-	Disclosed     map[string]*PresentConfirmRequest_ClaimPaths `protobuf:"bytes,3,rep,name=disclosed,proto3" json:"disclosed,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Disclosed map[string]*PresentConfirmRequest_ClaimPaths `protobuf:"bytes,3,rep,name=disclosed,proto3" json:"disclosed,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// The key binding JWT that the holder key of the browser signed over
+	// the disclosed credential (ADR-073). A holder bound SD-JWT of the
+	// browser store needs it. Empty for any other credential.
+	KeyBinding    string `protobuf:"bytes,4,opt,name=key_binding,json=keyBinding,proto3" json:"key_binding,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2211,6 +2215,13 @@ func (x *PresentConfirmRequest) GetDisclosed() map[string]*PresentConfirmRequest
 		return x.Disclosed
 	}
 	return nil
+}
+
+func (x *PresentConfirmRequest) GetKeyBinding() string {
+	if x != nil {
+		return x.KeyBinding
+	}
+	return ""
 }
 
 // PresentConfirmResponse reports the outcome.
@@ -3628,11 +3639,13 @@ const file_vca_walletportal_v1_walletportal_proto_rawDesc = "" +
 	"\x05Claim\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\x12\x1c\n" +
-	"\tmandatory\x18\x03 \x01(\bR\tmandatory\"\xda\x03\n" +
+	"\tmandatory\x18\x03 \x01(\bR\tmandatory\"\xfb\x03\n" +
 	"\x15PresentConfirmRequest\x12'\n" +
 	"\x0fpresentation_id\x18\x01 \x01(\tR\x0epresentationId\x12d\n" +
 	"\x0eselected_cards\x18\x02 \x03(\v2=.vca.walletportal.v1.PresentConfirmRequest.SelectedCardsEntryR\rselectedCards\x12W\n" +
-	"\tdisclosed\x18\x03 \x03(\v29.vca.walletportal.v1.PresentConfirmRequest.DisclosedEntryR\tdisclosed\x1a@\n" +
+	"\tdisclosed\x18\x03 \x03(\v29.vca.walletportal.v1.PresentConfirmRequest.DisclosedEntryR\tdisclosed\x12\x1f\n" +
+	"\vkey_binding\x18\x04 \x01(\tR\n" +
+	"keyBinding\x1a@\n" +
 	"\x12SelectedCardsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1as\n" +

@@ -259,6 +259,31 @@ read a blob, because it never holds the content key.
 The browser page also offers a file upload and a paste box. A citizen
 with no camera still loads a credential that way.
 
+### The signing key of the browser
+
+`wallet.js` keeps a second key in IndexedDB: an ECDSA key on P-256 that
+no script can export (ADR-073). It signs two JWTs with ES256: the proof
+of a claim, and the key binding JWT of an answer. The server never sees
+the private key.
+
+A claim into the browser store takes two steps. The offer page carries
+a claim form that `wallet.js` takes over.
+
+1. `POST /wallet/claim/proof` sends the offer, the transaction code, and
+   the public key. The portal reads the offer and the metadata of the
+   issuer, from a host on `REQUEST_HOSTS` only. It trades the
+   pre-authorized code for an access token. It answers the signing
+   input of the proof. The key sits in its header, and the nonce of the
+   issuer in its payload.
+2. `POST /wallet/claim/finish` sends the signature. The portal checks it
+   with the public key and posts the credential request. The issuer
+   binds the credential to the key in `cnf.jwk`. The portal answers the
+   credential, and `wallet.js` seals it into the blob store.
+
+A step runs once. The two answers are JSON. A refusal carries its
+sentence in `error`. With no script, the claim form reaches the accept
+address, and the page says that the browser signs the claim.
+
 ### A stack wallet beside the browser store
 
 Some stack wallets claim an offer only in their own pages. The adapter
@@ -323,6 +348,15 @@ submit. Without one the service builds the SD-JWT presentation itself.
 It keeps only the disclosures the citizen agreed to, so the verifier
 reads nothing more.
 
+A credential of the browser store that names a holder key in
+`cnf.jwk` needs a key binding JWT. The consent form carries the field
+`key_binding`, which `wallet.js` fills before the form goes.
+`POST /wallet/present/binding` answers the signing input: the audience
+and the nonce of the request, and the `sd_hash` of the disclosed token.
+The browser signs it with its key. The portal checks the JWT against
+`cnf.jwk`, the token, the audience, and the nonce before it posts the
+answer. Without the binding, the portal refuses the answer and says why.
+
 Some stack wallets pick the claims themselves. Such an adapter lists
 `FEATURE_WALLET_WHOLE_QUERY` (ADR-063). The CREDEBL agent is one. It
 sends every claim of the claim set it picks. The consent screen then
@@ -369,7 +403,8 @@ or not checked.
 ## What the service never does
 
 - It never holds an issuer signing key.
-- It never holds a holder private key.
+- It never holds a holder private key. The signing key of the browser
+  store stays in the browser, and the portal sees each signature only.
 - It never reads a ciphertext blob of browser storage.
 - It never sends the citizen subject to the eligibility hook.
 - It never keeps a claim value in a presentation record.

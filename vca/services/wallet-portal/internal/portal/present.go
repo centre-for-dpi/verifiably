@@ -123,10 +123,17 @@ func (p *Portal) requestCard(b *pen, start *walletportalv1.PresentStartResponse)
 			Text: msg.T("holder.present.share.label"), Type: "submit", Variant: "primary", Disabled: !sharable,
 		}),
 	}
-	body := b.raw(`<form method="post" action="`+esc(p.opts.Prefix+"/present")+`">`) +
+	// In the browser store, wallet.js signs the key binding of a holder
+	// bound credential into key_binding before the form goes (ADR-073).
+	open, script := `<form method="post" action="`+esc(p.opts.Prefix+"/present")+`">`, template.HTML("")
+	if p.opts.Service.BrowserStorage() || p.hybrid(b) {
+		open = `<form method="post" action="` + esc(p.opts.Prefix+"/present") + `" data-key-binding>`
+		script = p.signingScript(b)
+	}
+	body := b.raw(open) + b.hidden("key_binding", "") +
 		b.hidden(session.Field, b.guard.Token(b.who)) + b.hidden("id", start.GetPresentationId()) +
 		b.raw(`<div class="split"><div>`) + components.Join(left...) + b.raw(`</div><div>`) + components.Join(right...) +
-		b.raw(`</div></div><div class="form-actions">`) + components.Join(actions...) + b.raw(`</div></form>`)
+		b.raw(`</div></div><div class="form-actions">`) + components.Join(actions...) + b.raw(`</div></form>`) + script
 	text := present.Summary(start.GetRequested())
 	if start.GetDuringIssuance() {
 		text = msg.T("holder.present.issuer.text") + " " + text
@@ -263,23 +270,7 @@ func (p *Portal) submit(w http.ResponseWriter, r *http.Request) error {
 	if _, ok := p.writer(w, r); !ok {
 		return nil
 	}
-	req := &walletportalv1.PresentConfirmRequest{
-		PresentationId: r.PostFormValue("id"),
-		SelectedCards:  map[string]string{},
-		Disclosed:      map[string]*walletportalv1.PresentConfirmRequest_ClaimPaths{},
-	}
-	for name, values := range r.PostForm {
-		if len(values) == 0 {
-			continue
-		}
-		switch {
-		case strings.HasPrefix(name, "card."):
-			req.SelectedCards[strings.TrimPrefix(name, "card.")] = values[0]
-		case strings.HasPrefix(name, "claim."):
-			req.Disclosed[strings.TrimPrefix(name, "claim.")] =
-				&walletportalv1.PresentConfirmRequest_ClaimPaths{Paths: unique(values)}
-		}
-	}
+	req := consentOf(r)
 	resp, err := p.opts.Service.PresentConfirm(r.Context(), connect.NewRequest(req))
 	if err != nil {
 		return p.problem(w, r, msg.T("holder.nav.present.label"), msg.T("holder.present.unsent.title"), message(err))

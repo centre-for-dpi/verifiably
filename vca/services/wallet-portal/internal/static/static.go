@@ -2,7 +2,9 @@
 
 // Package static serves the browser file of the wallet
 // (ADR-021 decision 4). The file wallet.js creates the holder key,
-// encrypts each credential, and talks to the blob endpoints.
+// encrypts each credential, and talks to the blob endpoints. It also
+// keeps the signing key of the browser, which signs the proof of a
+// claim and the key binding of an answer (ADR-073).
 //
 // The file ships inside the binary, so the container needs no volume.
 package static

@@ -45,8 +45,9 @@ import (
 //
 // It signs an SD-JWT VC with the key of the issue request, as walt.id
 // does, and posts the session events to the callback address of the
-// request. A credential request without a proof gets a credential with
-// no holder key, which the browser store of the wallet can present.
+// request. A credential request with a proof gets a credential bound to
+// the key of the proof, as the browser store of the wallet claims it
+// (ADR-073). One without a proof gets no holder key.
 type waltidIssuer struct {
 	t   *testing.T
 	srv *httptest.Server
@@ -55,6 +56,8 @@ type waltidIssuer struct {
 	offers map[string]*waltidOffer
 	codes  map[string]string
 	tokens map[string]string
+	// nonces holds the c_nonce of each access token.
+	nonces map[string]string
 	// onboarded counts the onboarding calls.
 	onboarded int
 }
@@ -82,7 +85,7 @@ const waltidDraft = "/draft13"
 
 func newWaltidIssuer(t *testing.T) *waltidIssuer {
 	t.Helper()
-	w := &waltidIssuer{t: t, offers: map[string]*waltidOffer{}, codes: map[string]string{}, tokens: map[string]string{}}
+	w := &waltidIssuer{t: t, offers: map[string]*waltidOffer{}, codes: map[string]string{}, tokens: map[string]string{}, nonces: map[string]string{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+waltidDraft+"/.well-known/openid-credential-issuer", w.metadata)
 	mux.HandleFunc("GET "+waltidDraft+"/.well-known/oauth-authorization-server", w.authServer)
@@ -226,9 +229,9 @@ func (w *waltidIssuer) token(rw http.ResponseWriter, r *http.Request) {
 	w.mu.Lock()
 	id, ok := w.codes[r.PostForm.Get("pre-authorized_code")]
 	delete(w.codes, r.PostForm.Get("pre-authorized_code"))
-	token := randomID()
+	token, nonce := randomID(), randomID()
 	if ok {
-		w.tokens[token] = id
+		w.tokens[token], w.nonces[token] = id, nonce
 	}
 	o := w.offers[id]
 	w.mu.Unlock()
@@ -239,22 +242,37 @@ func (w *waltidIssuer) token(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.event(o, "requested_token", map[string]any{})
-	writeJSON(rw, map[string]any{"access_token": token, "token_type": "bearer", "expires_in": 300, "c_nonce": randomID()})
+	writeJSON(rw, map[string]any{"access_token": token, "token_type": "bearer", "expires_in": 300, "c_nonce": nonce})
 }
 
-// credential signs the SD-JWT VC of the offer of the access token.
+// credential signs the SD-JWT VC of the offer of the access token. A
+// request with a proof gets a credential bound to the key of the proof.
 func (w *waltidIssuer) credential(rw http.ResponseWriter, r *http.Request) {
 	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	w.mu.Lock()
 	id, ok := w.tokens[token]
+	nonce := w.nonces[token]
 	delete(w.tokens, token)
+	delete(w.nonces, token)
 	o := w.offers[id]
 	w.mu.Unlock()
 	if !ok {
 		http.Error(rw, "invalid_token", http.StatusUnauthorized)
 		return
 	}
-	cred, err := o.sign(time.Now())
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
+	}
+	holder, err := proofKey(body, w.base(), nonce)
+	if err != nil {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusBadRequest)
+		writeJSON(rw, map[string]any{"error": "invalid_proof", "error_description": err.Error()})
+		return
+	}
+	cred, err := o.sign(time.Now(), holder)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
@@ -266,7 +284,7 @@ func (w *waltidIssuer) credential(rw http.ResponseWriter, r *http.Request) {
 
 // sign builds the SD-JWT VC: every claim of the disclosure map becomes a
 // disclosure, and the issuer key signs the JWT.
-func (o *waltidOffer) sign(now time.Time) (string, error) {
+func (o *waltidOffer) sign(now time.Time, holder map[string]any) (string, error) {
 	jwk, err := jose.ParseJWK(o.request.IssuerKey.JWK)
 	if err != nil {
 		return "", err
@@ -293,6 +311,9 @@ func (o *waltidOffer) sign(now time.Time) (string, error) {
 	payload["iss"] = o.request.IssuerDid
 	payload["iat"] = now.Unix()
 	payload["vct"] = o.request.Vct
+	if holder != nil {
+		payload["cnf"] = map[string]any{"jwk": holder}
+	}
 	kid := o.request.IssuerDid
 	if strings.HasPrefix(kid, "did:key:") {
 		kid += "#" + strings.TrimPrefix(kid, "did:key:")
@@ -343,100 +364,5 @@ func writeJSON(rw http.ResponseWriter, v any) {
 	}
 	if err := json.NewEncoder(rw).Encode(v); err != nil && !errors.Is(err, http.ErrHandlerTimeout) {
 		return
-	}
-}
-
-// claim runs the pre-authorized code flow of OID4VCI as a wallet on
-// the phone of the holder does, and returns the credential. It sends
-// the transaction code when the issuer gave one. It sends no proof, so
-// the credential names no holder key.
-func claim(t *testing.T, offerURI, txCode string) string {
-	t.Helper()
-	u, err := url.Parse(offerURI)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var offer struct {
-		Issuer string   `json:"credential_issuer"`
-		IDs    []string `json:"credential_configuration_ids"`
-		Grants map[string]struct {
-			Code string `json:"pre-authorized_code"`
-		} `json:"grants"`
-	}
-	getJSON(t, u.Query().Get("credential_offer_uri"), &offer)
-	var meta struct {
-		Endpoint string                     `json:"credential_endpoint"`
-		Configs  map[string]json.RawMessage `json:"credential_configurations_supported"`
-	}
-	getJSON(t, offer.Issuer+"/.well-known/openid-credential-issuer", &meta)
-	var as struct {
-		Token string `json:"token_endpoint"`
-	}
-	getJSON(t, offer.Issuer+"/.well-known/oauth-authorization-server", &as)
-	grant := offer.Grants["urn:ietf:params:oauth:grant-type:pre-authorized_code"].Code
-	form := url.Values{"grant_type": {"urn:ietf:params:oauth:grant-type:pre-authorized_code"}, "pre-authorized_code": {grant}}
-	if txCode != "" {
-		form.Set("tx_code", txCode)
-	}
-	res, err := http.PostForm(as.Token, form) // #nosec G107 -- the address of the double
-	if err != nil {
-		t.Fatal(err)
-	}
-	var tok struct {
-		Access string `json:"access_token"`
-	}
-	readJSON(t, res, &tok)
-	var cfg struct {
-		Format string `json:"format"`
-	}
-	if jerr := json.Unmarshal(meta.Configs[offer.IDs[0]], &cfg); jerr != nil {
-		t.Fatal(jerr)
-	}
-	body, err := json.Marshal(map[string]any{"format": cfg.Format})
-	if err != nil {
-		t.Fatal(err)
-	}
-	req, err := http.NewRequest(http.MethodPost, meta.Endpoint, bytes.NewReader(body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Authorization", "Bearer "+tok.Access)
-	req.Header.Set("Content-Type", "application/json")
-	res, err = http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var out struct {
-		Credential string `json:"credential"`
-	}
-	readJSON(t, res, &out)
-	return out.Credential
-}
-
-// getJSON reads one JSON document.
-func getJSON(t *testing.T, target string, out any) {
-	t.Helper()
-	res, err := http.Get(target) // #nosec G107 -- an address the test holds
-	if err != nil {
-		t.Fatal(err)
-	}
-	readJSON(t, res, out)
-}
-
-// readJSON reads a JSON answer and fails on any status but 200.
-func readJSON(t *testing.T, res *http.Response, out any) {
-	t.Helper()
-	raw, err := io.ReadAll(res.Body)
-	if cerr := res.Body.Close(); cerr != nil {
-		t.Log(cerr)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("%s answered %d: %s", res.Request.URL, res.StatusCode, raw)
-	}
-	if err := json.Unmarshal(raw, out); err != nil {
-		t.Fatalf("%s: %v: %s", res.Request.URL, err, raw)
 	}
 }

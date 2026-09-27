@@ -1717,6 +1717,7 @@ var en = map[string]string{
 	"holder.offer.lead":                       "Accept the credential an issuer offers you.",
 	"holder.offer.card.label":                 "A credential offer",
 	"holder.offer.from":                       "{1} offers you a credential. Read the name before you accept.",
+	"holder.offer.script":                     "Your browser signs this claim with its own key. Turn on JavaScript, then accept the offer again.",
 	"holder.offer.anon":                       "Read the issuer name before you accept.",
 	"holder.offer.pin.hint":                   "The issuer sent this code to you by another way.",
 	"holder.offer.accept.label":               "Add to my wallet",

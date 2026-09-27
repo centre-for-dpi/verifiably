@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-072, one row per decision.
+ADR-073, one row per decision.
 
 The status values are:
 
@@ -772,12 +772,23 @@ A row that is not `Done` carries a note.
 | ADR-072 | 3 A change of a stack entry goes to the adapter or fails | Done | `vca/services/issued-credentials/internal/service/service.go` | `TestAStackListEntryChangesThroughTheAdapter` and `TestAStackListEntryTheStackCannotChangeIsRefused` pin it. |
 | ADR-072 | 4 The record page names the holder of the list | Done | `vca/services/issued-credentials/internal/pages/detail.go` | `TestDetailNamesTheListThatHoldsTheStatus`, `TestAStackListRecordOffersOnlyWhatTheStackDoes` and the CREDEBL walkthrough pin it. |
 
+## ADR-073: The browser store signs with a holder key of its own
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-073 | 1 A signing key that no script exports | Done | `vca/services/wallet-portal/internal/static/wallet.js` | `TestTheBrowserSigningKeyStaysInTheBrowser` runs the script in node when node is on the path. |
+| ADR-073 | 2 The proof and the key binding with ES256 | Done | `vca/services/wallet-portal/internal/holderkey` | `TestProofSignedInTheBrowserPassesTheIssuerCheck` and `TestBindingSignedInTheBrowserPassesTheVerifierCheck` pin it. |
+| ADR-073 | 3 The portal runs the protocol calls | Done | `vca/services/wallet-portal/internal/service/browserclaim.go` | `TestClaimIntoTheBrowserStoreSignsWithTheBrowserKey` and `TestClaimRefusals` pin it. |
+| ADR-073 | 4 The portal checks each signature | Done | `vca/services/wallet-portal/internal/holderkey` | `TestCheckBindingCoversTheAnswer` and `TestClaimRefusals` pin it. |
+| ADR-073 | 5 The browser seals a claimed credential | Done | `vca/services/wallet-portal/internal/static/wallet.js`, `vca/services/wallet-portal/internal/portal/browser.go` | `TestTheBrowserStoreClaimsWithTheKeyOfTheBrowser` and both walkthroughs pin it. |
+| ADR-073 | 6 A bound answer needs the key binding | Done | `vca/services/wallet-portal/internal/service/binding.go` | `TestAnswerOfABoundCredentialCarriesTheBrowserKeyBinding`, `TestABoundAnswerNeedsTheBrowserKeyBinding` and both walkthroughs pin it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 367 |
+| Done | 373 |
 | Partial | 20 |
 | Deferred | 3 |
 | Not started | 5 |
-| Total | 395 |
+| Total | 401 |

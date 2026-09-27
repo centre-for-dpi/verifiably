@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // wallet.js is the browser side of the wallet portal (ADR-021 decision 4
-// and ADR-020 decision 4). It does four jobs:
+// and ADR-020 decision 4). It does five jobs:
 //
 //   1. It creates the holder key pair with WebCrypto. The private key is
 //      not extractable. It stays in IndexedDB of this browser.
@@ -10,6 +10,10 @@
 //   3. It reads and writes the ciphertext blobs of the server.
 //   4. It offers a file upload and a paste box, so a citizen moves a
 //      credential without a camera.
+//   5. It keeps a second key in IndexedDB: an ECDSA P-256 signing key
+//      that is not extractable (ADR-073). It signs the proof of an
+//      OID4VCI claim and the key binding JWT of an SD-JWT answer. The
+//      portal runs the protocol and hands the page each signing input.
 //
 // The envelope format matches services/wallet-portal/internal/blobs:
 //
@@ -27,6 +31,7 @@ const VCA = (() => {
   const DB_NAME = "vca-wallet";
   const DB_STORE = "keys";
   const KEY_ID = "holder";
+  const SIGN_ID = "holder-signing";
 
   // b64url encodes bytes without padding.
   function b64url(bytes) {
@@ -120,6 +125,44 @@ const VCA = (() => {
     );
   }
 
+  // signingKey returns the signing key pair of this browser: ECDSA on
+  // P-256. It creates the pair on the first call. The private key is not
+  // extractable, so no script and no server can read it.
+  async function signingKey() {
+    const db = await openDB();
+    const held = await dbGet(db, SIGN_ID);
+    if (held && held.privateKey) {
+      return held;
+    }
+    const pair = await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["sign", "verify"],
+    );
+    await dbPut(db, SIGN_ID, pair);
+    return pair;
+  }
+
+  // signingJWK returns the public signing key as a JWK with the members
+  // of RFC 7638 only. The proof of a claim carries it.
+  async function signingJWK() {
+    const pair = await signingKey();
+    const jwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
+    return { kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y };
+  }
+
+  // sign signs the signing input of a JWT with ES256. WebCrypto returns
+  // r and s of 32 bytes each, which is the JWS form of the signature.
+  async function sign(input) {
+    const pair = await signingKey();
+    const signature = await crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-256" },
+      pair.privateKey,
+      new TextEncoder().encode(input),
+    );
+    return b64url(signature);
+  }
+
   // publicJWK returns the public holder key as a JWK. The wallet
   // authentication service takes it in RegisterHolderKey.
   async function publicJWK() {
@@ -208,6 +251,53 @@ const VCA = (() => {
     }
   }
 
+  // post sends a form to a JSON endpoint of the wallet pages and reads
+  // the answer. A refusal carries its sentence in error.
+  async function post(path, fields) {
+    const resp = await fetch(base() + path, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+      body: new URLSearchParams(fields),
+    });
+    let body = {};
+    try {
+      body = await resp.json();
+    } catch (err) {
+      body = {};
+    }
+    if (!resp.ok) {
+      throw new Error(body.error || "the wallet did not answer");
+    }
+    return body;
+  }
+
+  // claimOffer claims the offer of a form into this browser. The portal
+  // trades the code of the offer, the browser signs the proof with its
+  // key, and the browser seals the credential into its store.
+  async function claimOffer(form) {
+    const fields = new URLSearchParams(new FormData(form));
+    fields.set("jwk", JSON.stringify(await signingJWK()));
+    const step = await post("/claim/proof", fields);
+    const signature = await sign(step.signing_input);
+    const done = await post("/claim/finish", {
+      csrf_token: fields.get("csrf_token") || "",
+      claim: step.claim,
+      signature,
+    });
+    await save(done.id, done.credential);
+    return done;
+  }
+
+  // bindAnswer returns the key binding JWT of the answer of a consent
+  // form, or "" when the chosen credential names no holder key.
+  async function bindAnswer(form) {
+    const step = await post("/present/binding", new URLSearchParams(new FormData(form)));
+    if (!step.signing_input) {
+      return "";
+    }
+    return step.signing_input + "." + (await sign(step.signing_input));
+  }
+
   // newID returns a random blob id.
   function newID() {
     const bytes = crypto.getRandomValues(new Uint8Array(8));
@@ -261,11 +351,50 @@ const VCA = (() => {
     }
   }
 
-  if (typeof document !== "undefined") {
-    document.addEventListener("DOMContentLoaded", wire);
+  // wireSigning connects the claim form of an offer and the consent form
+  // of a request, when the page holds them.
+  function wireSigning() {
+    const claim = document.querySelector("form[data-browser-claim]");
+    if (claim) {
+      claim.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        say("Your browser signs the claim with its key.");
+        try {
+          const done = await claimOffer(claim);
+          window.location.assign(done.next || base() + "/");
+        } catch (err) {
+          say("The claim did not finish. " + String(err.message || err));
+        }
+      });
+    }
+    const answer = document.querySelector("form[data-key-binding]");
+    if (answer) {
+      answer.addEventListener("submit", async (event) => {
+        const decline = event.submitter && event.submitter.hasAttribute("formaction");
+        if (decline || answer.dataset.bound === "yes") {
+          return;
+        }
+        event.preventDefault();
+        try {
+          answer.elements.key_binding.value = await bindAnswer(answer);
+          answer.dataset.bound = "yes";
+          answer.submit();
+        } catch (err) {
+          say("The answer was not sent. " + String(err.message || err));
+        }
+      });
+    }
   }
 
-  return { b64url, unb64url, holderKey, contentKey, publicJWK, seal, open, list, save, remove, newID, wire, say };
+  if (typeof document !== "undefined") {
+    document.addEventListener("DOMContentLoaded", wire);
+    document.addEventListener("DOMContentLoaded", wireSigning);
+  }
+
+  return {
+    b64url, unb64url, holderKey, contentKey, publicJWK, seal, open, list, save, remove, newID, wire, say,
+    signingKey, signingJWK, sign, claimOffer, bindAnswer, wireSigning,
+  };
 })();
 
 if (typeof window !== "undefined") {

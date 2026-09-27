@@ -151,15 +151,18 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 			Trust: trustLookup, Status: cards.Fetcher(fetch),
 			Display: ports.DisplayOf(catalogue), Now: deps.Now,
 		}),
-		Trust:         trustLookup,
-		Store:         kv,
-		Fetch:         present.Fetcher(fetch),
-		Post:          ports.FormPoster(deps.HTTP, cfg.FetchMaxBytes),
-		RequestHosts:  cfg.RequestHosts,
-		PageSizeMax:   cfg.PageSizeMax,
-		MaxPasteBytes: cfg.MaxPasteBytes,
-		PendingTTL:    cfg.PendingTTL,
-		Now:           deps.Now,
+		Trust: trustLookup,
+		Store: kv,
+		Fetch: present.Fetcher(fetch),
+		Post:  ports.FormPoster(deps.HTTP, cfg.FetchMaxBytes),
+		// The browser store claims an offer itself and signs the proof
+		// in the browser (ADR-073).
+		PostCredential: ports.BearerPoster(deps.HTTP, cfg.FetchMaxBytes),
+		RequestHosts:   cfg.RequestHosts,
+		PageSizeMax:    cfg.PageSizeMax,
+		MaxPasteBytes:  cfg.MaxPasteBytes,
+		PendingTTL:     cfg.PendingTTL,
+		Now:            deps.Now,
 	})
 	if err != nil {
 		return nil, err
