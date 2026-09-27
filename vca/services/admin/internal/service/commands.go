@@ -182,7 +182,7 @@ var commands = []command{
 	}},
 	{path: "admin webhook list", rpc: "ListStackWebhooks"},
 	{path: "admin webhook set", rpc: "SetStackWebhook",
-		long: "Sets the webhook that a stack calls on the events of one tenant. The stack must list webhooks. A stack that keeps a webhook once set refuses an empty URL. Set a signing secret in the portal, so that it stays out of the shell history.",
+		long: "Sets the webhook that a stack calls on the events of one tenant. The stack must list webhooks. A stack that keeps a webhook once set refuses an empty URL. Put a signing secret in a request file and pass it with --file, so that it stays out of the shell history.",
 		flags: []flag{
 			{name: "tenant", text: "The tenant id.", mandatory: true},
 			{name: "stack", text: "The stack, for example DPG_CREDEBL.", mandatory: true},
@@ -195,6 +195,31 @@ var commands = []command{
 			{name: "stack", text: "The stack, for example DPG_CREDEBL.", mandatory: true},
 			{name: "url", text: "The https URL.", mandatory: true},
 		}},
+	{path: "admin ecosystem list", rpc: "ListStackEcosystems"},
+	{path: "admin ecosystem set", rpc: "SetStackEcosystems",
+		long: "Turns the ecosystems of a stack on or off. The stack must list ecosystems.",
+		flags: []flag{
+			{name: "stack", text: "The stack, for example DPG_CREDEBL.", mandatory: true},
+			{name: "enabled", text: "true turns the ecosystems on, false turns them off.", mandatory: true},
+		}},
+	{path: "admin ecosystem create", rpc: "CreateStackEcosystem",
+		long: "Creates one ecosystem that a tenant leads. The tenant must be bound on the stack.",
+		flags: []flag{
+			{name: "stack", text: "The stack, for example DPG_CREDEBL.", mandatory: true},
+			{name: "lead", text: "The tenant id of the lead.", mandatory: true},
+			{name: "name", text: "The name of the ecosystem.", mandatory: true},
+			{name: "description", text: "What the ecosystem is for.", mandatory: true},
+		}},
+	{path: "admin ecosystem add-member", rpc: "AddStackEcosystemMember", flags: []flag{
+		{name: "stack", text: "The stack, for example DPG_CREDEBL.", mandatory: true},
+		{name: "ecosystem", text: "The ecosystem id.", mandatory: true},
+		{name: "tenant", text: "The tenant id.", mandatory: true},
+	}},
+	{path: "admin ecosystem remove-member", rpc: "RemoveStackEcosystemMember", flags: []flag{
+		{name: "stack", text: "The stack, for example DPG_CREDEBL.", mandatory: true},
+		{name: "ecosystem", text: "The ecosystem id.", mandatory: true},
+		{name: "tenant", text: "The tenant id.", mandatory: true},
+	}},
 	{path: "admin health", rpc: "GetServiceHealth"},
 	{path: "admin audit", rpc: "QueryAuditLog", flags: []flag{
 		{name: "actor", text: "The actor filter."},

@@ -125,6 +125,7 @@ func (p *Portal) tenants(w http.ResponseWriter, r *http.Request, s session) erro
 		Body: stackedForm(at+"/tenants", s.CSRF, components.Join(fields...)),
 	})
 	actions := b.add("button", components.Button{Text: msg.T("admin.tenants.new.label"), Href: "#create-tenant", Variant: "primary"})
+	tabs := p.tenantTabs(b, f, "list")
 	if b.err != nil {
 		return b.err
 	}
@@ -133,7 +134,7 @@ func (p *Portal) tenants(w http.ResponseWriter, r *http.Request, s session) erro
 		Lead:        msg.T("admin.tenants.lead"),
 		Actions:     actions,
 		Description: msg.T("admin.tenants.lead"),
-		Content:     components.Join(table, create),
+		Content:     components.Join(tabs, table, create),
 		Toasts:      notice(r.URL.Query().Get("notice")),
 	})
 }

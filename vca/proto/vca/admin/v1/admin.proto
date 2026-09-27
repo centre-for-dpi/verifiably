@@ -169,6 +169,31 @@ service AdminService {
     option (vca.common.v1.description) = "Registers the holder notification address of a stack tenant.";
   }
 
+  // ListStackEcosystems returns the ecosystem switch of every stack that
+  // lists ecosystems (ADR-068). It also returns each ecosystem that a
+  // bound tenant leads or belongs to, with its members.
+  rpc ListStackEcosystems(ListStackEcosystemsRequest) returns (ListStackEcosystemsResponse) {
+    option (vca.common.v1.description) = "Returns the ecosystems of each stack with their members.";
+  }
+  // SetStackEcosystems turns the ecosystems of one stack on or off.
+  rpc SetStackEcosystems(SetStackEcosystemsRequest) returns (SetStackEcosystemsResponse) {
+    option (vca.common.v1.description) = "Turns the ecosystems of a stack on or off.";
+  }
+  // CreateStackEcosystem creates one ecosystem that a tenant leads on
+  // one stack.
+  rpc CreateStackEcosystem(CreateStackEcosystemRequest) returns (CreateStackEcosystemResponse) {
+    option (vca.common.v1.description) = "Creates one ecosystem that a tenant leads.";
+  }
+  // AddStackEcosystemMember adds one tenant to an ecosystem of a stack.
+  rpc AddStackEcosystemMember(AddStackEcosystemMemberRequest) returns (AddStackEcosystemMemberResponse) {
+    option (vca.common.v1.description) = "Adds one tenant to an ecosystem.";
+  }
+  // RemoveStackEcosystemMember removes one member tenant from an
+  // ecosystem of a stack.
+  rpc RemoveStackEcosystemMember(RemoveStackEcosystemMemberRequest) returns (RemoveStackEcosystemMemberResponse) {
+    option (vca.common.v1.description) = "Removes one member tenant from an ecosystem.";
+  }
+
   // GetServiceHealth returns the health of every service in the deployment.
   rpc GetServiceHealth(GetServiceHealthRequest) returns (GetServiceHealthResponse) {
     option (vca.common.v1.description) = "Returns the health of every service in the deployment.";
@@ -829,6 +854,116 @@ message SetStackNotificationEndpointResponse {
   // The webhook entry of the tenant with the new address.
   StackWebhook webhook = 1;
 }
+
+// EcosystemStack is the ecosystem switch of one stack.
+message EcosystemStack {
+  // The stack.
+  vca.config.v1.Dpg stack = 1;
+  // The name of the stack as its adapter reports it.
+  string stack_name = 2;
+  // True when the ecosystems of the stack are on.
+  bool enabled = 3;
+  // Why the service could not read the switch. Empty when it could.
+  string error = 4;
+}
+
+// StackEcosystemMember is one member of an ecosystem.
+message StackEcosystemMember {
+  // The VCA tenant id. Empty when no VCA tenant binds the stack tenant.
+  string tenant_id = 1;
+  // The member as the stack reports it.
+  vca.backend.v1.EcosystemMember member = 2;
+}
+
+// StackEcosystem is one ecosystem of a stack.
+message StackEcosystem {
+  // The stack.
+  vca.config.v1.Dpg stack = 1;
+  // The name of the stack as its adapter reports it.
+  string stack_name = 2;
+  // The ecosystem as the stack reports it.
+  vca.backend.v1.Ecosystem ecosystem = 3;
+  // The VCA tenant id of the lead. Empty when no VCA tenant binds it.
+  string lead_tenant_id = 4;
+  // The members, without the lead.
+  repeated StackEcosystemMember members = 5;
+}
+
+// ListStackEcosystemsRequest has no fields.
+message ListStackEcosystemsRequest {}
+
+// ListStackEcosystemsResponse returns the switches and the ecosystems.
+message ListStackEcosystemsResponse {
+  // One entry per stack that lists ecosystems.
+  repeated EcosystemStack stacks = 1;
+  // Each ecosystem once, with its members.
+  repeated StackEcosystem ecosystems = 2;
+  // One line per stack tenant or ecosystem that the service could not
+  // read.
+  repeated string errors = 3;
+}
+
+// SetStackEcosystemsRequest turns the ecosystems of one stack on or off.
+message SetStackEcosystemsRequest {
+  // The stack.
+  vca.config.v1.Dpg stack = 1;
+  // True turns the ecosystems on.
+  bool enabled = 2;
+}
+
+// SetStackEcosystemsResponse returns the new switch.
+message SetStackEcosystemsResponse {
+  // The switch of the stack.
+  EcosystemStack stack = 1;
+}
+
+// CreateStackEcosystemRequest names the ecosystem and its lead.
+message CreateStackEcosystemRequest {
+  // The stack.
+  vca.config.v1.Dpg stack = 1;
+  // The VCA tenant id of the lead. The tenant needs a binding on the stack.
+  string lead_tenant_id = 2;
+  // The name of the ecosystem.
+  string name = 3;
+  // What the ecosystem is for.
+  string description = 4;
+}
+
+// CreateStackEcosystemResponse returns the new ecosystem.
+message CreateStackEcosystemResponse {
+  // The ecosystem.
+  StackEcosystem ecosystem = 1;
+}
+
+// AddStackEcosystemMemberRequest names the ecosystem and the tenant.
+message AddStackEcosystemMemberRequest {
+  // The stack.
+  vca.config.v1.Dpg stack = 1;
+  // The id of the ecosystem on the stack.
+  string ecosystem_id = 2;
+  // The VCA tenant id. The tenant needs a binding on the stack.
+  string tenant_id = 3;
+}
+
+// AddStackEcosystemMemberResponse says how the tenant joins.
+message AddStackEcosystemMemberResponse {
+  // True when the stack mailed an invitation that the owner of the
+  // tenant must accept. False when the tenant joined at once.
+  bool invited = 1;
+}
+
+// RemoveStackEcosystemMemberRequest names the ecosystem and the tenant.
+message RemoveStackEcosystemMemberRequest {
+  // The stack.
+  vca.config.v1.Dpg stack = 1;
+  // The id of the ecosystem on the stack.
+  string ecosystem_id = 2;
+  // The VCA tenant id.
+  string tenant_id = 3;
+}
+
+// RemoveStackEcosystemMemberResponse has no fields.
+message RemoveStackEcosystemMemberResponse {}
 
 // SetStackWebhookResponse returns the stored webhook.
 message SetStackWebhookResponse {

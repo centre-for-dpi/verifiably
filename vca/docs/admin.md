@@ -320,6 +320,7 @@ trust list has one entry. Every role has one enabled provider.
 | `/admin/login` | The sign in chooser with the bootstrap card. `/auth/` draws the same page. |
 | `/admin/tenants` | The tenant list with the create form. The form offers the stacks with multi tenancy. |
 | `/admin/tenants/{id}` | One tenant with its tenant on each stack, its DIDs, and the bind form. The page marks the primary DID and shows the members a stack lists. |
+| `/admin/tenants/ecosystems` | The Ecosystems tab, where a stack lists ecosystems: the switch of each stack, the ecosystems with their lead, the members, and the forms. |
 | `/admin/trust` | The trust list. Pending entries come first, with approve and reject. The add form takes a DID or an X.509 subject. |
 | `/admin/trust/registries` | The local registry with its published lists. Each external registry with its last sync and last error. The add form. |
 | `/admin/providers` | The login provider table: realm or issuer, roles, stacks, state, default flag, and the row actions. |
@@ -355,6 +356,29 @@ run keeps its tenant, so the delete waits until the stack runs again.
 The admin service writes one audit record for each create, bind,
 unbind, and delete. The CLI has the same actions under
 `vca admin tenant`.
+
+### Ecosystems
+
+An ecosystem groups tenants of one stack. One tenant leads it, and the
+other tenants are members (ADR-068). The tenant pages show an Ecosystems
+tab only when a live adapter lists `FEATURE_ECOSYSTEMS`. The tab is at
+`/admin/tenants/ecosystems`.
+
+The tab shows the ecosystem switch of each such stack. The stack keeps
+the switch, and it is off at first. Turn it on before you create an
+ecosystem. On CREDEBL, run `vca dpg bootstrap credebl` first, so that
+the realm of the platform keeps the ecosystem roles.
+
+With the switch on, the tab lists each ecosystem that a bound tenant
+leads or belongs to. Each row names the lead and the members. The create
+form takes the lead tenant, a name, and a description. The add form
+takes an ecosystem and a tenant with a binding on its stack. A tenant that the
+stack made joins at once. For another tenant, the stack mails its owner
+an invitation, and the notice says so. Each member row has a remove
+action.
+
+The admin service writes one audit record for each change. The CLI has
+the same actions under `vca admin ecosystem`.
 
 ### API keys and stack credentials
 
@@ -403,8 +427,8 @@ adapter keeps the address it registered, and the table shows it.
 
 Each change writes one audit record. The CLI has the same actions under
 `vca admin webhook`, with `vca admin webhook holder` for the holder
-address. The CLI takes no signing secret, so a secret stays out of the
-shell history.
+address. Put a signing secret in a request file. Pass the file with
+`--file`, so that the secret stays out of the shell history.
 
 ### Trust review
 

@@ -186,6 +186,7 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+at+"/login", p.chooser.Page)
 	mux.HandleFunc("GET "+at+"/help", p.open(p.help))
 	p.registerTenants(mux)
+	p.registerEcosystems(mux)
 	p.registerTrust(mux)
 	p.registerProviders(mux)
 	p.registerKeys(mux)
@@ -368,6 +369,12 @@ var Notices = map[string]components.Toast{
 	"webhook-saved":            {Level: "ok", Text: msg.T("admin.notifications.webhook.saved")},
 	"webhook-cleared":          {Level: "warn", Text: msg.T("admin.notifications.webhook.cleared")},
 	"notification-saved":       {Level: "ok", Text: msg.T("admin.notifications.holder.saved")},
+	"ecosystems-on":            {Level: "ok", Text: msg.T("admin.ecosystems.turned_on")},
+	"ecosystems-off":           {Level: "warn", Text: msg.T("admin.ecosystems.turned_off")},
+	"ecosystem-created":        {Level: "ok", Text: msg.T("admin.ecosystems.created")},
+	"ecosystem-member-added":   {Level: "ok", Text: msg.T("admin.ecosystems.member_added")},
+	"ecosystem-member-invited": {Level: "info", Text: msg.T("admin.ecosystems.member_invited")},
+	"ecosystem-member-removed": {Level: "warn", Text: msg.T("admin.ecosystems.member_removed")},
 	"signed-out":               {Level: "info", Text: "You are signed out."},
 	"retention-saved":          {Level: "ok", Text: msg.T("admin.audit.retention.saved")},
 	"retention-partial":        {Level: "warn", Text: msg.T("admin.audit.retention.partial")},

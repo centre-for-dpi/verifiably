@@ -52,13 +52,18 @@ type fakeStack struct {
 	secrets map[string]string
 	// notify holds the holder notification address per stack tenant id.
 	notify map[string]string
+	// ecoOn is the ecosystem switch, ecosystems the ecosystems, and
+	// ecoMembers the stack tenant ids of the members of each ecosystem.
+	ecoOn      bool
+	ecosystems []*backendv1.Ecosystem
+	ecoMembers map[string][]string
 }
 
 func newFakeStack(name string, features ...backendv1.Feature) *fakeStack {
 	return &fakeStack{
 		name: name, features: features,
 		tenants: map[string]*backendv1.DpgTenant{}, creds: map[string][]*backendv1.ClientCredential{},
-		hooks: map[string]string{}, secrets: map[string]string{}, notify: map[string]string{},
+		hooks: map[string]string{}, secrets: map[string]string{}, notify: map[string]string{}, ecoMembers: map[string][]string{},
 	}
 }
 

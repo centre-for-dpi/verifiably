@@ -51,6 +51,8 @@ type fakeAdapter struct {
 	notify map[string]string
 	// notifyErr, when set, fails every notification address call.
 	notifyErr error
+	// eco holds the ecosystems of the stack.
+	eco fakeEcosystems
 }
 
 func newFakeAdapter() *fakeAdapter {

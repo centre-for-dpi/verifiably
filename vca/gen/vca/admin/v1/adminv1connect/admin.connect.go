@@ -132,6 +132,21 @@ const (
 	// AdminServiceSetStackNotificationEndpointProcedure is the fully-qualified name of the
 	// AdminService's SetStackNotificationEndpoint RPC.
 	AdminServiceSetStackNotificationEndpointProcedure = "/vca.admin.v1.AdminService/SetStackNotificationEndpoint"
+	// AdminServiceListStackEcosystemsProcedure is the fully-qualified name of the AdminService's
+	// ListStackEcosystems RPC.
+	AdminServiceListStackEcosystemsProcedure = "/vca.admin.v1.AdminService/ListStackEcosystems"
+	// AdminServiceSetStackEcosystemsProcedure is the fully-qualified name of the AdminService's
+	// SetStackEcosystems RPC.
+	AdminServiceSetStackEcosystemsProcedure = "/vca.admin.v1.AdminService/SetStackEcosystems"
+	// AdminServiceCreateStackEcosystemProcedure is the fully-qualified name of the AdminService's
+	// CreateStackEcosystem RPC.
+	AdminServiceCreateStackEcosystemProcedure = "/vca.admin.v1.AdminService/CreateStackEcosystem"
+	// AdminServiceAddStackEcosystemMemberProcedure is the fully-qualified name of the AdminService's
+	// AddStackEcosystemMember RPC.
+	AdminServiceAddStackEcosystemMemberProcedure = "/vca.admin.v1.AdminService/AddStackEcosystemMember"
+	// AdminServiceRemoveStackEcosystemMemberProcedure is the fully-qualified name of the AdminService's
+	// RemoveStackEcosystemMember RPC.
+	AdminServiceRemoveStackEcosystemMemberProcedure = "/vca.admin.v1.AdminService/RemoveStackEcosystemMember"
 	// AdminServiceGetServiceHealthProcedure is the fully-qualified name of the AdminService's
 	// GetServiceHealth RPC.
 	AdminServiceGetServiceHealthProcedure = "/vca.admin.v1.AdminService/GetServiceHealth"
@@ -231,6 +246,20 @@ type AdminServiceClient interface {
 	// service of the stack posts the push notifications of the holders
 	// there.
 	SetStackNotificationEndpoint(context.Context, *connect.Request[v1.SetStackNotificationEndpointRequest]) (*connect.Response[v1.SetStackNotificationEndpointResponse], error)
+	// ListStackEcosystems returns the ecosystem switch of every stack that
+	// lists ecosystems (ADR-068). It also returns each ecosystem that a
+	// bound tenant leads or belongs to, with its members.
+	ListStackEcosystems(context.Context, *connect.Request[v1.ListStackEcosystemsRequest]) (*connect.Response[v1.ListStackEcosystemsResponse], error)
+	// SetStackEcosystems turns the ecosystems of one stack on or off.
+	SetStackEcosystems(context.Context, *connect.Request[v1.SetStackEcosystemsRequest]) (*connect.Response[v1.SetStackEcosystemsResponse], error)
+	// CreateStackEcosystem creates one ecosystem that a tenant leads on
+	// one stack.
+	CreateStackEcosystem(context.Context, *connect.Request[v1.CreateStackEcosystemRequest]) (*connect.Response[v1.CreateStackEcosystemResponse], error)
+	// AddStackEcosystemMember adds one tenant to an ecosystem of a stack.
+	AddStackEcosystemMember(context.Context, *connect.Request[v1.AddStackEcosystemMemberRequest]) (*connect.Response[v1.AddStackEcosystemMemberResponse], error)
+	// RemoveStackEcosystemMember removes one member tenant from an
+	// ecosystem of a stack.
+	RemoveStackEcosystemMember(context.Context, *connect.Request[v1.RemoveStackEcosystemMemberRequest]) (*connect.Response[v1.RemoveStackEcosystemMemberResponse], error)
 	// GetServiceHealth returns the health of every service in the deployment.
 	GetServiceHealth(context.Context, *connect.Request[v1.GetServiceHealthRequest]) (*connect.Response[v1.GetServiceHealthResponse], error)
 	// QueryAuditLog returns audit records that match a filter, newest first.
@@ -447,6 +476,36 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(adminServiceMethods.ByName("SetStackNotificationEndpoint")),
 			connect.WithClientOptions(opts...),
 		),
+		listStackEcosystems: connect.NewClient[v1.ListStackEcosystemsRequest, v1.ListStackEcosystemsResponse](
+			httpClient,
+			baseURL+AdminServiceListStackEcosystemsProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("ListStackEcosystems")),
+			connect.WithClientOptions(opts...),
+		),
+		setStackEcosystems: connect.NewClient[v1.SetStackEcosystemsRequest, v1.SetStackEcosystemsResponse](
+			httpClient,
+			baseURL+AdminServiceSetStackEcosystemsProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("SetStackEcosystems")),
+			connect.WithClientOptions(opts...),
+		),
+		createStackEcosystem: connect.NewClient[v1.CreateStackEcosystemRequest, v1.CreateStackEcosystemResponse](
+			httpClient,
+			baseURL+AdminServiceCreateStackEcosystemProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("CreateStackEcosystem")),
+			connect.WithClientOptions(opts...),
+		),
+		addStackEcosystemMember: connect.NewClient[v1.AddStackEcosystemMemberRequest, v1.AddStackEcosystemMemberResponse](
+			httpClient,
+			baseURL+AdminServiceAddStackEcosystemMemberProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("AddStackEcosystemMember")),
+			connect.WithClientOptions(opts...),
+		),
+		removeStackEcosystemMember: connect.NewClient[v1.RemoveStackEcosystemMemberRequest, v1.RemoveStackEcosystemMemberResponse](
+			httpClient,
+			baseURL+AdminServiceRemoveStackEcosystemMemberProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("RemoveStackEcosystemMember")),
+			connect.WithClientOptions(opts...),
+		),
 		getServiceHealth: connect.NewClient[v1.GetServiceHealthRequest, v1.GetServiceHealthResponse](
 			httpClient,
 			baseURL+AdminServiceGetServiceHealthProcedure,
@@ -508,6 +567,11 @@ type adminServiceClient struct {
 	listStackWebhooks            *connect.Client[v1.ListStackWebhooksRequest, v1.ListStackWebhooksResponse]
 	setStackWebhook              *connect.Client[v1.SetStackWebhookRequest, v1.SetStackWebhookResponse]
 	setStackNotificationEndpoint *connect.Client[v1.SetStackNotificationEndpointRequest, v1.SetStackNotificationEndpointResponse]
+	listStackEcosystems          *connect.Client[v1.ListStackEcosystemsRequest, v1.ListStackEcosystemsResponse]
+	setStackEcosystems           *connect.Client[v1.SetStackEcosystemsRequest, v1.SetStackEcosystemsResponse]
+	createStackEcosystem         *connect.Client[v1.CreateStackEcosystemRequest, v1.CreateStackEcosystemResponse]
+	addStackEcosystemMember      *connect.Client[v1.AddStackEcosystemMemberRequest, v1.AddStackEcosystemMemberResponse]
+	removeStackEcosystemMember   *connect.Client[v1.RemoveStackEcosystemMemberRequest, v1.RemoveStackEcosystemMemberResponse]
 	getServiceHealth             *connect.Client[v1.GetServiceHealthRequest, v1.GetServiceHealthResponse]
 	queryAuditLog                *connect.Client[v1.QueryAuditLogRequest, v1.QueryAuditLogResponse]
 	onboardAdmin                 *connect.Client[v1.OnboardAdminRequest, v1.OnboardAdminResponse]
@@ -674,6 +738,31 @@ func (c *adminServiceClient) SetStackNotificationEndpoint(ctx context.Context, r
 	return c.setStackNotificationEndpoint.CallUnary(ctx, req)
 }
 
+// ListStackEcosystems calls vca.admin.v1.AdminService.ListStackEcosystems.
+func (c *adminServiceClient) ListStackEcosystems(ctx context.Context, req *connect.Request[v1.ListStackEcosystemsRequest]) (*connect.Response[v1.ListStackEcosystemsResponse], error) {
+	return c.listStackEcosystems.CallUnary(ctx, req)
+}
+
+// SetStackEcosystems calls vca.admin.v1.AdminService.SetStackEcosystems.
+func (c *adminServiceClient) SetStackEcosystems(ctx context.Context, req *connect.Request[v1.SetStackEcosystemsRequest]) (*connect.Response[v1.SetStackEcosystemsResponse], error) {
+	return c.setStackEcosystems.CallUnary(ctx, req)
+}
+
+// CreateStackEcosystem calls vca.admin.v1.AdminService.CreateStackEcosystem.
+func (c *adminServiceClient) CreateStackEcosystem(ctx context.Context, req *connect.Request[v1.CreateStackEcosystemRequest]) (*connect.Response[v1.CreateStackEcosystemResponse], error) {
+	return c.createStackEcosystem.CallUnary(ctx, req)
+}
+
+// AddStackEcosystemMember calls vca.admin.v1.AdminService.AddStackEcosystemMember.
+func (c *adminServiceClient) AddStackEcosystemMember(ctx context.Context, req *connect.Request[v1.AddStackEcosystemMemberRequest]) (*connect.Response[v1.AddStackEcosystemMemberResponse], error) {
+	return c.addStackEcosystemMember.CallUnary(ctx, req)
+}
+
+// RemoveStackEcosystemMember calls vca.admin.v1.AdminService.RemoveStackEcosystemMember.
+func (c *adminServiceClient) RemoveStackEcosystemMember(ctx context.Context, req *connect.Request[v1.RemoveStackEcosystemMemberRequest]) (*connect.Response[v1.RemoveStackEcosystemMemberResponse], error) {
+	return c.removeStackEcosystemMember.CallUnary(ctx, req)
+}
+
 // GetServiceHealth calls vca.admin.v1.AdminService.GetServiceHealth.
 func (c *adminServiceClient) GetServiceHealth(ctx context.Context, req *connect.Request[v1.GetServiceHealthRequest]) (*connect.Response[v1.GetServiceHealthResponse], error) {
 	return c.getServiceHealth.CallUnary(ctx, req)
@@ -779,6 +868,20 @@ type AdminServiceHandler interface {
 	// service of the stack posts the push notifications of the holders
 	// there.
 	SetStackNotificationEndpoint(context.Context, *connect.Request[v1.SetStackNotificationEndpointRequest]) (*connect.Response[v1.SetStackNotificationEndpointResponse], error)
+	// ListStackEcosystems returns the ecosystem switch of every stack that
+	// lists ecosystems (ADR-068). It also returns each ecosystem that a
+	// bound tenant leads or belongs to, with its members.
+	ListStackEcosystems(context.Context, *connect.Request[v1.ListStackEcosystemsRequest]) (*connect.Response[v1.ListStackEcosystemsResponse], error)
+	// SetStackEcosystems turns the ecosystems of one stack on or off.
+	SetStackEcosystems(context.Context, *connect.Request[v1.SetStackEcosystemsRequest]) (*connect.Response[v1.SetStackEcosystemsResponse], error)
+	// CreateStackEcosystem creates one ecosystem that a tenant leads on
+	// one stack.
+	CreateStackEcosystem(context.Context, *connect.Request[v1.CreateStackEcosystemRequest]) (*connect.Response[v1.CreateStackEcosystemResponse], error)
+	// AddStackEcosystemMember adds one tenant to an ecosystem of a stack.
+	AddStackEcosystemMember(context.Context, *connect.Request[v1.AddStackEcosystemMemberRequest]) (*connect.Response[v1.AddStackEcosystemMemberResponse], error)
+	// RemoveStackEcosystemMember removes one member tenant from an
+	// ecosystem of a stack.
+	RemoveStackEcosystemMember(context.Context, *connect.Request[v1.RemoveStackEcosystemMemberRequest]) (*connect.Response[v1.RemoveStackEcosystemMemberResponse], error)
 	// GetServiceHealth returns the health of every service in the deployment.
 	GetServiceHealth(context.Context, *connect.Request[v1.GetServiceHealthRequest]) (*connect.Response[v1.GetServiceHealthResponse], error)
 	// QueryAuditLog returns audit records that match a filter, newest first.
@@ -991,6 +1094,36 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(adminServiceMethods.ByName("SetStackNotificationEndpoint")),
 		connect.WithHandlerOptions(opts...),
 	)
+	adminServiceListStackEcosystemsHandler := connect.NewUnaryHandler(
+		AdminServiceListStackEcosystemsProcedure,
+		svc.ListStackEcosystems,
+		connect.WithSchema(adminServiceMethods.ByName("ListStackEcosystems")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceSetStackEcosystemsHandler := connect.NewUnaryHandler(
+		AdminServiceSetStackEcosystemsProcedure,
+		svc.SetStackEcosystems,
+		connect.WithSchema(adminServiceMethods.ByName("SetStackEcosystems")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceCreateStackEcosystemHandler := connect.NewUnaryHandler(
+		AdminServiceCreateStackEcosystemProcedure,
+		svc.CreateStackEcosystem,
+		connect.WithSchema(adminServiceMethods.ByName("CreateStackEcosystem")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceAddStackEcosystemMemberHandler := connect.NewUnaryHandler(
+		AdminServiceAddStackEcosystemMemberProcedure,
+		svc.AddStackEcosystemMember,
+		connect.WithSchema(adminServiceMethods.ByName("AddStackEcosystemMember")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceRemoveStackEcosystemMemberHandler := connect.NewUnaryHandler(
+		AdminServiceRemoveStackEcosystemMemberProcedure,
+		svc.RemoveStackEcosystemMember,
+		connect.WithSchema(adminServiceMethods.ByName("RemoveStackEcosystemMember")),
+		connect.WithHandlerOptions(opts...),
+	)
 	adminServiceGetServiceHealthHandler := connect.NewUnaryHandler(
 		AdminServiceGetServiceHealthProcedure,
 		svc.GetServiceHealth,
@@ -1081,6 +1214,16 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceSetStackWebhookHandler.ServeHTTP(w, r)
 		case AdminServiceSetStackNotificationEndpointProcedure:
 			adminServiceSetStackNotificationEndpointHandler.ServeHTTP(w, r)
+		case AdminServiceListStackEcosystemsProcedure:
+			adminServiceListStackEcosystemsHandler.ServeHTTP(w, r)
+		case AdminServiceSetStackEcosystemsProcedure:
+			adminServiceSetStackEcosystemsHandler.ServeHTTP(w, r)
+		case AdminServiceCreateStackEcosystemProcedure:
+			adminServiceCreateStackEcosystemHandler.ServeHTTP(w, r)
+		case AdminServiceAddStackEcosystemMemberProcedure:
+			adminServiceAddStackEcosystemMemberHandler.ServeHTTP(w, r)
+		case AdminServiceRemoveStackEcosystemMemberProcedure:
+			adminServiceRemoveStackEcosystemMemberHandler.ServeHTTP(w, r)
 		case AdminServiceGetServiceHealthProcedure:
 			adminServiceGetServiceHealthHandler.ServeHTTP(w, r)
 		case AdminServiceQueryAuditLogProcedure:
@@ -1224,6 +1367,26 @@ func (UnimplementedAdminServiceHandler) SetStackWebhook(context.Context, *connec
 
 func (UnimplementedAdminServiceHandler) SetStackNotificationEndpoint(context.Context, *connect.Request[v1.SetStackNotificationEndpointRequest]) (*connect.Response[v1.SetStackNotificationEndpointResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.SetStackNotificationEndpoint is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) ListStackEcosystems(context.Context, *connect.Request[v1.ListStackEcosystemsRequest]) (*connect.Response[v1.ListStackEcosystemsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.ListStackEcosystems is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) SetStackEcosystems(context.Context, *connect.Request[v1.SetStackEcosystemsRequest]) (*connect.Response[v1.SetStackEcosystemsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.SetStackEcosystems is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) CreateStackEcosystem(context.Context, *connect.Request[v1.CreateStackEcosystemRequest]) (*connect.Response[v1.CreateStackEcosystemResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.CreateStackEcosystem is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) AddStackEcosystemMember(context.Context, *connect.Request[v1.AddStackEcosystemMemberRequest]) (*connect.Response[v1.AddStackEcosystemMemberResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.AddStackEcosystemMember is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) RemoveStackEcosystemMember(context.Context, *connect.Request[v1.RemoveStackEcosystemMemberRequest]) (*connect.Response[v1.RemoveStackEcosystemMemberResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.RemoveStackEcosystemMember is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) GetServiceHealth(context.Context, *connect.Request[v1.GetServiceHealthRequest]) (*connect.Response[v1.GetServiceHealthResponse], error) {
