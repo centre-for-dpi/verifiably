@@ -44,7 +44,9 @@ Notes:
   optional and must be lower case. A `!` before the colon marks a breaking
   change. The check ignores merge commits.
 - Coverage uses `go test -race -coverprofile`. The gate reads the per
-  package numbers. Packages under `gen/` and `cmd/` are not gated.
+  package numbers. Packages under `gen/` and `cmd/` are not gated. A
+  package that holds tests only, such as the walkthrough, has no
+  statements, so the gate skips it.
 - The secret scan reads the files that git tracks, in the whole
   repository (ADR-029 decision 6). It never reads the history, because the
   history purge is a release step, see
@@ -64,6 +66,28 @@ shellcheck hack/*.sh
 ./hack/secret-scan.sh
 ./hack/check-commits.sh origin/main..HEAD
 ```
+
+## The walkthrough
+
+`vca/services/walkthrough` runs a whole deployment in one Go test
+(P7-05). The test builds the command of each service into the user
+cache. It then starts the four pairs of one DPG and the landing as
+processes. `vca setup` writes the settings of each pair, as on a host.
+The test points each compose address at the loopback address. A small
+proxy in front of each pair follows the routes of its `Caddyfile`. Test
+doubles stand in for the identity provider and for the DPG.
+
+The test acts as each person at a browser. It follows each sign in,
+fills each form, and checks every page with `a11ytest.AssertPage`.
+
+| Test | Path |
+| --- | --- |
+| `TestWalkthroughWaltid` | The staff makes a walt.id identity, publishes a schema, and issues. The holder loads the credential into the browser store. A check names the issuer untrusted. The admin approves the issuer, and a DCQL request gets a valid verdict. |
+| `TestWalkthroughCredebl` | The same path on CREDEBL. The operator made the DID, and the admin adds the trust entry. A revocation through the platform turns the verdict to invalid. |
+
+The package runs in about ten seconds with the race detector. The first
+run builds the commands, so it takes longer. The test runs on Linux and
+macOS.
 
 ## vca-release: publish a release
 

@@ -15,7 +15,9 @@ fail=0
 while read -r line; do
   # "ok <pkg> 0.1s coverage: ..." or "<pkg> coverage: 0.0% ..." (no test files)
   pkg=$(awk '{ if ($1 == "ok") print $2; else print $1 }' <<<"$line")
-  pct=$(grep -oE '[0-9]+\.[0-9]+%' <<<"$line" | head -1 | tr -d '%')
+  # A package that holds tests only reports "[no statements]" and no
+  # percent, so the grep finds nothing there.
+  pct=$(grep -oE '[0-9]+\.[0-9]+%' <<<"$line" | head -1 | tr -d '%' || true)
   [ -z "$pct" ] && continue
   want="$floor"
   case "$pkg" in */core/*|*/core) want=100 ;; */gen/*) continue ;; */cmd/*) continue ;; esac

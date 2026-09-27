@@ -61,9 +61,9 @@ A row that is not `Done` carries a note.
 | ADR-004 | 3 Functional style, no package state | Done | `vca/core`, `vca/.golangci.yml` | |
 | ADR-004 | 4 Contract tests with fixtures and a nightly run | Done | `vca/hack/contract-tests.sh` | |
 | ADR-004 | 5 Property and fuzz tests for decoders | Done | `vca/core/ingest/fuzz_test.go` | |
-| ADR-004 | 6 Playwright end to end tests on each PR | Not started | `.github/workflows/vca-ci.yml` | The branch has no browser test suite and no runner. |
+| ADR-004 | 6 Playwright end to end tests on each PR | Partial | `vca/services/walkthrough` | Two Go walkthroughs run each service of a walt.id and a CREDEBL deployment as processes in every test run. Test doubles stand in for the DPG and the identity provider. No Playwright suite and no run against the compose stack exist. |
 | ADR-004 | 7 Flaky tests go to quarantine in one day | Not started | `vca/docs/ci.md` | No page names the quarantine rule and no CI job tracks it. |
-| ADR-004 | 8 Accessibility tests with axe-core | Not started | `vca/ui/a11ytest` | Go tests check the structure. No axe run exists, because no browser suite exists. |
+| ADR-004 | 8 Accessibility tests with axe-core | Not started | `vca/ui/a11ytest` | Go tests check the structure, and the walkthroughs check each page they open. No axe run exists, because no browser suite exists. |
 
 ## ADR-005: One container image per service
 
@@ -768,7 +768,7 @@ A row that is not `Done` carries a note.
 | Status | Decisions |
 |---|---|
 | Done | 363 |
-| Partial | 19 |
+| Partial | 20 |
 | Deferred | 3 |
-| Not started | 6 |
+| Not started | 5 |
 | Total | 391 |
