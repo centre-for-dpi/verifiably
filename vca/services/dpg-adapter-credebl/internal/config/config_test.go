@@ -32,7 +32,7 @@ func TestLoadFillsTheDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Listen != ":8080" || cfg.DpgVersion != "main at 2026-09-26, sha256:c6c203ffe437" {
+	if cfg.Listen != ":8080" || cfg.DpgVersion != "v2.2.1-alpha.4, sha256:b687cec51f96" {
 		t.Fatalf("config = %+v", cfg)
 	}
 	if cfg.VerifierName != "verifiable-credentials-adapters" {
@@ -146,9 +146,9 @@ func TestDefaultVersionsMatchTheStackFile(t *testing.T) {
 			t.Errorf("%s: the adapter pins %s but the stack file runs %s", name, ref, refs["credebl-"+name])
 		}
 	}
-	// The release names the day and the digest of the api gateway.
-	_, digest, _ := strings.Cut(config.Images["api-gateway"], "@")
-	if want := "main at 2026-09-26, " + digest[:len("sha256:")+12]; cfg.DpgVersion != want {
+	// The release names its tag and the digest of the api gateway.
+	tag, digest, _ := strings.Cut(config.Images["api-gateway"], "@")
+	if want := tag + ", " + digest[:len("sha256:")+12]; cfg.DpgVersion != want {
 		t.Errorf("DpgVersion = %q, want %q", cfg.DpgVersion, want)
 	}
 	if config.ShortRef("25.0") != "25.0" || config.ShortRef("v1@sha256:abc") != "v1@sha256:abc" {

@@ -92,7 +92,7 @@ The answer of `GetCapabilities` reports what the platform supports.
 | Schema formats | AnonCreds on each ledger of the organisation, and W3C JSON-LD |
 | Ledgers | The Indy ledgers where the organisation holds a DID, with the names of the platform |
 | Status mechanisms | None. The platform embeds no status entry of VCA. |
-| DPG information | The platform name, `main at 2026-09-26` with the digest of the api gateway, every platform service, the shared Credo agent, and Keycloak |
+| DPG information | The platform name, `v2.2.1-alpha.4` with the digest of the api gateway, every platform service, the shared Credo agent, and Keycloak |
 
 Each component carries its pinned version, its repository, its
 documentation, and its licence. CREDEBL publishes from its main branch.

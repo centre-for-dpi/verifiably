@@ -29,7 +29,7 @@ const testdata = "../../testdata"
 
 // newService starts the fake and returns the service under test.
 // testDpgVersion is the release the stack file pins (open question G.5).
-const testDpgVersion = "main at 2026-09-26, sha256:c6c203ffe437"
+const testDpgVersion = "v2.2.1-alpha.4, sha256:b687cec51f96"
 
 func newService(t *testing.T, change func(*service.Options)) (*service.Service, *fake.Server) {
 	t.Helper()
@@ -530,7 +530,7 @@ func TestCapabilitiesCarryDpgInfo(t *testing.T) {
 			t.Errorf("component %s = %q, want %q", name, seen[name], version)
 		}
 	}
-	if seen["api-gateway"] != "v2.1.3-hotfix.2@sha256:c6c203ffe437" {
+	if seen["api-gateway"] != "v2.2.1-alpha.4@sha256:b687cec51f96" {
 		t.Errorf("api-gateway = %q", seen["api-gateway"])
 	}
 	if len(resp.Msg.GetStatusMechanisms()) != 0 {

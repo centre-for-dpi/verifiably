@@ -495,3 +495,44 @@ func decryptCryptoJS(text, passphrase string) (string, error) {
 	}
 	return string(plain[:len(plain)-n]), nil
 }
+
+// credeblRelease is the release of the platform that the stack runs.
+// The services share one database schema and the routes of one api
+// gateway, so every platform image comes from this release (ADR-066).
+const credeblRelease = "v2.2.1-alpha."
+
+// credeblReleaseImages are the images that the release publishes at
+// the tag of the release itself. The release built no new image of the
+// others, so they carry the newest tag of the same release line.
+var credeblReleaseImages = map[string]string{"api-gateway": "4", "seed": "4", "ecosystem": "4", "x509": "3", "utility": "3"}
+
+// TestCredeblStackRunsOneReleaseLine is ADR-066: every platform image
+// carries a tag of the release line that holds the ecosystem, OID4VC
+// and X.509 services. The seed of that line reads the master table at
+// the path the stack file mounts it to.
+func TestCredeblStackRunsOneReleaseLine(t *testing.T) {
+	doc, _ := readCredeblStack(t)
+	seen := 0
+	for name, svc := range doc.Services {
+		ref, ok := strings.CutPrefix(svc.Image, "ghcr.io/credebl/")
+		if !ok || strings.HasPrefix(ref, "schema-file-server:") || strings.HasPrefix(ref, "credo-controller:") {
+			continue
+		}
+		seen++
+		image, tag, _ := strings.Cut(ref, ":")
+		if !strings.HasPrefix(tag, credeblRelease) {
+			t.Errorf("%s runs %s, want a tag of %s", name, ref, credeblRelease)
+		}
+		if want, fixed := credeblReleaseImages[image]; fixed && !strings.HasPrefix(tag, credeblRelease+want+"@") {
+			t.Errorf("%s runs %s, want %s%s", name, ref, credeblRelease, want)
+		}
+	}
+	// NATS, Redis, PostgreSQL and the schema file server come from
+	// elsewhere or carry no release tag.
+	if want := len(upstreamCredeblServices) - 4; seen != want {
+		t.Errorf("the check saw %d platform images, want %d", seen, want)
+	}
+	if !strings.Contains(CredeblMasterTableMount, "/credebl-master-table/credebl-master-table.json") {
+		t.Errorf("the master table mounts at %s, which the seed of the release does not read", CredeblMasterTableMount)
+	}
+}

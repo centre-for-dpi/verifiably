@@ -455,18 +455,20 @@ The versions come from `verifiably-go/docs/dpg-matrix.md`:
 | `dpg/inji.yaml` | Inji Web and Mimoto | 0.16.0 and 0.21.0 |
 | `dpg/inji.yaml` | Inji Verify UI and service | 0.16.0 |
 | `dpg/inji.yaml` | eSignet and its login page, with an authenticator only | 1.5.1 |
-| `dpg/credebl.yaml` | The whole CREDEBL platform and its shared Credo agent | `main` at 2026-09-26, by digest |
+| `dpg/credebl.yaml` | The whole CREDEBL platform and its shared Credo agent | `v2.2.1-alpha.4`, by digest |
 | Every `dpg/*.yaml` file | Keycloak | 25.0 |
 
-CREDEBL publishes from its main branch.
-The stack file pins each platform image by the digest that `latest` named on 2026-09-26.
-The release tag of the same image stands beside the digest.
-Most images carry `v2.1.3-hotfix.2`.
-The ecosystem and OpenID for Verifiable Credentials images carry `v2.2.1-alpha.4`.
-The X.509 image carries `v2.2.1-alpha.3`.
+The stack file runs one release line of CREDEBL, `v2.2.1` (ADR-066).
+The services share one database schema and the routes of one API gateway.
+Only that line holds the ecosystem, OpenID for Verifiable Credentials and X.509 services.
+The stack file pins each platform image by the digest of its release tag.
+Most images carry `v2.2.1-alpha.4`.
+The release built no new utility or X.509 image, so those two carry `v2.2.1-alpha.3`.
 The Credo agent carries `v2.2.1-alpha-jsonld-vc.2.1`.
 The schema file server has only `latest`.
-The adapter reports `main at 2026-09-26` and the digest of the API gateway.
+`latest` of the other images names the `v2.1.3` hotfix line.
+That line has no such service. It reads the master table from another path, so the stack file does not run it.
+The adapter reports `v2.2.1-alpha.4` and the digest of the API gateway.
 Change a digest in the stack file and in the adapter together.
 A test binds the two.
 

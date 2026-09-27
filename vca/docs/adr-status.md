@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-065, one row per decision.
+ADR-066, one row per decision.
 
 The status values are:
 
@@ -702,12 +702,20 @@ A row that is not `Done` carries a note.
 | ADR-065 | 3 Only the chosen ledgers are active | Done | `vca/internal/cli/credebl_master.go` | `TestCredeblLedgersAreASetting` and `TestNoUpstreamCredeblCredentialSurvives` pin it. |
 | ADR-065 | 4 No agent file without a network | Done | `vca/internal/cli/stackenv.go` | `TestCredeblAgentConfigNeedsANetwork` pins it. |
 
+## ADR-066: The CREDEBL stack runs one release line of the platform
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-066 | 1 Every platform image from the line `v2.2.1` | Done | `deploy/vca/dpg/credebl.yaml` | `TestCredeblStackRunsOneReleaseLine` pins it. |
+| ADR-066 | 2 The stack file does not follow `latest` | Done | `deploy/vca/dpg/credebl.yaml`, `vca/docs/deploy.md` | The deploy document names the two lines. |
+| ADR-066 | 3 The adapter reports the release and the digest | Done | `vca/services/dpg-adapter-credebl/internal/config/config.go` | `TestDefaultVersionsMatchTheStackFile` pins it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 306 |
+| Done | 309 |
 | Partial | 25 |
 | Deferred | 3 |
 | Not started | 26 |
-| Total | 360 |
+| Total | 363 |

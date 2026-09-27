@@ -45,3 +45,4 @@ each decision of each record.
 - [ADR-063: The consent of a stack wallet that picks the claims itself](adr/ADR-063-stack-wallet-consent.md)
 - [ADR-064: The issuer of an AnonCreds proof over DIDComm](adr/ADR-064-anoncreds-proof-issuer.md)
 - [ADR-065: The Indy networks of a CREDEBL stack are a setting of the operator](adr/ADR-065-credebl-ledgers-setting.md)
+- [ADR-066: The CREDEBL stack runs one release line of the platform](adr/ADR-066-credebl-release-line.md)

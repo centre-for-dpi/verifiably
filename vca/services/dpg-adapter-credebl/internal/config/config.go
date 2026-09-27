@@ -48,7 +48,7 @@ type Config struct {
 	// CREDEBL publishes from its main branch, so the default names the
 	// day the stack file pinned the images and the digest of the api
 	// gateway (open question G.5).
-	DpgVersion string `env:"DPG_VERSION" default:"main at 2026-09-26, sha256:c6c203ffe437"`
+	DpgVersion string `env:"DPG_VERSION" default:"v2.2.1-alpha.4, sha256:b687cec51f96"`
 	// KeycloakVersion names the Keycloak release of the stack.
 	KeycloakVersion string `env:"KEYCLOAK_VERSION" default:"25.0"`
 	// Timeout bounds one call to CREDEBL.
@@ -95,24 +95,24 @@ func Load(getenv func(string) string) (Config, error) {
 
 // Images maps every platform component, named as the stack file names
 // it without the prefix, onto the image reference the stack file pins:
-// the release tag of the image and the digest that the tag latest named
-// on 2026-09-26. A test binds the two files.
+// the tag of the release line v2.2.1 and the digest of that tag, read
+// on 2026-09-27 (ADR-066). A test binds the two files.
 var Images = map[string]string{
 	"schema-file-server":  "latest@sha256:40a071da35ab17530e9fc1b5de88c46b3ae41bcd79c5c5c28661a0195792435a",
-	"api-gateway":         "v2.1.3-hotfix.2@sha256:c6c203ffe43703ce752cd6590ab197083bfe35f1eabf37a2c962ddbafdfc0754",
-	"user":                "v2.1.3-hotfix.2@sha256:8dc477e5b81bf0314098ab4e3f5ec8eaa0d4980b6db3bcef88b4c83d27f1375e",
-	"utility":             "v2.1.3-hotfix.2@sha256:686c8be4b8e57cda63db4a1716645f286dd81c63bbb7b8ca57ac026e69b5ba9d",
-	"connection":          "v2.1.3-hotfix.2@sha256:257ba499600e46d220a47d28f80c2550b2c06945864b0ad83f5501e1450c9d73",
-	"issuance":            "v2.1.3-hotfix.2@sha256:4e446a46f43c264276a9e4930d0102ca85f4c3ccc1b33ab0e49b6b42be58f235",
-	"ledger":              "v2.1.3-hotfix.2@sha256:57239ddb28af36ce32eacdc3776eac21e05824368865e320795c658d8471cb63",
-	"organization":        "v2.1.3-hotfix.2@sha256:6a556fabc8ce9bee1e533b6912f2a1ef359e7896cf55960ddbfac86183090005",
-	"verification":        "v2.1.3-hotfix.2@sha256:59d5e5c8c29edb7d8b0eeefc10a879e4500b4cf8e6b9a50cd9715b498190f0fb",
-	"agent-provisioning":  "v2.1.3-hotfix.2@sha256:a9c8b901f5e54e65a5b9bddfe4dc20e664c4b3b3fb271ce3c89d0a73f3363b5f",
-	"agent-service":       "v2.1.3-hotfix.2@sha256:800015d810e7d137a02c927913ac7a844a79a12dd13cf50593204db9c3608a1e",
-	"cloud-wallet":        "v2.1.3-hotfix.2@sha256:887c1fab2893a272359c3cdfd609c1a95576d4b103554b3b8815ab7c7fb0a19f",
-	"geolocation":         "v2.1.3-hotfix.2@sha256:b8a93090aa4e6101309dd3fd6d7619d6bca0a0c502acf25c52d0acc69a5f197d",
-	"notification":        "v2.1.3-hotfix.2@sha256:cdd08600990710d8bfa62aebe9528a4bc9cb97572e4d961749aa7efda4884035",
-	"webhook":             "v2.1.3-hotfix.2@sha256:1748c4baa54c2671e39051d94ee34a4734ac18e461a2b808d4bbd61b5effafa9",
+	"api-gateway":         "v2.2.1-alpha.4@sha256:b687cec51f96329a0c25515ec35c6207d45d1a125aa976bbe5d84c884b39dc02",
+	"user":                "v2.2.1-alpha.4@sha256:3ea3c3d189b5934a0fa32f920a483f25162d0375dd93e7968f29d566e81dd450",
+	"utility":             "v2.2.1-alpha.3@sha256:406fa96220fec8e369cbbf38bf1be9b26f2558dd2fd8691c79b64895d02db7b9",
+	"connection":          "v2.2.1-alpha.4@sha256:4011bcbc243e5d02252149321e9f69217abd3fb34294fb55952f5b36485afd23",
+	"issuance":            "v2.2.1-alpha.4@sha256:5b9b8441321d576311270f742941c8b3e80ccc0f3a4ac2b81f80995d5ed7bcc0",
+	"ledger":              "v2.2.1-alpha.4@sha256:5a12ea655b1addf6b638849d8f691371e4934c4b2cab4344cbdcdf33a63acc80",
+	"organization":        "v2.2.1-alpha.4@sha256:fccdce10f0fffba7541696b1f85ffe983ff6aaeaf221c249cbc487aa26033163",
+	"verification":        "v2.2.1-alpha.4@sha256:42e1e3d0cf7c623ccbdc89a0212b646912ddd373802e6ef9695ec9a46ec5da87",
+	"agent-provisioning":  "v2.2.1-alpha.4@sha256:55bf811a27c1771e92b03cbc83f9dff6d9ebe1fcdb9c0c8b37c47c6b68fefde5",
+	"agent-service":       "v2.2.1-alpha.4@sha256:2ae284729f95b1eae4ad21032befd0d7af0895cbb1a2059c13e3c12a0c5b9370",
+	"cloud-wallet":        "v2.2.1-alpha.4@sha256:6693137f5a158202e921b078af666c0c694c6689eab3167f24c2a02a75830d77",
+	"geolocation":         "v2.2.1-alpha.4@sha256:3a8adccec88913da21f31e7fdb44bdac92ecc8f6226594788bd5d877a34c9fb2",
+	"notification":        "v2.2.1-alpha.4@sha256:a06257b9ee06e12b1359f771286a869de2d8ebc7db92291b1b274472c81ddb72",
+	"webhook":             "v2.2.1-alpha.4@sha256:da45e48fde5fb0856ac88ebc780269f89566cb222acd70427ddef2e299b4d8b2",
 	"ecosystem":           "v2.2.1-alpha.4@sha256:dee3dbc5ecf82a298ae7c4567737992aed538529da1894cf002480de08c48706",
 	"oid4vc-issuance":     "v2.2.1-alpha.4@sha256:3e9eace80d82b37858d0e4861795a29bb5d436fdcd11f8a31e5be8a17433be7c",
 	"oid4vc-verification": "v2.2.1-alpha.4@sha256:501b657a5febda58356600d93edd9d009df00de7877c3dbc06292be4a6c3e5e7",
