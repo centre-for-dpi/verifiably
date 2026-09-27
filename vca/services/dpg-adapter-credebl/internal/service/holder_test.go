@@ -367,13 +367,41 @@ func TestPresentOid4vpThroughTheAgent(t *testing.T) {
 		t.Errorf("another credential: %v", err)
 	}
 	agent.SetOid4vc(fake.OfferPreAuthorized, fake.Oid4vpRefused)
-	if res, err = svc.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{WalletId: wallet, RequestUri: request})); err != nil || res.Msg.GetAccepted() {
+	if res, err = svc.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{WalletId: wallet, RequestUri: request,
+		DisclosedClaims: []string{"fullName"}})); err != nil || res.Msg.GetAccepted() {
 		t.Errorf("a refused answer = %+v, %v", res, err)
 	}
 	for _, key := range []string{"POST /openid4vc/holder/resolve-proof-request", "POST /openid4vc/holder/accept-proof-request"} {
 		agent.SetStatus(key, http.StatusBadRequest)
-		_, err = svc.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{WalletId: wallet, RequestUri: request}))
+		_, err = svc.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{WalletId: wallet, RequestUri: request,
+			DisclosedClaims: []string{"fullName"}}))
 		wantCode(t, err, connect.CodeInvalidArgument)
+	}
+}
+
+// TestPresentOid4vpRefusesAnUntickedClaim is finding 2.1 of the
+// CREDEBL review: the agent discloses every claim of the first claim
+// set it satisfies. A holder who leaves one of them out gets a refusal,
+// and the agent sends nothing. The shared claims name what the agent
+// sent, not what the request of the portal listed.
+func TestPresentOid4vpRefusesAnUntickedClaim(t *testing.T) {
+	ctx := context.Background()
+	svc, agent, _ := newHolder(t, nil)
+	wallet := registerHolder(t, svc)
+	agent.SetResolved(fake.Oid4vpResolvedClaimSets)
+	request := "openid4vp://?client_id=x509_san_dns%3Averifier.example.org&request_uri=https%3A%2F%2Fverifier.example.org%2Frequest%2F1"
+	_, err := svc.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{WalletId: wallet, RequestUri: request,
+		CredentialIds: []string{"sd-jwt:" + fake.SdJwtRecord}, DisclosedClaims: []string{"fullName"}}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "hectares") {
+		t.Fatalf("an unticked claim: %v", err)
+	}
+	if n := count(agent.Calls(), "POST /openid4vc/holder/accept-proof-request"); n != 0 {
+		t.Fatalf("the agent answered %d times", n)
+	}
+	res, err := svc.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{WalletId: wallet, RequestUri: request,
+		CredentialIds: []string{"sd-jwt:" + fake.SdJwtRecord}, DisclosedClaims: []string{"hectares", "fullName", "extra"}}))
+	if err != nil || !res.Msg.GetAccepted() || strings.Join(res.Msg.GetSharedClaims(), ",") != "fullName,hectares" {
+		t.Fatalf("every claim ticked: %+v, %v", res, err)
 	}
 }
 
@@ -506,6 +534,7 @@ func TestCapabilitiesListHolderRole(t *testing.T) {
 	if !slices.Contains(with.Msg.GetRoles(), commonv1.Role_ROLE_HOLDER) ||
 		!slices.Contains(with.Msg.GetFeatures(), backendv1.Feature_FEATURE_WALLET_DIDCOMM) ||
 		!slices.Contains(with.Msg.GetFeatures(), backendv1.Feature_FEATURE_WALLET_DIDS) ||
+		!slices.Contains(with.Msg.GetFeatures(), backendv1.Feature_FEATURE_WALLET_WHOLE_QUERY) ||
 		slices.Contains(with.Msg.GetFeatures(), backendv1.Feature_FEATURE_WALLET_KEYS) ||
 		strings.Join(with.Msg.GetWalletDidMethods(), ",") != "did:key" {
 		t.Errorf("with the agent: roles %v, features %v, methods %v", with.Msg.GetRoles(), with.Msg.GetFeatures(), with.Msg.GetWalletDidMethods())
@@ -516,7 +545,8 @@ func TestCapabilitiesListHolderRole(t *testing.T) {
 		t.Fatal(err)
 	}
 	if slices.Contains(without.Msg.GetRoles(), commonv1.Role_ROLE_HOLDER) ||
-		slices.Contains(without.Msg.GetFeatures(), backendv1.Feature_FEATURE_WALLET_DIDCOMM) || len(without.Msg.GetWalletDidMethods()) != 0 {
+		slices.Contains(without.Msg.GetFeatures(), backendv1.Feature_FEATURE_WALLET_DIDCOMM) ||
+		slices.Contains(without.Msg.GetFeatures(), backendv1.Feature_FEATURE_WALLET_WHOLE_QUERY) || len(without.Msg.GetWalletDidMethods()) != 0 {
 		t.Errorf("without the agent: roles %v, features %v", without.Msg.GetRoles(), without.Msg.GetFeatures())
 	}
 }

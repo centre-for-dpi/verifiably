@@ -322,6 +322,14 @@ submit. Without one the service builds the SD-JWT presentation itself.
 It keeps only the disclosures the citizen agreed to, so the verifier
 reads nothing more.
 
+Some stack wallets pick the claims themselves. Such an adapter lists
+`FEATURE_WALLET_WHOLE_QUERY` (ADR-063). The CREDEBL agent is one. It
+sends every claim of the claim set it picks. The consent screen then
+ticks and locks every claim, so the holder shares each claim or
+declines. The adapter refuses an answer that leaves a claim out, and
+the page shows its reason. The record names the claims the stack
+reports as shared.
+
 The response mode is `direct_post` only. The wallet refuses another
 response mode.
 

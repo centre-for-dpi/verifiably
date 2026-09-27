@@ -264,6 +264,11 @@ const (
 	// The wallet binds new credentials to a default DID that the holder
 	// picks with SetDefaultDid.
 	Feature_FEATURE_WALLET_DEFAULT_DID Feature = 28
+	// The wallet of the stack answers an OID4VP request with every claim
+	// that the query of the verifier names. The holder cannot leave out a
+	// claim, so the consent screen marks each claim as required. Present
+	// refuses a request whose disclosed_claims leave out a claim.
+	Feature_FEATURE_WALLET_WHOLE_QUERY Feature = 29
 )
 
 // Enum value maps for Feature.
@@ -298,6 +303,7 @@ var (
 		26: "FEATURE_HOLDER_SIGN_IN_SOURCE",
 		27: "FEATURE_WALLET_DIDCOMM",
 		28: "FEATURE_WALLET_DEFAULT_DID",
+		29: "FEATURE_WALLET_WHOLE_QUERY",
 	}
 	Feature_value = map[string]int32{
 		"FEATURE_UNSPECIFIED":                  0,
@@ -329,6 +335,7 @@ var (
 		"FEATURE_HOLDER_SIGN_IN_SOURCE":        26,
 		"FEATURE_WALLET_DIDCOMM":               27,
 		"FEATURE_WALLET_DEFAULT_DID":           28,
+		"FEATURE_WALLET_WHOLE_QUERY":           29,
 	}
 )
 
@@ -10830,7 +10837,7 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\x19PROTOCOL_OID4VCI_DEFERRED\x10\x06\x12\x1d\n" +
 	"\x19PROTOCOL_DIDCOMM_ISSUE_V2\x10\a\x12\x1f\n" +
 	"\x1bPROTOCOL_DIDCOMM_PRESENT_V2\x10\b\x12\x13\n" +
-	"\x0fPROTOCOL_DC_API\x10\t*\xef\x06\n" +
+	"\x0fPROTOCOL_DC_API\x10\t*\x8f\a\n" +
 	"\aFeature\x12\x17\n" +
 	"\x13FEATURE_UNSPECIFIED\x10\x00\x12%\n" +
 	"!FEATURE_ISSUER_IDENTITY_PROVISION\x10\x01\x12&\n" +
@@ -10861,7 +10868,8 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\x12FEATURE_WALLET_PIN\x10\x19\x12!\n" +
 	"\x1dFEATURE_HOLDER_SIGN_IN_SOURCE\x10\x1a\x12\x1a\n" +
 	"\x16FEATURE_WALLET_DIDCOMM\x10\x1b\x12\x1e\n" +
-	"\x1aFEATURE_WALLET_DEFAULT_DID\x10\x1c*\x95\x01\n" +
+	"\x1aFEATURE_WALLET_DEFAULT_DID\x10\x1c\x12\x1e\n" +
+	"\x1aFEATURE_WALLET_WHOLE_QUERY\x10\x1d*\x95\x01\n" +
 	"\n" +
 	"WalletLock\x12\x1b\n" +
 	"\x17WALLET_LOCK_UNSPECIFIED\x10\x00\x12\x14\n" +

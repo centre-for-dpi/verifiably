@@ -122,3 +122,81 @@ func TestAgentAnswersAnOid4vpRequest(t *testing.T) {
 		t.Error("a refused request")
 	}
 }
+
+// TestResolvedRequestDisclosures is finding 2.1 of the CREDEBL review:
+// the adapter reads what the agent sends for each query. The agent
+// discloses the output of the first valid claim set, so a claim that a
+// later claim set leaves out still travels.
+func TestResolvedRequestDisclosures(t *testing.T) {
+	a := newAgentServer(t)
+	ctx := context.Background()
+	agent := a.agent()
+	a.answer("POST /openid4vc/holder/resolve-proof-request", fixture(t, "agent-oid4vp-request-resolved-claim-sets.json"))
+	req, err := agent.ResolveProofRequest(ctx, testTenant, "openid4vp://?request_uri=x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := req.Disclosures()
+	if len(got) != 1 || got[0].Query != "farmer" || strings.Join(got[0].Claims, ",") != "fullName,hectares" || got[0].Whole {
+		t.Fatalf("claim sets: %+v", got)
+	}
+	a.answer("POST /openid4vc/holder/resolve-proof-request", fixture(t, "agent-oid4vp-request-resolved.json"))
+	if req, err = agent.ResolveProofRequest(ctx, testTenant, "x"); err != nil {
+		t.Fatal(err)
+	}
+	if got = req.Disclosures(); len(got) != 1 || strings.Join(got[0].Claims, ",") != "fullName" {
+		t.Fatalf("valid claims only: %+v", got)
+	}
+	cases := map[string]struct {
+		body   string
+		claims string
+		whole  bool
+	}{
+		"a query with no claim sends the whole credential": {
+			body: `{"authorizationRequestPayload":{"dcql_query":{"credentials":[{"id":"q","format":"dc+sd-jwt"}]}},
+"dcql":{"queryResult":{"credential_matches":{"q":{"success":true,"valid_credentials":[{"record":{"id":"r"},
+"claims":{"success":true,"valid_claim_sets":[{"success":true,"output":{"b":1,"a":{"c":2}}}]}}]}}}}}`,
+			claims: "a,b", whole: true,
+		},
+		"a claim set index with no claim indexes": {
+			body: `{"authorizationRequestPayload":{"dcql_query":{"credentials":[{"id":"q","format":"dc+sd-jwt",
+"claims":[{"id":"x","path":["address","street"]},{"id":"y","path":["age"]}],"claim_sets":[["y"],["x","y"]]}]}},
+"dcql":{"queryResult":{"credential_matches":{"q":{"success":true,"valid_credentials":[{"record":{"id":"r"},
+"claims":{"success":true,"valid_claim_sets":[{"success":true,"claim_set_index":1,"output":{}}]}}]}}}}}`,
+			claims: "address.street,age",
+		},
+		"the query of the result when the payload has none": {
+			body: `{"dcql":{"queryResult":{"credentials":[{"id":"q","format":"dc+sd-jwt","claims":[{"path":["age"]}]}],
+"credential_matches":{"q":{"success":true,"valid_credentials":[{"record":{"id":"r"}}]}}}}}`,
+			claims: "age",
+		},
+		"claim indexes out of range fall back to the query": {
+			body: `{"authorizationRequestPayload":{"dcql_query":{"credentials":[{"id":"q","format":"dc+sd-jwt",
+"claims":[{"path":["age"]}]}]}},
+"dcql":{"queryResult":{"credential_matches":{"q":{"success":true,"valid_credentials":[{"record":{"id":"r"},
+"claims":{"success":true,"valid_claim_sets":[{"success":true,"valid_claim_indexes":[4]}]}}]}}}}}`,
+			claims: "age",
+		},
+	}
+	for name, c := range cases {
+		a.answer("POST /openid4vc/holder/resolve-proof-request", c.body)
+		if req, err = agent.ResolveProofRequest(ctx, testTenant, "x"); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		got = req.Disclosures()
+		if len(got) != 1 || strings.Join(got[0].Claims, ",") != c.claims || got[0].Whole != c.whole {
+			t.Errorf("%s: %+v", name, got)
+		}
+	}
+	a.answer("POST /openid4vc/holder/resolve-proof-request", `{"dcql":{"queryResult":{"credential_matches":{"q":{"success":false}}}}}`)
+	if req, err = agent.ResolveProofRequest(ctx, testTenant, "x"); err != nil {
+		t.Fatal(err)
+	}
+	if got = req.Disclosures(); len(got) != 0 {
+		t.Errorf("a query the wallet cannot answer: %+v", got)
+	}
+	var pe ResolvedRequest
+	if len(pe.Disclosures()) != 0 {
+		t.Error("a request with no DCQL query discloses")
+	}
+}

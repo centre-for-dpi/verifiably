@@ -67,7 +67,10 @@ func (s *Service) features() []backendv1.Feature {
 	}
 	// A tenant wallet per holder in the shared agent (ADR-062).
 	if s.holderRole() {
-		out = append(out, backendv1.Feature_FEATURE_WALLET_DIDCOMM, backendv1.Feature_FEATURE_WALLET_DIDS)
+		// The agent discloses every claim of a query, so the consent
+		// screen marks each claim as required.
+		out = append(out, backendv1.Feature_FEATURE_WALLET_DIDCOMM, backendv1.Feature_FEATURE_WALLET_DIDS,
+			backendv1.Feature_FEATURE_WALLET_WHOLE_QUERY)
 	}
 	return out
 }

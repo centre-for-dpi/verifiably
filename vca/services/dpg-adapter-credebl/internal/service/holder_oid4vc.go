@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 
@@ -86,7 +87,10 @@ func (s *Service) claimOid4vci(ctx context.Context, tenant, uri, pin string) (*c
 
 // presentOid4vp answers an OID4VP request. The holder picked the
 // credentials on the consent screen, and the agent picks its own, so
-// the two must name the same credentials.
+// the two must name the same credentials. The agent discloses every
+// claim of the claim set it picks and takes no choice of claims, so the
+// holder must consent to each of them. The shared claims name what the
+// agent sends.
 func (s *Service) presentOid4vp(ctx context.Context, tenant, uri string, msg *backendv1.PresentRequest,
 ) (*connect.Response[backendv1.PresentResponse], error) {
 	req, err := s.agent.ResolveProofRequest(ctx, tenant, uri)
@@ -98,13 +102,38 @@ func (s *Service) presentOid4vp(ctx context.Context, tenant, uri string, msg *ba
 			return nil, perr
 		}
 	}
+	shared, err := consented(req.Disclosures(), msg.GetDisclosedClaims())
+	if err != nil {
+		return nil, err
+	}
 	answer, err := s.agent.AcceptOid4vpRequest(ctx, tenant, uri)
 	if err != nil {
 		return nil, failed("answer the request", err)
 	}
 	return connect.NewResponse(&backendv1.PresentResponse{
-		Accepted: answer.Accepted(), SharedClaims: msg.GetDisclosedClaims(), VerifierState: req.Verifier.ClientID,
+		Accepted: answer.Accepted(), SharedClaims: shared, VerifierState: req.Verifier.ClientID,
 	}), nil
+}
+
+// consented checks that the holder ticked every claim the agent sends,
+// and returns those claims. A query that names no claim sends the whole
+// credential, which the consent screen shows as such.
+func consented(sent []credebl.Disclosure, ticked []string) ([]string, error) {
+	var shared, missing []string
+	for _, d := range sent {
+		for _, c := range d.Claims {
+			shared = append(shared, c)
+			if !d.Whole && !slices.Contains(ticked, c) {
+				missing = append(missing, c)
+			}
+		}
+	}
+	if len(missing) > 0 {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+			"this wallet shares every claim the verifier asks for (%s); tick them all or decline",
+			strings.Join(missing, ", ")))
+	}
+	return shared, nil
 }
 
 // samePicks checks that the holder chose the credentials the agent

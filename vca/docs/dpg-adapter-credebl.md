@@ -336,6 +336,12 @@ OID4VCI offer with a pre-authorized code through the holder API of the
 agent. It answers an OID4VP request there too. The agent picks the first
 credential that matches each query. The adapter reads that pick first
 and refuses an answer when the holder picked another credential.
+The agent takes no choice of claims. It discloses every claim of the
+first claim set that the credential satisfies. So the adapter lists
+`FEATURE_WALLET_WHOLE_QUERY`, and the consent screen marks every claim as
+required. `Present` refuses with `FailedPrecondition` when the ticked
+claims leave out a claim the agent sends. `shared_claims` name the claims
+the agent sends (ADR-063 decision 1).
 
 **An AnonCreds credential reads from its exchange.** The agent lists no
 AnonCreds credential. The finished exchange holds the values of the
@@ -355,4 +361,4 @@ The contract set targets a real platform. It carries the build tag
 
 - Service folder: `services/dpg-adapter-credebl`
 - Contract: `proto/vca/backend/v1/backend.proto`
-- Decisions: ADR-002 decisions 2 and 4, ADR-016 decision 6, ADR-022 decision 3, ADR-030 decision 2, ADR-059, ADR-060, ADR-061, ADR-062
+- Decisions: ADR-002 decisions 2 and 4, ADR-016 decision 6, ADR-022 decision 3, ADR-030 decision 2, ADR-059, ADR-060, ADR-061, ADR-062, ADR-063

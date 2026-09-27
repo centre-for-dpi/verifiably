@@ -63,6 +63,11 @@ type Options struct {
 	// (FEATURE_WALLET_DIDCOMM, ADR-062). The wallet then keeps a scanned
 	// invitation until the citizen answers it. Nil means false.
 	Didcomm func(ctx context.Context) bool
+	// WholeQuery reports true when the wallet of the stack answers an
+	// OID4VP request with every claim of each query
+	// (FEATURE_WALLET_WHOLE_QUERY). The consent screen then marks every
+	// claim as required. Nil means false.
+	WholeQuery func(ctx context.Context) bool
 	// Catalogue reads the published credential types from the verifier
 	// discovery service. Nil, or a catalogue that does not answer, hands
 	// the pages to Fallback.
@@ -176,6 +181,12 @@ func (s *Service) KeepsBrowser(ctx context.Context) bool {
 // hybrid reports whether the stack wallet sits beside the browser store.
 func (s *Service) hybrid(ctx context.Context) bool {
 	return s.opts.Holder != nil && s.opts.Hybrid != nil && s.opts.Hybrid(ctx)
+}
+
+// wholeQuery reports whether the stack wallet answers with every claim
+// of a query.
+func (s *Service) wholeQuery(ctx context.Context) bool {
+	return s.opts.Holder != nil && s.opts.WholeQuery != nil && s.opts.WholeQuery(ctx)
 }
 
 // inBrowser reports whether the browser store keeps the credential id,
@@ -703,12 +714,22 @@ func (s *Service) PresentStart(ctx context.Context,
 		party = rec.Issuer
 	}
 	trust := present.TrustOf(ctx, s.opts.Trust, party)
+	requested := present.Consent(parsed, held)
+	if s.wholeQuery(ctx) && rec.Interactive == "" {
+		// The stack wallet sends every claim of a query, so the holder
+		// consents to each or declines.
+		for _, entry := range requested {
+			for _, c := range entry.GetClaims() {
+				c.Mandatory = true
+			}
+		}
+	}
 	return connect.NewResponse(&walletportalv1.PresentStartResponse{
 		PresentationId: id,
 		Verifier:       party,
 		VerifierName:   trust.Name,
 		Trust:          trust.Outcome,
-		Requested:      present.Consent(parsed, held),
+		Requested:      requested,
 		Purpose:        parsed.Purpose,
 		DuringIssuance: rec.Interactive != "",
 	}), nil
@@ -776,12 +797,13 @@ func (s *Service) PresentConfirm(ctx context.Context,
 			errors.New("choose one credential first"))
 	}
 	var answer *walletportalv1.PresentConfirmResponse
+	var shared []string
 	switch {
 	case rec.Interactive != "":
 		answer, err = s.presentForIssuance(ctx, citizen, rec, chosen[0], disclosed)
 		parsed.ClientID = rec.Issuer
 	case s.opts.Holder != nil && !s.inBrowser(ctx, citizen, chosen[0]):
-		answer, err = s.presentWithBackend(ctx, citizen, parsed, chosen, disclosed)
+		answer, shared, err = s.presentWithBackend(ctx, citizen, parsed, chosen, disclosed)
 	default:
 		answer, err = s.presentDirect(ctx, citizen, parsed, chosen, disclosed)
 	}
@@ -792,7 +814,11 @@ func (s *Service) PresentConfirm(ctx context.Context,
 	case err == nil:
 		result = walletportalv1.PresentationRecord_RESULT_REJECTED
 	}
-	names := disclosed
+	// The stack names what it shared. That wins over the ticks.
+	names := shared
+	if len(names) == 0 {
+		names = disclosed
+	}
 	if len(names) == 0 {
 		names = requestedNames(parsed)
 	}
@@ -823,10 +849,12 @@ func selections(msg *walletportalv1.PresentConfirmRequest) ([]string, []string) 
 	return ids, paths
 }
 
-// presentWithBackend asks the holder backend to answer the request.
+// presentWithBackend asks the holder backend to answer the request. It
+// returns the answer and the claims the stack reports it shared. A stack
+// that refuses the consent says why, and the holder sees the reason.
 func (s *Service) presentWithBackend(ctx context.Context, citizen session.Citizen,
 	parsed present.Request, chosen, disclosed []string,
-) (*walletportalv1.PresentConfirmResponse, error) {
+) (*walletportalv1.PresentConfirmResponse, []string, error) {
 	uri := parsed.RequestURI
 	if uri == "" {
 		uri = parsed.ResponseURI
@@ -835,8 +863,11 @@ func (s *Service) presentWithBackend(ctx context.Context, citizen session.Citize
 		WalletId: citizen.WalletID, RequestUri: uri,
 		CredentialIds: chosen, DisclosedClaims: disclosed,
 	}))
+	if cerr := new(connect.Error); errors.As(err, &cerr) && cerr.Code() == connect.CodeFailedPrecondition {
+		return nil, nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(cerr.Message()))
+	}
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable,
+		return nil, nil, connect.NewError(connect.CodeUnavailable,
 			errors.New("the verifier did not take the credential, try again later"))
 	}
 	message := "The verifier did not accept the credential."
@@ -847,7 +878,7 @@ func (s *Service) presentWithBackend(ctx context.Context, citizen session.Citize
 		Accepted:    resp.Msg.GetAccepted(),
 		RedirectUri: resp.Msg.GetRedirectUri(),
 		Message:     message,
-	}, nil
+	}, resp.Msg.GetSharedClaims(), nil
 }
 
 // presentDirect builds the vp_token from a credential the citizen

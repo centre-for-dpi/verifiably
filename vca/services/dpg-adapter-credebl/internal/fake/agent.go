@@ -68,6 +68,11 @@ const (
 	Oid4vpAccepted Answer = "doc/agent-oid4vp-request-accepted.json"
 	// Oid4vpRefused is an OID4VP answer the verifier refused.
 	Oid4vpRefused Answer = "doc/agent-oid4vp-request-refused.json"
+	// Oid4vpResolved is an OID4VP request with one claim.
+	Oid4vpResolved Answer = "doc/agent-oid4vp-request-resolved.json"
+	// Oid4vpResolvedClaimSets is an OID4VP request whose claim sets make
+	// one claim optional. The agent discloses both claims.
+	Oid4vpResolvedClaimSets Answer = "doc/agent-oid4vp-request-resolved-claim-sets.json"
 )
 
 // SdJwtRecord is the stored SD-JWT VC of the agent answers.
@@ -110,6 +115,8 @@ type Agent struct {
 	credentialEnd, proofEnd Answer
 	// offer and vpEnd are the OID4VCI offer and the OID4VP answer.
 	offer, vpEnd Answer
+	// resolved is the OID4VP request the agent reads.
+	resolved Answer
 	// inbox reports that an offer and a request wait over a connection.
 	inbox bool
 	// calls records the method and path of every call, in order.
@@ -122,7 +129,7 @@ type Agent struct {
 
 // NewAgent starts a fake agent.
 func NewAgent(dir string) *Agent {
-	a := &Agent{dir: dir, credentialEnd: OfferDone, proofEnd: HolderProofDone, offer: OfferPreAuthorized, vpEnd: Oid4vpAccepted,
+	a := &Agent{dir: dir, credentialEnd: OfferDone, proofEnd: HolderProofDone, offer: OfferPreAuthorized, vpEnd: Oid4vpAccepted, resolved: Oid4vpResolved,
 		bodies: map[string][]byte{}, status: map[string][]int{}}
 	a.Server = httptest.NewServer(http.HandlerFunc(a.serve))
 	return a
@@ -157,6 +164,13 @@ func (a *Agent) SetOid4vc(offer, vpEnd Answer) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.offer, a.vpEnd = offer, vpEnd
+}
+
+// SetResolved selects the OID4VP request the agent reads.
+func (a *Agent) SetResolved(resolved Answer) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.resolved = resolved
 }
 
 // SetInbox makes an offer and a proof request wait over a connection.
@@ -372,7 +386,7 @@ func (a *Agent) serveOid4vc(w http.ResponseWriter, key string) bool {
 	case "GET /openid4vc/holder/mdoc-vcs":
 		a.send(w, "doc/agent-mdoc-vcs.json")
 	case "POST /openid4vc/holder/resolve-proof-request":
-		a.send(w, "doc/agent-oid4vp-request-resolved.json")
+		a.send(w, string(a.resolved))
 	case "POST /openid4vc/holder/accept-proof-request":
 		a.send(w, string(a.vpEnd))
 	default:

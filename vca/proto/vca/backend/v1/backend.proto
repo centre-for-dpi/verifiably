@@ -515,6 +515,11 @@ enum Feature {
   // The wallet binds new credentials to a default DID that the holder
   // picks with SetDefaultDid.
   FEATURE_WALLET_DEFAULT_DID = 28;
+  // The wallet of the stack answers an OID4VP request with every claim
+  // that the query of the verifier names. The holder cannot leave out a
+  // claim, so the consent screen marks each claim as required. Present
+  // refuses a request whose disclosed_claims leave out a claim.
+  FEATURE_WALLET_WHOLE_QUERY = 29;
 }
 
 // GetCapabilitiesRequest has no fields.

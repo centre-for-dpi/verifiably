@@ -129,18 +129,24 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	didcomm := func(ctx context.Context) bool {
 		return pages != nil && pages.Has(ctx, backendv1.Feature_FEATURE_WALLET_DIDCOMM)
 	}
+	// The stack wallet shares every claim of a query, so the consent
+	// screen offers no optional claim (FEATURE_WALLET_WHOLE_QUERY).
+	whole := func(ctx context.Context) bool {
+		return pages != nil && pages.Has(ctx, backendv1.Feature_FEATURE_WALLET_WHOLE_QUERY)
+	}
 	svc, err := service.New(service.Options{
-		Holder:    holder,
-		Hybrid:    hybrid,
-		Didcomm:   didcomm,
-		Catalogue: catalogue,
-		Fallback:  ports.Cached(crawl, cfg.CrawlTTL, deps.Now),
-		Methods:   crawl.Methods,
-		Endpoints: crawl.Endpoints,
-		Servers:   crawl.Server,
-		ClientID:  cfg.ClientID,
-		Eligible:  eligible,
-		Salt:      cfg.EligibilitySalt,
+		Holder:     holder,
+		Hybrid:     hybrid,
+		Didcomm:    didcomm,
+		WholeQuery: whole,
+		Catalogue:  catalogue,
+		Fallback:   ports.Cached(crawl, cfg.CrawlTTL, deps.Now),
+		Methods:    crawl.Methods,
+		Endpoints:  crawl.Endpoints,
+		Servers:    crawl.Server,
+		ClientID:   cfg.ClientID,
+		Eligible:   eligible,
+		Salt:       cfg.EligibilitySalt,
 		Cards: cards.New(cards.Options{
 			Trust: trustLookup, Status: cards.Fetcher(fetch),
 			Display: ports.DisplayOf(catalogue), Now: deps.Now,

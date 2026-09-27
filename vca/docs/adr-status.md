@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-062, one row per decision.
+ADR-063, one row per decision.
 
 The status values are:
 
@@ -676,12 +676,20 @@ A row that is not `Done` carries a note.
 | ADR-062 | 7 The holder role with the agent, and setup | Done | `vca/services/dpg-adapter-credebl/internal/service/service.go`, `vca/internal/cli/credebl.go` | `TestCapabilitiesListHolderRole` and `TestCredeblHolderPairReachesTheAgent` pin it. |
 | ADR-062 | 8 OID4VCI claims and OID4VP answers through the same wallet | Done | `vca/services/dpg-adapter-credebl/internal/service/holder_oid4vc.go` | `TestAcceptOid4vciOfferThroughTheAgent` and `TestPresentOid4vpThroughTheAgent` pin it. |
 
+## ADR-063: The consent of a stack wallet that picks the claims itself
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-063 | 1 The whole query feature, the consent check and the shared claims | Done | `vca/services/dpg-adapter-credebl/internal/service/holder_oid4vc.go`, `vca/services/wallet-portal/internal/service/service.go` | `TestPresentOid4vpRefusesAnUntickedClaim`, `TestResolvedRequestDisclosures`, `TestConsentMarksEveryClaimWhenTheStackSharesTheWholeQuery` and `TestHistoryNamesWhatTheStackShared` pin it. |
+| ADR-063 | 2 A request by value stays with the browser store | Not started | `vca/services/wallet-portal/internal/service/service.go` | The portal still hands the response address to the stack wallet. |
+| ADR-063 | 3 The two fetches of a request URI | Not started | `vca/docs/dpg-adapter-credebl.md` | The adapter document does not name the second fetch yet. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 295 |
+| Done | 296 |
 | Partial | 25 |
 | Deferred | 3 |
-| Not started | 26 |
-| Total | 349 |
+| Not started | 28 |
+| Total | 352 |

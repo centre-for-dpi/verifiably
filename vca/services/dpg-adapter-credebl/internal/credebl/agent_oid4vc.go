@@ -6,8 +6,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/dcql"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/dpgclient"
 )
 
@@ -158,6 +160,11 @@ func (a *Agent) DeleteHeld(ctx context.Context, tenant, kind, id string) error {
 
 // ResolvedRequest is what the agent reads in an OID4VP request.
 type ResolvedRequest struct {
+	// Payload is the authorization request of the verifier.
+	Payload struct {
+		// Query is the DCQL query of the request.
+		Query dcql.Query `json:"dcql_query"`
+	} `json:"authorizationRequestPayload"`
 	// Verifier names the verifier.
 	Verifier struct {
 		// ClientID is the effective client id of the verifier.
@@ -168,22 +175,45 @@ type ResolvedRequest struct {
 	Dcql *struct {
 		// QueryResult is the match of each credential query.
 		QueryResult struct {
+			// Credentials are the credential queries the agent ran.
+			Credentials []dcql.CredentialQuery `json:"credentials"`
 			// Matches are the matches by credential query id.
-			Matches map[string]struct {
-				// Success reports a query the tenant can answer.
-				Success bool `json:"success"`
-				// Valid are the credentials that answer the query, in
-				// the order the agent picks from.
-				Valid []struct {
-					// Record is the stored credential.
-					Record struct {
-						// ID is the record id.
-						ID string `json:"id"`
-					} `json:"record"`
-				} `json:"valid_credentials"`
-			} `json:"credential_matches"`
+			Matches map[string]dcqlMatch `json:"credential_matches"`
 		} `json:"queryResult"`
 	} `json:"dcql"`
+}
+
+// dcqlMatch is the match of one credential query.
+type dcqlMatch struct {
+	// Success reports a query the tenant can answer.
+	Success bool `json:"success"`
+	// Valid are the credentials that answer the query, in the order the
+	// agent picks from.
+	Valid []dcqlValid `json:"valid_credentials"`
+}
+
+// dcqlValid is one credential that answers a query.
+type dcqlValid struct {
+	// Record is the stored credential.
+	Record struct {
+		// ID is the record id.
+		ID string `json:"id"`
+	} `json:"record"`
+	// Claims is the claims result of the DCQL library.
+	Claims struct {
+		// Sets are the claim sets the credential satisfies, in the order
+		// of preference of the query.
+		Sets []struct {
+			// Index is the claim set of the query. Absent for a query
+			// with no claim set.
+			Index *int `json:"claim_set_index"`
+			// Claims are the indexes of the claims of the query that the
+			// set holds.
+			Claims []int `json:"valid_claim_indexes"`
+			// Output is what the credential discloses for the set.
+			Output map[string]json.RawMessage `json:"output"`
+		} `json:"valid_claim_sets"`
+	} `json:"claims"`
 }
 
 // Picks returns the record the agent answers each DCQL query with: the
@@ -198,6 +228,85 @@ func (r ResolvedRequest) Picks() map[string]string {
 			out[id] = m.Valid[0].Record.ID
 		}
 	}
+	return out
+}
+
+// Disclosure is what the agent sends for one credential query.
+type Disclosure struct {
+	// Query is the id of the credential query.
+	Query string
+	// Claims are the dotted claim paths the agent discloses. With Whole
+	// they are the top level claims of the credential.
+	Claims []string
+	// Whole reports a query that names no claim, so the agent sends the
+	// whole credential.
+	Whole bool
+}
+
+// Disclosures returns what the agent sends for each query it answers,
+// in query id order. The agent answers with the first valid credential
+// and discloses the first valid claim set of it (selectCredentialsForRequest
+// of Credo), so a claim that only a later claim set leaves out still
+// travels.
+func (r ResolvedRequest) Disclosures() []Disclosure {
+	if r.Dcql == nil {
+		return nil
+	}
+	var out []Disclosure
+	for _, id := range sortedIDs(r.Dcql.QueryResult.Matches) {
+		m := r.Dcql.QueryResult.Matches[id]
+		if !m.Success || len(m.Valid) == 0 {
+			continue
+		}
+		q, ok := r.Payload.Query.Find(id)
+		if !ok {
+			q, _ = dcql.Query{Credentials: r.Dcql.QueryResult.Credentials}.Find(id)
+		}
+		d := disclosureOf(q, m.Valid[0])
+		d.Query = id
+		out = append(out, d)
+	}
+	return out
+}
+
+// disclosureOf returns what the agent sends of one valid credential.
+func disclosureOf(q dcql.CredentialQuery, v dcqlValid) Disclosure {
+	d := Disclosure{}
+	if len(q.Claims) == 0 {
+		d.Whole = true
+		if len(v.Claims.Sets) > 0 {
+			d.Claims = sortedIDs(v.Claims.Sets[0].Output)
+		}
+		return d
+	}
+	if len(v.Claims.Sets) > 0 {
+		set := v.Claims.Sets[0]
+		for _, i := range set.Claims {
+			if i >= 0 && i < len(q.Claims) {
+				d.Claims = append(d.Claims, q.Claims[i].Path.String())
+			}
+		}
+		if len(d.Claims) == 0 && set.Index != nil && *set.Index >= 0 && *set.Index < len(q.ClaimSets) {
+			for _, c := range q.Claims {
+				if slices.Contains(q.ClaimSets[*set.Index], c.ID) {
+					d.Claims = append(d.Claims, c.Path.String())
+				}
+			}
+		}
+	}
+	if len(d.Claims) == 0 {
+		d.Claims = q.ClaimPaths()
+	}
+	return d
+}
+
+// sortedIDs returns the keys of a map in order.
+func sortedIDs[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	slices.Sort(out)
 	return out
 }
 

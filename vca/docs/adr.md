@@ -42,3 +42,4 @@ each decision of each record.
 - [ADR-060: The CSV bulk import of a stack that mails each row](adr/ADR-060-stack-bulk-import.md)
 - [ADR-061: DIDComm proof requests and the AnonCreds proof request builder](adr/ADR-061-didcomm-proof-requests.md)
 - [ADR-062: The DIDComm holder wallet of a CREDEBL stack](adr/ADR-062-didcomm-holder-wallet.md)
+- [ADR-063: The consent of a stack wallet that picks the claims itself](adr/ADR-063-stack-wallet-consent.md)
