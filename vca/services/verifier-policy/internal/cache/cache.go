@@ -178,6 +178,9 @@ type Options struct {
 	Now func() time.Time
 	// Log receives the failed reads. Nil means slog.Default.
 	Log *slog.Logger
+	// Refreshed takes each status list that a sync read and checked, so
+	// the online copy of a check follows the sync. Nil hands nothing on.
+	Refreshed func(url string, body []byte)
 }
 
 // JWKSPath is the path of the key set of the trust registry.

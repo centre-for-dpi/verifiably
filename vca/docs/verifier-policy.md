@@ -79,6 +79,9 @@ Any other issuer gives an `ERROR`, because the service cannot get a key.
 The `status` check reads the pointer of a credential: a `credentialStatus`
 object, a `status.status_list` claim, or the flat `statusUri` claims. It
 then fetches the list through the cached fetcher and reads the entry.
+The fetcher keeps a document for `VCA_VERIFIER_POLICY_CACHE_TTL`. A
+Status List Token names its own `ttl` in seconds. The fetcher keeps such
+a token for the shorter of the two times.
 
 A Bitstring Status List credential decodes with
 `core/statuslist/bitstring`. A Status List Token decodes with
@@ -143,6 +146,9 @@ A schedule reads each kind on its own interval: the trust list every
 6 hours, the registry keys every 24 hours, and the status lists every
 hour. The schedule looks for a due kind every
 `VCA_VERIFIER_POLICY_CACHE_TICK`. `SyncCache` reads a kind at once.
+A sync hands each status list it read and checked to the cached
+fetcher. So after Sync now, the next check reads the fresh list, and a
+revocation shows at once.
 
 Each check asks the network first. When a source does not answer and
 the policy allows checks with no network, the check reads the copy.

@@ -358,7 +358,13 @@ func (c *Cache) syncStatus(ctx context.Context) (int, error) {
 	failed := 0
 	for _, t := range targets {
 		n, err := c.read(ctx, t, func(ctx context.Context) (Source, error) {
-			return c.statusList(ctx, t.Key)
+			s, err := c.statusList(ctx, t.Key)
+			if err == nil && c.opts.Refreshed != nil {
+				// "Sync now" also refreshes the copy that a check
+				// reads online, so a revocation shows at once.
+				c.opts.Refreshed(t.Key, s.Body)
+			}
+			return s, err
 		})
 		failed += n
 		if err != nil {

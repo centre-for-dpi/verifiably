@@ -64,9 +64,6 @@ func newWalk(ctx context.Context, t *testing.T, dpg configv1.Dpg, stack string, 
 	d.set(holder, "VCA_WALLET_PORTAL_REQUEST_HOSTS", "localhost")
 	d.set(verifier, "VCA_DISCOVERY_ALLOW_PLAIN_HTTP", "true")
 	d.set(verifier, "VCA_DISCOVERY_ALLOW_PRIVATE_NETWORK", "true")
-	// The verifier reads each status list fresh, so a revocation shows
-	// at the next check.
-	d.set(verifier, "VCA_VERIFIER_POLICY_CACHE_TTL", "1ms")
 	w := &walk{t: t, ctx: ctx, d: d, stack: stack}
 	w.staff, w.citizen, w.checker, w.operator = newBrowser(ctx, t), newBrowser(ctx, t), newBrowser(ctx, t), newBrowser(ctx, t)
 	for role, claims := range map[commonv1.Role]map[string]any{

@@ -125,7 +125,13 @@ func (c *Cache) put(url string, body []byte) {
 	if _, seen := c.entries[url]; !seen {
 		c.order = append(c.order, url)
 	}
-	c.entries[url] = entry{body: body, expires: c.now().Add(c.ttl)}
+	ttl := c.ttl
+	// A status list token names how long a verifier may keep it. The
+	// shorter of that and the ttl of the cache wins.
+	if listed := listTTL(body); listed > 0 && listed < ttl {
+		ttl = listed
+	}
+	c.entries[url] = entry{body: body, expires: c.now().Add(ttl)}
 	for len(c.order) > c.max {
 		delete(c.entries, c.order[0])
 		c.order = c.order[1:]
@@ -247,4 +253,31 @@ func Trust(client trustv1connect.TrustServiceClient) policy.TrustLookup {
 		}
 		return out, nil
 	}
+}
+
+// Store puts a fresh copy of a document in the cache, as a fetch would.
+// A sync of the trust cache hands each status list it read, so the next
+// check reads that list and not an older copy.
+func (c *Cache) Store(url string, body []byte) { c.put(url, body) }
+
+// listTTL returns the ttl claim of an IETF Token Status List token: how
+// long a verifier may keep the list. It returns zero for any other
+// document, or for a token with no positive ttl.
+func listTTL(body []byte) time.Duration {
+	text := strings.TrimSpace(string(body))
+	if strings.Count(text, ".") != 2 {
+		return 0
+	}
+	payload, err := jose.PeekPayload(text)
+	if err != nil {
+		return 0
+	}
+	if _, ok := payload["status_list"]; !ok {
+		return 0
+	}
+	seconds, ok := payload["ttl"].(float64)
+	if !ok || seconds <= 0 {
+		return 0
+	}
+	return time.Duration(seconds * float64(time.Second))
 }

@@ -77,7 +77,8 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	setStore := sets.New(kv, nil)
 
 	raw := ports.HTTPFetcher(deps.HTTPClient, cfg.FetchMaxBytes)
-	fetch := ports.NewCache(cfg.CacheTTL, cfg.CacheEntries, deps.Now).Wrap(raw)
+	online := ports.NewCache(cfg.CacheTTL, cfg.CacheEntries, deps.Now)
+	fetch := online.Wrap(raw)
 	resolver := did.NewResolver(did.Fetcher(fetch), ports.NewDIDCache(cfg.CacheTTL, deps.Now))
 
 	trust := deps.Trust
@@ -89,6 +90,9 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	trustCache, err := cache.New(cache.Options{
 		KV: kv, TrustURL: cfg.TrustURL, Snapshot: snapshot(trust), Fetch: raw,
 		Defaults: cfg.CachePolicy(), Now: deps.Now, Log: deps.Log,
+		// A sync hands each fresh status list to the document cache, so
+		// the next check reads it (ADR-041).
+		Refreshed: online.Store,
 	})
 	if err != nil {
 		return nil, err

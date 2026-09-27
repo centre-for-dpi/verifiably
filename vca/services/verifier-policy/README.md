@@ -34,7 +34,7 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_VERIFIER_POLICY_TRUST_URL` | The base URL of the trust registry service. | empty |
 | `VCA_VERIFIER_POLICY_TRUST_TIMEOUT` | The time limit of one trust registry call. | `5s` |
 | `VCA_VERIFIER_POLICY_FETCH_TIMEOUT` | The time limit of one status list, DID, or schema fetch. | `5s` |
-| `VCA_VERIFIER_POLICY_CACHE_TTL` | How long a fetched document stays in the cache. | `5m` |
+| `VCA_VERIFIER_POLICY_CACHE_TTL` | How long a fetched document stays in the cache. A status list token with a shorter `ttl` stays for its `ttl`. | `5m` |
 | `VCA_VERIFIER_POLICY_CACHE_ENTRIES` | The maximum number of cached documents. | `256` |
 | `VCA_VERIFIER_POLICY_FETCH_MAX_BYTES` | The maximum size of one fetched document. | `4194304` |
 | `VCA_VERIFIER_POLICY_STATUS_FAIL_MODE` | `open` or `closed` for an unreachable status list. | `closed` |
