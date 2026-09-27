@@ -76,6 +76,9 @@ const (
 	ProofAbandoned Answer = "doc/proof-record-abandoned.json"
 	// VerifiedIndy is the revealed data of an AnonCreds proof.
 	VerifiedIndy Answer = "doc/verified-proof-indy.json"
+	// VerifiedIndyTwoNames is the revealed data of an AnonCreds proof
+	// with two revealed attributes, one referent each.
+	VerifiedIndyTwoNames Answer = "doc/verified-proof-indy-two-names.json"
 	// VerifiedPE is the revealed data of a DIF PE proof.
 	VerifiedPE Answer = "doc/verified-proof-pe.json"
 	// Proofs is the list of the proof requests of the organisation.

@@ -34,9 +34,17 @@ func TestProofHelpers(t *testing.T) {
 	if err != nil || req.Name == "" || req.Version != "1.0" || req.Predicates == nil {
 		t.Fatalf("request = %+v, %v", req, err)
 	}
+	// Finding 3.1 of the CREDEBL review: the platform reads one name per
+	// referent, so a group becomes one referent per name.
+	if len(req.Attributes) != 2 || req.Attributes["a_1"].Name != "x" || req.Attributes["a_2"].Name != "y" || len(req.Attributes["a_1"].Names) != 0 {
+		t.Fatalf("referents = %+v", req.Attributes)
+	}
 	lines := req.attributes()
-	if len(lines) != 1 || lines[0].Name != "" || len(lines[0].Names) != 2 || lines[0].SchemaID != "" {
+	if len(lines) != 2 || lines[0].Name != "x" || lines[1].Name != "y" || lines[0].SchemaID != "" {
 		t.Errorf("lines = %+v", lines)
+	}
+	if _, twice := parseAnonCreds(`{"requested_attributes":{"a":{"names":["x"]},"a_1":{"name":"y"}}}`); twice == nil {
+		t.Error("a referent named twice passed")
 	}
 	if _, perr := proofRequestOf(&backendv1.CreateRequestRequest{AnoncredsRequest: `{"requested_predicates":{"p":{"name":"a","p_type":">","p_value":1}}}`}, false); perr != nil {
 		t.Errorf("a request with a predicate alone: %v", perr)

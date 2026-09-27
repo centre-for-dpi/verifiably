@@ -46,7 +46,8 @@ type anonCredsRestriction struct {
 	CredDefID string `json:"cred_def_id,omitempty"`
 }
 
-// anonCredsAttribute is one requested attribute group.
+// anonCredsAttribute is one requested attribute. A request may name a
+// group, which parseAnonCreds turns into one referent per name.
 type anonCredsAttribute struct {
 	Name         string                 `json:"name,omitempty"`
 	Names        []string               `json:"names,omitempty"`
@@ -84,6 +85,11 @@ func parseAnonCreds(raw string) (anonCredsRequest, error) {
 			return req, fmt.Errorf("the requested attribute %q names no attribute", ref)
 		}
 	}
+	split, err := oneNameEach(req.Attributes)
+	if err != nil {
+		return req, err
+	}
+	req.Attributes = split
 	for ref, p := range req.Predicates {
 		if strings.TrimSpace(p.Name) == "" || !predicateOps[p.Type] {
 			return req, fmt.Errorf("the predicate %q needs an attribute and one of >=, >, <=, <", ref)
@@ -102,6 +108,38 @@ func parseAnonCreds(raw string) (anonCredsRequest, error) {
 		req.Predicates = map[string]anonCredsPredicate{}
 	}
 	return req, nil
+}
+
+// oneNameEach turns each group of names into one referent per name,
+// with the restrictions of the group. The platform reads the revealed
+// values by the name of each referent and never reads
+// revealed_attr_groups (verification.service.ts of the platform), so a
+// group would come back with no value.
+func oneNameEach(in map[string]anonCredsAttribute) (map[string]anonCredsAttribute, error) {
+	out := map[string]anonCredsAttribute{}
+	put := func(ref string, a anonCredsAttribute) error {
+		if _, taken := out[ref]; taken {
+			return fmt.Errorf("the request names the referent %q twice", ref)
+		}
+		out[ref] = a
+		return nil
+	}
+	for _, ref := range sortedKeys(in) {
+		a := in[ref]
+		if len(a.Names) == 0 {
+			if err := put(ref, a); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		for i, name := range a.Names {
+			item := anonCredsAttribute{Name: name, Restrictions: a.Restrictions}
+			if err := put(ref+"_"+strconv.Itoa(i+1), item); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return out, nil
 }
 
 // sortedKeys returns the keys of a map in order, so a body is the same
@@ -131,11 +169,7 @@ func (r anonCredsRequest) attributes() []credebl.ProofAttribute {
 	for _, ref := range sortedKeys(r.Attributes) {
 		a := r.Attributes[ref]
 		rs := firstRestriction(a.Restrictions)
-		line := credebl.ProofAttribute{Name: a.Name, CredDefID: rs.CredDefID, SchemaID: rs.SchemaID}
-		if line.Name == "" {
-			line.Names = a.Names
-		}
-		out = append(out, line)
+		out = append(out, credebl.ProofAttribute{Name: a.Name, CredDefID: rs.CredDefID, SchemaID: rs.SchemaID})
 	}
 	for _, ref := range sortedKeys(r.Predicates) {
 		p := r.Predicates[ref]

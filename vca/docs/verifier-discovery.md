@@ -184,8 +184,11 @@ trust rule asks the policy service to check the issuer against the
 trust list. The stack checks the proof itself.
 
 The preview shows the proof request of the AnonCreds specification that
-the wallet receives. It names each attribute group `attr1` and on, and
-each predicate `pred1` and on. The package `core/anoncreds` checks the
+the wallet receives. It names each revealed attribute `attr1` and on,
+and each predicate `pred1` and on. Each attribute is its own referent
+with the restriction of the schema. The CREDEBL platform reads the
+revealed values one name per referent, so a group of names would come
+back empty. The package `core/anoncreds` checks the
 request. An attribute appears once, because an agent refuses a name in
 both lists. `?from=<id>` opens a saved request, and a save stores its
 next version. The page works without JavaScript.

@@ -1,0 +1,16 @@
+{
+  "statusCode": 200,
+  "message": "Verified proof details fetched successfully.",
+  "data": [
+    {
+      "fullName": "[holder]",
+      "credDefId": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS/anoncreds/v0/CLAIM_DEF/2107/default",
+      "schemaId": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS/anoncreds/v0/SCHEMA/Farmer/1.0"
+    },
+    {
+      "district": "[district]",
+      "credDefId": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS/anoncreds/v0/CLAIM_DEF/2107/default",
+      "schemaId": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS/anoncreds/v0/SCHEMA/Farmer/1.0"
+    }
+  ]
+}

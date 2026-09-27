@@ -285,7 +285,10 @@ the verifier up by its public name.
 connection.** An AnonCreds request travels in the Indy format of the
 platform. It names the attributes to reveal and the predicates to prove. Over
 a connection the platform takes a list of attributes instead, with the
-first restriction of each. A DIF PE request needs the schema of each
+first restriction of each. The platform reads the revealed values one
+name per referent and never reads a revealed group. So the adapter turns
+a group of `names` into one referent per name, with the restrictions of
+the group. A DIF PE request needs the schema of each
 input descriptor. The adapter reads it from the filter of the descriptor
 on `$.type`. The platform keeps only the path of each field. The agent
 verifies each presentation as it arrives. A presentation that waits gets

@@ -56,7 +56,9 @@ func (r Restriction) list() []Restriction {
 	return []Restriction{r}
 }
 
-// Attribute is one group of attributes that one credential reveals.
+// Attribute is one group of attributes that share a restriction. The
+// proof request asks for each name as its own referent, because a
+// platform reads one name per referent and no revealed group.
 type Attribute struct {
 	// Names are the attribute names.
 	Names []string `json:"names"`
@@ -167,8 +169,7 @@ func (r Request) Check() error {
 
 // specAttribute is one requested attribute of the specification.
 type specAttribute struct {
-	Name         string        `json:"name,omitempty"`
-	Names        []string      `json:"names,omitempty"`
+	Name         string        `json:"name"`
 	Restrictions []Restriction `json:"restrictions,omitempty"`
 }
 
@@ -182,17 +183,17 @@ type specPredicate struct {
 
 // JSON returns the proof request of the AnonCreds specification: the
 // name, the version, requested_attributes with the referents attr1 and
-// on, and requested_predicates with the referents pred1 and on.
+// on, and requested_predicates with the referents pred1 and on. Each
+// name of a group is one referent with the restriction of the group.
+// The CREDEBL platform reads the revealed values by the name of each
+// referent and never reads a revealed group, so a group of names would
+// come back empty.
 func (r Request) JSON() []byte {
 	attributes := map[string]specAttribute{}
-	for i, a := range r.Attributes {
-		item := specAttribute{Restrictions: a.Restriction.list()}
-		if len(a.Names) == 1 {
-			item.Name = a.Names[0]
-		} else {
-			item.Names = a.Names
+	for _, a := range r.Attributes {
+		for _, name := range a.Names {
+			attributes["attr"+strconv.Itoa(len(attributes)+1)] = specAttribute{Name: name, Restrictions: a.Restriction.list()}
 		}
-		attributes["attr"+strconv.Itoa(i+1)] = item
 	}
 	predicates := map[string]specPredicate{}
 	for i, p := range r.Predicates {

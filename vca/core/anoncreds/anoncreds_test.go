@@ -29,9 +29,10 @@ func farmerCheck() anoncreds.Request {
 }
 
 // TestJSONIsTheProofRequestOfTheSpecification: the request names each
-// attribute group attr1 and on, and each predicate pred1 and on. A group
-// of one name uses name, a larger group uses names, and an empty
-// restriction leaves the restrictions out.
+// attribute attr1 and on, and each predicate pred1 and on. Each name of
+// a group is one referent with the restriction of the group, because a
+// platform reads one name per referent (finding 3.1 of the CREDEBL
+// review). An empty restriction leaves the restrictions out.
 func TestJSONIsTheProofRequestOfTheSpecification(t *testing.T) {
 	r := farmerCheck().Normal()
 	r.Attributes = append(r.Attributes, anoncreds.Attribute{Names: []string{"village", "district"}})
@@ -53,7 +54,7 @@ func TestJSONIsTheProofRequestOfTheSpecification(t *testing.T) {
 	if err := json.Unmarshal(r.JSON(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Name != "Farmer check" || got.Version != "1.0" || len(got.Attributes) != 2 || len(got.Predicates) != 1 {
+	if got.Name != "Farmer check" || got.Version != "1.0" || len(got.Attributes) != 3 || len(got.Predicates) != 1 {
 		t.Fatalf("request = %+v", got)
 	}
 	a1 := got.Attributes["attr1"]
@@ -61,8 +62,11 @@ func TestJSONIsTheProofRequestOfTheSpecification(t *testing.T) {
 		a1.Restrictions[0]["schema_id"] != schemaID || a1.Restrictions[0]["cred_def_id"] != credDef {
 		t.Errorf("attr1 = %+v", a1)
 	}
-	if a2 := got.Attributes["attr2"]; a2.Name != "" || len(a2.Names) != 2 || a2.Restrictions != nil {
+	if a2 := got.Attributes["attr2"]; a2.Name != "village" || len(a2.Names) != 0 || a2.Restrictions != nil {
 		t.Errorf("attr2 = %+v", a2)
+	}
+	if a3 := got.Attributes["attr3"]; a3.Name != "district" || len(a3.Names) != 0 || a3.Restrictions != nil {
+		t.Errorf("attr3 = %+v", a3)
 	}
 	p1 := got.Predicates["pred1"]
 	if p1.Name != "acres" || p1.Type != ">=" || p1.Value != 10 || len(p1.Restrictions) != 1 || p1.Restrictions[0]["cred_def_id"] != "" {

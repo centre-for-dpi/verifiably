@@ -112,6 +112,59 @@ func TestOobProofRequest(t *testing.T) {
 	}
 }
 
+// TestProofRequestSendsOneReferentPerName is finding 3.1 of the CREDEBL
+// review: the platform reads the revealed values by the name of each
+// referent and never reads revealed_attr_groups. A group of two names
+// goes out as two referents, and the result holds both values.
+func TestProofRequestSendsOneReferentPerName(t *testing.T) {
+	svc, f := newService(t, nil)
+	group := `{"name":"Farmer","requested_attributes":{"attr1":{"names":["fullName","district"],` +
+		`"restrictions":[{"schema_id":"` + proofSchemaID + `","cred_def_id":"` + proofCredDef + `"}]}}}`
+	if _, err := svc.CreateRequest(context.Background(), connect.NewRequest(&backendv1.CreateRequestRequest{AnoncredsRequest: group})); err != nil {
+		t.Fatalf("CreateRequest: %v", err)
+	}
+	var body struct {
+		Formats struct {
+			Indy struct {
+				Attributes map[string]map[string]json.RawMessage `json:"requested_attributes"`
+			} `json:"indy"`
+		} `json:"proofFormats"`
+	}
+	if err := f.RequestJSON("/v1/orgs/org-1/proofs/oob", &body); err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, a := range body.Formats.Indy.Attributes {
+		if _, grouped := a["names"]; grouped {
+			t.Errorf("a referent carries names: %s", a["names"])
+		}
+		var name string
+		if err := json.Unmarshal(a["name"], &name); err != nil {
+			t.Fatal(err)
+		}
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	if strings.Join(names, ",") != "district,fullName" {
+		t.Fatalf("referents = %v", body.Formats.Indy.Attributes)
+	}
+	f.SetProof(fake.ProofDone)
+	f.SetVerified(fake.VerifiedIndyTwoNames)
+	m := getResult(t, svc, oobProofID)
+	if m.GetState() != backendv1.GetResultResponse_STATE_ACCEPTED || len(m.GetPresented()) != 1 {
+		t.Fatalf("result = %+v", m)
+	}
+	var view struct {
+		Subject map[string]string `json:"credentialSubject"`
+	}
+	if err := json.Unmarshal(m.GetPresented()[0].GetPayload(), &view); err != nil {
+		t.Fatal(err)
+	}
+	if view.Subject["fullName"] != "[holder]" || view.Subject["district"] != "[district]" {
+		t.Errorf("view = %+v", view)
+	}
+}
+
 // TestPeProofRequestOverDidcomm: a DIF PE definition over DIDComm goes
 // out as a request of the type presentationExchange. The platform needs
 // the schema of each input descriptor, which the adapter reads from the

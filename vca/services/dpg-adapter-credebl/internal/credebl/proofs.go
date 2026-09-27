@@ -59,10 +59,10 @@ const autoAccept = "always"
 // over a connection (ProofRequestAttribute of request-proof.dto.ts). A
 // line with a condition and a value is a predicate.
 type ProofAttribute struct {
-	// Name is one attribute to reveal or to compare.
+	// Name is one attribute to reveal or to compare. The adapter sends
+	// one name per line, because the platform reads the revealed values
+	// by the name of each referent.
 	Name string `json:"attributeName,omitempty"`
-	// Names asks one credential for every name.
-	Names []string `json:"attributeNames,omitempty"`
 	// Condition is the operator of a predicate, such as >=.
 	Condition string `json:"condition,omitempty"`
 	// Value is the number a predicate compares with.

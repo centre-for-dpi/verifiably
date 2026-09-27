@@ -1973,11 +1973,12 @@ func (x *AnonCredsRequest_Restriction) GetCredDefId() string {
 	return ""
 }
 
-// Attribute is one group of attributes that one credential reveals.
+// Attribute is one group of attributes that share a restriction.
 type AnonCredsRequest_Attribute struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The attribute names. More than one name asks one credential for
-	// every name.
+	// The attribute names. The proof request asks for each name as its
+	// own referent with the restriction of the group. A stack reads one
+	// name per referent.
 	Names []string `protobuf:"bytes,1,rep,name=names,proto3" json:"names,omitempty"`
 	// The credential that answers.
 	Restriction   *AnonCredsRequest_Restriction `protobuf:"bytes,2,opt,name=restriction,proto3" json:"restriction,omitempty"`
