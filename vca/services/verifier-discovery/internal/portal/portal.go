@@ -264,10 +264,20 @@ func (b *blocks) add(name string, data any) template.HTML {
 // blocks returns a renderer over the kit of the portal.
 func (p *Portal) blocks() *blocks { return &blocks{kit: p.opts.Kit} }
 
-// form wraps content in a form element. A post form carries the hidden
-// field that binds it to the session of ctx.
+// form wraps content in a form element in the one row layout of the
+// filters, which suits a form of one button. A post form carries the
+// hidden field that binds it to the session of ctx.
 func form(ctx context.Context, action, method string, content ...template.HTML) template.HTML {
-	open := `<form class="filters" action="` + template.HTMLEscapeString(action) + `" method="` + template.HTMLEscapeString(method) + `">`
+	return formWith(ctx, "filters", action, method, content...)
+}
+
+// formWith wraps content in a form element of a layout class. An empty
+// class stacks the fields, as a form with several fields needs.
+func formWith(ctx context.Context, class, action, method string, content ...template.HTML) template.HTML {
+	open := `<form action="` + template.HTMLEscapeString(action) + `" method="` + template.HTMLEscapeString(method) + `">`
+	if class != "" {
+		open = `<form class="` + template.HTMLEscapeString(class) + `" action="` + template.HTMLEscapeString(action) + `" method="` + template.HTMLEscapeString(method) + `">`
+	}
 	parts := []template.HTML{template.HTML(open)} //nolint:gosec // both parts are escaped
 	if method == "post" {
 		parts = append(parts, staffsession.HiddenField(ctx))
@@ -455,7 +465,9 @@ func (p *Portal) selectionForm(ctx context.Context, b *blocks, issuer, typeName,
 		b.add("field", components.Field{ID: "purpose", Label: "Purpose", Hint: "The citizen reads this sentence before the wallet shares the claims."}),
 		b.add("field", components.Field{ID: "format", Label: "Format", Type: "select", Options: options}),
 	}
-	for i, f := range fields {
+	claims := components.Choice{ID: "claims", Name: "claim", Legend: "Claims to ask for", Multiple: true,
+		Hint: "The request asks for each claim you tick."}
+	for _, f := range fields {
 		label := f.GetTitle()
 		if label == "" {
 			label = f.GetPath()
@@ -467,12 +479,13 @@ func (p *Portal) selectionForm(ctx context.Context, b *blocks, issuer, typeName,
 		if f.GetSelectivelyDisclosable() {
 			hint += ", the holder can disclose it alone"
 		}
-		parts = append(parts, b.add("field", components.Field{
-			ID: "claim-" + strconv.Itoa(i), Name: "claim", Label: label, Type: "checkbox", Value: f.GetPath(), Hint: hint,
-		}))
+		claims.Options = append(claims.Options, components.ChoiceOption{Value: f.GetPath(), Title: label, Text: hint, Meta: f.GetPath()})
+	}
+	if len(claims.Options) > 0 {
+		parts = append(parts, b.add("choice", claims))
 	}
 	parts = append(parts, b.add("button", components.Button{Text: "Save template", Type: "submit", Variant: "primary"}))
-	return form(ctx, p.opts.Prefix+"/templates", "post", parts...)
+	return formWith(ctx, "", p.opts.Prefix+"/templates", "post", parts...)
 }
 
 // saveTemplate stores the selection of the fields page.

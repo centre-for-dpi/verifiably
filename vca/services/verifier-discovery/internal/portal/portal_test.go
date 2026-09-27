@@ -170,6 +170,14 @@ func TestFieldsPage(t *testing.T) {
 	if !strings.Contains(body, "Save template") {
 		t.Error("the page carries the save action")
 	}
+	// The template form stacks its fields. The one row layout of the
+	// filters is for the filters of a list only.
+	if strings.Contains(body, `class="filters" action="/portal/templates"`) || !strings.Contains(body, `<form action="/portal/templates" method="post">`) {
+		t.Error("the template form sits in the one row layout of the filters")
+	}
+	if !strings.Contains(body, "<legend") || !strings.Contains(body, "Claims to ask for") {
+		t.Error("the claims are no group of choices")
+	}
 	status, _ = page(t, s, "/portal/fields?credential_issuer=https%3A%2F%2Fmissing.example&type=x")
 	if status != http.StatusNotFound {
 		t.Errorf("a missing type answers %d", status)
