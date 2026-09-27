@@ -205,8 +205,12 @@ func TestUmbrellaChartTurnsRolesOn(t *testing.T) {
 			t.Errorf("%s has no packaged dependency at charts/: %v", s.Name, err)
 		}
 	}
-	var values map[string]map[string]map[string]any
-	readYaml(t, filepath.Join(dir, "values.yaml"), &values)
+	var doc struct {
+		Roles map[string]map[string]any `yaml:"roles"`
+		Dpg   map[string]map[string]any `yaml:"dpg"`
+	}
+	readYaml(t, filepath.Join(dir, "values.yaml"), &doc)
+	values := map[string]map[string]map[string]any{"roles": doc.Roles, "dpg": doc.Dpg}
 	for _, r := range Roles() {
 		name := ShortName(r.String())
 		if _, ok := values["roles"][name]; !ok {

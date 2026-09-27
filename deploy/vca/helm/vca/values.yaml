@@ -27,3 +27,8 @@ dpg:
 global:
   theme:
     file: ""
+  # The base domain of the pairs. Each pair then answers at
+  # https://<role>-<dpg>.<publicDomain>, which the ConfigMap <release>-peers
+  # names in VCA_PEERS (ADR-034). Empty names the home service of each
+  # pair inside the cluster.
+  publicDomain: ""

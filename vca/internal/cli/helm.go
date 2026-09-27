@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
@@ -133,4 +134,65 @@ func ChartFiles(pkg []byte) (map[string]string, error) {
 		}
 		out[hdr.Name] = string(body)
 	}
+}
+
+// UmbrellaPeersFile is the template of the umbrella chart that writes
+// VCA_PEERS.
+const UmbrellaPeersFile = "peers-configmap.yaml"
+
+// UmbrellaPeersTemplate renders the peers template of the umbrella
+// chart (P7-03, ADR-034). It pairs each turned on role with each turned
+// on DPG, in the order of the catalogue, and names every service of the
+// pair at <release>-<service> and its port, as the charts name them.
+// global.publicDomain gives each pair its public address, as a base
+// domain does for compose. Without it the home service stands in. The
+// template uses only functions of the standard template engine, so a
+// test renders it without helm.
+func UmbrellaPeersTemplate() string {
+	var b strings.Builder
+	b.WriteString("{{- /* SPDX-License-Identifier: Apache-2.0 */ -}}\n")
+	b.WriteString("{{- /*\n")
+	b.WriteString("The candidate pairs of the release as VCA_PEERS (ADR-034). Every chart\n")
+	b.WriteString("of a service that draws pages reads this ConfigMap. The vca CLI writes\n")
+	b.WriteString("this file from its catalogue: go test ./internal/cli/ checks it, and\n")
+	b.WriteString("VCA_WRITE_HELM=1 writes it again. Do not edit it by hand.\n")
+	b.WriteString("*/ -}}\n")
+	b.WriteString("{{- $release := .Release.Name }}\n")
+	b.WriteString("{{- $domain := .Values.global.publicDomain }}\n")
+	b.WriteString("{{- $peers := \"\" }}\n")
+	b.WriteString("{{- $sep := \"\" }}\n")
+	for _, r := range Roles() {
+		for _, d := range Dpgs() {
+			p := Pair{Role: r, Dpg: d}
+			services := ServicesFor(p)
+			entries := make([]string, 0, len(services))
+			home := ""
+			for _, s := range services {
+				url := fmt.Sprintf("http://%%[1]s-%s:%d", s.Name, s.ExposedPort)
+				entries = append(entries, s.Name+"="+url)
+				if s.Name == HomeOf(r).Service {
+					home = url
+				}
+			}
+			sort.Strings(entries)
+			public := strings.Replace(PairPublicURL(p, "DOMAIN"), "DOMAIN", "%s", 1)
+			fmt.Fprintf(&b, "{{- if and .Values.roles.%s.enabled .Values.dpg.%s.enabled }}\n", ShortName(r.String()), ShortName(d.String()))
+			fmt.Fprintf(&b, "{{- $public := printf %q $release }}\n", home)
+			fmt.Fprintf(&b, "{{- if $domain }}{{- $public = printf %q $domain }}{{- end }}\n", public)
+			fmt.Fprintf(&b, "{{- $peers = printf \"%%s%%s%%s|%%s|%%s\" $peers $sep %q $public (printf %q $release) }}\n",
+				p.Name(), strings.Join(entries, ","))
+			b.WriteString("{{- $sep = \";\" }}\n")
+			b.WriteString("{{- end }}\n")
+		}
+	}
+	b.WriteString("apiVersion: v1\n")
+	b.WriteString("kind: ConfigMap\n")
+	b.WriteString("metadata:\n")
+	b.WriteString("  name: {{ .Release.Name }}-peers\n")
+	b.WriteString("  labels:\n")
+	b.WriteString("    app.kubernetes.io/instance: {{ .Release.Name }}\n")
+	b.WriteString("    app.kubernetes.io/part-of: vca\n")
+	b.WriteString("data:\n")
+	b.WriteString("  VCA_PEERS: {{ printf \"%q\" $peers }}\n")
+	return b.String()
 }

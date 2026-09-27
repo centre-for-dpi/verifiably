@@ -47,6 +47,11 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "vca.fullname" . }}
+            # The candidate pairs of the release, which the umbrella chart
+            # writes (ADR-034). A chart installed alone runs without them.
+            - configMapRef:
+                name: {{ .Release.Name }}-peers
+                optional: true
             {{- if .Values.existingSecret }}
             - secretRef:
                 name: {{ .Values.existingSecret }}

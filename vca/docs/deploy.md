@@ -1279,6 +1279,24 @@ the file changes:
 helm upgrade vca deploy/vca/helm/vca --set-file global.theme.file=theme.yaml
 ```
 
+The umbrella chart also writes the ConfigMap `<release>-peers` with
+`VCA_PEERS` (ADR-034).
+It pairs each role that is on with each DPG that is on.
+Each pair names its services at `<release>-<service>` and their ports.
+The landing and every chart that draws pages read the ConfigMap.
+A chart installed alone runs without it.
+Set `global.publicDomain` to give each pair its public address,
+`https://<role>-<dpg>.<domain>`:
+
+```sh
+helm upgrade vca deploy/vca/helm/vca --set global.publicDomain=labs.example
+```
+
+The CLI generates `templates/peers-configmap.yaml` from its catalogue.
+`TestUmbrellaWritesPeers` fails when the file differs, and
+`VCA_WRITE_HELM=1 go test ./internal/cli/ -run TestUmbrellaWritesPeers`
+writes it again.
+
 The chart of the Inji adapter lists the claims store in `stackMounts`
 (ADR-051).
 Inji Certify runs outside the charts, so its Postgres must read the
