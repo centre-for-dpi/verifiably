@@ -1,4 +1,5 @@
 {{- /* SPDX-License-Identifier: Apache-2.0 */ -}}
+{{- if include "vca.enabled" . }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -10,3 +11,4 @@ data:
   {{- range $name, $value := .Values.config }}
   {{ $name }}: {{ $value | quote }}
   {{- end }}
+{{- end }}

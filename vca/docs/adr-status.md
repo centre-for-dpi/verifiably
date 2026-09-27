@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-073, one row per decision.
+ADR-074, one row per decision.
 
 The status values are:
 
@@ -109,7 +109,7 @@ A row that is not `Done` carries a note.
 | ADR-008 | 2 Deploy all roles in one run | Done | `vca/internal/cli/deploy.go` | |
 | ADR-008 | 3 DPG stacks in pinned compose files | Done | `deploy/vca/dpg` | |
 | ADR-008 | 4 DPG post-boot steps as Go subcommands | Done | `vca/internal/cli/dpgconfig.go` | |
-| ADR-008 | 5 One Helm chart per service and an umbrella | Done | `deploy/vca/helm` | |
+| ADR-008 | 5 One Helm chart per service and an umbrella | Done | `deploy/vca/helm` | ADR-074 moves the role switches under `global.roles`. |
 | ADR-008 | 6 Dry run, status, and down | Done | `vca/internal/cli/deploy.go` | |
 | ADR-008 | 7 One role stays under 4 GB of memory | Done | `vca/docs/deploy.md` | |
 
@@ -783,12 +783,21 @@ A row that is not `Done` carries a note.
 | ADR-073 | 5 The browser seals a claimed credential | Done | `vca/services/wallet-portal/internal/static/wallet.js`, `vca/services/wallet-portal/internal/portal/browser.go` | `TestTheBrowserStoreClaimsWithTheKeyOfTheBrowser` and both walkthroughs pin it. |
 | ADR-073 | 6 A bound answer needs the key binding | Done | `vca/services/wallet-portal/internal/service/binding.go` | `TestAnswerOfABoundCredentialCarriesTheBrowserKeyBinding`, `TestABoundAnswerNeedsTheBrowserKeyBinding` and both walkthroughs pin it. |
 
+## ADR-074: The role switches of the umbrella chart sit under global
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-074 | 1 The role switches under global | Done | `deploy/vca/helm/vca/values.yaml`, `deploy/vca/helm/vca/templates/peers-configmap.yaml` | `TestUmbrellaChartTurnsRolesOn` and `TestUmbrellaWritesPeers` pin it. |
+| ADR-074 | 2 One condition per service of one role or per adapter | Done | `vca/internal/cli/helm.go`, `deploy/vca/helm/vca/Chart.yaml` | `TestChartConditionHonoursEveryRole` and `TestUmbrellaChartTurnsRolesOn` pin it. |
+| ADR-074 | 3 A service of several roles checks each role | Done | `deploy/vca/helm/dpg-adapter-*` | `TestMultiRoleChartsHonourEveryRole` renders the gate for each role. |
+| ADR-074 | 4 The old switch stops the render | Done | `deploy/vca/helm/vca/templates/roles-moved.yaml` | `TestUmbrellaRefusesTheOldRoleSwitch` pins it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 373 |
+| Done | 377 |
 | Partial | 20 |
 | Deferred | 3 |
 | Not started | 5 |
-| Total | 401 |
+| Total | 405 |

@@ -37,7 +37,7 @@ func renderPeers(t *testing.T, src, release, domain string, roles, dpgs []string
 	var out bytes.Buffer
 	if xerr := tmpl.Execute(&out, map[string]any{
 		"Release": map[string]any{"Name": release},
-		"Values":  map[string]any{"roles": on(roles), "dpg": on(dpgs), "global": map[string]any{"publicDomain": domain}},
+		"Values":  map[string]any{"dpg": on(dpgs), "global": map[string]any{"publicDomain": domain, "roles": on(roles)}},
 	}); xerr != nil {
 		t.Fatalf("render the template: %v", xerr)
 	}

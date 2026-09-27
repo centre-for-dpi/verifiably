@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
@@ -34,9 +35,12 @@ const ChartVersion = "0.1.0"
 func HelmChartDir(root, name string) string { return filepath.Join(root, HelmRoot, name) }
 
 // ChartCondition is the values path that turns a service chart on inside
-// the umbrella chart. A role service follows its role. A DPG adapter
-// follows its DPG (ADR-008 decision 5). A deployment scoped service has
-// no condition: it is always on (ADR-033 decision 2).
+// the umbrella chart. A service of one role follows its role under
+// global.roles (ADR-074). A DPG adapter follows its DPG (ADR-008
+// decision 5). A deployment scoped service has no condition: it is
+// always on (ADR-033 decision 2). A condition of helm takes the first
+// path that exists, so it cannot follow several roles. A service of
+// several roles has no condition, and its templates check each role.
 func ChartCondition(s Service) string {
 	if s.Scope == ScopeDeployment {
 		return ""
@@ -44,7 +48,16 @@ func ChartCondition(s Service) string {
 	if s.Dpg != configv1.Dpg_DPG_UNSPECIFIED {
 		return "dpg." + ShortName(s.Dpg.String()) + ".enabled"
 	}
-	return "roles." + ShortName(s.Roles[0].String()) + ".enabled"
+	if len(s.Roles) != 1 {
+		return ""
+	}
+	return RoleSwitch(s.Roles[0])
+}
+
+// RoleSwitch is the values path of the umbrella chart that turns a role
+// on. It sits under global, so every service chart sees it (ADR-074).
+func RoleSwitch(r commonv1.Role) string {
+	return "global.roles." + ShortName(r.String()) + ".enabled"
 }
 
 // HelmChartNames lists every chart directory, the service charts first
@@ -176,7 +189,7 @@ func UmbrellaPeersTemplate() string {
 			}
 			sort.Strings(entries)
 			public := strings.Replace(PairPublicURL(p, "DOMAIN"), "DOMAIN", "%s", 1)
-			fmt.Fprintf(&b, "{{- if and .Values.roles.%s.enabled .Values.dpg.%s.enabled }}\n", ShortName(r.String()), ShortName(d.String()))
+			fmt.Fprintf(&b, "{{- if and .Values.%s .Values.dpg.%s.enabled }}\n", RoleSwitch(r), ShortName(d.String()))
 			fmt.Fprintf(&b, "{{- $public := printf %q $release }}\n", home)
 			fmt.Fprintf(&b, "{{- if $domain }}{{- $public = printf %q $domain }}{{- end }}\n", public)
 			fmt.Fprintf(&b, "{{- $peers = printf \"%%s%%s%%s|%%s|%%s\" $peers $sep %q $public (printf %q $release) }}\n",
@@ -195,4 +208,19 @@ func UmbrellaPeersTemplate() string {
 	b.WriteString("data:\n")
 	b.WriteString("  VCA_PEERS: {{ printf \"%q\" $peers }}\n")
 	return b.String()
+}
+
+// ChartRoles returns the roles of a service of several roles, as the
+// values of its chart name them. The templates of the chart render only
+// when one of them is on (ADR-074). A service of one role returns nil:
+// the condition of the umbrella chart turns it on.
+func ChartRoles(s Service) []string {
+	if s.Scope == ScopeDeployment || len(s.Roles) < 2 {
+		return nil
+	}
+	out := make([]string, 0, len(s.Roles))
+	for _, r := range s.Roles {
+		out = append(out, ShortName(r.String()))
+	}
+	return out
 }

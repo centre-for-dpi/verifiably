@@ -53,3 +53,4 @@ each decision of each record.
 - [ADR-071: A verifier checks a status list with the key set under its address](adr/ADR-071-status-list-key-set.md)
 - [ADR-072: An offer names the status entry its credential carries](adr/ADR-072-offer-names-its-status-entry.md)
 - [ADR-073: The browser store signs with a holder key of its own](adr/ADR-073-browser-holder-signing-key.md)
+- [ADR-074: The role switches of the umbrella chart sit under global](adr/ADR-074-helm-role-switches-under-global.md)

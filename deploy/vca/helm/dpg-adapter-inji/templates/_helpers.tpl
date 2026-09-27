@@ -26,3 +26,22 @@ app.kubernetes.io/part-of: vca
 app.kubernetes.io/name: {{ include "vca.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
+
+{{/*
+The chart of a service of several roles renders only when the umbrella
+chart turns one of its roles on under global.roles (ADR-074). A chart
+installed alone, with no global.roles, renders as before.
+*/}}
+{{- define "vca.enabled" -}}
+{{- $global := .Values.global -}}
+{{- if not $global -}}
+true
+{{- else if not $global.roles -}}
+true
+{{- else -}}
+{{- range .Values.roles -}}
+{{- $role := index $global.roles . -}}
+{{- if $role -}}{{- if $role.enabled -}}true{{- end -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

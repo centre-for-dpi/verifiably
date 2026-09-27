@@ -1245,15 +1245,22 @@ Turn one role on and pick its DPG adapter:
 
 ```sh
 helm upgrade --install vca deploy/vca/helm/vca \
-  --set roles.<role>.enabled=true \
+  --set global.roles.<role>.enabled=true \
   --set dpg.<dpg>.enabled=true
 ```
+
+The role switches sit under `global`, so every service chart sees them
+(ADR-074). A service of one role follows the condition of its role. A
+DPG adapter serves the issuer, the holder and the verifier. Its chart
+follows the condition of its DPG, and its templates render only when one
+of those roles is on. The old switch `roles.<role>.enabled` stops the
+render with a message that names the new path.
 
 Check the charts:
 
 ```sh
 helm lint deploy/vca/helm/issuance
-helm template test deploy/vca/helm/vca --set roles.admin.enabled=true
+helm template test deploy/vca/helm/vca --set global.roles.admin.enabled=true
 go test -run TestHelm ./internal/cli/
 ```
 

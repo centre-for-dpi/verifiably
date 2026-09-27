@@ -9,73 +9,73 @@ VCA_WRITE_HELM=1 writes it again. Do not edit it by hand.
 {{- $domain := .Values.global.publicDomain }}
 {{- $peers := "" }}
 {{- $sep := "" }}
-{{- if and .Values.roles.issuer.enabled .Values.dpg.waltid.enabled }}
+{{- if and .Values.global.roles.issuer.enabled .Values.dpg.waltid.enabled }}
 {{- $public := printf "http://%[1]s-issuance:8080" $release }}
 {{- if $domain }}{{- $public = printf "https://issuer-waltid.%s" $domain }}{{- end }}
 {{- $peers = printf "%s%s%s|%s|%s" $peers $sep "issuer-waltid" $public (printf "data-source=http://%[1]s-data-source:8083,dpg-adapter-waltid=http://%[1]s-dpg-adapter-waltid:8080,issuance=http://%[1]s-issuance:8080,issued-credentials=http://%[1]s-issued-credentials:8084,issuer-auth=http://%[1]s-issuer-auth:8081,schema-builder-ui=http://%[1]s-schema-builder-ui:8081,schema-registry=http://%[1]s-schema-registry:8080,status-bitstring=http://%[1]s-status-bitstring:8084,status-token=http://%[1]s-status-token:8085" $release) }}
 {{- $sep = ";" }}
 {{- end }}
-{{- if and .Values.roles.issuer.enabled .Values.dpg.inji.enabled }}
+{{- if and .Values.global.roles.issuer.enabled .Values.dpg.inji.enabled }}
 {{- $public := printf "http://%[1]s-issuance:8080" $release }}
 {{- if $domain }}{{- $public = printf "https://issuer-inji.%s" $domain }}{{- end }}
 {{- $peers = printf "%s%s%s|%s|%s" $peers $sep "issuer-inji" $public (printf "data-source=http://%[1]s-data-source:8083,dpg-adapter-inji=http://%[1]s-dpg-adapter-inji:8080,issuance=http://%[1]s-issuance:8080,issued-credentials=http://%[1]s-issued-credentials:8084,issuer-auth=http://%[1]s-issuer-auth:8081,schema-builder-ui=http://%[1]s-schema-builder-ui:8081,schema-registry=http://%[1]s-schema-registry:8080,status-bitstring=http://%[1]s-status-bitstring:8084,status-token=http://%[1]s-status-token:8085" $release) }}
 {{- $sep = ";" }}
 {{- end }}
-{{- if and .Values.roles.issuer.enabled .Values.dpg.credebl.enabled }}
+{{- if and .Values.global.roles.issuer.enabled .Values.dpg.credebl.enabled }}
 {{- $public := printf "http://%[1]s-issuance:8080" $release }}
 {{- if $domain }}{{- $public = printf "https://issuer-credebl.%s" $domain }}{{- end }}
 {{- $peers = printf "%s%s%s|%s|%s" $peers $sep "issuer-credebl" $public (printf "data-source=http://%[1]s-data-source:8083,dpg-adapter-credebl=http://%[1]s-dpg-adapter-credebl:8080,issuance=http://%[1]s-issuance:8080,issued-credentials=http://%[1]s-issued-credentials:8084,issuer-auth=http://%[1]s-issuer-auth:8081,schema-builder-ui=http://%[1]s-schema-builder-ui:8081,schema-registry=http://%[1]s-schema-registry:8080,status-bitstring=http://%[1]s-status-bitstring:8084,status-token=http://%[1]s-status-token:8085" $release) }}
 {{- $sep = ";" }}
 {{- end }}
-{{- if and .Values.roles.holder.enabled .Values.dpg.waltid.enabled }}
+{{- if and .Values.global.roles.holder.enabled .Values.dpg.waltid.enabled }}
 {{- $public := printf "http://%[1]s-wallet-portal:8092" $release }}
 {{- if $domain }}{{- $public = printf "https://holder-waltid.%s" $domain }}{{- end }}
 {{- $peers = printf "%s%s%s|%s|%s" $peers $sep "holder-waltid" $public (printf "dpg-adapter-waltid=http://%[1]s-dpg-adapter-waltid:8080,wallet-auth=http://%[1]s-wallet-auth:8083,wallet-portal=http://%[1]s-wallet-portal:8092" $release) }}
 {{- $sep = ";" }}
 {{- end }}
-{{- if and .Values.roles.holder.enabled .Values.dpg.inji.enabled }}
+{{- if and .Values.global.roles.holder.enabled .Values.dpg.inji.enabled }}
 {{- $public := printf "http://%[1]s-wallet-portal:8092" $release }}
 {{- if $domain }}{{- $public = printf "https://holder-inji.%s" $domain }}{{- end }}
 {{- $peers = printf "%s%s%s|%s|%s" $peers $sep "holder-inji" $public (printf "dpg-adapter-inji=http://%[1]s-dpg-adapter-inji:8080,wallet-auth=http://%[1]s-wallet-auth:8083,wallet-portal=http://%[1]s-wallet-portal:8092" $release) }}
 {{- $sep = ";" }}
 {{- end }}
-{{- if and .Values.roles.holder.enabled .Values.dpg.credebl.enabled }}
+{{- if and .Values.global.roles.holder.enabled .Values.dpg.credebl.enabled }}
 {{- $public := printf "http://%[1]s-wallet-portal:8092" $release }}
 {{- if $domain }}{{- $public = printf "https://holder-credebl.%s" $domain }}{{- end }}
 {{- $peers = printf "%s%s%s|%s|%s" $peers $sep "holder-credebl" $public (printf "dpg-adapter-credebl=http://%[1]s-dpg-adapter-credebl:8080,wallet-auth=http://%[1]s-wallet-auth:8083,wallet-portal=http://%[1]s-wallet-portal:8092" $release) }}
 {{- $sep = ";" }}
 {{- end }}
-{{- if and .Values.roles.verifier.enabled .Values.dpg.waltid.enabled }}
+{{- if and .Values.global.roles.verifier.enabled .Values.dpg.waltid.enabled }}
 {{- $public := printf "http://%[1]s-verifier-results:8087" $release }}
 {{- if $domain }}{{- $public = printf "https://verifier-waltid.%s" $domain }}{{- end }}
 {{- $peers = printf "%s%s%s|%s|%s" $peers $sep "verifier-waltid" $public (printf "dpg-adapter-waltid=http://%[1]s-dpg-adapter-waltid:8080,verifier-auth=http://%[1]s-verifier-auth:8081,verifier-combined=http://%[1]s-verifier-combined:8088,verifier-discovery=http://%[1]s-verifier-discovery:8090,verifier-ingest=http://%[1]s-verifier-ingest:8091,verifier-policy=http://%[1]s-verifier-policy:8086,verifier-results=http://%[1]s-verifier-results:8087" $release) }}
 {{- $sep = ";" }}
 {{- end }}
-{{- if and .Values.roles.verifier.enabled .Values.dpg.inji.enabled }}
+{{- if and .Values.global.roles.verifier.enabled .Values.dpg.inji.enabled }}
 {{- $public := printf "http://%[1]s-verifier-results:8087" $release }}
 {{- if $domain }}{{- $public = printf "https://verifier-inji.%s" $domain }}{{- end }}
 {{- $peers = printf "%s%s%s|%s|%s" $peers $sep "verifier-inji" $public (printf "dpg-adapter-inji=http://%[1]s-dpg-adapter-inji:8080,verifier-auth=http://%[1]s-verifier-auth:8081,verifier-combined=http://%[1]s-verifier-combined:8088,verifier-discovery=http://%[1]s-verifier-discovery:8090,verifier-ingest=http://%[1]s-verifier-ingest:8091,verifier-policy=http://%[1]s-verifier-policy:8086,verifier-results=http://%[1]s-verifier-results:8087" $release) }}
 {{- $sep = ";" }}
 {{- end }}
-{{- if and .Values.roles.verifier.enabled .Values.dpg.credebl.enabled }}
+{{- if and .Values.global.roles.verifier.enabled .Values.dpg.credebl.enabled }}
 {{- $public := printf "http://%[1]s-verifier-results:8087" $release }}
 {{- if $domain }}{{- $public = printf "https://verifier-credebl.%s" $domain }}{{- end }}
 {{- $peers = printf "%s%s%s|%s|%s" $peers $sep "verifier-credebl" $public (printf "dpg-adapter-credebl=http://%[1]s-dpg-adapter-credebl:8080,verifier-auth=http://%[1]s-verifier-auth:8081,verifier-combined=http://%[1]s-verifier-combined:8088,verifier-discovery=http://%[1]s-verifier-discovery:8090,verifier-ingest=http://%[1]s-verifier-ingest:8091,verifier-policy=http://%[1]s-verifier-policy:8086,verifier-results=http://%[1]s-verifier-results:8087" $release) }}
 {{- $sep = ";" }}
 {{- end }}
-{{- if and .Values.roles.admin.enabled .Values.dpg.waltid.enabled }}
+{{- if and .Values.global.roles.admin.enabled .Values.dpg.waltid.enabled }}
 {{- $public := printf "http://%[1]s-admin:8093" $release }}
 {{- if $domain }}{{- $public = printf "https://admin-waltid.%s" $domain }}{{- end }}
 {{- $peers = printf "%s%s%s|%s|%s" $peers $sep "admin-waltid" $public (printf "admin=http://%[1]s-admin:8093,trust-registry=http://%[1]s-trust-registry:8080" $release) }}
 {{- $sep = ";" }}
 {{- end }}
-{{- if and .Values.roles.admin.enabled .Values.dpg.inji.enabled }}
+{{- if and .Values.global.roles.admin.enabled .Values.dpg.inji.enabled }}
 {{- $public := printf "http://%[1]s-admin:8093" $release }}
 {{- if $domain }}{{- $public = printf "https://admin-inji.%s" $domain }}{{- end }}
 {{- $peers = printf "%s%s%s|%s|%s" $peers $sep "admin-inji" $public (printf "admin=http://%[1]s-admin:8093,trust-registry=http://%[1]s-trust-registry:8080" $release) }}
 {{- $sep = ";" }}
 {{- end }}
-{{- if and .Values.roles.admin.enabled .Values.dpg.credebl.enabled }}
+{{- if and .Values.global.roles.admin.enabled .Values.dpg.credebl.enabled }}
 {{- $public := printf "http://%[1]s-admin:8093" $release }}
 {{- if $domain }}{{- $public = printf "https://admin-credebl.%s" $domain }}{{- end }}
 {{- $peers = printf "%s%s%s|%s|%s" $peers $sep "admin-credebl" $public (printf "admin=http://%[1]s-admin:8093,trust-registry=http://%[1]s-trust-registry:8080" $release) }}

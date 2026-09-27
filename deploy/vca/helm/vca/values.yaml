@@ -1,15 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0
-# Turn on one role, or several. Every service of the role starts.
-roles:
-  issuer:
-    enabled: false
-  holder:
-    enabled: false
-  verifier:
-    enabled: false
-  admin:
-    enabled: false
-
 # Turn on the DPG adapter of the stack behind the role.
 dpg:
   waltid:
@@ -25,6 +14,18 @@ dpg:
 # The value sits under global, so every UI chart sees it and rolls its
 # pods through a checksum annotation when the file changes.
 global:
+  # Turn on one role, or several. Every service of the role starts. The
+  # switches sit under global, so the chart of a service of several
+  # roles, such as a DPG adapter, sees them (ADR-074).
+  roles:
+    issuer:
+      enabled: false
+    holder:
+      enabled: false
+    verifier:
+      enabled: false
+    admin:
+      enabled: false
   theme:
     file: ""
   # The base domain of the pairs. Each pair then answers at

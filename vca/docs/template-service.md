@@ -61,6 +61,6 @@ If a step fails, see [errors.md](errors.md) for the message and the next step.
 
 - API: [`proto/vca/<name>/v1/<name>.proto`](../../proto/vca/<name>/v1/<name>.proto)
 - OpenAPI: `gen/openapi/<name>.yaml`
-- Decision record: [ADR-`<number>`](adr.md#adr-`<number>`)
+- Decision record: [ADR-`<number>`](adr/ADR-`<number>`-`<slug>`.md)
 - Error codes: `<list of codes from errors.md that this service returns>`
 - Standards: `<links>`

@@ -48,3 +48,11 @@ resources:
 
 nameOverride: ""
 fullnameOverride: ""
+
+# The roles this service runs for (ADR-074). Its templates render only
+# when the umbrella chart turns one of them on under global.roles. A
+# chart installed alone renders as before.
+roles:
+  - issuer
+  - holder
+  - verifier

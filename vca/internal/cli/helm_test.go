@@ -206,18 +206,24 @@ func TestUmbrellaChartTurnsRolesOn(t *testing.T) {
 		}
 	}
 	var doc struct {
-		Roles map[string]map[string]any `yaml:"roles"`
-		Dpg   map[string]map[string]any `yaml:"dpg"`
+		Roles  map[string]any            `yaml:"roles"`
+		Dpg    map[string]map[string]any `yaml:"dpg"`
+		Global struct {
+			Roles map[string]map[string]any `yaml:"roles"`
+		} `yaml:"global"`
 	}
 	readYaml(t, filepath.Join(dir, "values.yaml"), &doc)
-	values := map[string]map[string]map[string]any{"roles": doc.Roles, "dpg": doc.Dpg}
+	if doc.Roles != nil {
+		t.Error("the umbrella values keep roles at the top; the switches sit under global.roles (ADR-074)")
+	}
+	values := map[string]map[string]map[string]any{"roles": doc.Global.Roles, "dpg": doc.Dpg}
 	for _, r := range Roles() {
 		name := ShortName(r.String())
 		if _, ok := values["roles"][name]; !ok {
-			t.Errorf("the umbrella values have no roles.%s", name)
+			t.Errorf("the umbrella values have no global.roles.%s", name)
 		}
 		if values["roles"][name]["enabled"] == true {
-			t.Errorf("roles.%s.enabled is on by default", name)
+			t.Errorf("global.roles.%s.enabled is on by default", name)
 		}
 	}
 	for _, d := range Dpgs() {
@@ -235,7 +241,7 @@ func TestChartCondition(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 	plain := Service{Name: "issuance", Roles: []commonv1.Role{commonv1.Role_ROLE_ISSUER}}
-	if got := ChartCondition(plain); got != "roles.issuer.enabled" {
+	if got := ChartCondition(plain); got != "global.roles.issuer.enabled" {
 		t.Errorf("got %q", got)
 	}
 }
@@ -263,7 +269,7 @@ func TestHelmLintAndTemplate(t *testing.T) {
 	// One role on renders three objects per service of the role.
 	var out bytes.Buffer
 	cmd := exec.CommandContext(context.Background(), helm, "template", "test",
-		HelmChartDir(root, UmbrellaChart), "--set", "roles.admin.enabled=true") // #nosec G204 -- fixed arguments
+		HelmChartDir(root, UmbrellaChart), "--set", "global.roles.admin.enabled=true") // #nosec G204 -- fixed arguments
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	if err := cmd.Run(); err != nil {

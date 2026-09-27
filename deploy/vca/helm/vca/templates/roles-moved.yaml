@@ -1,0 +1,9 @@
+{{- /* SPDX-License-Identifier: Apache-2.0 */ -}}
+{{- /*
+The role switches sit under global.roles, so the chart of a service of
+several roles sees them (ADR-074). The old path turns nothing on, so the
+render stops with the new path instead of starting an empty release.
+*/ -}}
+{{- if .Values.roles }}
+{{- fail "roles.<role>.enabled moved: set global.roles.<role>.enabled, for example --set global.roles.issuer.enabled=true" }}
+{{- end }}
