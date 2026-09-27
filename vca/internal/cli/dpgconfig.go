@@ -666,3 +666,70 @@ func FloorTable() string {
 	}
 	return b.String()
 }
+
+// PairFloorRange is the sentence of the getting started guide that
+// names the smallest and the largest floor of one pair.
+func PairFloorRange() string {
+	low, high := 0, 0
+	for i, p := range AllPairs() {
+		m := MemoryFloorMiB(p)
+		if i == 0 || m < low {
+			low = m
+		}
+		if m > high {
+			high = m
+		}
+	}
+	return fmt.Sprintf("One pair needs %d MiB to %d MiB of free memory:", low, high)
+}
+
+// dpgHeader is the header of a table with one column per DPG.
+func dpgHeader(first string) string {
+	var b strings.Builder
+	b.WriteString("| " + first + " |")
+	for _, d := range Dpgs() {
+		fmt.Fprintf(&b, " `%s` |", ShortName(d.String()))
+	}
+	b.WriteString("\n|---|" + strings.Repeat("---|", len(Dpgs())) + "\n")
+	return b.String()
+}
+
+// RoleFloorTable renders the floor of each role on each DPG.
+func RoleFloorTable() string {
+	b := dpgHeader("Role")
+	for _, r := range Roles() {
+		b += fmt.Sprintf("| `%s` |", ShortName(r.String()))
+		for _, d := range Dpgs() {
+			b += fmt.Sprintf(" %d MiB |", MemoryFloorMiB(Pair{Role: r, Dpg: d}))
+		}
+		b += "\n"
+	}
+	return b
+}
+
+// stackFloor is the floor of the four roles of one DPG together.
+func stackFloor(d configv1.Dpg) int { return SelectionFloorMiB(PairsForDpg(d)) }
+
+// StackFloorTable renders the floor of the four roles of each DPG.
+func StackFloorTable() string {
+	b := dpgHeader("Selection") + "| `--all --dpg <dpg>` |"
+	for _, d := range Dpgs() {
+		b += fmt.Sprintf(" %d MiB |", stackFloor(d))
+	}
+	return b + "\n"
+}
+
+// AllFloorSentence names the floor of every role of every DPG.
+func AllFloorSentence() string {
+	return fmt.Sprintf("`--all` alone starts every role of every DPG and needs %d MiB.", SelectionFloorMiB(AllPairs()))
+}
+
+// StackFloorSentence names the floor of one stack of each DPG, as the
+// CLI document says it.
+func StackFloorSentence() string {
+	parts := make([]string, 0, len(Dpgs()))
+	for _, d := range Dpgs() {
+		parts = append(parts, fmt.Sprintf("%d MiB with `%s`", stackFloor(d), ShortName(d.String())))
+	}
+	return "One stack needs " + strings.Join(parts[:len(parts)-1], ", ") + ", and " + parts[len(parts)-1] + "."
+}

@@ -94,7 +94,7 @@ The memory check adds only the pairs you selected.
 | `docker` | Docker 24 or newer with a daemon that answers. |
 | `docker compose` | The compose plugin, version 2 or newer. |
 | `memory` | The memory floor of the selection, from `docs/deploy.md`. |
-| `port <n>` | Every host port of the pair and of the Keycloak is free. |
+| `port <n>` | Every host port of the pair and of the Keycloak is free. The landing port 17900 comes first. The walt.id verifier adds verifier-api2 on 17004. An Inji holder adds Inji Web on 17085. A CREDEBL pair adds the status list host on 17183. |
 | `public url` | `VCA_PUBLIC_URL` resolves when it is not localhost. |
 | `port 80`, `port 443` | Both are free when you use a public URL. |
 | `stack secrets <dpg>` | No volume of the stack is older than the secrets of `deploy/<dpg>/.env` with another password. |

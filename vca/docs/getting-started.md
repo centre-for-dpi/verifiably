@@ -115,7 +115,7 @@ port.
 The login redirect of the pair then does not reach the auth service.
 Use the server path for a login test.
 
-One pair needs 704 MiB to 3424 MiB of free memory:
+One pair needs 704 MiB to 6112 MiB of free memory:
 
 | Role | `waltid` | `inji` | `credebl` |
 |---|---|---|---|
