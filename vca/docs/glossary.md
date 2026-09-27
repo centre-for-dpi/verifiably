@@ -22,6 +22,12 @@ Each entry has one sentence and one link to the standard that defines it.
 | Disclosure | One claim that a holder chooses to show from an SD-JWT credential. | [RFC 9901 SD-JWT](https://www.rfc-editor.org/rfc/rfc9901.html) |
 | Key binding | The proof that the holder who presents a credential also holds its private key. | [RFC 9901 SD-JWT](https://www.rfc-editor.org/rfc/rfc9901.html) |
 | DID | A decentralized identifier that points to the public keys of an issuer or a holder. | [DID 1.0](https://www.w3.org/TR/did-1.0/) |
+| Pair | One role on one DPG, such as `issuer-waltid`, with its own services, host name and `.env` file. | [ADR-008](../../ADR.md#adr-008-one-click-deploy-per-role-and-combined-deploy) |
+| Landing | The front page of a deployment: it explains VCA, lists the running stacks and sends each visitor to a role. | [ADR-033](adr/ADR-033-landing-role-picker.md) |
+| Peer | One candidate pair that a page probes, so it shows only what runs now. | [ADR-034](adr/ADR-034-backend-adaptivity.md) |
+| Realm | The user base of one role at an identity provider, such as `vca-issuer-realm` in the Keycloak of a stack. | [ADR-035](adr/ADR-035-sign-in-realms.md) |
+| Tenant | One operator organisation in VCA, bound to its own tenant on each stack that separates tenants. | [ADR-037](adr/ADR-037-tenant-mapping.md) |
+| Trust cache | The copy of trust lists and issuer keys that a verifier keeps to check offline for a set time. | [ADR-041](adr/ADR-041-verifier-trust-cache.md) |
 
 ## Rules for new terms
 

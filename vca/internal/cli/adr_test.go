@@ -158,3 +158,39 @@ func TestRootAdrGuardSeesAChange(t *testing.T) {
 		t.Fatal("a changed copy of ADR.md has the recorded sum")
 	}
 }
+
+// adrStatusRow reads the status of one decision row of the status page.
+var adrStatusRow = regexp.MustCompile(`(?m)^\| ADR-\d+ \| [^|]+\| (Done|Partial|Deferred|Not started) \|`)
+
+// adrStatusCount reads one line of the Counts table.
+var adrStatusCount = regexp.MustCompile(`(?m)^\| (Done|Partial|Deferred|Not started|Total) \| (\d+) \|$`)
+
+// TestAdrStatusCountsMatchTheRows keeps the Counts table of the status
+// page equal to its rows, so a change of a row changes the totals too
+// (P7-02). A row that is not Done carries a note.
+func TestAdrStatusCountsMatchTheRows(t *testing.T) {
+	text := readText(t, filepath.Join(docsDir(), "adr-status.md"))
+	rows := map[string]int{}
+	for _, m := range adrStatusRow.FindAllStringSubmatch(text, -1) {
+		rows[m[1]]++
+		rows["Total"]++
+	}
+	counted := map[string]int{}
+	for _, m := range adrStatusCount.FindAllStringSubmatch(text, -1) {
+		n, err := strconv.Atoi(m[2])
+		if err != nil {
+			t.Fatal(err)
+		}
+		counted[m[1]] = n
+	}
+	for _, status := range []string{"Done", "Partial", "Deferred", "Not started", "Total"} {
+		if counted[status] != rows[status] {
+			t.Errorf("Counts names %d %s, the rows hold %d", counted[status], status, rows[status])
+		}
+	}
+	for _, line := range strings.Split(text, "\n") {
+		if m := adrStatusRow.FindStringSubmatch(line); m != nil && m[1] != "Done" && strings.HasSuffix(line, "|  |") {
+			t.Errorf("a %s row has no note: %s", m[1], line)
+		}
+	}
+}

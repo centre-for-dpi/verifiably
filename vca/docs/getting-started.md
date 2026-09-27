@@ -11,7 +11,7 @@ Read it first. It covers a laptop and a server with a public name.
 | buf | 1.47.2 | Only to change the proto files. `make bootstrap` installs it and checks its SHA-256 | `buf --version` |
 | Docker Engine | 24 or newer, and your user in the `docker` group | Always | `docker version` |
 | Docker Compose | v2, the `docker compose` plugin | Always | `docker compose version` |
-| Memory | 3.5 GB free for one role and one DPG | Always | `free -m` |
+| Memory | 0.7 GB to 6 GB free for one role and one DPG. "The local machine path" has the table | Always | `free -m` |
 | Disk | 10 GB free for the images and the volumes | Always | `df -h .` |
 | Host ports | One block of ports per role and DPG pair | Always | `vca ports --role <role> --dpg <dpg>` |
 
@@ -103,8 +103,11 @@ The DPG URL is the container of the stack.
 The identity provider is the Keycloak of the stack.
 The command prints a summary of every value before it writes.
 
-Open the home page of the role in a browser.
-`vca deploy` prints the pages at the end.
+Open the landing at `http://localhost:17900` in a browser.
+It shows the stacks that run and the roles you can take.
+It then sends you to the sign in of the role you pick.
+`vca deploy` prints the landing first, under "Start here", and the pages
+of each pair after it.
 The issuer home of the first issuer pair is
 `http://localhost:18002/issuer/`.
 The wallet, the verification results, and the admin portal each have
@@ -191,7 +194,9 @@ file per pair.
    first start. Port 80 and port 443 must be open in the firewall.
    Another reverse proxy, such as nginx, takes the same host names and
    host ports from the snippet.
-6. Open the pages that `vca deploy` prints at the end.
+6. Open the landing at `https://vca.<domain>`, which `vca deploy` prints
+   first, under "Start here". Pick a role there.
+   The other pages that `vca deploy` prints stay open to a direct link.
    The root of a pair sends the browser to the home page of the role.
    The issuer opens `/issuer/` of the issuance service.
    The holder opens `/wallet/`.
@@ -364,8 +369,23 @@ Use it until the first release publishes the images.
 `vca images build --role <role> --dpg <dpg>` does the same builds and
 tags each image `local`.
 
-Open the home page of the role at the host port that `vca ports`
-prints.
+Every journey starts at the landing.
+The report of `vca deploy` ends with a "First run" list in this order:
+
+1. Open the landing and pick a role.
+   The landing lists only the roles and the stacks that run.
+2. Bind the first admin.
+   Register in the realm `vca-admin-realm` of the stack Keycloak.
+   Then give the admin portal the one time token
+   `VCA_SECRETS_BOOTSTRAP_TOKEN` of `deploy/admin-<dpg>/.env`.
+3. Run `vca dpg bootstrap <dpg> --role <role>` once for each other pair.
+4. The issuer, the holder and the verifier register in their own realm,
+   `vca-<role>-realm`, on their first sign in.
+5. After the first sign ups, turn self registration off:
+   `vca dpg realm --role <role> --dpg <dpg> --registration off`.
+   The first run checklist of the admin portal then marks the step done.
+
+The report also names the realm and the sign in page of every pair.
 Stop the deployment when you finish:
 
 ```sh

@@ -165,7 +165,7 @@ A row that is not `Done` carries a note.
 |---|---|---|---|---|
 | ADR-013 | 1 JSON Schema 2020-12 documents | Done | `vca/core/jsonschema` | |
 | ADR-013 | 2 Immutable versions and a life cycle | Done | `vca/services/schema-registry/internal/record` | |
-| ADR-013 | 3 Schema sync as an adapter RPC | Partial | `vca/services/dpg-adapter-*/internal/service` | The walt.id adapter records the setup itself. The Inji adapter refuses, so the deployment applies it. |
+| ADR-013 | 3 Schema sync as an adapter RPC | Done | `vca/services/dpg-adapter-*/internal/service` | Each adapter serves `RegisterCredentialConfiguration`: walt.id records the setup, Inji writes the configuration API of Certify (P6-I1), and CREDEBL writes a schema and a template. `TestRegisterCreatesConfiguration` and `TestRegisterCredentialConfigurationStoresTheSchemaAndTheTemplate` pin it. |
 | ADR-013 | 4 Public read and issuer metadata | Done | `vca/services/schema-registry/internal/httpapi` | |
 | ADR-013 | 5 Type metadata per schema | Done | `vca/services/schema-registry/internal/metadata` | |
 | ADR-013 | 6 Portal pages for the life cycle | Done | `vca/services/schema-registry/internal/portal` | |
@@ -375,12 +375,12 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-032 | 1 One theme file with a path variable | Not started | `deploy/vca/theme.yaml` | Proposed record. No work exists yet. |
-| ADR-032 | 2 The kit keeps the pairings, the file sets colours | Not started | `vca/ui/theme` | Proposed record. No work exists yet. |
+| ADR-032 | 1 One theme file with a path variable | Done | `deploy/vca/theme.yaml`, `vca/internal/themefile` | Every UI service reads `VCA_THEME_FILE`. `TestShippedFileEqualsEmbeddedDefault` and `TestLoadEmptyPathUsesDefault` pin it. |
+| ADR-032 | 2 The kit keeps the pairings, the file sets colours | Done | `vca/ui/theme`, `vca/internal/themefile` | `TestLowContrastNamesPairingAndRatio` and `TestDefaultPairingsCoverBrandPairings` pin it. |
 | ADR-032 | 3 Two font families and a monospace stack | Done | `vca/ui/fonts` | |
-| ADR-032 | 4 Wordmark, logo, radii, spacing, role accents | Not started | `vca/internal/themefile` | Proposed record. No work exists yet. |
-| ADR-032 | 5 The YAML reader lives outside the kit | Not started | `vca/internal/themefile` | Proposed record. No work exists yet. |
-| ADR-032 | 6 Theme check and theme apply commands | Not started | `vca/internal/cli` | Proposed record. No work exists yet. |
+| ADR-032 | 4 Wordmark, logo, radii, spacing, role accents | Done | `vca/internal/themefile/themefile.go` | `TestRebrandExample` and `TestBadPaperDropsRoleAccentLine` pin it. |
+| ADR-032 | 5 The YAML reader lives outside the kit | Done | `vca/internal/themefile` | The kit under `vca/ui` imports no YAML module. |
+| ADR-032 | 6 Theme check and theme apply commands | Done | `vca/internal/cli/theme.go` | `TestThemeCheckFailsAndNamesPairing` and `TestThemeApplyRestartsOnlyUIServices` pin it. |
 
 ## ADR-033: Landing service, role picker, and role intro pages
 
@@ -401,19 +401,19 @@ A row that is not `Done` carries a note.
 | ADR-034 | 2 A shared probe with a timeout and a cache | Done | `vca/internal/topology` | |
 | ADR-034 | 3 Absent, starting, and live pairs | Done | `vca/internal/topology` | The landing reads the states. The portals follow. |
 | ADR-034 | 4 Features and DPG information in the adapter answer | Done | `vca/proto/vca/backend/v1` | Each adapter lists only the features whose RPC works today. |
-| ADR-034 | 5 Pages show live features only | Not started | `vca/ui` | No page reads the feature list yet. |
+| ADR-034 | 5 Pages show live features only | Done | `vca/internal/topology`, the portal packages | Each page reads the feature list of the live adapter. The `...OnlyWithFeature` tests of every portal pin it. |
 
 ## ADR-035: Provider agnostic sign in with one realm per role
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-035 | 1 Four realms with self registration | Not started | `deploy/vca` | Proposed record. No work exists yet. |
-| ADR-035 | 2 Keycloak is a provider record, not a dependency | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
+| ADR-035 | 1 Four realms with self registration | Done | `vca/internal/cli/realm.go`, `vca/internal/cli/setup.go` | Setup writes `vca-<role>-realm` per stack. `TestBootstrapCreatesTheRoleRealm` and `TestRealmRegistrationOff` pin it. |
+| ADR-035 | 2 Keycloak is a provider record, not a dependency | Done | `vca/services/internal/oidcflow`, `vca/services/admin/internal/onboard` | Keycloak is the preset of kind `keycloak`. Other kinds such as WSO2 and eSignet use the same record. |
 | ADR-035 | 3 Register action with a fallback | Done | `vca/services/internal/signin` | The chooser of every auth service offers `/auth/register` when the provider supports it. |
-| ADR-035 | 4 Three token authentication methods | Not started | `vca/core/oidc` | Proposed record. No work exists yet. |
+| ADR-035 | 4 Three token authentication methods | Done | `vca/services/internal/oidcflow/provider.go` | `client_secret_basic`, `client_secret_post` and `private_key_jwt`. `TestTokenExchangeClientSecretPost`, `TestTokenExchangePrivateKeyJWT` and `TestPresetESignetUsesPrivateKeyJWT` pin them. |
 | ADR-035 | 5 The admin portal pushes provider records | Done | `vca/services/admin/internal/fanout` | `CreateAuthProvider` and `UpdateAuthProvider` push to the auth service of every live pair the record names, with the admin session token. The auth services accept it through `oidcflow.AdminJWTAuthorizer`. One audit record per target. |
-| ADR-035 | 6 The first admin registers and binds | Partial | `vca/services/admin` | The admin chooser registers with the bootstrap token in one flow. The first run checklist item waits for P2-01. |
-| ADR-035 | 7 The CLI makes the Keycloak password | Not started | `vca/internal/cli` | Proposed record. No work exists yet. |
+| ADR-035 | 6 The first admin registers and binds | Done | `vca/services/admin`, `vca/internal/cli/realm.go` | The admin chooser binds with the bootstrap token. The first run checklist marks "Turn off self registration" when `vca dpg realm` runs, and the deploy report lists the steps (P7-01). |
+| ADR-035 | 7 The CLI makes the Keycloak password | Done | `vca/internal/cli/setup.go` | Setup generates `KEYCLOAK_ADMIN_PASSWORD` per stack. `TestSetupKeepsTheKeycloakPasswordAcrossRoles` pins it. |
 
 ## ADR-036: Verifier staff sign in
 
@@ -427,16 +427,16 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-037 | 1 A VCA tenant binds to DPG tenants | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
-| ADR-037 | 2 A tenant backend service in the contract | Not started | `vca/proto/vca/backend/v1` | Proposed record. No work exists yet. |
-| ADR-037 | 3 Tenancy shows only on stacks that have it | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
+| ADR-037 | 1 A VCA tenant binds to DPG tenants | Done | `vca/services/admin/internal/service/tenants.go` | `TestCreateTenantBindsToStacks` and `TestBindAndUnbindTenant` pin it. |
+| ADR-037 | 2 A tenant backend service in the contract | Done | `vca/proto/vca/backend/v1/backend.proto` | `TenantBackendService`. The CREDEBL adapter serves it, and walt.id and Inji answer `unimplemented`. |
+| ADR-037 | 3 Tenancy shows only on stacks that have it | Done | `vca/services/admin/internal/portal/tenants.go` | `TestTenantFormOffersOnlyTenancyStacks` pins it. |
 
 ## ADR-038: API keys for VCA and for stacks
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-038 | 1 Tenant scope and expiry on VCA keys | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
-| ADR-038 | 2 Stack client credentials next to VCA keys | Not started | `vca/services/admin` | Proposed record. No work exists yet. |
+| ADR-038 | 1 Tenant scope and expiry on VCA keys | Done | `vca/services/admin/internal/portal/keys.go` | `TestKeyFormHasTenantAndExpiry` pins it. |
+| ADR-038 | 2 Stack client credentials next to VCA keys | Done | `vca/services/admin/internal/portal/keys.go` | `TestStackCredentialShownOnce` and `TestStackCredentialFormHidesAFullTenant` pin it. |
 
 ## ADR-039: Federated audit log
 
@@ -451,7 +451,7 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-040 | 1 Notifications pages list the channels | Done | `vca/services/admin/internal/portal`, `vca/services/issuance/internal/pages` | The admin and the issuer pages list email, SMS, and the VCA webhook as not built in this release. |
-| ADR-040 | 2 DPG webhooks and callbacks when the adapter lists them | Partial | `vca/services/admin/internal/portal`, `vca/services/issuance/internal/pages` | The pages show the webhook card and the session callbacks card only when the adapter lists the feature. No adapter lists either feature yet. |
+| ADR-040 | 2 DPG webhooks and callbacks when the adapter lists them | Done | `vca/services/admin/internal/portal`, `vca/services/issuance/internal/pages` | CREDEBL lists `FEATURE_WEBHOOKS` (ADR-067) and walt.id lists `FEATURE_SESSION_CALLBACKS` (P6-W5). The pages show each card only then. |
 
 ## ADR-041: Verifier trust cache and offline verification window
 
@@ -467,7 +467,7 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-042 | 1 A template has a kind | Partial | `vca/proto/vca/discovery/v1`, `vca/services/verifier-discovery/internal/template` | `TemplateKind` holds DCQL, PE, and native. The service stores DCQL and PE templates. The native kind has no page yet. |
+| ADR-042 | 1 A template has a kind | Done | `vca/proto/vca/discovery/v1`, `vca/services/verifier-discovery/internal/portal` | DCQL, PE, and native templates. The AnonCreds builder saves the native kind (ADR-061). |
 | ADR-042 | 2 A DCQL builder with a live query view | Done | `vca/core/dcql`, `vca/services/verifier-discovery/internal/portal` | Values, claim sets, and credential sets in `core/dcql`. The preview works without JavaScript. |
 | ADR-042 | 3 A claim predicate policy check | Done | `vca/core/policy`, `vca/services/verifier-discovery/internal/service`, `vca/services/verifier-ingest/internal/service` | The rules of a query become the policy set `query-<id>`. The ingestion service evaluates each answer of a request with that set. |
 | ADR-042 | 4 PE authoring, validation, and conversion | Done | `vca/services/verifier-discovery/internal/portal`, `vca/services/verifier-discovery/internal/template` | The page at `/discovery/pe/` authors, imports, checks, converts, and versions PE queries. Each conversion shows its loss report. |
@@ -477,7 +477,7 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-043 | 1 The list of channels | Partial | `vca/services/issuance/internal/pages/issue.go` | The wizard offers both OID4VCI channels, the Digital Credentials API, and QR on a PDF. Claim 169, DIDComm, and email through the DPG wait for the adapter units. |
+| ADR-043 | 1 The list of channels | Done | `vca/services/issuance/internal/pages`, `vca/services/issuance/internal/service/issue.go` | The page offers both OID4VCI channels, the Digital Credentials API, and QR on a PDF. It adds the Claim 169 QR, the DIDComm invitation, and the stack email when the adapter lists each. |
 | ADR-043 | 2 The page offers live channels only | Done | `vca/services/issuance/internal/pages/issue.go` | `TestDeliveryOptionsFollowCapabilities`. |
 | ADR-043 | 3 Digital Credentials API button with a fallback | Done | `vca/ui/static/dcapi.js`, `vca/services/issuance/internal/pages/result.go` | `TestDcApiButtonCarriesOffer`, `TestDcApiFallbackQRAlwaysPresent`. |
 | ADR-043 | 4 Bulk issuance from data sources | Done | `vca/services/data-source/internal/pages`, `vca/services/issuance/internal/service/batch.go` | CSV, SQL, and HTTP sources, field map, run, progress, and export. The native import shows when the adapter lists `FEATURE_BULK_NATIVE`. The CREDEBL adapter lists it with a mail provider (ADR-060). |
@@ -489,25 +489,25 @@ A row that is not `Done` carries a note.
 | ADR-044 | 1 The issuer home moves to issuance | Done | `vca/services/issuance/internal/pages`, `vca/internal/topology` | `issuance` serves `/issuer/`, `/identity/`, `/issue/`, `/notifications/`, `/help/`, and the shared assets. |
 | ADR-044 | 2 Issued credentials and sources pages | Done | `vca/services/data-source/internal/pages`, `vca/services/issued-credentials/internal/pages` | Both run in the issuer shell behind the staff guard. |
 | ADR-044 | 3 The verifier home stays on verifier-results | Done | `vca/services/verifier-results/internal/portal` | The overview sits at `/portal/`, the results at `/portal/results/`, the caching page at `/portal/cache/`. An old list URL moves with a `301`. |
-| ADR-044 | 4 DCQL, PE, and request pages | Partial | `vca/services/verifier-discovery` | `/discovery/pe/` lists the PE form of every saved query. The DCQL builder and the request pages follow. |
+| ADR-044 | 4 DCQL, PE, and request pages | Done | `vca/services/verifier-discovery/internal/portal`, `vca/services/verifier-ingest/internal/scanner/request.go` | `/discovery/dcql/`, `/discovery/pe/`, and the request pages under `/scan/requests/`. `TestDcqlBuilderPreviewMatchesSaved` and `TestRequestsListShowsVerdict` pin them. |
 | ADR-044 | 5 One role navigation package bound to the routes | Done | `vca/internal/rolenav`, `vca/services/internal/staffshell` | The admin, issuer, holder, and verifier pages draw their side navigation from the package. |
 
 ## ADR-045: Full DPG surfacing
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-045 | 1 Each adapter lists every feature of its DPG | Not started | `vca/services/dpg-adapter-*` | Proposed record. No work exists yet. |
-| ADR-045 | 2 New format, protocol, and channel values | Not started | `vca/proto/vca/common/v1` | Proposed record. No work exists yet. |
-| ADR-045 | 3 The holder uses the DPG wallet | Not started | `vca/services/wallet-portal` | Proposed record. No work exists yet. |
-| ADR-045 | 4 The whole CREDEBL platform, pinned by digest | Not started | `deploy/vca` | Proposed record. No work exists yet. |
-| ADR-045 | 5 The walt.id stack adds verifier-api2 | Not started | `deploy/vca` | Proposed record. No work exists yet. |
+| ADR-045 | 1 Each adapter lists every feature of its DPG | Partial | `vca/services/dpg-adapter-*` | Phase 6 lists the features in each adapter document. Gaps stay: EBSI conformance of walt.id, and a dedicated CREDEBL agent without the Docker socket. The CREDEBL platform also makes an organisation DID only with a key of the operator (ADR-070). |
+| ADR-045 | 2 New format, protocol, and channel values | Done | `vca/proto/vca/common/v1`, `vca/proto/vca/backend/v1` | `FORMAT_ANONCREDS`, the DIDComm protocols, `PROTOCOL_DC_API`, `CHANNEL_DC_API`, `CHANNEL_DIDCOMM_OOB`, and `CHANNEL_CLAIM169_QR`. |
+| ADR-045 | 3 The holder uses the DPG wallet | Done | `vca/services/wallet-portal`, `vca/services/dpg-adapter-*` | The walt.id wallet API, Inji Web through Mimoto, and a tenant wallet of the CREDEBL agent. That wallet replaces the cloud wallet service (ADR-062). The browser store stays for a stack with none. |
+| ADR-045 | 4 The whole CREDEBL platform, pinned by digest | Done | `deploy/vca/dpg/credebl.yaml` | `TestCredeblStackRunsEveryPlatformService` and `TestCredeblStackRunsOneReleaseLine` pin it. The status list host builds at one commit (ADR-069). |
+| ADR-045 | 5 The walt.id stack adds verifier-api2 | Done | `deploy/vca/dpg/waltid.yaml` | `TestDpgStackFilesExistAndArePinned` and `TestDoctorChecksTheVerifier2Port` pin it. |
 
 ## ADR-046: Issuer identity through the DPG
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-046 | 1 Issuer identity RPCs | Done | `vca/proto/vca/backend/v1` | `GetIssuerIdentity`, `ProvisionIssuerIdentity`, and `ImportIssuerIdentity`. The Inji and CREDEBL adapters answer `unimplemented` until P6-I9 and P6-C1. |
-| ADR-046 | 2 One click provision or an import | Partial | `vca/services/issuance/internal/pages`, `vca/services/dpg-adapter-waltid` | walt.id provisions and imports a DID or an X.509 chain. Inji and CREDEBL follow. |
+| ADR-046 | 2 One click provision or an import | Done | `vca/services/issuance/internal/pages`, `vca/services/dpg-adapter-*` | walt.id provisions and imports a DID or an X.509 chain. Inji provisions and imports a chain (P6-I9). CREDEBL imports a chain; ADR-070 records why its pinned release makes no DID in one click. |
 | ADR-046 | 3 Trust registry entry in state pending | Done | `vca/services/issuance/internal/pages/identity.go` | The identity page writes a pending entry in the trust registry of the first live admin pair. |
 | ADR-046 | 4 No issuer private key in VCA | Done | `vca/services/dpg-adapter-waltid` | The walt.id key stays in the adapter state file with mode 0600, as the decision records. |
 
@@ -758,8 +758,8 @@ A row that is not `Done` carries a note.
 
 | Status | Decisions |
 |---|---|
-| Done | 333 |
-| Partial | 25 |
+| Done | 359 |
+| Partial | 19 |
 | Deferred | 3 |
-| Not started | 26 |
+| Not started | 6 |
 | Total | 387 |

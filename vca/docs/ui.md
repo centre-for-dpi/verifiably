@@ -158,6 +158,24 @@ the component kit from the same values. Compose mounts the file at
 `/etc/vca/theme.yaml`, and the umbrella chart holds it in a ConfigMap.
 See `deploy.md` for both.
 
+## Pages follow the backend
+
+A page shows only what runs now (ADR-034).
+The CLI writes the candidate pairs of the deployment into `VCA_PEERS` of
+every service that draws pages.
+The Helm umbrella chart writes the same value into the ConfigMap
+`<release>-peers`.
+The shared `internal/topology` package probes each pair and reads the
+features that its adapter lists.
+A pair that does not resolve stays hidden, and one that is not ready
+shows "Starting".
+A page shows a feature of a stack only when the live adapter lists it.
+No page labels a feature as "soon".
+The landing is the front door that uses the same list
+([landing.md](landing.md)).
+Each role signs in at its own realm of the provider of the pair, such as
+`vca-issuer-realm` (ADR-035).
+
 ## Brand
 
 `brand.Brand` holds the brand data. `brand.CSS` writes it as custom
