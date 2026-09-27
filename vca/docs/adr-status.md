@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-060, one row per decision.
+ADR-061, one row per decision.
 
 The status values are:
 
@@ -652,12 +652,23 @@ A row that is not `Done` carries a note.
 | ADR-060 | 4 The pages of the import | Done | `vca/services/issuance/internal/pages/bulk.go`, `vca/services/data-source/internal/pages/run.go` | `TestStackBulkImportIsASource`, `TestBulkHistoryAndRetry` and `TestBulkNativeMailAsksForTheEmailColumn` pin it. |
 | ADR-060 | 5 The CREDEBL import | Done | `vca/services/dpg-adapter-credebl/internal/credebl/bulk.go` | The fixtures come from the platform sources; `TestContractBulkImport` checks a live platform. |
 
+## ADR-061: DIDComm proof requests and the AnonCreds proof request builder
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-061 | 1 DIDComm proof requests, out of band and over a connection | Done | `vca/services/dpg-adapter-credebl/internal/service/proofs.go` | `TestOobProofRequest`, `TestConnectionProofRequest` and `TestListProofRequests` pin it. |
+| ADR-061 | 2 AnonCreds proof requests with predicates | Done | `vca/services/dpg-adapter-credebl/internal/service/proofs.go` | `TestOobProofRequest` and `TestListProofSchemas` pin it. |
+| ADR-061 | 3 The stack verifies, and VCA reads the revealed values | Done | `vca/services/dpg-adapter-credebl/internal/service/proofs.go` | `TestProofResultVerified` and `TestProofResultStates` pin it. |
+| ADR-061 | 4 The AnonCreds builder | Not started | | P6-C6 adds it to the verifier discovery service. |
+| ADR-061 | 5 The DIDComm option of the request page | Not started | | P6-C6 adds it to the verifier ingest service. |
+| ADR-061 | 6 The schema of a PE descriptor on CREDEBL | Done | `vca/services/dpg-adapter-credebl/internal/service/proofs.go` | `TestPeProofRequestOverDidcomm` pins it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 281 |
+| Done | 285 |
 | Partial | 25 |
 | Deferred | 3 |
-| Not started | 26 |
-| Total | 335 |
+| Not started | 28 |
+| Total | 341 |

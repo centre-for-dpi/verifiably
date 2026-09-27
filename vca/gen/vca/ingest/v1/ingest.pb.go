@@ -644,7 +644,16 @@ type CreateOid4VpRequestRequest struct {
 	// The stack adapter must list FEATURE_DC_API_VERIFY.
 	DcApi bool `protobuf:"varint,7,opt,name=dc_api,json=dcApi,proto3" json:"dc_api,omitempty"`
 	// The web origin of the page that calls the Digital Credentials API.
-	Origin        string `protobuf:"bytes,8,opt,name=origin,proto3" json:"origin,omitempty"`
+	Origin string `protobuf:"bytes,8,opt,name=origin,proto3" json:"origin,omitempty"`
+	// Ask the stack with the DIDComm present proof protocol instead of
+	// OID4VP (ADR-061). The stack adapter must list
+	// PROTOCOL_DIDCOMM_PRESENT_V2. An AnonCreds template always goes over
+	// DIDComm.
+	Didcomm bool `protobuf:"varint,9,opt,name=didcomm,proto3" json:"didcomm,omitempty"`
+	// The DIDComm connection of the holder at the stack. The stack then
+	// sends the request over that connection, and the request has no QR
+	// code. Empty makes an out of band invitation.
+	ConnectionId  string `protobuf:"bytes,10,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -731,6 +740,20 @@ func (x *CreateOid4VpRequestRequest) GetDcApi() bool {
 func (x *CreateOid4VpRequestRequest) GetOrigin() string {
 	if x != nil {
 		return x.Origin
+	}
+	return ""
+}
+
+func (x *CreateOid4VpRequestRequest) GetDidcomm() bool {
+	if x != nil {
+		return x.Didcomm
+	}
+	return false
+}
+
+func (x *CreateOid4VpRequestRequest) GetConnectionId() string {
+	if x != nil {
+		return x.ConnectionId
 	}
 	return ""
 }
@@ -1131,7 +1154,11 @@ type GetTransactionResponse struct {
 	StackChecks []*v11.GetResultResponse_DpgCheck `protobuf:"bytes,10,rep,name=stack_checks,json=stackChecks,proto3" json:"stack_checks,omitempty"`
 	// The request object of the Digital Credentials API, as a JSON string,
 	// for a request that asked for it.
-	DcApiRequest  string `protobuf:"bytes,11,opt,name=dc_api_request,json=dcApiRequest,proto3" json:"dc_api_request,omitempty"`
+	DcApiRequest string `protobuf:"bytes,11,opt,name=dc_api_request,json=dcApiRequest,proto3" json:"dc_api_request,omitempty"`
+	// True when the request went over DIDComm.
+	Didcomm bool `protobuf:"varint,12,opt,name=didcomm,proto3" json:"didcomm,omitempty"`
+	// The DIDComm connection the request went over, when it went over one.
+	ConnectionId  string `protobuf:"bytes,13,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1243,6 +1270,20 @@ func (x *GetTransactionResponse) GetDcApiRequest() string {
 	return ""
 }
 
+func (x *GetTransactionResponse) GetDidcomm() bool {
+	if x != nil {
+		return x.Didcomm
+	}
+	return false
+}
+
+func (x *GetTransactionResponse) GetConnectionId() string {
+	if x != nil {
+		return x.ConnectionId
+	}
+	return ""
+}
+
 // ListTransactionsRequest selects transactions.
 type ListTransactionsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1322,7 +1363,9 @@ type TransactionSummary struct {
 	Stack string `protobuf:"bytes,9,opt,name=stack,proto3" json:"stack,omitempty"`
 	// The verdict of the stored result. Unspecified until the service
 	// evaluated the answer.
-	Verdict       v1.Verdict `protobuf:"varint,10,opt,name=verdict,proto3,enum=vca.common.v1.Verdict" json:"verdict,omitempty"`
+	Verdict v1.Verdict `protobuf:"varint,10,opt,name=verdict,proto3,enum=vca.common.v1.Verdict" json:"verdict,omitempty"`
+	// True when the request went over DIDComm.
+	Didcomm       bool `protobuf:"varint,11,opt,name=didcomm,proto3" json:"didcomm,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1427,6 +1470,13 @@ func (x *TransactionSummary) GetVerdict() v1.Verdict {
 	return v1.Verdict(0)
 }
 
+func (x *TransactionSummary) GetDidcomm() bool {
+	if x != nil {
+		return x.Didcomm
+	}
+	return false
+}
+
 // ListTransactionsResponse returns the transactions.
 type ListTransactionsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1524,7 +1574,7 @@ const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	"media_type\x18\x04 \x01(\tR\tmediaType\"j\n" +
 	"\x0eIngestResponse\x12B\n" +
 	"\fpresentation\x18\x01 \x01(\v2\x1e.vca.ingest.v1.RawPresentationR\fpresentation\x12\x14\n" +
-	"\x05steps\x18\x02 \x03(\tR\x05steps\"\x94\x02\n" +
+	"\x05steps\x18\x02 \x03(\tR\x05steps\"\xd3\x02\n" +
 	"\x1aCreateOid4vpRequestRequest\x12\x1f\n" +
 	"\vtemplate_id\x18\x01 \x01(\tR\n" +
 	"templateId\x12)\n" +
@@ -1534,7 +1584,10 @@ const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	"\x05stack\x18\x05 \x01(\tR\x05stack\x12,\n" +
 	"\x12expires_in_seconds\x18\x06 \x01(\x05R\x10expiresInSeconds\x12\x15\n" +
 	"\x06dc_api\x18\a \x01(\bR\x05dcApi\x12\x16\n" +
-	"\x06origin\x18\b \x01(\tR\x06origin\"\xfb\x01\n" +
+	"\x06origin\x18\b \x01(\tR\x06origin\x12\x18\n" +
+	"\adidcomm\x18\t \x01(\bR\adidcomm\x12#\n" +
+	"\rconnection_id\x18\n" +
+	" \x01(\tR\fconnectionId\"\xfb\x01\n" +
 	"\x1bCreateOid4vpRequestResponse\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x12\x1f\n" +
 	"\vrequest_uri\x18\x02 \x01(\tR\n" +
@@ -1559,7 +1612,7 @@ const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	"\fpresentation\x18\x01 \x01(\v2\x1e.vca.ingest.v1.RawPresentationR\fpresentation\x12!\n" +
 	"\fredirect_uri\x18\x02 \x01(\tR\vredirectUri\">\n" +
 	"\x15GetTransactionRequest\x12%\n" +
-	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\"\xf2\x04\n" +
+	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\"\xb1\x05\n" +
 	"\x16GetTransactionResponse\x12A\n" +
 	"\x05state\x18\x01 \x01(\x0e2+.vca.ingest.v1.GetTransactionResponse.StateR\x05state\x12B\n" +
 	"\fpresentation\x18\x02 \x01(\v2\x1e.vca.ingest.v1.RawPresentationR\fpresentation\x12\x1f\n" +
@@ -1575,7 +1628,9 @@ const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	"\x05error\x18\t \x01(\tR\x05error\x12M\n" +
 	"\fstack_checks\x18\n" +
 	" \x03(\v2*.vca.backend.v1.GetResultResponse.DpgCheckR\vstackChecks\x12$\n" +
-	"\x0edc_api_request\x18\v \x01(\tR\fdcApiRequest\"k\n" +
+	"\x0edc_api_request\x18\v \x01(\tR\fdcApiRequest\x12\x18\n" +
+	"\adidcomm\x18\f \x01(\bR\adidcomm\x12#\n" +
+	"\rconnection_id\x18\r \x01(\tR\fconnectionId\"k\n" +
 	"\x05State\x12\x15\n" +
 	"\x11STATE_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rSTATE_PENDING\x10\x01\x12\x12\n" +
@@ -1584,7 +1639,7 @@ const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	"\rSTATE_EXPIRED\x10\x04\"\x8b\x01\n" +
 	"\x17ListTransactionsRequest\x12A\n" +
 	"\x05state\x18\x01 \x01(\x0e2+.vca.ingest.v1.GetTransactionResponse.StateR\x05state\x12-\n" +
-	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PaginationR\x04page\"\xe2\x03\n" +
+	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PaginationR\x04page\"\xfc\x03\n" +
 	"\x12TransactionSummary\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x12A\n" +
 	"\x05state\x18\x02 \x01(\x0e2+.vca.ingest.v1.GetTransactionResponse.StateR\x05state\x12\x1f\n" +
@@ -1600,7 +1655,8 @@ const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	"\tresult_id\x18\b \x01(\tR\bresultId\x12\x14\n" +
 	"\x05stack\x18\t \x01(\tR\x05stack\x120\n" +
 	"\averdict\x18\n" +
-	" \x01(\x0e2\x16.vca.common.v1.VerdictR\averdict\"\x90\x01\n" +
+	" \x01(\x0e2\x16.vca.common.v1.VerdictR\averdict\x12\x18\n" +
+	"\adidcomm\x18\v \x01(\bR\adidcomm\"\x90\x01\n" +
 	"\x18ListTransactionsResponse\x12E\n" +
 	"\ftransactions\x18\x01 \x03(\v2!.vca.ingest.v1.TransactionSummaryR\ftransactions\x12-\n" +
 	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page*\xe3\x01\n" +

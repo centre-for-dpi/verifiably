@@ -611,6 +611,10 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 			}))
 			return err
 		}, true},
+		{backendv1.Feature_FEATURE_ANONCREDS_PROOF, func() error {
+			_, err := svc.ListProofSchemas(ctx, connect.NewRequest(&backendv1.ListProofSchemasRequest{}))
+			return err
+		}, true},
 		{backendv1.Feature_FEATURE_WEBHOOKS, func() error {
 			_, err := svc.GetWebhook(ctx, connect.NewRequest(&backendv1.GetWebhookRequest{}))
 			return err

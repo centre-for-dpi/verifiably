@@ -129,6 +129,10 @@ message PresentationTemplate {
   // it and fills dcql and queries from it. It leaves dcql empty when the
   // conversion to DCQL loses a part.
   string presentation_definition = 15;
+  // The AnonCreds proof request of a native template (ADR-061). The
+  // service validates it. A template with one leaves dcql and
+  // presentation_definition empty.
+  AnonCredsRequest anoncreds = 16;
 
   // CredentialQuery is one credential the template asks for.
   message CredentialQuery {
@@ -185,6 +189,50 @@ message PresentationTemplate {
       // The claim date is at most value years before the check.
       OP_AT_MOST_YEARS = 4;
     }
+  }
+}
+
+// AnonCredsRequest is an AnonCreds proof request: the attributes the
+// holder reveals and the predicates the holder proves without the
+// value (ADR-061).
+message AnonCredsRequest {
+  // The name the wallet shows.
+  string name = 1;
+  // The version of the request, such as 1.0.
+  string version = 2;
+  // The attributes to reveal.
+  repeated Attribute attributes = 3;
+  // The predicates to prove.
+  repeated Predicate predicates = 4;
+
+  // Restriction limits the credential that answers a part of the
+  // request. Empty fields accept every value.
+  message Restriction {
+    // The id of the schema on its ledger.
+    string schema_id = 1;
+    // The id of the credential definition.
+    string cred_def_id = 2;
+  }
+
+  // Attribute is one group of attributes that one credential reveals.
+  message Attribute {
+    // The attribute names. More than one name asks one credential for
+    // every name.
+    repeated string names = 1;
+    // The credential that answers.
+    Restriction restriction = 2;
+  }
+
+  // Predicate is one comparison of a whole number attribute.
+  message Predicate {
+    // The attribute name.
+    string name = 1;
+    // The operator: >=, >, <=, or <.
+    string op = 2;
+    // The value to compare with.
+    int64 value = 3;
+    // The credential that answers.
+    Restriction restriction = 4;
   }
 }
 

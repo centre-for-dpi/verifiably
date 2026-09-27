@@ -1,0 +1,45 @@
+{
+  "statusCode": 200,
+  "message": "Schemas details fetched successfully.",
+  "data": {
+    "totalItems": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false,
+    "nextPage": 2,
+    "previousPage": 0,
+    "lastPage": 1,
+    "data": [
+      {
+        "createDateTime": "2026-09-26T11:20:43.771Z",
+        "name": "Farmer",
+        "version": "1.0",
+        "attributes": [
+          {
+            "attributeName": "fullName",
+            "schemaDataType": "string",
+            "displayName": "Full name",
+            "isRequired": true
+          },
+          {
+            "attributeName": "acres",
+            "schemaDataType": "number",
+            "displayName": "Acres",
+            "isRequired": true
+          }
+        ],
+        "schemaLedgerId": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS/anoncreds/v0/SCHEMA/Farmer/1.0",
+        "isSchemaArchived": false,
+        "createdBy": "4f5a6b7c-8d9e-4f0a-9b1c-2d3e4f5a6b7c",
+        "publisherDid": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS",
+        "orgId": "org-1",
+        "issuerId": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS",
+        "type": "indy",
+        "alias": null,
+        "organisation": {
+          "name": "[organisation]"
+        },
+        "organizationName": "[organisation]"
+      }
+    ]
+  }
+}

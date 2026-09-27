@@ -40,3 +40,4 @@ each decision of each record.
 - [ADR-058: The CREDEBL platform runs on generated credentials, its own realm, and the webhook of its gateway](adr/ADR-058-credebl-platform-bootstrap.md)
 - [ADR-059: DIDComm issuance channels and the formats each channel carries](adr/ADR-059-didcomm-issuance.md)
 - [ADR-060: The CSV bulk import of a stack that mails each row](adr/ADR-060-stack-bulk-import.md)
+- [ADR-061: DIDComm proof requests and the AnonCreds proof request builder](adr/ADR-061-didcomm-proof-requests.md)

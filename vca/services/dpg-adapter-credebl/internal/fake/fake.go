@@ -63,6 +63,32 @@ const (
 	// NoBulkFiles makes the list of files answer the status not found,
 	// as the platform does for an empty list.
 	NoBulkFiles Answer = ""
+	// ProofRequestSent is a DIDComm proof exchange no wallet answered.
+	ProofRequestSent Answer = "doc/proof-record-request-sent.json"
+	// ProofPresentationReceived is a proof exchange whose presentation
+	// waits for the verify call.
+	ProofPresentationReceived Answer = "doc/proof-record-presentation-received.json"
+	// ProofDone is a proof exchange the agent verified.
+	ProofDone Answer = "doc/proof-record-done.json"
+	// ProofDoneUnverified is a proof exchange whose proof did not verify.
+	ProofDoneUnverified Answer = "doc/proof-record-done-unverified.json"
+	// ProofAbandoned is a proof exchange the holder declined.
+	ProofAbandoned Answer = "doc/proof-record-abandoned.json"
+	// VerifiedIndy is the revealed data of an AnonCreds proof.
+	VerifiedIndy Answer = "doc/verified-proof-indy.json"
+	// VerifiedPE is the revealed data of a DIF PE proof.
+	VerifiedPE Answer = "doc/verified-proof-pe.json"
+	// Proofs is the list of the proof requests of the organisation.
+	Proofs Answer = "doc/proofs.json"
+	// NoProofs makes the list of proof requests answer the status not
+	// found, as the platform does for an empty list.
+	NoProofs Answer = ""
+	// PlatformSchemas is the list of the AnonCreds schemas of the
+	// platform.
+	PlatformSchemas Answer = "doc/platform-schemas.json"
+	// NoPlatformSchemas makes the list of schemas answer the status not
+	// found, as the platform does for an empty list.
+	NoPlatformSchemas Answer = ""
 )
 
 // Server is a running fake CREDEBL platform.
@@ -89,6 +115,14 @@ type Server struct {
 	record Answer
 	// files selects the listing of the files of the bulk import.
 	files Answer
+	// proof selects the answer of one DIDComm proof exchange.
+	proof Answer
+	// verified selects the revealed data of a proof.
+	verified Answer
+	// proofs selects the listing of the proof requests.
+	proofs Answer
+	// schemas selects the listing of the AnonCreds schemas.
+	schemas Answer
 	// types records the content type of every write call by path.
 	types map[string]string
 	// queries records the query of every call by path.
@@ -115,6 +149,10 @@ func New(dir string) *Server {
 		connections: Connections,
 		record:      RecordOfferSent,
 		files:       BulkFiles,
+		proof:       ProofRequestSent,
+		verified:    VerifiedIndy,
+		proofs:      Proofs,
+		schemas:     PlatformSchemas,
 		types:       map[string]string{},
 		queries:     map[string]string{},
 		deleted:     map[string]bool{},
@@ -181,6 +219,34 @@ func (f *Server) SetBulkFiles(a Answer) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.files = a
+}
+
+// SetProof selects the answer of one DIDComm proof exchange.
+func (f *Server) SetProof(a Answer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.proof = a
+}
+
+// SetVerified selects the revealed data of a proof.
+func (f *Server) SetVerified(a Answer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.verified = a
+}
+
+// SetProofs selects the listing of the proof requests.
+func (f *Server) SetProofs(a Answer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.proofs = a
+}
+
+// SetPlatformSchemas selects the listing of the AnonCreds schemas.
+func (f *Server) SetPlatformSchemas(a Answer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.schemas = a
 }
 
 // Upload reads the CSV file of the last multipart write to the path:
@@ -273,6 +339,7 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	forced := f.take(r.URL.Path)
 	session, templates, orgs, offer := f.session, f.templates, f.orgs, f.offer
 	connections, record, files := f.connections, f.record, f.files
+	proofs := proofAnswers{record: f.proof, verified: f.verified, list: f.proofs, schemas: f.schemas}
 	if r.URL.Path == "/v1/auth/signin" {
 		f.signins++
 	}
@@ -283,6 +350,9 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	path := r.URL.Path
 	if f.serveDidcomm(w, r, connections, record) {
+		return
+	}
+	if f.serveProofs(w, r, proofs) {
 		return
 	}
 	if f.serveBulk(w, r, files) {
@@ -399,6 +469,56 @@ func (f *Server) serveDidcomm(w http.ResponseWriter, r *http.Request, connection
 		return false
 	}
 	return true
+}
+
+// proofAnswers are the answers the proof calls of P6-C6 switch between.
+type proofAnswers struct {
+	record, verified, list, schemas Answer
+}
+
+// serveProofs answers the DIDComm proof calls of P6-C6 from the answers
+// written from the platform sources (testdata/doc). It reports whether
+// it answered.
+func (f *Server) serveProofs(w http.ResponseWriter, r *http.Request, a proofAnswers) bool {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	switch {
+	case r.URL.Path == "/v1/platform/schemas" && r.Method == http.MethodGet:
+		f.sendOrNotFound(w, r, a.schemas)
+		return true
+	case r.URL.Path == "/v1/platform/cred-defs" && r.Method == http.MethodGet:
+		f.send(w, "doc/platform-cred-defs.json")
+		return true
+	case len(parts) < 4 || parts[0] != "v1" || parts[1] != "orgs":
+		return false
+	}
+	tail := strings.Join(parts[3:], "/")
+	switch {
+	case tail == "proofs/oob" && r.Method == http.MethodPost:
+		f.sendStatus(w, http.StatusCreated, "doc/proof-oob-created.json")
+	case tail == "proofs" && r.Method == http.MethodPost:
+		f.sendStatus(w, http.StatusCreated, "doc/proof-connection-created.json")
+	case tail == "proofs" && r.Method == http.MethodGet:
+		f.sendOrNotFound(w, r, a.list)
+	case len(parts) == 5 && parts[3] == "proofs" && r.Method == http.MethodGet:
+		f.send(w, string(a.record))
+	case len(parts) == 6 && parts[3] == "proofs" && parts[5] == "verify" && r.Method == http.MethodPost:
+		f.sendStatus(w, http.StatusCreated, "doc/proof-verified.json")
+	case len(parts) == 5 && parts[3] == "verified-proofs" && r.Method == http.MethodGet:
+		f.send(w, string(a.verified))
+	default:
+		return false
+	}
+	return true
+}
+
+// sendOrNotFound writes one recorded answer, or the status not found
+// for the empty answer, as the platform does for an empty list.
+func (f *Server) sendOrNotFound(w http.ResponseWriter, r *http.Request, a Answer) {
+	if a == "" {
+		http.NotFound(w, r)
+		return
+	}
+	f.send(w, string(a))
 }
 
 // serveBulk answers the bulk import calls of P6-C4 from the answers

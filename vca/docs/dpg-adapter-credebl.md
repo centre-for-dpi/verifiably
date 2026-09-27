@@ -11,7 +11,8 @@ behind one api gateway. This adapter gives the rest of VCA one small
 contract instead. It issues SD-JWT credentials through the OID4VCI
 pre-authorized code flow, and AnonCreds and W3C JSON-LD credentials
 over DIDComm. It hands a CSV file to the bulk import of the platform.
-It checks presentations with DCQL queries.
+It checks presentations with DCQL queries over OID4VP. It asks for
+AnonCreds and DIF Presentation Exchange proofs over DIDComm.
 
 ## What it serves
 
@@ -20,7 +21,7 @@ It checks presentations with DCQL queries.
 | `CapabilityService` | Always served. |
 | `IssuerBackendService` | Served. |
 | `HolderBackendService` | Never served. CREDEBL ships no wallet for a citizen. |
-| `VerifierBackendService` | Served. |
+| `VerifierBackendService` | Served: OID4VP with DCQL, and DIDComm proof requests. |
 | `CatalogBackendService` | Served. |
 | `TenantBackendService` | Served for organisations. The client credential RPCs answer `unimplemented`. |
 | `NotificationBackendService` | Never served yet. The adapter sets no organisation webhook. It lists no webhooks. |
@@ -60,6 +61,14 @@ It checks presentations with DCQL queries.
 | `GET /v1/orgs/{org}/bulk/files` | Lists the issued files with their state and counts. The platform answers not found for none. |
 | `GET /v1/orgs/{org}/{file}/bulk/file-data` | Reads the rows of one issued file with the reason of each failure. |
 | `POST /v1/orgs/{org}/{file}/retry/bulk` | Issues the failed rows of one file again. |
+| `POST /v1/orgs/{org}/proofs/oob` | Makes an out of band invitation that carries a proof request. |
+| `POST /v1/orgs/{org}/proofs` | Sends a proof request over a connection of the organisation. |
+| `GET /v1/orgs/{org}/proofs` | Lists the proof requests. The platform answers not found for none. |
+| `GET /v1/orgs/{org}/proofs/{id}` | Reads the proof exchange of one request. |
+| `POST /v1/orgs/{org}/proofs/{id}/verify` | Verifies a presentation that waits. |
+| `GET /v1/orgs/{org}/verified-proofs/{id}` | Reads the revealed values of a verified proof. |
+| `GET /v1/platform/schemas` | Lists the AnonCreds schemas of the platform for the proof request builder. |
+| `GET /v1/platform/cred-defs` | Lists the credential definitions of those schemas. |
 | `POST /v1/orgs/{org}/oid4vp/verifier` | Creates the OID4VP verifier. |
 | `POST /v1/orgs/{org}/oid4vp/presentation` | Starts an OID4VP transaction. |
 | `GET /v1/orgs/{org}/oid4vp/verifier-presentation` | Reads the answer of a transaction. |
@@ -72,9 +81,9 @@ The answer of `GetCapabilities` reports what the platform supports.
 | --- | --- |
 | Formats | `dc+sd-jwt`, `vc+sd-jwt`, AnonCreds, W3C JSON-LD |
 | Channels | OID4VCI pre-authorized code for SD-JWT. A DIDComm invitation for AnonCreds and W3C JSON-LD. An email from the stack for the same two, when the stack names a mail provider. |
-| Protocols | OID4VCI, OID4VP, OID4VP with DCQL, DIDComm issue credential 2.0 |
+| Protocols | OID4VCI, OID4VP, OID4VP with DCQL, DIDComm issue credential 2.0, DIDComm present proof 2.0 |
 | Roles | Issuer and verifier |
-| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUANCE_STATUS`, `FEATURE_ISSUED_LEDGER`, and `FEATURE_BULK_NATIVE` with a mail provider |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUANCE_STATUS`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ANONCREDS_PROOF`, and `FEATURE_BULK_NATIVE` with a mail provider |
 | Bulk import | With a mail provider: the email channel, AnonCreds and W3C JSON-LD, and the address column `email_identifier` |
 | DID methods | `did:key` |
 | Key types | `Ed25519`, `secp256r1`, `secp256k1` |
@@ -107,6 +116,7 @@ CREDEBL is the only one of the three DPGs that reads DCQL.
 | `ProvisionIssuerIdentity` for `did:indy` and `did:web` | The agent takes the private key in the request for those methods. The adapter never holds a key, so it makes `did:key` only. |
 | Every webhook RPC | The adapter sets no organisation webhook. |
 | `VerifyCredential` | The adapter does not send an uploaded credential to the platform. The scanner shows no stack check. |
+| A DIDComm proof request by email | The platform answers a request by email with the thread of the exchange alone. No call of the platform reads a proof by its thread, so VCA could not show the answer. Send the invitation as a QR code or a link, or over a connection. |
 
 Each of these answers with the Connect code `unimplemented` and a
 sentence that names the alternative.
@@ -262,6 +272,29 @@ verifier at the first request. It then stores the identifier. After a
 restart the create call gets the status conflict. The adapter then looks
 the verifier up by its public name.
 
+**DIDComm proof requests go out as an invitation or over a
+connection.** An AnonCreds request travels in the Indy format of the
+platform. It names the attributes to reveal and the predicates to prove. Over
+a connection the platform takes a list of attributes instead, with the
+first restriction of each. A DIF PE request needs the schema of each
+input descriptor. The adapter reads it from the filter of the descriptor
+on `$.type`. The platform keeps only the path of each field. The agent
+verifies each presentation as it arrives. A presentation that waits gets
+the check call of the platform. The state of a request is
+`didcomm-proof:` and the id of the proof exchange.
+
+**The platform verifies the proof, and VCA reads the values.** A proof
+in the state `done` with `isVerified` reads as accepted. The adapter
+returns one JSON view per credential, with the revealed values under
+`credentialSubject`. A predicate reads as the operator and the number,
+such as `>=10`, and never as the value of the holder. The view carries
+no proof, so the signature check of VCA skips it. A proof that fails the
+check, and a request the holder declines, read as rejected.
+
+**The proof request builder reads the AnonCreds schemas of the
+platform.** `ListProofSchemas` lists the AnonCreds schemas of every
+organisation, with the credential definitions of each.
+
 **A DCQL query arrives in two shapes.** The adapter reads the whole
 request body with its `query` member, and the bare query as well.
 
@@ -277,4 +310,4 @@ The contract set targets a real platform. It carries the build tag
 
 - Service folder: `services/dpg-adapter-credebl`
 - Contract: `proto/vca/backend/v1/backend.proto`
-- Decisions: ADR-002 decisions 2 and 4, ADR-016 decision 6, ADR-022 decision 3, ADR-030 decision 2
+- Decisions: ADR-002 decisions 2 and 4, ADR-016 decision 6, ADR-022 decision 3, ADR-030 decision 2, ADR-059, ADR-060, ADR-061

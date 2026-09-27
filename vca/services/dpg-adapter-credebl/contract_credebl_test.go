@@ -305,3 +305,35 @@ func TestContractBulkImport(t *testing.T) {
 		t.Fatalf("ListBulkFiles: %v", err)
 	}
 }
+
+// TestContractDidcommProofRequest makes an out of band AnonCreds proof
+// request for one attribute of the schema that
+// VCA_CREDEBL_CONTRACT_PROOF_SCHEMA names, reads its state, and lists
+// the proof requests and the AnonCreds schemas (P6-C6). No wallet
+// answers, so the request stays pending.
+func TestContractDidcommProofRequest(t *testing.T) {
+	a := newContractApp(t)
+	schema := os.Getenv("VCA_CREDEBL_CONTRACT_PROOF_SCHEMA")
+	attribute := os.Getenv("VCA_CREDEBL_CONTRACT_PROOF_ATTRIBUTE")
+	if schema == "" || attribute == "" {
+		t.Skip("set VCA_CREDEBL_CONTRACT_PROOF_SCHEMA and VCA_CREDEBL_CONTRACT_PROOF_ATTRIBUTE to run the proof contract test")
+	}
+	ctx := context.Background()
+	request := `{"name":"Contract","version":"1.0","requested_attributes":{"a":{"name":"` + attribute +
+		`","restrictions":[{"schema_id":"` + schema + `"}]}},"requested_predicates":{}}`
+	created, err := a.Service.CreateRequest(ctx, connect.NewRequest(&backendv1.CreateRequestRequest{AnoncredsRequest: request}))
+	if err != nil || !strings.Contains(created.Msg.GetRequestUri(), "oob=") {
+		t.Fatalf("CreateRequest = %v, %v", created, err)
+	}
+	result, err := a.Service.GetResult(ctx, connect.NewRequest(&backendv1.GetResultRequest{State: created.Msg.GetState()}))
+	if err != nil || result.Msg.GetState() != backendv1.GetResultResponse_STATE_PENDING {
+		t.Fatalf("GetResult = %v, %v", result, err)
+	}
+	if _, err := a.Service.ListProofRequests(ctx, connect.NewRequest(&backendv1.ListProofRequestsRequest{})); err != nil {
+		t.Fatalf("ListProofRequests: %v", err)
+	}
+	schemas, err := a.Service.ListProofSchemas(ctx, connect.NewRequest(&backendv1.ListProofSchemasRequest{}))
+	if err != nil || len(schemas.Msg.GetSchemas()) == 0 {
+		t.Fatalf("ListProofSchemas = %v, %v", schemas, err)
+	}
+}

@@ -167,6 +167,15 @@ message CreateOid4vpRequestRequest {
   bool dc_api = 7;
   // The web origin of the page that calls the Digital Credentials API.
   string origin = 8;
+  // Ask the stack with the DIDComm present proof protocol instead of
+  // OID4VP (ADR-061). The stack adapter must list
+  // PROTOCOL_DIDCOMM_PRESENT_V2. An AnonCreds template always goes over
+  // DIDComm.
+  bool didcomm = 9;
+  // The DIDComm connection of the holder at the stack. The stack then
+  // sends the request over that connection, and the request has no QR
+  // code. Empty makes an out of band invitation.
+  string connection_id = 10;
 }
 
 // CreateOid4vpRequestResponse describes the transaction.
@@ -254,6 +263,10 @@ message GetTransactionResponse {
   // The request object of the Digital Credentials API, as a JSON string,
   // for a request that asked for it.
   string dc_api_request = 11;
+  // True when the request went over DIDComm.
+  bool didcomm = 12;
+  // The DIDComm connection the request went over, when it went over one.
+  string connection_id = 13;
 
   // State names the transaction phase.
   enum State {
@@ -301,6 +314,8 @@ message TransactionSummary {
   // The verdict of the stored result. Unspecified until the service
   // evaluated the answer.
   vca.common.v1.Verdict verdict = 10;
+  // True when the request went over DIDComm.
+  bool didcomm = 11;
 }
 
 // ListTransactionsResponse returns the transactions.

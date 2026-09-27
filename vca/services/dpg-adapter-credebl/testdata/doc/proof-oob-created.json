@@ -1,0 +1,43 @@
+{
+  "statusCode": 201,
+  "message": "Proof request sent successfully.",
+  "data": {
+    "invitationUrl": "http://credebl-agent.vca.internal:9001?oob=eyJAdHlwZSI6Imh0dHBzOi8vZGlkY29tbS5vcmcvb3V0LW9mLWJhbmQvMS4xL2ludml0YXRpb24iLCJAaWQiOiIyYzNkNGU1Zi02YTdiLTRjOGQtOWUwZi0xYTJiM2M0ZDVlNmYiLCJsYWJlbCI6IltvcmdhbmlzYXRpb25dIiwiYWNjZXB0IjpbImRpZGNvbW0vYWlwMSIsImRpZGNvbW0vYWlwMjtlbnY9cmZjMTkiXSwiaGFuZHNoYWtlX3Byb3RvY29scyI6WyJodHRwczovL2RpZGNvbW0ub3JnL2RpZGV4Y2hhbmdlLzEuMSIsImh0dHBzOi8vZGlkY29tbS5vcmcvY29ubmVjdGlvbnMvMS4wIl0sInNlcnZpY2VzIjpbImRpZDpwZWVyOjIuRXo2TFNxZEsyeWZWVWJrMXhtZkJ4Slo1VDVTZFJ0dDdlNERwUzFWWXFmTWtFQ1JrTS5WejZNa3dwQ2kzSHU2RVp0Y2JXVHJLNEdXRnh0Z2Y0WnZ5bkNqaEV0RnFHakJWNVhpLlNleUowSWpvaVpHMGlMQ0p6SWpvaWFIUjBjRG92TDJOeVpXUmxZbXd0WVdkbGJuUXVkbU5oTG1sdWRHVnlibUZzT2prd01ERWlMQ0p5SWpwYlhTd2lZU0k2V3lKa2FXUmpiMjF0TDJGcGNESWlMQ0prYVdSamIyMXRMMkZwY0RJN1pXNTJQWEptWXpFNUlsMTkiXSwicmVxdWVzdHN-YXR0YWNoIjpbeyJAaWQiOiI4YTliMGMxZC0yZTNmLTRhNGItOGM1ZC02ZTdmOGE5YjBjMWQiLCJtaW1lLXR5cGUiOiJhcHBsaWNhdGlvbi9qc29uIiwiZGF0YSI6eyJiYXNlNjQiOiJleUpBZEhsd1pTSTZJbWgwZEhCek9pOHZaR2xrWTI5dGJTNXZjbWN2Y0hKbGMyVnVkQzF3Y205dlppOHlMakF2Y21WeGRXVnpkQzF3Y21WelpXNTBZWFJwYjI0aUxDSkFhV1FpT2lJMFpEVmxObVkzWVMwNFlqbGpMVFJrTUdVdE9XWXhZUzB5WWpOak5HUTFaVFptTjJFaWZRPT0ifX1dfQ",
+    "invitation": {
+      "@type": "https://didcomm.org/out-of-band/1.1/invitation",
+      "@id": "2c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f",
+      "label": "[organisation]",
+      "accept": [
+        "didcomm/aip1",
+        "didcomm/aip2;env=rfc19"
+      ],
+      "handshake_protocols": [
+        "https://didcomm.org/didexchange/1.1",
+        "https://didcomm.org/connections/1.0"
+      ],
+      "services": [
+        "did:peer:2.Ez6LSqdK2yfVUbk1xmfBxJZ5T5SdRtt7e4DpS1VYqfMkECRkM.Vz6MkwpCi3Hu6EZtcbWTrK4GWFxtgf4ZvynCjhEtFqGjBV5Xi.SeyJ0IjoiZG0iLCJzIjoiaHR0cDovL2NyZWRlYmwtYWdlbnQudmNhLmludGVybmFsOjkwMDEiLCJyIjpbXSwiYSI6WyJkaWRjb21tL2FpcDIiLCJkaWRjb21tL2FpcDI7ZW52PXJmYzE5Il19"
+      ],
+      "requests~attach": [
+        {
+          "@id": "8a9b0c1d-2e3f-4a4b-8c5d-6e7f8a9b0c1d",
+          "mime-type": "application/json",
+          "data": {
+            "base64": "eyJAdHlwZSI6Imh0dHBzOi8vZGlkY29tbS5vcmcvcHJlc2VudC1wcm9vZi8yLjAvcmVxdWVzdC1wcmVzZW50YXRpb24iLCJAaWQiOiI0ZDVlNmY3YS04YjljLTRkMGUtOWYxYS0yYjNjNGQ1ZTZmN2EifQ=="
+          }
+        }
+      ]
+    },
+    "outOfBandRecord": {
+      "id": "b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e",
+      "createdAt": "2026-09-27T10:02:11.004Z",
+      "state": "await-response",
+      "role": "sender",
+      "reusable": false
+    },
+    "invitationDid": "did:peer:2.Ez6LSqdK2yfVUbk1xmfBxJZ5T5SdRtt7e4DpS1VYqfMkECRkM",
+    "proofRecordId": "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b",
+    "proofRecordThId": "4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a",
+    "proofMessageId": "4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a"
+  }
+}

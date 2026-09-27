@@ -168,6 +168,8 @@ func (s *Service) GetCapabilities(
 			backendv1.Protocol_PROTOCOL_OID4VP,
 			backendv1.Protocol_PROTOCOL_OID4VP_DCQL,
 			backendv1.Protocol_PROTOCOL_DIDCOMM_ISSUE_V2,
+			// DIDComm proof requests, AnonCreds and DIF PE (P6-C6).
+			backendv1.Protocol_PROTOCOL_DIDCOMM_PRESENT_V2,
 		},
 		// RegisterCredentialConfiguration writes a schema and a template
 		// to the platform. The organisations of the platform are the

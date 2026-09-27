@@ -58,6 +58,9 @@ func (s *Service) features() []backendv1.Feature {
 		// and the issued credentials (P6-C5).
 		backendv1.Feature_FEATURE_ISSUANCE_STATUS,
 		backendv1.Feature_FEATURE_ISSUED_LEDGER,
+		// The verifier asks for AnonCreds proofs with predicates over
+		// DIDComm (P6-C6).
+		backendv1.Feature_FEATURE_ANONCREDS_PROOF,
 	}
 	if s.mailOffers {
 		out = append(out, backendv1.Feature_FEATURE_BULK_NATIVE)

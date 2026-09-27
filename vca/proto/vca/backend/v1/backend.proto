@@ -136,6 +136,18 @@ service VerifierBackendService {
   // FEATURE_VERIFY_UPLOAD serves it. Every other adapter answers
   // Unimplemented.
   rpc VerifyCredential(VerifyCredentialRequest) returns (VerifyCredentialResponse);
+  // ListProofRequests returns the DIDComm proof requests of the
+  // verifier, newest first, with the state of each (ADR-061). An adapter
+  // serves it only when it lists PROTOCOL_DIDCOMM_PRESENT_V2.
+  rpc ListProofRequests(ListProofRequestsRequest) returns (ListProofRequestsResponse);
+  // ListProofSchemas returns the AnonCreds schemas that a proof request
+  // can name, with their attributes (ADR-061). An adapter serves it only
+  // when it lists FEATURE_ANONCREDS_PROOF.
+  rpc ListProofSchemas(ListProofSchemasRequest) returns (ListProofSchemasResponse);
+  // ListVerifierConnections returns the DIDComm connections that a
+  // proof request can go over. An adapter serves it only when it lists
+  // PROTOCOL_DIDCOMM_PRESENT_V2.
+  rpc ListVerifierConnections(ListVerifierConnectionsRequest) returns (ListVerifierConnectionsResponse);
 }
 
 // CatalogBackendService reads the credential types a DPG knows.
@@ -1451,6 +1463,21 @@ message CreateRequestRequest {
   // The web origins that can pass the request to the Digital Credentials
   // API, such as https://verifier.example.
   repeated string expected_origins = 7;
+  // The AnonCreds proof request as a JSON string: the name, the version,
+  // requested_attributes and requested_predicates of the AnonCreds
+  // specification. The caller sets it only for an adapter that lists
+  // FEATURE_ANONCREDS_PROOF. The adapter asks over DIDComm.
+  string anoncreds_request = 8;
+  // Ask with the DIDComm present proof protocol instead of OID4VP. The
+  // caller sets it only for an adapter that lists
+  // PROTOCOL_DIDCOMM_PRESENT_V2. With presentation_definition the
+  // request asks for a DIF Presentation Exchange proof. An AnonCreds
+  // request goes over DIDComm without it.
+  bool didcomm = 9;
+  // The DIDComm connection of the holder. The adapter then sends the
+  // request over that connection, and request_uri stays empty. Empty
+  // makes an out of band invitation that carries the request.
+  string connection_id = 10;
 }
 
 // CreateRequestResponse describes the transaction.
@@ -1704,6 +1731,90 @@ message SetWebhookRequest {
 message SetWebhookResponse {
   // The webhook as the DPG stored it.
   Webhook webhook = 1;
+}
+
+// ListVerifierConnectionsRequest asks for one page of the DIDComm
+// connections of the verifier.
+message ListVerifierConnectionsRequest {
+  // The page to read.
+  vca.common.v1.Pagination page = 1;
+}
+
+// ListVerifierConnectionsResponse carries one page of DIDComm
+// connections.
+message ListVerifierConnectionsResponse {
+  // The connections, newest first.
+  repeated DidcommConnection connections = 1;
+  // The paging state.
+  vca.common.v1.PageResult page = 2;
+}
+
+// ListProofRequestsRequest asks for one page of the DIDComm proof
+// requests.
+message ListProofRequestsRequest {
+  // The page to read.
+  vca.common.v1.Pagination page = 1;
+}
+
+// ListProofRequestsResponse carries one page of DIDComm proof requests.
+message ListProofRequestsResponse {
+  // The proof requests, newest first.
+  repeated ProofRequest requests = 1;
+  // The paging state.
+  vca.common.v1.PageResult page = 2;
+}
+
+// ProofRequest is one DIDComm proof request of the verifier, as the DPG
+// keeps it.
+message ProofRequest {
+  // The id of the proof exchange in the DPG.
+  string id = 1;
+  // The state GetResult takes for this request.
+  string result_state = 2;
+  // The DIDComm connection of the holder, when the exchange has one.
+  string connection_id = 3;
+  // The label the wallet of the holder gave itself, when known.
+  string connection_label = 4;
+  // The state of the exchange as the DPG names it, such as request-sent
+  // or done.
+  string state = 5;
+  // When the request began.
+  google.protobuf.Timestamp created_at = 6;
+  // The reason of a failed exchange.
+  string error = 7;
+}
+
+// ListProofSchemasRequest asks for one page of the AnonCreds schemas.
+message ListProofSchemasRequest {
+  // The page to read.
+  vca.common.v1.Pagination page = 1;
+}
+
+// ListProofSchemasResponse carries one page of AnonCreds schemas.
+message ListProofSchemasResponse {
+  // The schemas.
+  repeated ProofSchema schemas = 1;
+  // The paging state.
+  vca.common.v1.PageResult page = 2;
+}
+
+// ProofSchema is one AnonCreds schema that a proof request can name.
+message ProofSchema {
+  // The id of the schema on its ledger.
+  string id = 1;
+  // The name of the schema.
+  string name = 2;
+  // The version of the schema.
+  string version = 3;
+  // The attribute names of the schema, in the order of the schema.
+  repeated string attributes = 4;
+  // The DID that wrote the schema.
+  string issuer_did = 5;
+  // The organisation that wrote the schema, as the DPG names it.
+  string organisation = 6;
+  // The ids of the credential definitions of the schema that the DPG
+  // knows.
+  repeated string credential_definitions = 7;
 }
 
 // VerifyCredentialRequest carries one input as the staff member gave it.

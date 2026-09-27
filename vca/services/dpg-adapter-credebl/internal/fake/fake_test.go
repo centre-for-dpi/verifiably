@@ -374,3 +374,47 @@ func TestFakeServesTheBulkCalls(t *testing.T) {
 		t.Errorf("no files = %q", body)
 	}
 }
+
+// TestFakeServesTheProofCalls: the DIDComm proof calls of P6-C6, the
+// answers a test switches between, and the empty lists.
+func TestFakeServesTheProofCalls(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	for path, want := range map[string]string{
+		"/v1/orgs/org-1/proofs/oob":                      "proofRecordId",
+		"/v1/orgs/org-1/proofs":                          "request-sent",
+		"/v1/orgs/org-1/proofs/p-1/verify":               "isVerified",
+		"/v1/orgs/org-1/proofs/p-1/something-else-to-do": "",
+	} {
+		if body := post(t, f, path, "{}"); !strings.Contains(body, want) {
+			t.Errorf("post %s = %q", path, body)
+		}
+	}
+	for path, want := range map[string]string{
+		"/v1/orgs/org-1/proofs":               "presentationId",
+		"/v1/orgs/org-1/proofs/p-1":           "request-sent",
+		"/v1/orgs/org-1/verified-proofs/p-1":  "credDefId",
+		"/v1/platform/schemas":                "schemaLedgerId",
+		"/v1/platform/cred-defs":              "credentialDefinitionId",
+		"/v1/orgs/org-1/verified-proofs/p-1/": "",
+	} {
+		if body := get(t, f, path); !strings.Contains(body, want) {
+			t.Errorf("get %s = %q", path, body)
+		}
+	}
+	f.SetProof(fake.ProofDone)
+	f.SetVerified(fake.VerifiedPE)
+	if body := get(t, f, "/v1/orgs/org-1/proofs/p-1"); !strings.Contains(body, `"done"`) {
+		t.Errorf("proof = %q", body)
+	}
+	if body := get(t, f, "/v1/orgs/org-1/verified-proofs/p-1"); strings.Contains(body, "credDefId") {
+		t.Errorf("verified = %q", body)
+	}
+	f.SetProofs(fake.NoProofs)
+	f.SetPlatformSchemas(fake.NoPlatformSchemas)
+	for _, path := range []string{"/v1/orgs/org-1/proofs", "/v1/platform/schemas"} {
+		if code := status(t, f, path); code != http.StatusNotFound {
+			t.Errorf("%s = %d", path, code)
+		}
+	}
+}

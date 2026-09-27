@@ -93,3 +93,28 @@ a file are `FileUploadStatus` of `apps/api-gateway/src/enum.ts`. The
 template call `POST /v1/orgs/{org}/credentials/bulk/template` answers
 with a link into the UI of the platform, so the adapter does not call
 it.
+
+## DIDComm proof requests
+
+These files were written on 2026-09-27 from the verification
+controller, its DTOs and service, and the proof controller of the
+agent.
+
+| File | Call | Source |
+| --- | --- | --- |
+| `proof-oob-created.json` | `POST /v1/orgs/{org}/proofs/oob` | [verification.controller.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/verification/verification.controller.ts) `sendOutOfBandPresentationRequest`, body `SendProofRequestPayload` of [request-proof.dto.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/verification/dto/request-proof.dto.ts), `sendOutOfBandPresentationRequest` of [verification.service.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/verification/src/verification.service.ts), and `createRequest` of the agent [ProofController.ts](https://raw.githubusercontent.com/credebl/agent-controller/main/src/controllers/didcomm/proofs/ProofController.ts), which answers with the invitation, the out of band record, and `proofRecordId` |
+| `proof-connection-created.json` | `POST /v1/orgs/{org}/proofs` | the same controller `sendPresentationRequest`, body `RequestProofDtoV1`, and `sendProofRequest` of the service, which turns the attribute list into `requested_attributes` and `requested_predicates` and answers with the proof record of the agent |
+| `proof-record-request-sent.json`, `proof-record-presentation-received.json`, `proof-record-done.json`, `proof-record-done-unverified.json`, `proof-record-abandoned.json` | `GET /v1/orgs/{org}/proofs/{id}` | the controller `getProofPresentationById`, which answers with the proof exchange record of the agent |
+| `proof-verified.json` | `POST /v1/orgs/{org}/proofs/{id}/verify` | the controller `verifyPresentation`, and `acceptPresentation` of the agent |
+| `verified-proof-indy.json`, `verified-proof-pe.json` | `GET /v1/orgs/{org}/verified-proofs/{id}` | the controller `getVerifiedProofDetails`, and `getVerifiedProofdetails` of the service, which answers with one entry per value: the attribute, the schema, and the credential definition. A predicate carries the operator and the number. |
+| `proofs.json` | `GET /v1/orgs/{org}/proofs` | the controller `getProofPresentations`, `GetAllProofRequestsDto`, and `getAllProofRequests` of [verification.repository.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/verification/src/repositories/verification.repository.ts) with the model `presentations` |
+| `platform-schemas.json` | `GET /v1/platform/schemas` | [platform.controller.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/platform/platform.controller.ts) `getAllSchema`, `GetAllSchemaByPlatformDto` of [get-all-schema.dto.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/schema/dtos/get-all-schema.dto.ts), and `getAllSchema` of [schema.service.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/ledger/src/schema/schema.service.ts), which parses the attributes |
+| `platform-cred-defs.json` | `GET /v1/platform/cred-defs` | the same controller `getAllCredDefs`, and `getAllPlatformCredDefsDetails` of [credential-definition.repository.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/ledger/src/credential-definition/repositories/credential-definition.repository.ts) |
+
+The query parameter `requestType` is `indy` or `presentationExchange`
+(`ProofRequestType` of verification.enum.ts). The states of a proof
+exchange are those of the present proof protocol of the agent:
+`request-sent`, `presentation-received`, `done`, `abandoned`, and
+`declined`. The platform needs the schema of each input descriptor of a
+DIF PE request (`InputDescriptors` of the DTO), and it keeps only the
+path of each field.

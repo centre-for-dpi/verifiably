@@ -15,13 +15,17 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
-// CreateRequest starts an OID4VP transaction with a DCQL query.
+// CreateRequest starts an OID4VP transaction with a DCQL query, or a
+// DIDComm proof request (P6-C6).
 //
-// CREDEBL reads DCQL. A Presentation Exchange definition alone is a bad
-// request for this adapter.
+// CREDEBL reads DCQL over OID4VP. It reads an AnonCreds request and a
+// Presentation Exchange definition over DIDComm only.
 func (s *Service) CreateRequest(
 	ctx context.Context, req *connect.Request[backendv1.CreateRequestRequest],
 ) (*connect.Response[backendv1.CreateRequestResponse], error) {
+	if req.Msg.GetDidcomm() || strings.TrimSpace(req.Msg.GetAnoncredsRequest()) != "" {
+		return s.didcommRequest(ctx, req.Msg)
+	}
 	raw := strings.TrimSpace(req.Msg.GetDcql())
 	if raw == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New(
@@ -77,6 +81,9 @@ func (s *Service) GetResult(
 	state := strings.TrimSpace(req.Msg.GetState())
 	if state == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the request needs a state"))
+	}
+	if id, ok := strings.CutPrefix(state, DidcommProofPrefix); ok {
+		return s.didcommResult(ctx, id)
 	}
 	session, err := s.client.Presentation(ctx, state)
 	if err != nil {

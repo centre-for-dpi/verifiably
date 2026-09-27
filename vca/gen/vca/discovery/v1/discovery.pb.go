@@ -480,8 +480,12 @@ type PresentationTemplate struct {
 	// it and fills dcql and queries from it. It leaves dcql empty when the
 	// conversion to DCQL loses a part.
 	PresentationDefinition string `protobuf:"bytes,15,opt,name=presentation_definition,json=presentationDefinition,proto3" json:"presentation_definition,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// The AnonCreds proof request of a native template (ADR-061). The
+	// service validates it. A template with one leaves dcql and
+	// presentation_definition empty.
+	Anoncreds     *AnonCredsRequest `protobuf:"bytes,16,opt,name=anoncreds,proto3" json:"anoncreds,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PresentationTemplate) Reset() {
@@ -619,6 +623,88 @@ func (x *PresentationTemplate) GetPresentationDefinition() string {
 	return ""
 }
 
+func (x *PresentationTemplate) GetAnoncreds() *AnonCredsRequest {
+	if x != nil {
+		return x.Anoncreds
+	}
+	return nil
+}
+
+// AnonCredsRequest is an AnonCreds proof request: the attributes the
+// holder reveals and the predicates the holder proves without the
+// value (ADR-061).
+type AnonCredsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The name the wallet shows.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The version of the request, such as 1.0.
+	Version string `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
+	// The attributes to reveal.
+	Attributes []*AnonCredsRequest_Attribute `protobuf:"bytes,3,rep,name=attributes,proto3" json:"attributes,omitempty"`
+	// The predicates to prove.
+	Predicates    []*AnonCredsRequest_Predicate `protobuf:"bytes,4,rep,name=predicates,proto3" json:"predicates,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AnonCredsRequest) Reset() {
+	*x = AnonCredsRequest{}
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnonCredsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnonCredsRequest) ProtoMessage() {}
+
+func (x *AnonCredsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnonCredsRequest.ProtoReflect.Descriptor instead.
+func (*AnonCredsRequest) Descriptor() ([]byte, []int) {
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *AnonCredsRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AnonCredsRequest) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *AnonCredsRequest) GetAttributes() []*AnonCredsRequest_Attribute {
+	if x != nil {
+		return x.Attributes
+	}
+	return nil
+}
+
+func (x *AnonCredsRequest) GetPredicates() []*AnonCredsRequest_Predicate {
+	if x != nil {
+		return x.Predicates
+	}
+	return nil
+}
+
 // CrawlRequest selects issuers.
 type CrawlRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -630,7 +716,7 @@ type CrawlRequest struct {
 
 func (x *CrawlRequest) Reset() {
 	*x = CrawlRequest{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[4]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -642,7 +728,7 @@ func (x *CrawlRequest) String() string {
 func (*CrawlRequest) ProtoMessage() {}
 
 func (x *CrawlRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[4]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -655,7 +741,7 @@ func (x *CrawlRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CrawlRequest.ProtoReflect.Descriptor instead.
 func (*CrawlRequest) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{4}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *CrawlRequest) GetCredentialIssuers() []string {
@@ -680,7 +766,7 @@ type CrawlResponse struct {
 
 func (x *CrawlResponse) Reset() {
 	*x = CrawlResponse{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[5]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -692,7 +778,7 @@ func (x *CrawlResponse) String() string {
 func (*CrawlResponse) ProtoMessage() {}
 
 func (x *CrawlResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[5]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -705,7 +791,7 @@ func (x *CrawlResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CrawlResponse.ProtoReflect.Descriptor instead.
 func (*CrawlResponse) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{5}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *CrawlResponse) GetCrawled() int32 {
@@ -740,7 +826,7 @@ type ListIssuersRequest struct {
 
 func (x *ListIssuersRequest) Reset() {
 	*x = ListIssuersRequest{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[6]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -752,7 +838,7 @@ func (x *ListIssuersRequest) String() string {
 func (*ListIssuersRequest) ProtoMessage() {}
 
 func (x *ListIssuersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[6]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -765,7 +851,7 @@ func (x *ListIssuersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListIssuersRequest.ProtoReflect.Descriptor instead.
 func (*ListIssuersRequest) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{6}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListIssuersRequest) GetPage() *v11.Pagination {
@@ -788,7 +874,7 @@ type ListIssuersResponse struct {
 
 func (x *ListIssuersResponse) Reset() {
 	*x = ListIssuersResponse{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[7]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -800,7 +886,7 @@ func (x *ListIssuersResponse) String() string {
 func (*ListIssuersResponse) ProtoMessage() {}
 
 func (x *ListIssuersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[7]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -813,7 +899,7 @@ func (x *ListIssuersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListIssuersResponse.ProtoReflect.Descriptor instead.
 func (*ListIssuersResponse) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{7}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListIssuersResponse) GetIssuers() []*Issuer {
@@ -847,7 +933,7 @@ type ListCredentialTypesRequest struct {
 
 func (x *ListCredentialTypesRequest) Reset() {
 	*x = ListCredentialTypesRequest{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[8]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -859,7 +945,7 @@ func (x *ListCredentialTypesRequest) String() string {
 func (*ListCredentialTypesRequest) ProtoMessage() {}
 
 func (x *ListCredentialTypesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[8]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -872,7 +958,7 @@ func (x *ListCredentialTypesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCredentialTypesRequest.ProtoReflect.Descriptor instead.
 func (*ListCredentialTypesRequest) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{8}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListCredentialTypesRequest) GetPage() *v11.Pagination {
@@ -916,7 +1002,7 @@ type ListCredentialTypesResponse struct {
 
 func (x *ListCredentialTypesResponse) Reset() {
 	*x = ListCredentialTypesResponse{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[9]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -928,7 +1014,7 @@ func (x *ListCredentialTypesResponse) String() string {
 func (*ListCredentialTypesResponse) ProtoMessage() {}
 
 func (x *ListCredentialTypesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[9]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -941,7 +1027,7 @@ func (x *ListCredentialTypesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCredentialTypesResponse.ProtoReflect.Descriptor instead.
 func (*ListCredentialTypesResponse) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{9}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListCredentialTypesResponse) GetTypes() []*CredentialType {
@@ -971,7 +1057,7 @@ type GetFieldsRequest struct {
 
 func (x *GetFieldsRequest) Reset() {
 	*x = GetFieldsRequest{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[10]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -983,7 +1069,7 @@ func (x *GetFieldsRequest) String() string {
 func (*GetFieldsRequest) ProtoMessage() {}
 
 func (x *GetFieldsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[10]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -996,7 +1082,7 @@ func (x *GetFieldsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFieldsRequest.ProtoReflect.Descriptor instead.
 func (*GetFieldsRequest) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{10}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *GetFieldsRequest) GetCredentialIssuer() string {
@@ -1026,7 +1112,7 @@ type GetFieldsResponse struct {
 
 func (x *GetFieldsResponse) Reset() {
 	*x = GetFieldsResponse{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[11]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1038,7 +1124,7 @@ func (x *GetFieldsResponse) String() string {
 func (*GetFieldsResponse) ProtoMessage() {}
 
 func (x *GetFieldsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[11]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1051,7 +1137,7 @@ func (x *GetFieldsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetFieldsResponse.ProtoReflect.Descriptor instead.
 func (*GetFieldsResponse) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{11}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *GetFieldsResponse) GetFields() []*Field {
@@ -1081,7 +1167,7 @@ type CreateTemplateRequest struct {
 
 func (x *CreateTemplateRequest) Reset() {
 	*x = CreateTemplateRequest{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[12]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1093,7 +1179,7 @@ func (x *CreateTemplateRequest) String() string {
 func (*CreateTemplateRequest) ProtoMessage() {}
 
 func (x *CreateTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[12]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1106,7 +1192,7 @@ func (x *CreateTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTemplateRequest.ProtoReflect.Descriptor instead.
 func (*CreateTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{12}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CreateTemplateRequest) GetTemplate() *PresentationTemplate {
@@ -1127,7 +1213,7 @@ type CreateTemplateResponse struct {
 
 func (x *CreateTemplateResponse) Reset() {
 	*x = CreateTemplateResponse{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[13]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1139,7 +1225,7 @@ func (x *CreateTemplateResponse) String() string {
 func (*CreateTemplateResponse) ProtoMessage() {}
 
 func (x *CreateTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[13]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1152,7 +1238,7 @@ func (x *CreateTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTemplateResponse.ProtoReflect.Descriptor instead.
 func (*CreateTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{13}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CreateTemplateResponse) GetTemplate() *PresentationTemplate {
@@ -1175,7 +1261,7 @@ type ListTemplatesRequest struct {
 
 func (x *ListTemplatesRequest) Reset() {
 	*x = ListTemplatesRequest{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[14]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1187,7 +1273,7 @@ func (x *ListTemplatesRequest) String() string {
 func (*ListTemplatesRequest) ProtoMessage() {}
 
 func (x *ListTemplatesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[14]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1200,7 +1286,7 @@ func (x *ListTemplatesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTemplatesRequest.ProtoReflect.Descriptor instead.
 func (*ListTemplatesRequest) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{14}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ListTemplatesRequest) GetPage() *v11.Pagination {
@@ -1230,7 +1316,7 @@ type ListTemplatesResponse struct {
 
 func (x *ListTemplatesResponse) Reset() {
 	*x = ListTemplatesResponse{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[15]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1242,7 +1328,7 @@ func (x *ListTemplatesResponse) String() string {
 func (*ListTemplatesResponse) ProtoMessage() {}
 
 func (x *ListTemplatesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[15]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1255,7 +1341,7 @@ func (x *ListTemplatesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTemplatesResponse.ProtoReflect.Descriptor instead.
 func (*ListTemplatesResponse) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{15}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ListTemplatesResponse) GetTemplates() []*PresentationTemplate {
@@ -1285,7 +1371,7 @@ type GetTemplateRequest struct {
 
 func (x *GetTemplateRequest) Reset() {
 	*x = GetTemplateRequest{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[16]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1297,7 +1383,7 @@ func (x *GetTemplateRequest) String() string {
 func (*GetTemplateRequest) ProtoMessage() {}
 
 func (x *GetTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[16]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1310,7 +1396,7 @@ func (x *GetTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTemplateRequest.ProtoReflect.Descriptor instead.
 func (*GetTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{16}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *GetTemplateRequest) GetId() string {
@@ -1338,7 +1424,7 @@ type DeleteTemplateRequest struct {
 
 func (x *DeleteTemplateRequest) Reset() {
 	*x = DeleteTemplateRequest{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[17]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1350,7 +1436,7 @@ func (x *DeleteTemplateRequest) String() string {
 func (*DeleteTemplateRequest) ProtoMessage() {}
 
 func (x *DeleteTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[17]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1363,7 +1449,7 @@ func (x *DeleteTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTemplateRequest.ProtoReflect.Descriptor instead.
 func (*DeleteTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{17}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *DeleteTemplateRequest) GetId() string {
@@ -1384,7 +1470,7 @@ type DeleteTemplateResponse struct {
 
 func (x *DeleteTemplateResponse) Reset() {
 	*x = DeleteTemplateResponse{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[18]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1396,7 +1482,7 @@ func (x *DeleteTemplateResponse) String() string {
 func (*DeleteTemplateResponse) ProtoMessage() {}
 
 func (x *DeleteTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[18]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1409,7 +1495,7 @@ func (x *DeleteTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTemplateResponse.ProtoReflect.Descriptor instead.
 func (*DeleteTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{18}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *DeleteTemplateResponse) GetVersionsRemoved() int32 {
@@ -1430,7 +1516,7 @@ type GetTemplateResponse struct {
 
 func (x *GetTemplateResponse) Reset() {
 	*x = GetTemplateResponse{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[19]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1442,7 +1528,7 @@ func (x *GetTemplateResponse) String() string {
 func (*GetTemplateResponse) ProtoMessage() {}
 
 func (x *GetTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[19]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1455,7 +1541,7 @@ func (x *GetTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTemplateResponse.ProtoReflect.Descriptor instead.
 func (*GetTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{19}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *GetTemplateResponse) GetTemplate() *PresentationTemplate {
@@ -1476,7 +1562,7 @@ type VersionTemplateRequest struct {
 
 func (x *VersionTemplateRequest) Reset() {
 	*x = VersionTemplateRequest{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[20]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1488,7 +1574,7 @@ func (x *VersionTemplateRequest) String() string {
 func (*VersionTemplateRequest) ProtoMessage() {}
 
 func (x *VersionTemplateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[20]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1501,7 +1587,7 @@ func (x *VersionTemplateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VersionTemplateRequest.ProtoReflect.Descriptor instead.
 func (*VersionTemplateRequest) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{20}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *VersionTemplateRequest) GetTemplate() *PresentationTemplate {
@@ -1522,7 +1608,7 @@ type VersionTemplateResponse struct {
 
 func (x *VersionTemplateResponse) Reset() {
 	*x = VersionTemplateResponse{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[21]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1534,7 +1620,7 @@ func (x *VersionTemplateResponse) String() string {
 func (*VersionTemplateResponse) ProtoMessage() {}
 
 func (x *VersionTemplateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[21]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1547,7 +1633,7 @@ func (x *VersionTemplateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VersionTemplateResponse.ProtoReflect.Descriptor instead.
 func (*VersionTemplateResponse) Descriptor() ([]byte, []int) {
-	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{21}
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *VersionTemplateResponse) GetTemplate() *PresentationTemplate {
@@ -1580,7 +1666,7 @@ type PresentationTemplate_CredentialQuery struct {
 
 func (x *PresentationTemplate_CredentialQuery) Reset() {
 	*x = PresentationTemplate_CredentialQuery{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[22]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1592,7 +1678,7 @@ func (x *PresentationTemplate_CredentialQuery) String() string {
 func (*PresentationTemplate_CredentialQuery) ProtoMessage() {}
 
 func (x *PresentationTemplate_CredentialQuery) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[22]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1670,7 +1756,7 @@ type PresentationTemplate_ClaimValues struct {
 
 func (x *PresentationTemplate_ClaimValues) Reset() {
 	*x = PresentationTemplate_ClaimValues{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[23]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1682,7 +1768,7 @@ func (x *PresentationTemplate_ClaimValues) String() string {
 func (*PresentationTemplate_ClaimValues) ProtoMessage() {}
 
 func (x *PresentationTemplate_ClaimValues) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[23]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1723,7 +1809,7 @@ type PresentationTemplate_ClaimSet struct {
 
 func (x *PresentationTemplate_ClaimSet) Reset() {
 	*x = PresentationTemplate_ClaimSet{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[24]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1735,7 +1821,7 @@ func (x *PresentationTemplate_ClaimSet) String() string {
 func (*PresentationTemplate_ClaimSet) ProtoMessage() {}
 
 func (x *PresentationTemplate_ClaimSet) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[24]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1775,7 +1861,7 @@ type PresentationTemplate_ClaimPredicate struct {
 
 func (x *PresentationTemplate_ClaimPredicate) Reset() {
 	*x = PresentationTemplate_ClaimPredicate{}
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[25]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1787,7 +1873,7 @@ func (x *PresentationTemplate_ClaimPredicate) String() string {
 func (*PresentationTemplate_ClaimPredicate) ProtoMessage() {}
 
 func (x *PresentationTemplate_ClaimPredicate) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[25]
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1831,6 +1917,191 @@ func (x *PresentationTemplate_ClaimPredicate) GetValue() string {
 	return ""
 }
 
+// Restriction limits the credential that answers a part of the
+// request. Empty fields accept every value.
+type AnonCredsRequest_Restriction struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The id of the schema on its ledger.
+	SchemaId string `protobuf:"bytes,1,opt,name=schema_id,json=schemaId,proto3" json:"schema_id,omitempty"`
+	// The id of the credential definition.
+	CredDefId     string `protobuf:"bytes,2,opt,name=cred_def_id,json=credDefId,proto3" json:"cred_def_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AnonCredsRequest_Restriction) Reset() {
+	*x = AnonCredsRequest_Restriction{}
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnonCredsRequest_Restriction) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnonCredsRequest_Restriction) ProtoMessage() {}
+
+func (x *AnonCredsRequest_Restriction) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnonCredsRequest_Restriction.ProtoReflect.Descriptor instead.
+func (*AnonCredsRequest_Restriction) Descriptor() ([]byte, []int) {
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{4, 0}
+}
+
+func (x *AnonCredsRequest_Restriction) GetSchemaId() string {
+	if x != nil {
+		return x.SchemaId
+	}
+	return ""
+}
+
+func (x *AnonCredsRequest_Restriction) GetCredDefId() string {
+	if x != nil {
+		return x.CredDefId
+	}
+	return ""
+}
+
+// Attribute is one group of attributes that one credential reveals.
+type AnonCredsRequest_Attribute struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The attribute names. More than one name asks one credential for
+	// every name.
+	Names []string `protobuf:"bytes,1,rep,name=names,proto3" json:"names,omitempty"`
+	// The credential that answers.
+	Restriction   *AnonCredsRequest_Restriction `protobuf:"bytes,2,opt,name=restriction,proto3" json:"restriction,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AnonCredsRequest_Attribute) Reset() {
+	*x = AnonCredsRequest_Attribute{}
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnonCredsRequest_Attribute) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnonCredsRequest_Attribute) ProtoMessage() {}
+
+func (x *AnonCredsRequest_Attribute) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnonCredsRequest_Attribute.ProtoReflect.Descriptor instead.
+func (*AnonCredsRequest_Attribute) Descriptor() ([]byte, []int) {
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{4, 1}
+}
+
+func (x *AnonCredsRequest_Attribute) GetNames() []string {
+	if x != nil {
+		return x.Names
+	}
+	return nil
+}
+
+func (x *AnonCredsRequest_Attribute) GetRestriction() *AnonCredsRequest_Restriction {
+	if x != nil {
+		return x.Restriction
+	}
+	return nil
+}
+
+// Predicate is one comparison of a whole number attribute.
+type AnonCredsRequest_Predicate struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The attribute name.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The operator: >=, >, <=, or <.
+	Op string `protobuf:"bytes,2,opt,name=op,proto3" json:"op,omitempty"`
+	// The value to compare with.
+	Value int64 `protobuf:"varint,3,opt,name=value,proto3" json:"value,omitempty"`
+	// The credential that answers.
+	Restriction   *AnonCredsRequest_Restriction `protobuf:"bytes,4,opt,name=restriction,proto3" json:"restriction,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AnonCredsRequest_Predicate) Reset() {
+	*x = AnonCredsRequest_Predicate{}
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnonCredsRequest_Predicate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnonCredsRequest_Predicate) ProtoMessage() {}
+
+func (x *AnonCredsRequest_Predicate) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_discovery_v1_discovery_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnonCredsRequest_Predicate.ProtoReflect.Descriptor instead.
+func (*AnonCredsRequest_Predicate) Descriptor() ([]byte, []int) {
+	return file_vca_discovery_v1_discovery_proto_rawDescGZIP(), []int{4, 2}
+}
+
+func (x *AnonCredsRequest_Predicate) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AnonCredsRequest_Predicate) GetOp() string {
+	if x != nil {
+		return x.Op
+	}
+	return ""
+}
+
+func (x *AnonCredsRequest_Predicate) GetValue() int64 {
+	if x != nil {
+		return x.Value
+	}
+	return 0
+}
+
+func (x *AnonCredsRequest_Predicate) GetRestriction() *AnonCredsRequest_Restriction {
+	if x != nil {
+		return x.Restriction
+	}
+	return nil
+}
+
 var File_vca_discovery_v1_discovery_proto protoreflect.FileDescriptor
 
 const file_vca_discovery_v1_discovery_proto_rawDesc = "" +
@@ -1861,8 +2132,7 @@ const file_vca_discovery_v1_discovery_proto_rawDesc = "" +
 	"\x06format\x18\x03 \x01(\tR\x06format\x12\x14\n" +
 	"\x05title\x18\x04 \x01(\tR\x05title\x12\x1c\n" +
 	"\tmandatory\x18\x05 \x01(\bR\tmandatory\x127\n" +
-	"\x17selectively_disclosable\x18\x06 \x01(\bR\x16selectivelyDisclosable\"\xce\n" +
-	"\n" +
+	"\x17selectively_disclosable\x18\x06 \x01(\bR\x16selectivelyDisclosable\"\x90\v\n" +
 	"\x14PresentationTemplate\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x05R\aversion\x12!\n" +
@@ -1883,7 +2153,8 @@ const file_vca_discovery_v1_discovery_proto_rawDesc = "" +
 	"\x16require_trusted_issuer\x18\f \x01(\bR\x14requireTrustedIssuer\x12%\n" +
 	"\x0erequire_status\x18\r \x01(\bR\rrequireStatus\x12\"\n" +
 	"\rpolicy_set_id\x18\x0e \x01(\tR\vpolicySetId\x127\n" +
-	"\x17presentation_definition\x18\x0f \x01(\tR\x16presentationDefinition\x1a\xbd\x02\n" +
+	"\x17presentation_definition\x18\x0f \x01(\tR\x16presentationDefinition\x12@\n" +
+	"\tanoncreds\x18\x10 \x01(\v2\".vca.discovery.v1.AnonCredsRequestR\tanoncreds\x1a\xbd\x02\n" +
 	"\x0fCredentialQuery\x12\x19\n" +
 	"\bquery_id\x18\x01 \x01(\tR\aqueryId\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12-\n" +
@@ -1908,7 +2179,27 @@ const file_vca_discovery_v1_discovery_proto_rawDesc = "" +
 	"\x0eOP_DATE_BEFORE\x10\x01\x12\x11\n" +
 	"\rOP_DATE_AFTER\x10\x02\x12\x15\n" +
 	"\x11OP_AT_LEAST_YEARS\x10\x03\x12\x14\n" +
-	"\x10OP_AT_MOST_YEARS\x10\x04\"=\n" +
+	"\x10OP_AT_MOST_YEARS\x10\x04\"\xb7\x04\n" +
+	"\x10AnonCredsRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\tR\aversion\x12L\n" +
+	"\n" +
+	"attributes\x18\x03 \x03(\v2,.vca.discovery.v1.AnonCredsRequest.AttributeR\n" +
+	"attributes\x12L\n" +
+	"\n" +
+	"predicates\x18\x04 \x03(\v2,.vca.discovery.v1.AnonCredsRequest.PredicateR\n" +
+	"predicates\x1aJ\n" +
+	"\vRestriction\x12\x1b\n" +
+	"\tschema_id\x18\x01 \x01(\tR\bschemaId\x12\x1e\n" +
+	"\vcred_def_id\x18\x02 \x01(\tR\tcredDefId\x1as\n" +
+	"\tAttribute\x12\x14\n" +
+	"\x05names\x18\x01 \x03(\tR\x05names\x12P\n" +
+	"\vrestriction\x18\x02 \x01(\v2..vca.discovery.v1.AnonCredsRequest.RestrictionR\vrestriction\x1a\x97\x01\n" +
+	"\tPredicate\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x0e\n" +
+	"\x02op\x18\x02 \x01(\tR\x02op\x12\x14\n" +
+	"\x05value\x18\x03 \x01(\x03R\x05value\x12P\n" +
+	"\vrestriction\x18\x04 \x01(\v2..vca.discovery.v1.AnonCredsRequest.RestrictionR\vrestriction\"=\n" +
 	"\fCrawlRequest\x12-\n" +
 	"\x12credential_issuers\x18\x01 \x03(\tR\x11credentialIssuers\"\xe4\x01\n" +
 	"\rCrawlResponse\x12\x18\n" +
@@ -1992,7 +2283,7 @@ func file_vca_discovery_v1_discovery_proto_rawDescGZIP() []byte {
 }
 
 var file_vca_discovery_v1_discovery_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_vca_discovery_v1_discovery_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_vca_discovery_v1_discovery_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_vca_discovery_v1_discovery_proto_goTypes = []any{
 	(TemplateKind)(0), // 0: vca.discovery.v1.TemplateKind
 	(PresentationTemplate_ClaimPredicate_Op)(0), // 1: vca.discovery.v1.PresentationTemplate.ClaimPredicate.Op
@@ -2000,90 +2291,99 @@ var file_vca_discovery_v1_discovery_proto_goTypes = []any{
 	(*CredentialType)(nil),                       // 3: vca.discovery.v1.CredentialType
 	(*Field)(nil),                                // 4: vca.discovery.v1.Field
 	(*PresentationTemplate)(nil),                 // 5: vca.discovery.v1.PresentationTemplate
-	(*CrawlRequest)(nil),                         // 6: vca.discovery.v1.CrawlRequest
-	(*CrawlResponse)(nil),                        // 7: vca.discovery.v1.CrawlResponse
-	(*ListIssuersRequest)(nil),                   // 8: vca.discovery.v1.ListIssuersRequest
-	(*ListIssuersResponse)(nil),                  // 9: vca.discovery.v1.ListIssuersResponse
-	(*ListCredentialTypesRequest)(nil),           // 10: vca.discovery.v1.ListCredentialTypesRequest
-	(*ListCredentialTypesResponse)(nil),          // 11: vca.discovery.v1.ListCredentialTypesResponse
-	(*GetFieldsRequest)(nil),                     // 12: vca.discovery.v1.GetFieldsRequest
-	(*GetFieldsResponse)(nil),                    // 13: vca.discovery.v1.GetFieldsResponse
-	(*CreateTemplateRequest)(nil),                // 14: vca.discovery.v1.CreateTemplateRequest
-	(*CreateTemplateResponse)(nil),               // 15: vca.discovery.v1.CreateTemplateResponse
-	(*ListTemplatesRequest)(nil),                 // 16: vca.discovery.v1.ListTemplatesRequest
-	(*ListTemplatesResponse)(nil),                // 17: vca.discovery.v1.ListTemplatesResponse
-	(*GetTemplateRequest)(nil),                   // 18: vca.discovery.v1.GetTemplateRequest
-	(*DeleteTemplateRequest)(nil),                // 19: vca.discovery.v1.DeleteTemplateRequest
-	(*DeleteTemplateResponse)(nil),               // 20: vca.discovery.v1.DeleteTemplateResponse
-	(*GetTemplateResponse)(nil),                  // 21: vca.discovery.v1.GetTemplateResponse
-	(*VersionTemplateRequest)(nil),               // 22: vca.discovery.v1.VersionTemplateRequest
-	(*VersionTemplateResponse)(nil),              // 23: vca.discovery.v1.VersionTemplateResponse
-	(*PresentationTemplate_CredentialQuery)(nil), // 24: vca.discovery.v1.PresentationTemplate.CredentialQuery
-	(*PresentationTemplate_ClaimValues)(nil),     // 25: vca.discovery.v1.PresentationTemplate.ClaimValues
-	(*PresentationTemplate_ClaimSet)(nil),        // 26: vca.discovery.v1.PresentationTemplate.ClaimSet
-	(*PresentationTemplate_ClaimPredicate)(nil),  // 27: vca.discovery.v1.PresentationTemplate.ClaimPredicate
-	nil,                                 // 28: vca.discovery.v1.CrawlResponse.FailedEntry
-	(v1.TrustLookupResponse_Outcome)(0), // 29: vca.trust.v1.TrustLookupResponse.Outcome
-	(*timestamppb.Timestamp)(nil),       // 30: google.protobuf.Timestamp
-	(v11.Format)(0),                     // 31: vca.common.v1.Format
-	(*v12.Display)(nil),                 // 32: vca.schema.v1.Display
-	(*v11.Pagination)(nil),              // 33: vca.common.v1.Pagination
-	(*v11.PageResult)(nil),              // 34: vca.common.v1.PageResult
+	(*AnonCredsRequest)(nil),                     // 6: vca.discovery.v1.AnonCredsRequest
+	(*CrawlRequest)(nil),                         // 7: vca.discovery.v1.CrawlRequest
+	(*CrawlResponse)(nil),                        // 8: vca.discovery.v1.CrawlResponse
+	(*ListIssuersRequest)(nil),                   // 9: vca.discovery.v1.ListIssuersRequest
+	(*ListIssuersResponse)(nil),                  // 10: vca.discovery.v1.ListIssuersResponse
+	(*ListCredentialTypesRequest)(nil),           // 11: vca.discovery.v1.ListCredentialTypesRequest
+	(*ListCredentialTypesResponse)(nil),          // 12: vca.discovery.v1.ListCredentialTypesResponse
+	(*GetFieldsRequest)(nil),                     // 13: vca.discovery.v1.GetFieldsRequest
+	(*GetFieldsResponse)(nil),                    // 14: vca.discovery.v1.GetFieldsResponse
+	(*CreateTemplateRequest)(nil),                // 15: vca.discovery.v1.CreateTemplateRequest
+	(*CreateTemplateResponse)(nil),               // 16: vca.discovery.v1.CreateTemplateResponse
+	(*ListTemplatesRequest)(nil),                 // 17: vca.discovery.v1.ListTemplatesRequest
+	(*ListTemplatesResponse)(nil),                // 18: vca.discovery.v1.ListTemplatesResponse
+	(*GetTemplateRequest)(nil),                   // 19: vca.discovery.v1.GetTemplateRequest
+	(*DeleteTemplateRequest)(nil),                // 20: vca.discovery.v1.DeleteTemplateRequest
+	(*DeleteTemplateResponse)(nil),               // 21: vca.discovery.v1.DeleteTemplateResponse
+	(*GetTemplateResponse)(nil),                  // 22: vca.discovery.v1.GetTemplateResponse
+	(*VersionTemplateRequest)(nil),               // 23: vca.discovery.v1.VersionTemplateRequest
+	(*VersionTemplateResponse)(nil),              // 24: vca.discovery.v1.VersionTemplateResponse
+	(*PresentationTemplate_CredentialQuery)(nil), // 25: vca.discovery.v1.PresentationTemplate.CredentialQuery
+	(*PresentationTemplate_ClaimValues)(nil),     // 26: vca.discovery.v1.PresentationTemplate.ClaimValues
+	(*PresentationTemplate_ClaimSet)(nil),        // 27: vca.discovery.v1.PresentationTemplate.ClaimSet
+	(*PresentationTemplate_ClaimPredicate)(nil),  // 28: vca.discovery.v1.PresentationTemplate.ClaimPredicate
+	(*AnonCredsRequest_Restriction)(nil),         // 29: vca.discovery.v1.AnonCredsRequest.Restriction
+	(*AnonCredsRequest_Attribute)(nil),           // 30: vca.discovery.v1.AnonCredsRequest.Attribute
+	(*AnonCredsRequest_Predicate)(nil),           // 31: vca.discovery.v1.AnonCredsRequest.Predicate
+	nil,                                          // 32: vca.discovery.v1.CrawlResponse.FailedEntry
+	(v1.TrustLookupResponse_Outcome)(0),          // 33: vca.trust.v1.TrustLookupResponse.Outcome
+	(*timestamppb.Timestamp)(nil),                // 34: google.protobuf.Timestamp
+	(v11.Format)(0),                              // 35: vca.common.v1.Format
+	(*v12.Display)(nil),                          // 36: vca.schema.v1.Display
+	(*v11.Pagination)(nil),                       // 37: vca.common.v1.Pagination
+	(*v11.PageResult)(nil),                       // 38: vca.common.v1.PageResult
 }
 var file_vca_discovery_v1_discovery_proto_depIdxs = []int32{
-	29, // 0: vca.discovery.v1.Issuer.trust:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
-	30, // 1: vca.discovery.v1.Issuer.crawled_at:type_name -> google.protobuf.Timestamp
-	31, // 2: vca.discovery.v1.CredentialType.format:type_name -> vca.common.v1.Format
-	32, // 3: vca.discovery.v1.CredentialType.display:type_name -> vca.schema.v1.Display
-	24, // 4: vca.discovery.v1.PresentationTemplate.queries:type_name -> vca.discovery.v1.PresentationTemplate.CredentialQuery
-	30, // 5: vca.discovery.v1.PresentationTemplate.created_at:type_name -> google.protobuf.Timestamp
+	33, // 0: vca.discovery.v1.Issuer.trust:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
+	34, // 1: vca.discovery.v1.Issuer.crawled_at:type_name -> google.protobuf.Timestamp
+	35, // 2: vca.discovery.v1.CredentialType.format:type_name -> vca.common.v1.Format
+	36, // 3: vca.discovery.v1.CredentialType.display:type_name -> vca.schema.v1.Display
+	25, // 4: vca.discovery.v1.PresentationTemplate.queries:type_name -> vca.discovery.v1.PresentationTemplate.CredentialQuery
+	34, // 5: vca.discovery.v1.PresentationTemplate.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 6: vca.discovery.v1.PresentationTemplate.kind:type_name -> vca.discovery.v1.TemplateKind
-	27, // 7: vca.discovery.v1.PresentationTemplate.predicates:type_name -> vca.discovery.v1.PresentationTemplate.ClaimPredicate
-	28, // 8: vca.discovery.v1.CrawlResponse.failed:type_name -> vca.discovery.v1.CrawlResponse.FailedEntry
-	30, // 9: vca.discovery.v1.CrawlResponse.crawled_at:type_name -> google.protobuf.Timestamp
-	33, // 10: vca.discovery.v1.ListIssuersRequest.page:type_name -> vca.common.v1.Pagination
-	2,  // 11: vca.discovery.v1.ListIssuersResponse.issuers:type_name -> vca.discovery.v1.Issuer
-	34, // 12: vca.discovery.v1.ListIssuersResponse.page:type_name -> vca.common.v1.PageResult
-	33, // 13: vca.discovery.v1.ListCredentialTypesRequest.page:type_name -> vca.common.v1.Pagination
-	31, // 14: vca.discovery.v1.ListCredentialTypesRequest.format:type_name -> vca.common.v1.Format
-	3,  // 15: vca.discovery.v1.ListCredentialTypesResponse.types:type_name -> vca.discovery.v1.CredentialType
-	34, // 16: vca.discovery.v1.ListCredentialTypesResponse.page:type_name -> vca.common.v1.PageResult
-	4,  // 17: vca.discovery.v1.GetFieldsResponse.fields:type_name -> vca.discovery.v1.Field
-	5,  // 18: vca.discovery.v1.CreateTemplateRequest.template:type_name -> vca.discovery.v1.PresentationTemplate
-	5,  // 19: vca.discovery.v1.CreateTemplateResponse.template:type_name -> vca.discovery.v1.PresentationTemplate
-	33, // 20: vca.discovery.v1.ListTemplatesRequest.page:type_name -> vca.common.v1.Pagination
-	5,  // 21: vca.discovery.v1.ListTemplatesResponse.templates:type_name -> vca.discovery.v1.PresentationTemplate
-	34, // 22: vca.discovery.v1.ListTemplatesResponse.page:type_name -> vca.common.v1.PageResult
-	5,  // 23: vca.discovery.v1.GetTemplateResponse.template:type_name -> vca.discovery.v1.PresentationTemplate
-	5,  // 24: vca.discovery.v1.VersionTemplateRequest.template:type_name -> vca.discovery.v1.PresentationTemplate
-	5,  // 25: vca.discovery.v1.VersionTemplateResponse.template:type_name -> vca.discovery.v1.PresentationTemplate
-	31, // 26: vca.discovery.v1.PresentationTemplate.CredentialQuery.format:type_name -> vca.common.v1.Format
-	25, // 27: vca.discovery.v1.PresentationTemplate.CredentialQuery.values:type_name -> vca.discovery.v1.PresentationTemplate.ClaimValues
-	26, // 28: vca.discovery.v1.PresentationTemplate.CredentialQuery.claim_sets:type_name -> vca.discovery.v1.PresentationTemplate.ClaimSet
-	1,  // 29: vca.discovery.v1.PresentationTemplate.ClaimPredicate.op:type_name -> vca.discovery.v1.PresentationTemplate.ClaimPredicate.Op
-	6,  // 30: vca.discovery.v1.DiscoveryService.Crawl:input_type -> vca.discovery.v1.CrawlRequest
-	8,  // 31: vca.discovery.v1.DiscoveryService.ListIssuers:input_type -> vca.discovery.v1.ListIssuersRequest
-	10, // 32: vca.discovery.v1.DiscoveryService.ListCredentialTypes:input_type -> vca.discovery.v1.ListCredentialTypesRequest
-	12, // 33: vca.discovery.v1.DiscoveryService.GetFields:input_type -> vca.discovery.v1.GetFieldsRequest
-	14, // 34: vca.discovery.v1.DiscoveryService.CreateTemplate:input_type -> vca.discovery.v1.CreateTemplateRequest
-	16, // 35: vca.discovery.v1.DiscoveryService.ListTemplates:input_type -> vca.discovery.v1.ListTemplatesRequest
-	18, // 36: vca.discovery.v1.DiscoveryService.GetTemplate:input_type -> vca.discovery.v1.GetTemplateRequest
-	22, // 37: vca.discovery.v1.DiscoveryService.VersionTemplate:input_type -> vca.discovery.v1.VersionTemplateRequest
-	19, // 38: vca.discovery.v1.DiscoveryService.DeleteTemplate:input_type -> vca.discovery.v1.DeleteTemplateRequest
-	7,  // 39: vca.discovery.v1.DiscoveryService.Crawl:output_type -> vca.discovery.v1.CrawlResponse
-	9,  // 40: vca.discovery.v1.DiscoveryService.ListIssuers:output_type -> vca.discovery.v1.ListIssuersResponse
-	11, // 41: vca.discovery.v1.DiscoveryService.ListCredentialTypes:output_type -> vca.discovery.v1.ListCredentialTypesResponse
-	13, // 42: vca.discovery.v1.DiscoveryService.GetFields:output_type -> vca.discovery.v1.GetFieldsResponse
-	15, // 43: vca.discovery.v1.DiscoveryService.CreateTemplate:output_type -> vca.discovery.v1.CreateTemplateResponse
-	17, // 44: vca.discovery.v1.DiscoveryService.ListTemplates:output_type -> vca.discovery.v1.ListTemplatesResponse
-	21, // 45: vca.discovery.v1.DiscoveryService.GetTemplate:output_type -> vca.discovery.v1.GetTemplateResponse
-	23, // 46: vca.discovery.v1.DiscoveryService.VersionTemplate:output_type -> vca.discovery.v1.VersionTemplateResponse
-	20, // 47: vca.discovery.v1.DiscoveryService.DeleteTemplate:output_type -> vca.discovery.v1.DeleteTemplateResponse
-	39, // [39:48] is the sub-list for method output_type
-	30, // [30:39] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	28, // 7: vca.discovery.v1.PresentationTemplate.predicates:type_name -> vca.discovery.v1.PresentationTemplate.ClaimPredicate
+	6,  // 8: vca.discovery.v1.PresentationTemplate.anoncreds:type_name -> vca.discovery.v1.AnonCredsRequest
+	30, // 9: vca.discovery.v1.AnonCredsRequest.attributes:type_name -> vca.discovery.v1.AnonCredsRequest.Attribute
+	31, // 10: vca.discovery.v1.AnonCredsRequest.predicates:type_name -> vca.discovery.v1.AnonCredsRequest.Predicate
+	32, // 11: vca.discovery.v1.CrawlResponse.failed:type_name -> vca.discovery.v1.CrawlResponse.FailedEntry
+	34, // 12: vca.discovery.v1.CrawlResponse.crawled_at:type_name -> google.protobuf.Timestamp
+	37, // 13: vca.discovery.v1.ListIssuersRequest.page:type_name -> vca.common.v1.Pagination
+	2,  // 14: vca.discovery.v1.ListIssuersResponse.issuers:type_name -> vca.discovery.v1.Issuer
+	38, // 15: vca.discovery.v1.ListIssuersResponse.page:type_name -> vca.common.v1.PageResult
+	37, // 16: vca.discovery.v1.ListCredentialTypesRequest.page:type_name -> vca.common.v1.Pagination
+	35, // 17: vca.discovery.v1.ListCredentialTypesRequest.format:type_name -> vca.common.v1.Format
+	3,  // 18: vca.discovery.v1.ListCredentialTypesResponse.types:type_name -> vca.discovery.v1.CredentialType
+	38, // 19: vca.discovery.v1.ListCredentialTypesResponse.page:type_name -> vca.common.v1.PageResult
+	4,  // 20: vca.discovery.v1.GetFieldsResponse.fields:type_name -> vca.discovery.v1.Field
+	5,  // 21: vca.discovery.v1.CreateTemplateRequest.template:type_name -> vca.discovery.v1.PresentationTemplate
+	5,  // 22: vca.discovery.v1.CreateTemplateResponse.template:type_name -> vca.discovery.v1.PresentationTemplate
+	37, // 23: vca.discovery.v1.ListTemplatesRequest.page:type_name -> vca.common.v1.Pagination
+	5,  // 24: vca.discovery.v1.ListTemplatesResponse.templates:type_name -> vca.discovery.v1.PresentationTemplate
+	38, // 25: vca.discovery.v1.ListTemplatesResponse.page:type_name -> vca.common.v1.PageResult
+	5,  // 26: vca.discovery.v1.GetTemplateResponse.template:type_name -> vca.discovery.v1.PresentationTemplate
+	5,  // 27: vca.discovery.v1.VersionTemplateRequest.template:type_name -> vca.discovery.v1.PresentationTemplate
+	5,  // 28: vca.discovery.v1.VersionTemplateResponse.template:type_name -> vca.discovery.v1.PresentationTemplate
+	35, // 29: vca.discovery.v1.PresentationTemplate.CredentialQuery.format:type_name -> vca.common.v1.Format
+	26, // 30: vca.discovery.v1.PresentationTemplate.CredentialQuery.values:type_name -> vca.discovery.v1.PresentationTemplate.ClaimValues
+	27, // 31: vca.discovery.v1.PresentationTemplate.CredentialQuery.claim_sets:type_name -> vca.discovery.v1.PresentationTemplate.ClaimSet
+	1,  // 32: vca.discovery.v1.PresentationTemplate.ClaimPredicate.op:type_name -> vca.discovery.v1.PresentationTemplate.ClaimPredicate.Op
+	29, // 33: vca.discovery.v1.AnonCredsRequest.Attribute.restriction:type_name -> vca.discovery.v1.AnonCredsRequest.Restriction
+	29, // 34: vca.discovery.v1.AnonCredsRequest.Predicate.restriction:type_name -> vca.discovery.v1.AnonCredsRequest.Restriction
+	7,  // 35: vca.discovery.v1.DiscoveryService.Crawl:input_type -> vca.discovery.v1.CrawlRequest
+	9,  // 36: vca.discovery.v1.DiscoveryService.ListIssuers:input_type -> vca.discovery.v1.ListIssuersRequest
+	11, // 37: vca.discovery.v1.DiscoveryService.ListCredentialTypes:input_type -> vca.discovery.v1.ListCredentialTypesRequest
+	13, // 38: vca.discovery.v1.DiscoveryService.GetFields:input_type -> vca.discovery.v1.GetFieldsRequest
+	15, // 39: vca.discovery.v1.DiscoveryService.CreateTemplate:input_type -> vca.discovery.v1.CreateTemplateRequest
+	17, // 40: vca.discovery.v1.DiscoveryService.ListTemplates:input_type -> vca.discovery.v1.ListTemplatesRequest
+	19, // 41: vca.discovery.v1.DiscoveryService.GetTemplate:input_type -> vca.discovery.v1.GetTemplateRequest
+	23, // 42: vca.discovery.v1.DiscoveryService.VersionTemplate:input_type -> vca.discovery.v1.VersionTemplateRequest
+	20, // 43: vca.discovery.v1.DiscoveryService.DeleteTemplate:input_type -> vca.discovery.v1.DeleteTemplateRequest
+	8,  // 44: vca.discovery.v1.DiscoveryService.Crawl:output_type -> vca.discovery.v1.CrawlResponse
+	10, // 45: vca.discovery.v1.DiscoveryService.ListIssuers:output_type -> vca.discovery.v1.ListIssuersResponse
+	12, // 46: vca.discovery.v1.DiscoveryService.ListCredentialTypes:output_type -> vca.discovery.v1.ListCredentialTypesResponse
+	14, // 47: vca.discovery.v1.DiscoveryService.GetFields:output_type -> vca.discovery.v1.GetFieldsResponse
+	16, // 48: vca.discovery.v1.DiscoveryService.CreateTemplate:output_type -> vca.discovery.v1.CreateTemplateResponse
+	18, // 49: vca.discovery.v1.DiscoveryService.ListTemplates:output_type -> vca.discovery.v1.ListTemplatesResponse
+	22, // 50: vca.discovery.v1.DiscoveryService.GetTemplate:output_type -> vca.discovery.v1.GetTemplateResponse
+	24, // 51: vca.discovery.v1.DiscoveryService.VersionTemplate:output_type -> vca.discovery.v1.VersionTemplateResponse
+	21, // 52: vca.discovery.v1.DiscoveryService.DeleteTemplate:output_type -> vca.discovery.v1.DeleteTemplateResponse
+	44, // [44:53] is the sub-list for method output_type
+	35, // [35:44] is the sub-list for method input_type
+	35, // [35:35] is the sub-list for extension type_name
+	35, // [35:35] is the sub-list for extension extendee
+	0,  // [0:35] is the sub-list for field type_name
 }
 
 func init() { file_vca_discovery_v1_discovery_proto_init() }
@@ -2097,7 +2397,7 @@ func file_vca_discovery_v1_discovery_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_discovery_v1_discovery_proto_rawDesc), len(file_vca_discovery_v1_discovery_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   27,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

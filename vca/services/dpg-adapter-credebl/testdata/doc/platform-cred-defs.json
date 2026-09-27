@@ -1,0 +1,24 @@
+{
+  "statusCode": 200,
+  "message": "Credential definitions fetched successfully.",
+  "data": {
+    "totalItems": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false,
+    "nextPage": 2,
+    "previousPage": 0,
+    "lastPage": 1,
+    "data": [
+      {
+        "createDateTime": "2026-09-26T11:21:09.130Z",
+        "tag": "default",
+        "schemaId": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+        "orgId": "org-1",
+        "schemaLedgerId": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS/anoncreds/v0/SCHEMA/Farmer/1.0",
+        "createdBy": "4f5a6b7c-8d9e-4f0a-9b1c-2d3e4f5a6b7c",
+        "credentialDefinitionId": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS/anoncreds/v0/CLAIM_DEF/2107/default",
+        "revocable": false
+      }
+    ]
+  }
+}

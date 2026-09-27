@@ -1,0 +1,11 @@
+{
+  "statusCode": 200,
+  "message": "Verified proof details fetched successfully.",
+  "data": [
+    {
+      "fullName": "[holder]",
+      "schemaId": "http://credebl-schema-file-server:4000/schemas/s-1",
+      "certificateTemplate": null
+    }
+  ]
+}

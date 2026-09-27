@@ -163,6 +163,15 @@ const (
 	// VerifierBackendServiceVerifyCredentialProcedure is the fully-qualified name of the
 	// VerifierBackendService's VerifyCredential RPC.
 	VerifierBackendServiceVerifyCredentialProcedure = "/vca.backend.v1.VerifierBackendService/VerifyCredential"
+	// VerifierBackendServiceListProofRequestsProcedure is the fully-qualified name of the
+	// VerifierBackendService's ListProofRequests RPC.
+	VerifierBackendServiceListProofRequestsProcedure = "/vca.backend.v1.VerifierBackendService/ListProofRequests"
+	// VerifierBackendServiceListProofSchemasProcedure is the fully-qualified name of the
+	// VerifierBackendService's ListProofSchemas RPC.
+	VerifierBackendServiceListProofSchemasProcedure = "/vca.backend.v1.VerifierBackendService/ListProofSchemas"
+	// VerifierBackendServiceListVerifierConnectionsProcedure is the fully-qualified name of the
+	// VerifierBackendService's ListVerifierConnections RPC.
+	VerifierBackendServiceListVerifierConnectionsProcedure = "/vca.backend.v1.VerifierBackendService/ListVerifierConnections"
 	// CatalogBackendServiceListCredentialTypesProcedure is the fully-qualified name of the
 	// CatalogBackendService's ListCredentialTypes RPC.
 	CatalogBackendServiceListCredentialTypesProcedure = "/vca.backend.v1.CatalogBackendService/ListCredentialTypes"
@@ -1328,6 +1337,18 @@ type VerifierBackendServiceClient interface {
 	// FEATURE_VERIFY_UPLOAD serves it. Every other adapter answers
 	// Unimplemented.
 	VerifyCredential(context.Context, *connect.Request[v1.VerifyCredentialRequest]) (*connect.Response[v1.VerifyCredentialResponse], error)
+	// ListProofRequests returns the DIDComm proof requests of the
+	// verifier, newest first, with the state of each (ADR-061). An adapter
+	// serves it only when it lists PROTOCOL_DIDCOMM_PRESENT_V2.
+	ListProofRequests(context.Context, *connect.Request[v1.ListProofRequestsRequest]) (*connect.Response[v1.ListProofRequestsResponse], error)
+	// ListProofSchemas returns the AnonCreds schemas that a proof request
+	// can name, with their attributes (ADR-061). An adapter serves it only
+	// when it lists FEATURE_ANONCREDS_PROOF.
+	ListProofSchemas(context.Context, *connect.Request[v1.ListProofSchemasRequest]) (*connect.Response[v1.ListProofSchemasResponse], error)
+	// ListVerifierConnections returns the DIDComm connections that a
+	// proof request can go over. An adapter serves it only when it lists
+	// PROTOCOL_DIDCOMM_PRESENT_V2.
+	ListVerifierConnections(context.Context, *connect.Request[v1.ListVerifierConnectionsRequest]) (*connect.Response[v1.ListVerifierConnectionsResponse], error)
 }
 
 // NewVerifierBackendServiceClient constructs a client for the vca.backend.v1.VerifierBackendService
@@ -1365,15 +1386,36 @@ func NewVerifierBackendServiceClient(httpClient connect.HTTPClient, baseURL stri
 			connect.WithSchema(verifierBackendServiceMethods.ByName("VerifyCredential")),
 			connect.WithClientOptions(opts...),
 		),
+		listProofRequests: connect.NewClient[v1.ListProofRequestsRequest, v1.ListProofRequestsResponse](
+			httpClient,
+			baseURL+VerifierBackendServiceListProofRequestsProcedure,
+			connect.WithSchema(verifierBackendServiceMethods.ByName("ListProofRequests")),
+			connect.WithClientOptions(opts...),
+		),
+		listProofSchemas: connect.NewClient[v1.ListProofSchemasRequest, v1.ListProofSchemasResponse](
+			httpClient,
+			baseURL+VerifierBackendServiceListProofSchemasProcedure,
+			connect.WithSchema(verifierBackendServiceMethods.ByName("ListProofSchemas")),
+			connect.WithClientOptions(opts...),
+		),
+		listVerifierConnections: connect.NewClient[v1.ListVerifierConnectionsRequest, v1.ListVerifierConnectionsResponse](
+			httpClient,
+			baseURL+VerifierBackendServiceListVerifierConnectionsProcedure,
+			connect.WithSchema(verifierBackendServiceMethods.ByName("ListVerifierConnections")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // verifierBackendServiceClient implements VerifierBackendServiceClient.
 type verifierBackendServiceClient struct {
-	createRequest       *connect.Client[v1.CreateRequestRequest, v1.CreateRequestResponse]
-	getResult           *connect.Client[v1.GetResultRequest, v1.GetResultResponse]
-	submitBrowserAnswer *connect.Client[v1.SubmitBrowserAnswerRequest, v1.SubmitBrowserAnswerResponse]
-	verifyCredential    *connect.Client[v1.VerifyCredentialRequest, v1.VerifyCredentialResponse]
+	createRequest           *connect.Client[v1.CreateRequestRequest, v1.CreateRequestResponse]
+	getResult               *connect.Client[v1.GetResultRequest, v1.GetResultResponse]
+	submitBrowserAnswer     *connect.Client[v1.SubmitBrowserAnswerRequest, v1.SubmitBrowserAnswerResponse]
+	verifyCredential        *connect.Client[v1.VerifyCredentialRequest, v1.VerifyCredentialResponse]
+	listProofRequests       *connect.Client[v1.ListProofRequestsRequest, v1.ListProofRequestsResponse]
+	listProofSchemas        *connect.Client[v1.ListProofSchemasRequest, v1.ListProofSchemasResponse]
+	listVerifierConnections *connect.Client[v1.ListVerifierConnectionsRequest, v1.ListVerifierConnectionsResponse]
 }
 
 // CreateRequest calls vca.backend.v1.VerifierBackendService.CreateRequest.
@@ -1396,6 +1438,21 @@ func (c *verifierBackendServiceClient) VerifyCredential(ctx context.Context, req
 	return c.verifyCredential.CallUnary(ctx, req)
 }
 
+// ListProofRequests calls vca.backend.v1.VerifierBackendService.ListProofRequests.
+func (c *verifierBackendServiceClient) ListProofRequests(ctx context.Context, req *connect.Request[v1.ListProofRequestsRequest]) (*connect.Response[v1.ListProofRequestsResponse], error) {
+	return c.listProofRequests.CallUnary(ctx, req)
+}
+
+// ListProofSchemas calls vca.backend.v1.VerifierBackendService.ListProofSchemas.
+func (c *verifierBackendServiceClient) ListProofSchemas(ctx context.Context, req *connect.Request[v1.ListProofSchemasRequest]) (*connect.Response[v1.ListProofSchemasResponse], error) {
+	return c.listProofSchemas.CallUnary(ctx, req)
+}
+
+// ListVerifierConnections calls vca.backend.v1.VerifierBackendService.ListVerifierConnections.
+func (c *verifierBackendServiceClient) ListVerifierConnections(ctx context.Context, req *connect.Request[v1.ListVerifierConnectionsRequest]) (*connect.Response[v1.ListVerifierConnectionsResponse], error) {
+	return c.listVerifierConnections.CallUnary(ctx, req)
+}
+
 // VerifierBackendServiceHandler is an implementation of the vca.backend.v1.VerifierBackendService
 // service.
 type VerifierBackendServiceHandler interface {
@@ -1412,6 +1469,18 @@ type VerifierBackendServiceHandler interface {
 	// FEATURE_VERIFY_UPLOAD serves it. Every other adapter answers
 	// Unimplemented.
 	VerifyCredential(context.Context, *connect.Request[v1.VerifyCredentialRequest]) (*connect.Response[v1.VerifyCredentialResponse], error)
+	// ListProofRequests returns the DIDComm proof requests of the
+	// verifier, newest first, with the state of each (ADR-061). An adapter
+	// serves it only when it lists PROTOCOL_DIDCOMM_PRESENT_V2.
+	ListProofRequests(context.Context, *connect.Request[v1.ListProofRequestsRequest]) (*connect.Response[v1.ListProofRequestsResponse], error)
+	// ListProofSchemas returns the AnonCreds schemas that a proof request
+	// can name, with their attributes (ADR-061). An adapter serves it only
+	// when it lists FEATURE_ANONCREDS_PROOF.
+	ListProofSchemas(context.Context, *connect.Request[v1.ListProofSchemasRequest]) (*connect.Response[v1.ListProofSchemasResponse], error)
+	// ListVerifierConnections returns the DIDComm connections that a
+	// proof request can go over. An adapter serves it only when it lists
+	// PROTOCOL_DIDCOMM_PRESENT_V2.
+	ListVerifierConnections(context.Context, *connect.Request[v1.ListVerifierConnectionsRequest]) (*connect.Response[v1.ListVerifierConnectionsResponse], error)
 }
 
 // NewVerifierBackendServiceHandler builds an HTTP handler from the service implementation. It
@@ -1445,6 +1514,24 @@ func NewVerifierBackendServiceHandler(svc VerifierBackendServiceHandler, opts ..
 		connect.WithSchema(verifierBackendServiceMethods.ByName("VerifyCredential")),
 		connect.WithHandlerOptions(opts...),
 	)
+	verifierBackendServiceListProofRequestsHandler := connect.NewUnaryHandler(
+		VerifierBackendServiceListProofRequestsProcedure,
+		svc.ListProofRequests,
+		connect.WithSchema(verifierBackendServiceMethods.ByName("ListProofRequests")),
+		connect.WithHandlerOptions(opts...),
+	)
+	verifierBackendServiceListProofSchemasHandler := connect.NewUnaryHandler(
+		VerifierBackendServiceListProofSchemasProcedure,
+		svc.ListProofSchemas,
+		connect.WithSchema(verifierBackendServiceMethods.ByName("ListProofSchemas")),
+		connect.WithHandlerOptions(opts...),
+	)
+	verifierBackendServiceListVerifierConnectionsHandler := connect.NewUnaryHandler(
+		VerifierBackendServiceListVerifierConnectionsProcedure,
+		svc.ListVerifierConnections,
+		connect.WithSchema(verifierBackendServiceMethods.ByName("ListVerifierConnections")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.backend.v1.VerifierBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case VerifierBackendServiceCreateRequestProcedure:
@@ -1455,6 +1542,12 @@ func NewVerifierBackendServiceHandler(svc VerifierBackendServiceHandler, opts ..
 			verifierBackendServiceSubmitBrowserAnswerHandler.ServeHTTP(w, r)
 		case VerifierBackendServiceVerifyCredentialProcedure:
 			verifierBackendServiceVerifyCredentialHandler.ServeHTTP(w, r)
+		case VerifierBackendServiceListProofRequestsProcedure:
+			verifierBackendServiceListProofRequestsHandler.ServeHTTP(w, r)
+		case VerifierBackendServiceListProofSchemasProcedure:
+			verifierBackendServiceListProofSchemasHandler.ServeHTTP(w, r)
+		case VerifierBackendServiceListVerifierConnectionsProcedure:
+			verifierBackendServiceListVerifierConnectionsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1478,6 +1571,18 @@ func (UnimplementedVerifierBackendServiceHandler) SubmitBrowserAnswer(context.Co
 
 func (UnimplementedVerifierBackendServiceHandler) VerifyCredential(context.Context, *connect.Request[v1.VerifyCredentialRequest]) (*connect.Response[v1.VerifyCredentialResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.VerifierBackendService.VerifyCredential is not implemented"))
+}
+
+func (UnimplementedVerifierBackendServiceHandler) ListProofRequests(context.Context, *connect.Request[v1.ListProofRequestsRequest]) (*connect.Response[v1.ListProofRequestsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.VerifierBackendService.ListProofRequests is not implemented"))
+}
+
+func (UnimplementedVerifierBackendServiceHandler) ListProofSchemas(context.Context, *connect.Request[v1.ListProofSchemasRequest]) (*connect.Response[v1.ListProofSchemasResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.VerifierBackendService.ListProofSchemas is not implemented"))
+}
+
+func (UnimplementedVerifierBackendServiceHandler) ListVerifierConnections(context.Context, *connect.Request[v1.ListVerifierConnectionsRequest]) (*connect.Response[v1.ListVerifierConnectionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.VerifierBackendService.ListVerifierConnections is not implemented"))
 }
 
 // CatalogBackendServiceClient is a client for the vca.backend.v1.CatalogBackendService service.

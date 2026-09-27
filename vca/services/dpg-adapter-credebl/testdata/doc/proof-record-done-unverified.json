@@ -1,0 +1,20 @@
+{
+  "statusCode": 200,
+  "message": "Proof presentation fetched successfully.",
+  "data": {
+    "_tags": {
+      "state": "done",
+      "threadId": "4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a"
+    },
+    "metadata": {},
+    "id": "5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b",
+    "createdAt": "2026-09-27T10:02:11.004Z",
+    "updatedAt": "2026-09-27T10:04:37.812Z",
+    "protocolVersion": "v2",
+    "state": "done",
+    "threadId": "4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a",
+    "autoAcceptProof": "always",
+    "connectionId": "6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b",
+    "isVerified": false
+  }
+}
