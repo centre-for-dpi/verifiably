@@ -104,6 +104,9 @@ type Options struct {
 	// DIDComm offer can go to a wallet that connected before. Nil lists
 	// none.
 	Connections Connections
+	// BulkImport runs the CSV bulk import of the adapter, for a stack
+	// that mails each holder an offer (ADR-060). Nil hides the import.
+	BulkImport BulkImport
 	// Presentation reads and sets the credential a holder presents
 	// before the stack issues. Nil hides the card.
 	Presentation Presentation
@@ -155,6 +158,7 @@ func (p *Pages) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+IssueReviewPath, p.handle(p.review))
 	mux.HandleFunc("POST "+IssueOffersPath, p.handle(p.create))
 	mux.HandleFunc("GET "+IssueOffersPath+"/{id}", p.handle(p.result))
+	p.registerBulk(mux)
 	mux.HandleFunc("GET "+NotificationsPath+"{$}", p.handle(p.notifications))
 	mux.HandleFunc("GET "+HelpPath+"{$}", p.handle(p.help))
 	if p.opts.SignOut != nil {

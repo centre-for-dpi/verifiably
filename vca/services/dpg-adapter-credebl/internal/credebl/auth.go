@@ -189,12 +189,35 @@ func (c *Client) call(ctx context.Context, method, path string, body, out any) e
 	if c == nil {
 		return ErrNoPlatform
 	}
+	return c.retry(ctx, func(api *dpgclient.Client) error {
+		return api.JSON(ctx, method, path, body, out)
+	})
+}
+
+// send sends one prepared request, such as a file upload, with a fresh
+// bearer token, and decodes the JSON answer into out.
+func (c *Client) send(ctx context.Context, req dpgclient.Request, out any) error {
+	return c.retry(ctx, func(api *dpgclient.Client) error {
+		resp, err := api.Do(ctx, req)
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(resp.Body, out); err != nil {
+			return fmt.Errorf("credebl: decode the answer of %s: %w", req.Path, err)
+		}
+		return nil
+	})
+}
+
+// retry runs one call with a fresh bearer token. It signs in again once
+// when CREDEBL answers with the status unauthorized.
+func (c *Client) retry(ctx context.Context, fn func(*dpgclient.Client) error) error {
 	for attempt := 0; attempt < 2; attempt++ {
 		token, err := c.Token(ctx)
 		if err != nil {
 			return err
 		}
-		err = c.withToken(token).JSON(ctx, method, path, body, out)
+		err = fn(c.withToken(token))
 		if err == nil {
 			return nil
 		}

@@ -1,0 +1,5 @@
+{
+  "statusCode": 400,
+  "message": "Invalid emails found in the chosen file",
+  "error": "Bad Request"
+}

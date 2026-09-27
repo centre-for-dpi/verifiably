@@ -182,6 +182,29 @@ The service picks the format that the channel carries. It passes the
 configuration of that format, such as the credential definition of an
 AnonCreds schema. A DIDComm credential gets no status list entry.
 
+### The bulk import of the stack
+
+A stack whose bulk import mails each holder an offer names that import
+in the answer of `GetCapabilities` (ADR-060). The source step then offers
+"<stack> bulk import" for a schema that the import issues. The pages
+under `/issue/bulk/` follow the import of the stack:
+
+1. The template button downloads a CSV file with the columns of the
+   stack. The first column holds the email address of the holder. The
+   other columns are the claims of the schema.
+2. The upload form sends the filled file to the stack. The stack checks
+   the columns and every address. A refusal shows its sentence on the
+   page. A file holds at most 4 MB.
+3. The preview shows the rows of the upload, one page at a time. The
+   issue button starts the issue of every row.
+4. The history at `/issue/bulk/files` lists the issued files, newest
+   first, with the state and the counts of each. A file shows each row
+   with its result and the reason of a failure. The retry button sends
+   the failed rows again.
+
+The upload, the issue, and the retry each write an event to the audit
+log. An issuer operator or an issuer admin runs the import.
+
 ### The identity QR channel
 
 The channel prints the identity QR code that a stack signs (ADR-043
@@ -326,9 +349,12 @@ send rows that way (P3-08).
 
 With `native` set, the service checks every row against the schema. It
 sends the rows that pass to the bulk import of the stack in one call. The adapter must list
-`FEATURE_BULK_NATIVE`, and the channel is `CHANNEL_PDF`. Each credential
-becomes a document, as on the document channel. A row the schema
-or the stack refuses fails alone, with the reason.
+`FEATURE_BULK_NATIVE`. The channel is the channel of the import. For
+`CHANNEL_PDF` each credential becomes a document, as on the document
+channel. For `CHANNEL_EMAIL` each row names the address of the holder in
+its delivery. The stack mails the offer. The row becomes a delivered
+offer on the email channel, with no status entry (ADR-060). A row the
+schema or the stack refuses fails alone, with the reason.
 
 The answer streams one message at the start, one message for each row,
 and one message at the end. Each message carries the counts. The service

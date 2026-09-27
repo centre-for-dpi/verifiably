@@ -77,6 +77,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	mux.Handle(backendv1connect.NewCatalogBackendServiceHandler(svc))
 	mux.Handle(backendv1connect.NewTenantBackendServiceHandler(svc))
 	mux.Handle(backendv1connect.NewNotificationBackendServiceHandler(svc))
+	mux.Handle(backendv1connect.NewBulkImportBackendServiceHandler(svc))
 	// walt.id posts session events here on the compose network (P6-W5).
 	mux.Handle("POST "+service.CallbackPrefix, svc.CallbackHandler())
 	deps.Log.Info("walt.id adapter ready",

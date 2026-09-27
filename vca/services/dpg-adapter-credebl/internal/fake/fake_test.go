@@ -3,8 +3,10 @@
 package fake_test
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"testing"
@@ -309,5 +311,66 @@ func TestFakeServesTheDidcommCalls(t *testing.T) {
 	}
 	if body := get(t, f, "/v1/orgs/org-1/credentials/rec-1/unknown"); strings.Contains(body, "state") {
 		t.Errorf("an unknown path = %q", body)
+	}
+}
+
+// TestFakeServesTheBulkCalls covers the bulk import answers of P6-C4
+// and the upload the tests read back.
+func TestFakeServesTheBulkCalls(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	part, err := w.CreateFormFile("file", "farmers.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, werr := part.Write([]byte("email_identifier,name\n")); werr != nil {
+		t.Fatal(werr)
+	}
+	if cerr := w.Close(); cerr != nil {
+		t.Fatal(cerr)
+	}
+	resp, err := f.Client().Post(f.URL()+"/v1/orgs/org-1/bulk/upload?schemaType=indy", w.FormDataContentType(), &buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := io.ReadAll(resp.Body)
+	if cerr := resp.Body.Close(); cerr != nil || err != nil || resp.StatusCode != http.StatusCreated || !strings.Contains(string(raw), "File imported") {
+		t.Errorf("upload = %d %q %v %v", resp.StatusCode, raw, err, cerr)
+	}
+	name, content, err := f.Upload("/v1/orgs/org-1/bulk/upload")
+	if err != nil || name != "farmers.csv" || string(content) != "email_identifier,name\n" {
+		t.Errorf("upload read = %q %q %v", name, content, err)
+	}
+	// A write without a multipart body has no file to read.
+	post(t, f, "/v1/orgs/org-1/req-1/bulk", "{}")
+	if _, _, err := f.Upload("/v1/orgs/org-1/req-1/bulk"); err == nil {
+		t.Error("a JSON write reads as an upload")
+	}
+	if _, _, err := f.Upload("/v1/orgs/org-1/never"); err == nil {
+		t.Error("a path without a call reads as an upload")
+	}
+	for path, want := range map[string]string{
+		"/v1/orgs/org-1/req-1/bulk":        "Process initiated",
+		"/v1/orgs/org-1/file-1/retry/bulk": "Process reinitiated",
+	} {
+		if body := post(t, f, path, "{}"); !strings.Contains(body, want) {
+			t.Errorf("%s returned %q", path, body)
+		}
+	}
+	for path, want := range map[string]string{
+		"/v1/orgs/org-1/req-1/preview":          "email_identifier",
+		"/v1/orgs/org-1/bulk/files":             "PARTIALLY_COMPLETED",
+		"/v1/orgs/org-1/file-1/bulk/file-data":  "referenceId",
+		"/v1/orgs/org-1/file-1/bulk/file-other": "404 page not found",
+	} {
+		if body := get(t, f, path); !strings.Contains(body, want) {
+			t.Errorf("%s returned %q", path, body)
+		}
+	}
+	f.SetBulkFiles(fake.NoBulkFiles)
+	if body := get(t, f, "/v1/orgs/org-1/bulk/files"); strings.Contains(body, "PARTIALLY") {
+		t.Errorf("no files = %q", body)
 	}
 }

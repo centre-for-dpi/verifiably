@@ -158,15 +158,26 @@ func (p *Pages) renderRun(pg page, s runSetup, values url.Values, toast string) 
 		}})
 	var fields []template.HTML
 	fields = append(fields, hiddenInput("schema", ref))
+	mails := mailsEachRow(pg, c)
 	if pg.f.Has(backendv1.Feature_FEATURE_BULK_NATIVE) {
 		method := values.Get("method")
+		nativeText := msg.T("issuer.sources.run.native.text")
+		if mails {
+			nativeText = msg.T("issuer.sources.run.native.mail.text")
+		}
 		fields = append(fields, b.add("choice", components.Choice{ID: "method", Legend: msg.T("issuer.sources.run.method.label"), Options: []components.ChoiceOption{
 			{Value: "vca", Title: msg.T("issuer.sources.run.vca.label"), Text: msg.T("issuer.sources.run.vca.text"), Meta: msg.T("issuer.issue.every_stack.label"), Checked: method != methodNative},
-			{Value: methodNative, Title: msg.T("issuer.sources.run.native.label", stackName(c)), Text: msg.T("issuer.sources.run.native.text"), Meta: stackName(c), Checked: method == methodNative},
+			{Value: methodNative, Title: msg.T("issuer.sources.run.native.label", stackName(c)), Text: nativeText, Meta: stackName(c), Checked: method == methodNative},
 		}}))
 	}
+	if mails {
+		fields = append(fields, p.emailColumnField(pg, b, s.src.GetId(), values.Get("email_column")))
+	}
 	channelHint := msg.T("issuer.sources.run.channel.hint")
-	if pg.f.Has(backendv1.Feature_FEATURE_BULK_NATIVE) {
+	switch {
+	case mails:
+		channelHint += " " + msg.T("issuer.sources.run.channel.native.mail")
+	case pg.f.Has(backendv1.Feature_FEATURE_BULK_NATIVE):
 		channelHint += " " + msg.T("issuer.sources.run.channel.native")
 	}
 	current := values.Get("channel")
@@ -258,9 +269,18 @@ func (r refusal) Error() string { return string(r) }
 func (p *Pages) batchRequest(pg page, s runSetup, values url.Values) (*issuancev1.IssueBatchRequest, error) {
 	c := caps(pg.f)
 	req := &issuancev1.IssueBatchRequest{SchemaId: s.schema.GetId(), SchemaVersion: s.schema.GetVersion(), Format: pickFormat(s.schema, c, values)}
-	if values.Get("method") == methodNative && pg.f.Has(backendv1.Feature_FEATURE_BULK_NATIVE) {
+	emailColumn := ""
+	switch {
+	case values.Get("method") == methodNative && mailsEachRow(pg, c):
+		// The stack mails each row an offer (ADR-060).
+		emailColumn = strings.TrimSpace(values.Get("email_column"))
+		if emailColumn == "" {
+			return nil, refusal(msg.T("issuer.sources.run.error.email_column"))
+		}
+		req.Native, req.Channel = true, backendv1.Channel_CHANNEL_EMAIL
+	case values.Get("method") == methodNative && pg.f.Has(backendv1.Feature_FEATURE_BULK_NATIVE):
 		req.Native, req.Channel = true, backendv1.Channel_CHANNEL_PDF
-	} else {
+	default:
 		ch := backendv1.Channel(backendv1.Channel_value[values.Get("channel")])
 		found := false
 		for _, o := range offered(c) {
@@ -297,9 +317,45 @@ func (p *Pages) batchRequest(pg page, s runSetup, values url.Values) (*issuancev
 		if merr != nil {
 			return nil, merr
 		}
-		req.Items = append(req.Items, &issuancev1.IssueBatchRequest_Item{Row: int64(i + 1), SubjectData: string(data)})
+		item := &issuancev1.IssueBatchRequest_Item{Row: int64(i + 1), SubjectData: string(data)}
+		if emailColumn != "" {
+			item.Delivery = &issuancev1.Delivery{Channel: backendv1.Channel_CHANNEL_EMAIL, Email: strings.TrimSpace(row[emailColumn])}
+		}
+		req.Items = append(req.Items, item)
 	}
 	return req, nil
+}
+
+// mailsEachRow reports whether the bulk import of the stack mails each
+// holder an offer, so each row needs an address (ADR-060).
+func mailsEachRow(pg page, c *backendv1.GetCapabilitiesResponse) bool {
+	return pg.f.Has(backendv1.Feature_FEATURE_BULK_NATIVE) &&
+		c.GetBulkImport().GetChannel() == backendv1.Channel_CHANNEL_EMAIL
+}
+
+// emailColumnField draws the select of the column with the address of
+// each holder. A column with email in its name comes first.
+func (p *Pages) emailColumnField(pg page, b *blocks, sourceID, current string) template.HTML {
+	var names []string
+	if res, err := p.opts.Sources.PreviewFields(pg.ctx(), connect.NewRequest(&datasourcev1.PreviewFieldsRequest{SourceId: sourceID})); err == nil {
+		for _, f := range res.Msg.GetFields() {
+			names = append(names, f.GetName())
+		}
+	}
+	if current == "" {
+		for _, name := range names {
+			if strings.Contains(strings.ToLower(name), "email") {
+				current = name
+				break
+			}
+		}
+	}
+	opts := []components.Option{{Value: "", Text: msg.T("issuer.sources.run.email_column.none.label")}}
+	for _, name := range names {
+		opts = append(opts, components.Option{Value: name, Text: name, Selected: name == current})
+	}
+	return b.add("field", components.Field{ID: "email_column", Label: msg.T("issuer.sources.run.email_column.label"), Type: "select",
+		Options: opts, Hint: msg.T("issuer.sources.run.email_column.hint")})
 }
 
 // launch starts the batch and returns its job id once the issuance

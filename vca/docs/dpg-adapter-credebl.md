@@ -10,7 +10,8 @@ CREDEBL is the largest of the three DPGs. It runs about twenty services
 behind one api gateway. This adapter gives the rest of VCA one small
 contract instead. It issues SD-JWT credentials through the OID4VCI
 pre-authorized code flow, and AnonCreds and W3C JSON-LD credentials
-over DIDComm. It checks presentations with DCQL queries.
+over DIDComm. It hands a CSV file to the bulk import of the platform.
+It checks presentations with DCQL queries.
 
 ## What it serves
 
@@ -23,6 +24,7 @@ over DIDComm. It checks presentations with DCQL queries.
 | `CatalogBackendService` | Served. |
 | `TenantBackendService` | Served for organisations. The client credential RPCs answer `unimplemented`. |
 | `NotificationBackendService` | Never served yet. The adapter sets no organisation webhook. It lists no webhooks. |
+| `BulkImportBackendService` | Served when the stack names a mail provider. The platform mails each row of a file an offer. |
 
 ## The CREDEBL endpoints
 
@@ -52,6 +54,12 @@ over DIDComm. It checks presentations with DCQL queries.
 | `POST /v1/orgs/{org}/credentials/oob/email` | Has the platform mail an out of band invitation with a QR code. |
 | `GET /v1/orgs/{org}/connections` | Lists the DIDComm connections. The platform answers not found for none. |
 | `GET /v1/orgs/{org}/credentials/{id}` | Reads the credential exchange of one DIDComm offer. |
+| `POST /v1/orgs/{org}/bulk/upload` | Hands a filled CSV file to the platform, which checks it and keeps its rows for a limited time. |
+| `GET /v1/orgs/{org}/{upload}/preview` | Reads one page of the rows of an upload. |
+| `POST /v1/orgs/{org}/{upload}/bulk` | Starts the issue of every row of an upload. The platform mails each row an out of band offer. |
+| `GET /v1/orgs/{org}/bulk/files` | Lists the issued files with their state and counts. The platform answers not found for none. |
+| `GET /v1/orgs/{org}/{file}/bulk/file-data` | Reads the rows of one issued file with the reason of each failure. |
+| `POST /v1/orgs/{org}/{file}/retry/bulk` | Issues the failed rows of one file again. |
 | `POST /v1/orgs/{org}/oid4vp/verifier` | Creates the OID4VP verifier. |
 | `POST /v1/orgs/{org}/oid4vp/presentation` | Starts an OID4VP transaction. |
 | `GET /v1/orgs/{org}/oid4vp/verifier-presentation` | Reads the answer of a transaction. |
@@ -66,7 +74,8 @@ The answer of `GetCapabilities` reports what the platform supports.
 | Channels | OID4VCI pre-authorized code for SD-JWT. A DIDComm invitation for AnonCreds and W3C JSON-LD. An email from the stack for the same two, when the stack names a mail provider. |
 | Protocols | OID4VCI, OID4VP, OID4VP with DCQL, DIDComm issue credential 2.0 |
 | Roles | Issuer and verifier |
-| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUANCE_STATUS`, `FEATURE_ISSUED_LEDGER` |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUANCE_STATUS`, `FEATURE_ISSUED_LEDGER`, and `FEATURE_BULK_NATIVE` with a mail provider |
+| Bulk import | With a mail provider: the email channel, AnonCreds and W3C JSON-LD, and the address column `email_identifier` |
 | DID methods | `did:key` |
 | Key types | `Ed25519`, `secp256r1`, `secp256k1` |
 | Schema formats | AnonCreds on each ledger of the organisation, and W3C JSON-LD |
@@ -89,7 +98,6 @@ CREDEBL is the only one of the three DPGs that reads DCQL.
 | RPC | Reason |
 | --- | --- |
 | `Issue` | CREDEBL signs a credential only when a wallet claims an offer. |
-| `IssueBatch` | CREDEBL has no batch credential endpoint. |
 | `Revoke` | The platform revokes an OID4VC session only with a status list host. The stack file runs none, so the status services of VCA own the status bits. |
 | Every holder RPC | CREDEBL ships no wallet for a citizen. |
 | Every client credential RPC | The adapter makes no client credential of an organisation yet. The admin pages offer no stack credential. |
@@ -236,6 +244,18 @@ email needs `EMAIL_PROVIDER` and the values of that provider in the stack
 `.env`. Setup then sets `VCA_CREDEBL_MAIL_OFFERS`, and the adapter lists
 `CHANNEL_EMAIL`. The platform keeps the invitation of the email on the
 volume `credebl-files`, and the link of the email names `PLATFORM_URL`.
+
+**The bulk import mails every row.** The platform reads a CSV file
+whose first column is `email_identifier`. The other columns must match
+the claims of the schema by name and by count. The platform checks every
+address before it keeps the rows. It keeps an upload in Redis for a
+limited time. After that, the preview asks for a new upload. The
+template call of the platform answers with a link into its own UI, not
+with the file. So the adapter writes the template from the
+claims of the schema. `IssueBatch` writes one such file from the specs
+and issues it. A row without a valid address fails alone and stays out
+of the file. The platform queues one offer by email per row. The file
+history reads the result of each row from the platform database.
 
 **The adapter creates the verifier once.** It creates the OID4VP
 verifier at the first request. It then stores the identifier. After a

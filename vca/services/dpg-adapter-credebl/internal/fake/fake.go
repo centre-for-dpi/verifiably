@@ -9,8 +9,11 @@
 package fake
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -55,6 +58,11 @@ const (
 	RecordDone Answer = "doc/credential-record-done.json"
 	// RecordAbandoned is a DIDComm exchange the holder declined.
 	RecordAbandoned Answer = "doc/credential-record-abandoned.json"
+	// BulkFiles is the list of the files of the bulk import.
+	BulkFiles Answer = "doc/bulk-files.json"
+	// NoBulkFiles makes the list of files answer the status not found,
+	// as the platform does for an empty list.
+	NoBulkFiles Answer = ""
 )
 
 // Server is a running fake CREDEBL platform.
@@ -79,6 +87,10 @@ type Server struct {
 	connections Answer
 	// record selects the answer of one DIDComm credential exchange.
 	record Answer
+	// files selects the listing of the files of the bulk import.
+	files Answer
+	// types records the content type of every write call by path.
+	types map[string]string
 	// queries records the query of every call by path.
 	queries map[string]string
 	// deleted holds the organisations the fake deleted.
@@ -102,6 +114,8 @@ func New(dir string) *Server {
 		offer:       OfferPending,
 		connections: Connections,
 		record:      RecordOfferSent,
+		files:       BulkFiles,
+		types:       map[string]string{},
 		queries:     map[string]string{},
 		deleted:     map[string]bool{},
 		requests:    map[string][]byte{},
@@ -160,6 +174,36 @@ func (f *Server) SetCredentialRecord(a Answer) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.record = a
+}
+
+// SetBulkFiles selects the listing of the files of the bulk import.
+func (f *Server) SetBulkFiles(a Answer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.files = a
+}
+
+// Upload reads the CSV file of the last multipart write to the path:
+// the name and the content of the part file.
+func (f *Server) Upload(path string) (string, []byte, error) {
+	f.mu.Lock()
+	body, contentType := f.requests[path], f.types[path]
+	f.mu.Unlock()
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return "", nil, err
+	}
+	r := multipart.NewReader(bytes.NewReader(body), params["boundary"])
+	for {
+		part, err := r.NextPart()
+		if err != nil {
+			return "", nil, err
+		}
+		if part.FormName() == "file" {
+			raw, err := io.ReadAll(part)
+			return part.FileName(), raw, err
+		}
+	}
 }
 
 // Query returns the query of the last call to the path.
@@ -224,10 +268,11 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	f.requests[r.URL.Path] = body
 	f.queries[r.URL.Path] = r.URL.RawQuery
+	f.types[r.URL.Path] = r.Header.Get("Content-Type")
 	f.calls = append(f.calls, r.Method+" "+r.URL.Path)
 	forced := f.take(r.URL.Path)
 	session, templates, orgs, offer := f.session, f.templates, f.orgs, f.offer
-	connections, record := f.connections, f.record
+	connections, record, files := f.connections, f.record, f.files
 	if r.URL.Path == "/v1/auth/signin" {
 		f.signins++
 	}
@@ -238,6 +283,9 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	path := r.URL.Path
 	if f.serveDidcomm(w, r, connections, record) {
+		return
+	}
+	if f.serveBulk(w, r, files) {
 		return
 	}
 	if f.serveOrgs(w, r, orgs) {
@@ -347,6 +395,38 @@ func (f *Server) serveDidcomm(w http.ResponseWriter, r *http.Request, connection
 		f.send(w, string(connections))
 	case len(parts) == 5 && parts[3] == "credentials" && r.Method == http.MethodGet:
 		f.send(w, string(record))
+	default:
+		return false
+	}
+	return true
+}
+
+// serveBulk answers the bulk import calls of P6-C4 from the answers
+// written from the platform sources (testdata/doc). It reports whether
+// it answered.
+func (f *Server) serveBulk(w http.ResponseWriter, r *http.Request, files Answer) bool {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 5 || parts[0] != "v1" || parts[1] != "orgs" {
+		return false
+	}
+	tail := strings.Join(parts[3:], "/")
+	switch {
+	case tail == "bulk/upload" && r.Method == http.MethodPost:
+		f.sendStatus(w, http.StatusCreated, "doc/bulk-upload-created.json")
+	case tail == "bulk/files" && r.Method == http.MethodGet:
+		if files == NoBulkFiles {
+			http.NotFound(w, r)
+			return true
+		}
+		f.send(w, string(files))
+	case len(parts) == 5 && parts[4] == "preview" && r.Method == http.MethodGet:
+		f.send(w, "doc/bulk-preview.json")
+	case len(parts) == 5 && parts[4] == "bulk" && r.Method == http.MethodPost:
+		f.sendStatus(w, http.StatusCreated, "doc/bulk-issue-started.json")
+	case len(parts) == 6 && parts[4] == "bulk" && parts[5] == "file-data" && r.Method == http.MethodGet:
+		f.send(w, "doc/bulk-file-rows.json")
+	case len(parts) == 6 && parts[4] == "retry" && parts[5] == "bulk" && r.Method == http.MethodPost:
+		f.sendStatus(w, http.StatusCreated, "doc/bulk-retry-started.json")
 	default:
 		return false
 	}

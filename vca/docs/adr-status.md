@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-059, one row per decision.
+ADR-060, one row per decision.
 
 The status values are:
 
@@ -480,7 +480,7 @@ A row that is not `Done` carries a note.
 | ADR-043 | 1 The list of channels | Partial | `vca/services/issuance/internal/pages/issue.go` | The wizard offers both OID4VCI channels, the Digital Credentials API, and QR on a PDF. Claim 169, DIDComm, and email through the DPG wait for the adapter units. |
 | ADR-043 | 2 The page offers live channels only | Done | `vca/services/issuance/internal/pages/issue.go` | `TestDeliveryOptionsFollowCapabilities`. |
 | ADR-043 | 3 Digital Credentials API button with a fallback | Done | `vca/ui/static/dcapi.js`, `vca/services/issuance/internal/pages/result.go` | `TestDcApiButtonCarriesOffer`, `TestDcApiFallbackQRAlwaysPresent`. |
-| ADR-043 | 4 Bulk issuance from data sources | Done | `vca/services/data-source/internal/pages`, `vca/services/issuance/internal/service/batch.go` | CSV, SQL, and HTTP sources, field map, run, progress, and export. The native import shows when the adapter lists `FEATURE_BULK_NATIVE`; no adapter lists it yet. |
+| ADR-043 | 4 Bulk issuance from data sources | Done | `vca/services/data-source/internal/pages`, `vca/services/issuance/internal/service/batch.go` | CSV, SQL, and HTTP sources, field map, run, progress, and export. The native import shows when the adapter lists `FEATURE_BULK_NATIVE`. The CREDEBL adapter lists it with a mail provider (ADR-060). |
 
 ## ADR-044: Placement of the role pages
 
@@ -642,12 +642,22 @@ A row that is not `Done` carries a note.
 | ADR-059 | 5 The wallet portal names a DIDComm invitation | Done | `vca/services/wallet-portal/internal/detect/didcomm.go`, `vca/services/wallet-portal/internal/portal/didcomm.go` | `TestWalletDetectsOobInvitation` pins it. |
 | ADR-059 | 6 The file volume, the mail provider, and the values of the operator | Done | `deploy/vca/dpg/credebl.yaml`, `vca/internal/cli/stackenv.go` | `TestCredeblStackKeepsFilesOnAVolume` and `TestStackEnvKeepsTheValuesOfTheOperator` pin it. |
 
+## ADR-060: The CSV bulk import of a stack that mails each row
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-060 | 1 The bulk import in the answer of GetCapabilities | Done | `vca/proto/vca/backend/v1/backend.proto`, `vca/services/issuance/internal/clients/clients.go` | `TestFeatureBulkNativeListed` and `TestCapabilitiesNameTheBulkImport` pin it. |
+| ADR-060 | 2 A batch that the stack mails | Done | `vca/services/issuance/internal/service/batch.go`, `vca/services/dpg-adapter-credebl/internal/service/bulk.go` | `TestIssueBatchNativeMailsThroughTheStack` and `TestIssueBatchMailsEachRowThroughTheImport` pin it. |
+| ADR-060 | 3 The bulk import service | Done | `vca/services/dpg-adapter-credebl/internal/service/bulk.go` | `TestBulkUploadPreviewIssue` and `TestBulkRetry` pin it. The other adapters answer `Unimplemented`. |
+| ADR-060 | 4 The pages of the import | Done | `vca/services/issuance/internal/pages/bulk.go`, `vca/services/data-source/internal/pages/run.go` | `TestStackBulkImportIsASource`, `TestBulkHistoryAndRetry` and `TestBulkNativeMailAsksForTheEmailColumn` pin it. |
+| ADR-060 | 5 The CREDEBL import | Done | `vca/services/dpg-adapter-credebl/internal/credebl/bulk.go` | The fixtures come from the platform sources; `TestContractBulkImport` checks a live platform. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 276 |
+| Done | 281 |
 | Partial | 25 |
 | Deferred | 3 |
 | Not started | 26 |
-| Total | 330 |
+| Total | 335 |

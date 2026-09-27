@@ -249,4 +249,7 @@ does not read it as a formula.
 
 The bulk import of the stack shows only when the adapter of the pair
 lists `FEATURE_BULK_NATIVE`. It then sends the rows to `IssueBatch` with
-`native` set, and each row gets a PDF that carries its credential.
+`native` set, and each row gets a PDF that carries its credential. A
+stack whose import mails each holder an offer needs an address per row
+(ADR-060). The run form then asks for the column with the email address.
+A column with `email` in its name comes first.

@@ -269,3 +269,39 @@ func TestContractDidcommOffers(t *testing.T) {
 		t.Fatalf("ListConnections: %v", err)
 	}
 }
+
+// TestContractBulkImport uploads a file for the AnonCreds credential
+// definition that VCA_CREDEBL_CONTRACT_CRED_DEF names, reads its
+// preview, and lists the issued files. It issues nothing, so it mails
+// no one. The stack needs a mail provider (P6-C4).
+func TestContractBulkImport(t *testing.T) {
+	env := contractEnv(t)
+	credDef := os.Getenv("VCA_CREDEBL_CONTRACT_CRED_DEF")
+	file := os.Getenv("VCA_CREDEBL_CONTRACT_BULK_FILE")
+	if credDef == "" || file == "" {
+		t.Skip("set VCA_CREDEBL_CONTRACT_CRED_DEF and VCA_CREDEBL_CONTRACT_BULK_FILE, a filled CSV file, to run the bulk contract test")
+	}
+	content, err := os.ReadFile(file) // #nosec G304 -- the operator names the file
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.MailOffers = true
+	a, err := app.Build(env, app.Deps{HTTP: &http.Client{Timeout: 30 * time.Second}})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	ctx := context.Background()
+	up, err := a.Service.UploadBulkFile(ctx, connect.NewRequest(&backendv1.UploadBulkFileRequest{
+		ConfigurationId: credDef, Format: commonv1.Format_FORMAT_ANONCREDS, FileName: "contract.csv", Content: content,
+	}))
+	if err != nil {
+		t.Fatalf("UploadBulkFile: %v", err)
+	}
+	prev, err := a.Service.PreviewBulkFile(ctx, connect.NewRequest(&backendv1.PreviewBulkFileRequest{UploadId: up.Msg.GetUploadId()}))
+	if err != nil || len(prev.Msg.GetRows()) == 0 || prev.Msg.GetRows()[0].GetEmail() == "" {
+		t.Fatalf("preview = %v, %v", prev, err)
+	}
+	if _, err := a.Service.ListBulkFiles(ctx, connect.NewRequest(&backendv1.ListBulkFilesRequest{})); err != nil {
+		t.Fatalf("ListBulkFiles: %v", err)
+	}
+}

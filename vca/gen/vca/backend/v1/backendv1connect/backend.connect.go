@@ -43,6 +43,8 @@ const (
 	// NotificationBackendServiceName is the fully-qualified name of the NotificationBackendService
 	// service.
 	NotificationBackendServiceName = "vca.backend.v1.NotificationBackendService"
+	// BulkImportBackendServiceName is the fully-qualified name of the BulkImportBackendService service.
+	BulkImportBackendServiceName = "vca.backend.v1.BulkImportBackendService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -191,6 +193,27 @@ const (
 	// NotificationBackendServiceSetWebhookProcedure is the fully-qualified name of the
 	// NotificationBackendService's SetWebhook RPC.
 	NotificationBackendServiceSetWebhookProcedure = "/vca.backend.v1.NotificationBackendService/SetWebhook"
+	// BulkImportBackendServiceGetBulkTemplateProcedure is the fully-qualified name of the
+	// BulkImportBackendService's GetBulkTemplate RPC.
+	BulkImportBackendServiceGetBulkTemplateProcedure = "/vca.backend.v1.BulkImportBackendService/GetBulkTemplate"
+	// BulkImportBackendServiceUploadBulkFileProcedure is the fully-qualified name of the
+	// BulkImportBackendService's UploadBulkFile RPC.
+	BulkImportBackendServiceUploadBulkFileProcedure = "/vca.backend.v1.BulkImportBackendService/UploadBulkFile"
+	// BulkImportBackendServicePreviewBulkFileProcedure is the fully-qualified name of the
+	// BulkImportBackendService's PreviewBulkFile RPC.
+	BulkImportBackendServicePreviewBulkFileProcedure = "/vca.backend.v1.BulkImportBackendService/PreviewBulkFile"
+	// BulkImportBackendServiceIssueBulkFileProcedure is the fully-qualified name of the
+	// BulkImportBackendService's IssueBulkFile RPC.
+	BulkImportBackendServiceIssueBulkFileProcedure = "/vca.backend.v1.BulkImportBackendService/IssueBulkFile"
+	// BulkImportBackendServiceListBulkFilesProcedure is the fully-qualified name of the
+	// BulkImportBackendService's ListBulkFiles RPC.
+	BulkImportBackendServiceListBulkFilesProcedure = "/vca.backend.v1.BulkImportBackendService/ListBulkFiles"
+	// BulkImportBackendServiceListBulkFileRowsProcedure is the fully-qualified name of the
+	// BulkImportBackendService's ListBulkFileRows RPC.
+	BulkImportBackendServiceListBulkFileRowsProcedure = "/vca.backend.v1.BulkImportBackendService/ListBulkFileRows"
+	// BulkImportBackendServiceRetryBulkFileProcedure is the fully-qualified name of the
+	// BulkImportBackendService's RetryBulkFile RPC.
+	BulkImportBackendServiceRetryBulkFileProcedure = "/vca.backend.v1.BulkImportBackendService/RetryBulkFile"
 )
 
 // CapabilityServiceClient is a client for the vca.backend.v1.CapabilityService service.
@@ -1877,4 +1900,252 @@ func (UnimplementedNotificationBackendServiceHandler) GetWebhook(context.Context
 
 func (UnimplementedNotificationBackendServiceHandler) SetWebhook(context.Context, *connect.Request[v1.SetWebhookRequest]) (*connect.Response[v1.SetWebhookResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.NotificationBackendService.SetWebhook is not implemented"))
+}
+
+// BulkImportBackendServiceClient is a client for the vca.backend.v1.BulkImportBackendService
+// service.
+type BulkImportBackendServiceClient interface {
+	// GetBulkTemplate returns the CSV file with the columns the DPG reads
+	// for one credential configuration, and no row.
+	GetBulkTemplate(context.Context, *connect.Request[v1.GetBulkTemplateRequest]) (*connect.Response[v1.GetBulkTemplateResponse], error)
+	// UploadBulkFile hands a filled CSV file to the DPG. The DPG checks it
+	// against the schema and keeps it for the preview.
+	UploadBulkFile(context.Context, *connect.Request[v1.UploadBulkFileRequest]) (*connect.Response[v1.UploadBulkFileResponse], error)
+	// PreviewBulkFile returns one page of the rows of an uploaded file.
+	PreviewBulkFile(context.Context, *connect.Request[v1.PreviewBulkFileRequest]) (*connect.Response[v1.PreviewBulkFileResponse], error)
+	// IssueBulkFile starts the issue of every row of an uploaded file.
+	IssueBulkFile(context.Context, *connect.Request[v1.IssueBulkFileRequest]) (*connect.Response[v1.IssueBulkFileResponse], error)
+	// ListBulkFiles returns one page of the files the DPG issued from,
+	// newest first.
+	ListBulkFiles(context.Context, *connect.Request[v1.ListBulkFilesRequest]) (*connect.Response[v1.ListBulkFilesResponse], error)
+	// ListBulkFileRows returns one page of the rows of one issued file.
+	ListBulkFileRows(context.Context, *connect.Request[v1.ListBulkFileRowsRequest]) (*connect.Response[v1.ListBulkFileRowsResponse], error)
+	// RetryBulkFile issues the failed rows of one file again.
+	RetryBulkFile(context.Context, *connect.Request[v1.RetryBulkFileRequest]) (*connect.Response[v1.RetryBulkFileResponse], error)
+}
+
+// NewBulkImportBackendServiceClient constructs a client for the
+// vca.backend.v1.BulkImportBackendService service. By default, it uses the Connect protocol with
+// the binary Protobuf Codec, asks for gzipped responses, and sends uncompressed requests. To use
+// the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewBulkImportBackendServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) BulkImportBackendServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	bulkImportBackendServiceMethods := v1.File_vca_backend_v1_backend_proto.Services().ByName("BulkImportBackendService").Methods()
+	return &bulkImportBackendServiceClient{
+		getBulkTemplate: connect.NewClient[v1.GetBulkTemplateRequest, v1.GetBulkTemplateResponse](
+			httpClient,
+			baseURL+BulkImportBackendServiceGetBulkTemplateProcedure,
+			connect.WithSchema(bulkImportBackendServiceMethods.ByName("GetBulkTemplate")),
+			connect.WithClientOptions(opts...),
+		),
+		uploadBulkFile: connect.NewClient[v1.UploadBulkFileRequest, v1.UploadBulkFileResponse](
+			httpClient,
+			baseURL+BulkImportBackendServiceUploadBulkFileProcedure,
+			connect.WithSchema(bulkImportBackendServiceMethods.ByName("UploadBulkFile")),
+			connect.WithClientOptions(opts...),
+		),
+		previewBulkFile: connect.NewClient[v1.PreviewBulkFileRequest, v1.PreviewBulkFileResponse](
+			httpClient,
+			baseURL+BulkImportBackendServicePreviewBulkFileProcedure,
+			connect.WithSchema(bulkImportBackendServiceMethods.ByName("PreviewBulkFile")),
+			connect.WithClientOptions(opts...),
+		),
+		issueBulkFile: connect.NewClient[v1.IssueBulkFileRequest, v1.IssueBulkFileResponse](
+			httpClient,
+			baseURL+BulkImportBackendServiceIssueBulkFileProcedure,
+			connect.WithSchema(bulkImportBackendServiceMethods.ByName("IssueBulkFile")),
+			connect.WithClientOptions(opts...),
+		),
+		listBulkFiles: connect.NewClient[v1.ListBulkFilesRequest, v1.ListBulkFilesResponse](
+			httpClient,
+			baseURL+BulkImportBackendServiceListBulkFilesProcedure,
+			connect.WithSchema(bulkImportBackendServiceMethods.ByName("ListBulkFiles")),
+			connect.WithClientOptions(opts...),
+		),
+		listBulkFileRows: connect.NewClient[v1.ListBulkFileRowsRequest, v1.ListBulkFileRowsResponse](
+			httpClient,
+			baseURL+BulkImportBackendServiceListBulkFileRowsProcedure,
+			connect.WithSchema(bulkImportBackendServiceMethods.ByName("ListBulkFileRows")),
+			connect.WithClientOptions(opts...),
+		),
+		retryBulkFile: connect.NewClient[v1.RetryBulkFileRequest, v1.RetryBulkFileResponse](
+			httpClient,
+			baseURL+BulkImportBackendServiceRetryBulkFileProcedure,
+			connect.WithSchema(bulkImportBackendServiceMethods.ByName("RetryBulkFile")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// bulkImportBackendServiceClient implements BulkImportBackendServiceClient.
+type bulkImportBackendServiceClient struct {
+	getBulkTemplate  *connect.Client[v1.GetBulkTemplateRequest, v1.GetBulkTemplateResponse]
+	uploadBulkFile   *connect.Client[v1.UploadBulkFileRequest, v1.UploadBulkFileResponse]
+	previewBulkFile  *connect.Client[v1.PreviewBulkFileRequest, v1.PreviewBulkFileResponse]
+	issueBulkFile    *connect.Client[v1.IssueBulkFileRequest, v1.IssueBulkFileResponse]
+	listBulkFiles    *connect.Client[v1.ListBulkFilesRequest, v1.ListBulkFilesResponse]
+	listBulkFileRows *connect.Client[v1.ListBulkFileRowsRequest, v1.ListBulkFileRowsResponse]
+	retryBulkFile    *connect.Client[v1.RetryBulkFileRequest, v1.RetryBulkFileResponse]
+}
+
+// GetBulkTemplate calls vca.backend.v1.BulkImportBackendService.GetBulkTemplate.
+func (c *bulkImportBackendServiceClient) GetBulkTemplate(ctx context.Context, req *connect.Request[v1.GetBulkTemplateRequest]) (*connect.Response[v1.GetBulkTemplateResponse], error) {
+	return c.getBulkTemplate.CallUnary(ctx, req)
+}
+
+// UploadBulkFile calls vca.backend.v1.BulkImportBackendService.UploadBulkFile.
+func (c *bulkImportBackendServiceClient) UploadBulkFile(ctx context.Context, req *connect.Request[v1.UploadBulkFileRequest]) (*connect.Response[v1.UploadBulkFileResponse], error) {
+	return c.uploadBulkFile.CallUnary(ctx, req)
+}
+
+// PreviewBulkFile calls vca.backend.v1.BulkImportBackendService.PreviewBulkFile.
+func (c *bulkImportBackendServiceClient) PreviewBulkFile(ctx context.Context, req *connect.Request[v1.PreviewBulkFileRequest]) (*connect.Response[v1.PreviewBulkFileResponse], error) {
+	return c.previewBulkFile.CallUnary(ctx, req)
+}
+
+// IssueBulkFile calls vca.backend.v1.BulkImportBackendService.IssueBulkFile.
+func (c *bulkImportBackendServiceClient) IssueBulkFile(ctx context.Context, req *connect.Request[v1.IssueBulkFileRequest]) (*connect.Response[v1.IssueBulkFileResponse], error) {
+	return c.issueBulkFile.CallUnary(ctx, req)
+}
+
+// ListBulkFiles calls vca.backend.v1.BulkImportBackendService.ListBulkFiles.
+func (c *bulkImportBackendServiceClient) ListBulkFiles(ctx context.Context, req *connect.Request[v1.ListBulkFilesRequest]) (*connect.Response[v1.ListBulkFilesResponse], error) {
+	return c.listBulkFiles.CallUnary(ctx, req)
+}
+
+// ListBulkFileRows calls vca.backend.v1.BulkImportBackendService.ListBulkFileRows.
+func (c *bulkImportBackendServiceClient) ListBulkFileRows(ctx context.Context, req *connect.Request[v1.ListBulkFileRowsRequest]) (*connect.Response[v1.ListBulkFileRowsResponse], error) {
+	return c.listBulkFileRows.CallUnary(ctx, req)
+}
+
+// RetryBulkFile calls vca.backend.v1.BulkImportBackendService.RetryBulkFile.
+func (c *bulkImportBackendServiceClient) RetryBulkFile(ctx context.Context, req *connect.Request[v1.RetryBulkFileRequest]) (*connect.Response[v1.RetryBulkFileResponse], error) {
+	return c.retryBulkFile.CallUnary(ctx, req)
+}
+
+// BulkImportBackendServiceHandler is an implementation of the
+// vca.backend.v1.BulkImportBackendService service.
+type BulkImportBackendServiceHandler interface {
+	// GetBulkTemplate returns the CSV file with the columns the DPG reads
+	// for one credential configuration, and no row.
+	GetBulkTemplate(context.Context, *connect.Request[v1.GetBulkTemplateRequest]) (*connect.Response[v1.GetBulkTemplateResponse], error)
+	// UploadBulkFile hands a filled CSV file to the DPG. The DPG checks it
+	// against the schema and keeps it for the preview.
+	UploadBulkFile(context.Context, *connect.Request[v1.UploadBulkFileRequest]) (*connect.Response[v1.UploadBulkFileResponse], error)
+	// PreviewBulkFile returns one page of the rows of an uploaded file.
+	PreviewBulkFile(context.Context, *connect.Request[v1.PreviewBulkFileRequest]) (*connect.Response[v1.PreviewBulkFileResponse], error)
+	// IssueBulkFile starts the issue of every row of an uploaded file.
+	IssueBulkFile(context.Context, *connect.Request[v1.IssueBulkFileRequest]) (*connect.Response[v1.IssueBulkFileResponse], error)
+	// ListBulkFiles returns one page of the files the DPG issued from,
+	// newest first.
+	ListBulkFiles(context.Context, *connect.Request[v1.ListBulkFilesRequest]) (*connect.Response[v1.ListBulkFilesResponse], error)
+	// ListBulkFileRows returns one page of the rows of one issued file.
+	ListBulkFileRows(context.Context, *connect.Request[v1.ListBulkFileRowsRequest]) (*connect.Response[v1.ListBulkFileRowsResponse], error)
+	// RetryBulkFile issues the failed rows of one file again.
+	RetryBulkFile(context.Context, *connect.Request[v1.RetryBulkFileRequest]) (*connect.Response[v1.RetryBulkFileResponse], error)
+}
+
+// NewBulkImportBackendServiceHandler builds an HTTP handler from the service implementation. It
+// returns the path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewBulkImportBackendServiceHandler(svc BulkImportBackendServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	bulkImportBackendServiceMethods := v1.File_vca_backend_v1_backend_proto.Services().ByName("BulkImportBackendService").Methods()
+	bulkImportBackendServiceGetBulkTemplateHandler := connect.NewUnaryHandler(
+		BulkImportBackendServiceGetBulkTemplateProcedure,
+		svc.GetBulkTemplate,
+		connect.WithSchema(bulkImportBackendServiceMethods.ByName("GetBulkTemplate")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bulkImportBackendServiceUploadBulkFileHandler := connect.NewUnaryHandler(
+		BulkImportBackendServiceUploadBulkFileProcedure,
+		svc.UploadBulkFile,
+		connect.WithSchema(bulkImportBackendServiceMethods.ByName("UploadBulkFile")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bulkImportBackendServicePreviewBulkFileHandler := connect.NewUnaryHandler(
+		BulkImportBackendServicePreviewBulkFileProcedure,
+		svc.PreviewBulkFile,
+		connect.WithSchema(bulkImportBackendServiceMethods.ByName("PreviewBulkFile")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bulkImportBackendServiceIssueBulkFileHandler := connect.NewUnaryHandler(
+		BulkImportBackendServiceIssueBulkFileProcedure,
+		svc.IssueBulkFile,
+		connect.WithSchema(bulkImportBackendServiceMethods.ByName("IssueBulkFile")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bulkImportBackendServiceListBulkFilesHandler := connect.NewUnaryHandler(
+		BulkImportBackendServiceListBulkFilesProcedure,
+		svc.ListBulkFiles,
+		connect.WithSchema(bulkImportBackendServiceMethods.ByName("ListBulkFiles")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bulkImportBackendServiceListBulkFileRowsHandler := connect.NewUnaryHandler(
+		BulkImportBackendServiceListBulkFileRowsProcedure,
+		svc.ListBulkFileRows,
+		connect.WithSchema(bulkImportBackendServiceMethods.ByName("ListBulkFileRows")),
+		connect.WithHandlerOptions(opts...),
+	)
+	bulkImportBackendServiceRetryBulkFileHandler := connect.NewUnaryHandler(
+		BulkImportBackendServiceRetryBulkFileProcedure,
+		svc.RetryBulkFile,
+		connect.WithSchema(bulkImportBackendServiceMethods.ByName("RetryBulkFile")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/vca.backend.v1.BulkImportBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case BulkImportBackendServiceGetBulkTemplateProcedure:
+			bulkImportBackendServiceGetBulkTemplateHandler.ServeHTTP(w, r)
+		case BulkImportBackendServiceUploadBulkFileProcedure:
+			bulkImportBackendServiceUploadBulkFileHandler.ServeHTTP(w, r)
+		case BulkImportBackendServicePreviewBulkFileProcedure:
+			bulkImportBackendServicePreviewBulkFileHandler.ServeHTTP(w, r)
+		case BulkImportBackendServiceIssueBulkFileProcedure:
+			bulkImportBackendServiceIssueBulkFileHandler.ServeHTTP(w, r)
+		case BulkImportBackendServiceListBulkFilesProcedure:
+			bulkImportBackendServiceListBulkFilesHandler.ServeHTTP(w, r)
+		case BulkImportBackendServiceListBulkFileRowsProcedure:
+			bulkImportBackendServiceListBulkFileRowsHandler.ServeHTTP(w, r)
+		case BulkImportBackendServiceRetryBulkFileProcedure:
+			bulkImportBackendServiceRetryBulkFileHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedBulkImportBackendServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedBulkImportBackendServiceHandler struct{}
+
+func (UnimplementedBulkImportBackendServiceHandler) GetBulkTemplate(context.Context, *connect.Request[v1.GetBulkTemplateRequest]) (*connect.Response[v1.GetBulkTemplateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.BulkImportBackendService.GetBulkTemplate is not implemented"))
+}
+
+func (UnimplementedBulkImportBackendServiceHandler) UploadBulkFile(context.Context, *connect.Request[v1.UploadBulkFileRequest]) (*connect.Response[v1.UploadBulkFileResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.BulkImportBackendService.UploadBulkFile is not implemented"))
+}
+
+func (UnimplementedBulkImportBackendServiceHandler) PreviewBulkFile(context.Context, *connect.Request[v1.PreviewBulkFileRequest]) (*connect.Response[v1.PreviewBulkFileResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.BulkImportBackendService.PreviewBulkFile is not implemented"))
+}
+
+func (UnimplementedBulkImportBackendServiceHandler) IssueBulkFile(context.Context, *connect.Request[v1.IssueBulkFileRequest]) (*connect.Response[v1.IssueBulkFileResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.BulkImportBackendService.IssueBulkFile is not implemented"))
+}
+
+func (UnimplementedBulkImportBackendServiceHandler) ListBulkFiles(context.Context, *connect.Request[v1.ListBulkFilesRequest]) (*connect.Response[v1.ListBulkFilesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.BulkImportBackendService.ListBulkFiles is not implemented"))
+}
+
+func (UnimplementedBulkImportBackendServiceHandler) ListBulkFileRows(context.Context, *connect.Request[v1.ListBulkFileRowsRequest]) (*connect.Response[v1.ListBulkFileRowsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.BulkImportBackendService.ListBulkFileRows is not implemented"))
+}
+
+func (UnimplementedBulkImportBackendServiceHandler) RetryBulkFile(context.Context, *connect.Request[v1.RetryBulkFileRequest]) (*connect.Response[v1.RetryBulkFileResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.BulkImportBackendService.RetryBulkFile is not implemented"))
 }

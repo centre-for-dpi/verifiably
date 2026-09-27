@@ -165,8 +165,6 @@ func TestTheRpcsCredeblNeverSupportsAnswerUnimplemented(t *testing.T) {
 	ctx := context.Background()
 	_, err := svc.Issue(ctx, connect.NewRequest(&backendv1.IssueRequest{}))
 	wantCode(t, err, connect.CodeUnimplemented)
-	_, err = svc.IssueBatch(ctx, connect.NewRequest(&backendv1.IssueBatchRequest{}))
-	wantCode(t, err, connect.CodeUnimplemented)
 	_, err = svc.Revoke(ctx, connect.NewRequest(&backendv1.RevokeRequest{}))
 	wantCode(t, err, connect.CodeUnimplemented)
 }

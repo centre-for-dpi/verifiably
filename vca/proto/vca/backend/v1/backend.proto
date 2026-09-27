@@ -179,6 +179,200 @@ service NotificationBackendService {
   rpc SetWebhook(SetWebhookRequest) returns (SetWebhookResponse);
 }
 
+// BulkImportBackendService runs the CSV bulk import of a DPG: the
+// template, the upload, the preview, the issue, the file history, and
+// the retry of the failed rows (ADR-060). An adapter serves it only when
+// it lists FEATURE_BULK_NATIVE and a bulk import on the channel
+// CHANNEL_EMAIL. Every other adapter returns the Connect code
+// Unimplemented for each RPC.
+service BulkImportBackendService {
+  // GetBulkTemplate returns the CSV file with the columns the DPG reads
+  // for one credential configuration, and no row.
+  rpc GetBulkTemplate(GetBulkTemplateRequest) returns (GetBulkTemplateResponse);
+  // UploadBulkFile hands a filled CSV file to the DPG. The DPG checks it
+  // against the schema and keeps it for the preview.
+  rpc UploadBulkFile(UploadBulkFileRequest) returns (UploadBulkFileResponse);
+  // PreviewBulkFile returns one page of the rows of an uploaded file.
+  rpc PreviewBulkFile(PreviewBulkFileRequest) returns (PreviewBulkFileResponse);
+  // IssueBulkFile starts the issue of every row of an uploaded file.
+  rpc IssueBulkFile(IssueBulkFileRequest) returns (IssueBulkFileResponse);
+  // ListBulkFiles returns one page of the files the DPG issued from,
+  // newest first.
+  rpc ListBulkFiles(ListBulkFilesRequest) returns (ListBulkFilesResponse);
+  // ListBulkFileRows returns one page of the rows of one issued file.
+  rpc ListBulkFileRows(ListBulkFileRowsRequest) returns (ListBulkFileRowsResponse);
+  // RetryBulkFile issues the failed rows of one file again.
+  rpc RetryBulkFile(RetryBulkFileRequest) returns (RetryBulkFileResponse);
+}
+
+// GetBulkTemplateRequest names the credential configuration of a
+// template.
+message GetBulkTemplateRequest {
+  // The credential configuration id from RegisterCredentialConfiguration.
+  string configuration_id = 1;
+  // The format of the configuration.
+  vca.common.v1.Format format = 2;
+  // The claim names of the schema, in the order of the schema.
+  repeated string claims = 3;
+}
+
+// GetBulkTemplateResponse carries the template.
+message GetBulkTemplateResponse {
+  // The file name the browser saves.
+  string file_name = 1;
+  // The CSV file.
+  bytes content = 2;
+  // The columns of the file, in order.
+  repeated string columns = 3;
+}
+
+// UploadBulkFileRequest carries a filled CSV file.
+message UploadBulkFileRequest {
+  // The credential configuration id of the rows.
+  string configuration_id = 1;
+  // The format of the configuration.
+  vca.common.v1.Format format = 2;
+  // The name of the file.
+  string file_name = 3;
+  // The CSV file.
+  bytes content = 4;
+}
+
+// UploadBulkFileResponse names the upload.
+message UploadBulkFileResponse {
+  // The id of the upload. The DPG keeps it for a limited time.
+  string upload_id = 1;
+}
+
+// PreviewBulkFileRequest asks for one page of the rows of an upload.
+message PreviewBulkFileRequest {
+  // The id from UploadBulkFile.
+  string upload_id = 1;
+  // The page to read.
+  vca.common.v1.Pagination page = 2;
+}
+
+// PreviewBulkFileResponse carries one page of the rows of an upload.
+message PreviewBulkFileResponse {
+  // The rows, in the order of the file.
+  repeated BulkPreviewRow rows = 1;
+  // The paging state.
+  vca.common.v1.PageResult page = 2;
+}
+
+// BulkPreviewRow is one row of an upload.
+message BulkPreviewRow {
+  // The address of the holder.
+  string email = 1;
+  // The claims of the row, keyed by claim name.
+  map<string, string> claims = 2;
+}
+
+// IssueBulkFileRequest starts the issue of an upload.
+message IssueBulkFileRequest {
+  // The id from UploadBulkFile.
+  string upload_id = 1;
+  // The credential configuration id of the rows.
+  string configuration_id = 2;
+  // The format of the configuration.
+  vca.common.v1.Format format = 3;
+}
+
+// IssueBulkFileResponse carries the answer of the DPG.
+message IssueBulkFileResponse {
+  // The sentence of the DPG, for the audit log.
+  string message = 1;
+}
+
+// ListBulkFilesRequest asks for one page of the issued files.
+message ListBulkFilesRequest {
+  // The page to read.
+  vca.common.v1.Pagination page = 1;
+}
+
+// ListBulkFilesResponse carries one page of the issued files.
+message ListBulkFilesResponse {
+  // The files, newest first.
+  repeated BulkFile files = 1;
+  // The paging state.
+  vca.common.v1.PageResult page = 2;
+}
+
+// BulkFile is one file the DPG issued from.
+message BulkFile {
+  // The id of the file in the DPG.
+  string id = 1;
+  // The name of the file.
+  string name = 2;
+  // The state of the issue.
+  State state = 3;
+  // The number of rows.
+  int64 total_rows = 4;
+  // The number of rows that failed or wait.
+  int64 failed_rows = 5;
+  // The name of the schema of the rows.
+  string schema_name = 6;
+  // When the issue began.
+  google.protobuf.Timestamp created_at = 7;
+  // The last change of the issue.
+  google.protobuf.Timestamp updated_at = 8;
+
+  // State is the state of the issue of a file.
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    // The DPG issues the rows.
+    STATE_STARTED = 1;
+    // Every row went out.
+    STATE_COMPLETED = 2;
+    // Some rows failed.
+    STATE_PARTIAL = 3;
+    // The issue stopped before the rows went out.
+    STATE_INTERRUPTED = 4;
+    // The DPG issues the failed rows again.
+    STATE_RETRIED = 5;
+  }
+}
+
+// ListBulkFileRowsRequest asks for one page of the rows of a file.
+message ListBulkFileRowsRequest {
+  // The id of the file.
+  string file_id = 1;
+  // The page to read.
+  vca.common.v1.Pagination page = 2;
+}
+
+// ListBulkFileRowsResponse carries one page of the rows of a file.
+message ListBulkFileRowsResponse {
+  // The rows.
+  repeated BulkFileRow rows = 1;
+  // The paging state.
+  vca.common.v1.PageResult page = 2;
+}
+
+// BulkFileRow is one row of an issued file.
+message BulkFileRow {
+  // The id of the row in the DPG.
+  string id = 1;
+  // The address of the holder.
+  string email = 2;
+  // True when the offer went out.
+  bool issued = 3;
+  // The reason of a failed row.
+  string error = 4;
+}
+
+// RetryBulkFileRequest names the file to retry.
+message RetryBulkFileRequest {
+  // The id of the file.
+  string file_id = 1;
+}
+
+// RetryBulkFileResponse carries the answer of the DPG.
+message RetryBulkFileResponse {
+  // The sentence of the DPG, for the audit log.
+  string message = 1;
+}
+
 // Channel names a way to deliver a credential to a citizen (ADR-016).
 enum Channel {
   CHANNEL_UNSPECIFIED = 0;
@@ -341,6 +535,23 @@ message GetCapabilitiesResponse {
   // some of formats. A channel that the list leaves out carries every
   // format of formats.
   repeated ChannelFormats channel_formats = 17;
+  // The bulk import of the DPG, when the adapter lists
+  // FEATURE_BULK_NATIVE. Empty means an import that returns each
+  // credential, which VCA delivers as a document.
+  BulkImport bulk_import = 18;
+}
+
+// BulkImport describes the bulk import of a DPG (ADR-060).
+message BulkImport {
+  // The channel that delivers each row. CHANNEL_PDF means IssueBatch
+  // returns the credentials. CHANNEL_EMAIL means the DPG mails each
+  // holder an offer, so each row needs the address of the holder.
+  Channel channel = 1;
+  // The formats the import issues. Empty means every format of formats.
+  repeated vca.common.v1.Format formats = 2;
+  // The column of the address of the holder in a CSV file of the DPG,
+  // when channel is CHANNEL_EMAIL.
+  string email_column = 3;
 }
 
 // ChannelFormats names the formats one delivery channel carries.
@@ -594,6 +805,9 @@ message IssueResponse {
 message IssueBatchRequest {
   // One spec per credential. The order of items is stable.
   repeated IssueSpec specs = 1;
+  // The address of the holder of each spec, in the order of specs. A DPG
+  // whose bulk import mails each offer needs one per spec (ADR-060).
+  repeated string emails = 2;
 }
 
 // IssueBatchResponse returns one item per input spec, in the same order.
@@ -609,6 +823,9 @@ message IssueBatchResponse {
     vca.common.v1.Credential credential = 2;
     // The error, when issuance failed.
     vca.common.v1.Error error = 3;
+    // True when the DPG took the row and delivers the offer itself, so
+    // no credential comes back (ADR-060).
+    bool delivered = 4;
   }
 }
 

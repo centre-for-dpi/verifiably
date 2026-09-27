@@ -242,7 +242,9 @@ func mountPages(mux *http.ServeMux, wr wiring) error {
 		return err
 	}
 	guard, err := staffsession.Build(cfg.Auth, staffsession.IssuerRealm(), config.Prefix, staffsession.Deps{
-		Keys: deps.SessionKeys, Now: deps.Now, Log: deps.Log,
+		// The guard reads the upload form of the stack bulk import for
+		// its token (ADR-060).
+		Keys: deps.SessionKeys, Now: deps.Now, Log: deps.Log, MaxFormBytes: pages.MaxBulkFileBytes + (64 << 10),
 	})
 	if err != nil {
 		return err
@@ -266,6 +268,11 @@ func mountPages(mux *http.ServeMux, wr wiring) error {
 	if opts.Connections == nil {
 		// The same client lists the DIDComm connections (ADR-059).
 		opts.Connections = backendv1connect.NewIssuerBackendServiceClient(httpClient, cfg.AdapterURL)
+	}
+	if opts.BulkImport == nil {
+		// The bulk import of a stack that mails each row (ADR-060). The
+		// pages call it only when the adapter names that import.
+		opts.BulkImport = backendv1connect.NewBulkImportBackendServiceClient(httpClient, cfg.AdapterURL)
 	}
 	if opts.Trust == nil {
 		opts.Trust = func(url string) pages.Trust { return trustv1connect.NewTrustServiceClient(httpClient, url) }

@@ -1,0 +1,24 @@
+{
+  "statusCode": 200,
+  "message": "File details fetched successfully",
+  "data": {
+    "response": {
+      "page": 1,
+      "pageSize": 10,
+      "previousPage": null,
+      "nextPage": null,
+      "totalItems": 2,
+      "lastPage": 1,
+      "data": [
+        {
+          "email_identifier": "[holder one]@example.org",
+          "holder_name": "[holder one]"
+        },
+        {
+          "email_identifier": "[holder two]@example.org",
+          "holder_name": "[holder two]"
+        }
+      ]
+    }
+  }
+}

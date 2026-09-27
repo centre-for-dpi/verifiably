@@ -77,6 +77,7 @@ func TestBuildServesEveryBackendService(t *testing.T) {
 		"/vca.backend.v1.CatalogBackendService/ListCredentialTypes",
 		"/vca.backend.v1.TenantBackendService/ListTenants",
 		"/vca.backend.v1.NotificationBackendService/GetWebhook",
+		"/vca.backend.v1.BulkImportBackendService/ListBulkFiles",
 	}
 	for _, path := range paths {
 		resp, err := srv.Client().Post(srv.URL+path, "application/json", strings.NewReader("{}"))

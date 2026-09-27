@@ -577,8 +577,10 @@ type IssueBatchRequest struct {
 	// that sets this field fails with FAILED_PRECONDITION and reads no row.
 	SourceJobId string `protobuf:"bytes,6,opt,name=source_job_id,json=sourceJobId,proto3" json:"source_job_id,omitempty"`
 	// True issues every row through the bulk import of the DPG in one call.
-	// The adapter must list FEATURE_BULK_NATIVE. The rows become documents
-	// that carry the credential, so the channel is CHANNEL_PDF.
+	// The adapter must list FEATURE_BULK_NATIVE. The channel is the one of
+	// the import. With CHANNEL_PDF the rows become documents that carry the
+	// credential. With CHANNEL_EMAIL the DPG mails each holder an offer, so
+	// each item names the address in its delivery (ADR-060).
 	Native        bool `protobuf:"varint,7,opt,name=native,proto3" json:"native,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

@@ -87,6 +87,36 @@ type Capabilities struct {
 	// ChannelFormats names the formats of a channel that carries only
 	// some of Formats. A channel it leaves out carries every format.
 	ChannelFormats map[backendv1.Channel][]commonv1.Format
+	// BulkImport is the bulk import of the adapter, when it lists
+	// FEATURE_BULK_NATIVE (ADR-060). Nil means an import that returns
+	// each credential.
+	BulkImport *backendv1.BulkImport
+	// BulkFormats are the formats of the bulk import. Empty means every
+	// format of Formats.
+	BulkFormats []commonv1.Format
+}
+
+// BulkChannel returns the channel of the bulk import: CHANNEL_PDF for
+// an import that returns each credential, or the channel the import
+// names, such as CHANNEL_EMAIL for a DPG that mails each row.
+func (c Capabilities) BulkChannel() backendv1.Channel {
+	if ch := c.BulkImport.GetChannel(); ch != backendv1.Channel_CHANNEL_UNSPECIFIED {
+		return ch
+	}
+	return backendv1.Channel_CHANNEL_PDF
+}
+
+// BulkIssues reports whether the bulk import issues a format.
+func (c Capabilities) BulkIssues(f commonv1.Format) bool {
+	if len(c.BulkFormats) == 0 {
+		return true
+	}
+	for _, item := range c.BulkFormats {
+		if item == f {
+			return true
+		}
+	}
+	return false
 }
 
 // Carries reports whether a channel carries a format. An unspecified
@@ -196,7 +226,9 @@ func (c *CapabilityCache) Get(ctx context.Context) (Capabilities, error) {
 		Adapter:    resp.Msg.GetAdapter(),
 		DpgVersion: resp.Msg.GetDpgVersion(),
 		Features:   resp.Msg.GetFeatures(),
+		BulkImport: resp.Msg.GetBulkImport(),
 	}
+	value.BulkFormats = value.BulkImport.GetFormats()
 	if list := resp.Msg.GetChannelFormats(); len(list) > 0 {
 		value.ChannelFormats = make(map[backendv1.Channel][]commonv1.Format, len(list))
 		for _, cf := range list {

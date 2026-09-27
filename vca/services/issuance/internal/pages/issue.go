@@ -226,12 +226,16 @@ func (p *Pages) source(pg page) error {
 		return err
 	}
 	bulk := p.bulkRuns(pg)
+	stack := p.stackBulk(w.caps) && len(bulkFormats(w.schema, w.caps)) > 0
 	switch {
 	case bulk && q.Get("source") == "bulk":
 		http.Redirect(pg.w, pg.r, SourcesPath+"?"+url.Values{"schema": {w.ref}}.Encode(), http.StatusSeeOther)
 		return nil
-	case bulk && q.Get("source") == "" && pg.r.Method == http.MethodGet:
-		return p.renderSourceChoice(pg, w)
+	case stack && q.Get("source") == "stack":
+		http.Redirect(pg.w, pg.r, IssueBulkPath+"?"+url.Values{"schema": {w.ref}}.Encode(), http.StatusSeeOther)
+		return nil
+	case (bulk || stack) && q.Get("source") == "" && pg.r.Method == http.MethodGet:
+		return p.renderSourceChoice(pg, w, bulk, stack)
 	}
 	return p.renderClaims(pg, w)
 }
@@ -242,16 +246,25 @@ func (p *Pages) bulkRuns(pg page) bool {
 	return ok && own.Peer.Services[dataSourceService] != ""
 }
 
-// renderSourceChoice draws the choice between one credential and a
-// bulk run from a data source.
-func (p *Pages) renderSourceChoice(pg page, w wizard) error {
+// renderSourceChoice draws the choice between one credential, a bulk
+// run from a data source, and the bulk import of the stack (ADR-060).
+func (p *Pages) renderSourceChoice(pg page, w wizard, bulk, stack bool) error {
 	b := p.blocks()
+	options := []components.ChoiceOption{{Value: "single", Title: msg.T("issuer.issue.single.label"), Text: msg.T("issuer.issue.single.text"), Checked: true}}
+	if bulk {
+		option := components.ChoiceOption{Value: "bulk", Title: msg.T("issuer.issue.bulk.label"), Text: msg.T("issuer.issue.bulk.text")}
+		if stack {
+			option.Meta = msg.T("issuer.issue.every_stack.label")
+		}
+		options = append(options, option)
+	}
+	if stack {
+		options = append(options, components.ChoiceOption{Value: "stack", Title: msg.T("issuer.issue.stack_bulk.label", stackName(w.caps)),
+			Text: msg.T("issuer.issue.stack_bulk.text"), Meta: stackName(w.caps)})
+	}
 	fields := components.Join(
 		template.HTML(hiddenInput("schema", w.ref)), //nolint:gosec // the input is escaped
-		b.add("choice", components.Choice{ID: "source", Legend: msg.T("issuer.issue.step.source.label"), Options: []components.ChoiceOption{
-			{Value: "single", Title: msg.T("issuer.issue.single.label"), Text: msg.T("issuer.issue.single.text"), Checked: true},
-			{Value: "bulk", Title: msg.T("issuer.issue.bulk.label"), Text: msg.T("issuer.issue.bulk.text")},
-		}}),
+		b.add("choice", components.Choice{ID: "source", Legend: msg.T("issuer.issue.step.source.label"), Options: options}),
 		p.actions(b,
 			components.Button{Text: msg.T("common.continue.label"), Type: "submit", Variant: "primary"},
 			components.Button{Text: msg.T("common.back.label"), Href: IssuePath, Variant: "ghost"}),

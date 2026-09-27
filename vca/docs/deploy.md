@@ -369,6 +369,7 @@ home service of the role.
 | `vca.backend.v1.CatalogBackendService` | `dpg-adapter-*` | Compose network | No caller check. `schema-builder-ui` calls it. |
 | `vca.backend.v1.TenantBackendService` | `dpg-adapter-*` | Compose network | No caller check. The admin calls it for tenants and stack credentials. |
 | `vca.backend.v1.NotificationBackendService` | `dpg-adapter-*` | Compose network | No caller check. The admin calls it for stack webhooks. |
+| `vca.backend.v1.BulkImportBackendService` | `dpg-adapter-*` | Compose network | No caller check. The issuer pages call it for the bulk import of the stack. |
 | `POST /callbacks/issuance/*`, no RPC | `dpg-adapter-waltid` | Compose network | The walt.id issuer posts session events there. Each offer has its own random token in the path, and a wrong token answers 404. |
 | `vca.combined.v1.CombinedService` | `verifier-combined` | Compose network | No caller check, and no party outside the host calls it. |
 | `vca.datasource.v1.DataSourceService` | `data-source` | Compose network | Without a key set file it trusts the session header of a gateway. The data source pages call it in process. No other service calls it. |
@@ -553,7 +554,9 @@ The SMTP provider reads `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER` and `SMTP_PASS`.
 Setup keeps every value that you add to a stack `.env`.
 Run setup again for each CREDEBL pair.
 It then sets `VCA_CREDEBL_MAIL_OFFERS`, and the issue page offers the email card.
-Without a provider the adapter lists no email channel.
+The adapter also lists the bulk import of the platform (ADR-060).
+That import mails an offer to each row of a CSV file.
+Without a provider the adapter lists no email channel and no bulk import.
 
 The platform keeps the invitation of each email, and the files of a bulk
 issuance, on the volume `credebl-files`.

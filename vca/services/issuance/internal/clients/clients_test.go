@@ -255,3 +255,30 @@ func TestCapabilitiesNameTheFormatsOfEachChannel(t *testing.T) {
 		t.Error("a channel without a list carries every format")
 	}
 }
+
+// TestCapabilitiesNameTheBulkImport: the bulk import of the adapter
+// delivers documents unless it names its channel, and issues the formats
+// it names (ADR-060).
+func TestCapabilitiesNameTheBulkImport(t *testing.T) {
+	a := answer()
+	cache := clients.NewCapabilityCache(&fakeCapability{answer: a}, time.Minute, nil)
+	c, err := cache.Get(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.BulkChannel() != backendv1.Channel_CHANNEL_PDF || !c.BulkIssues(commonv1.Format_FORMAT_VC_SD_JWT) {
+		t.Errorf("a plain answer: channel %v", c.BulkChannel())
+	}
+	a = answer()
+	a.BulkImport = &backendv1.BulkImport{
+		Channel: backendv1.Channel_CHANNEL_EMAIL, Formats: []commonv1.Format{commonv1.Format_FORMAT_ANONCREDS}, EmailColumn: "email_identifier",
+	}
+	c, err = clients.NewCapabilityCache(&fakeCapability{answer: a}, time.Minute, nil).Get(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.BulkChannel() != backendv1.Channel_CHANNEL_EMAIL || !c.BulkIssues(commonv1.Format_FORMAT_ANONCREDS) ||
+		c.BulkIssues(commonv1.Format_FORMAT_VC_SD_JWT) {
+		t.Errorf("a mailing import: channel %v formats %v", c.BulkChannel(), c.BulkFormats)
+	}
+}

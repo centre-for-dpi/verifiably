@@ -209,14 +209,6 @@ func (s *Service) Issue(
 		"CREDEBL signs a credential only when a wallet claims an offer; use CreateOffer")
 }
 
-// IssueBatch is not available for the same reason as Issue.
-func (s *Service) IssueBatch(
-	context.Context, *connect.Request[backendv1.IssueBatchRequest],
-) (*connect.Response[backendv1.IssueBatchResponse], error) {
-	return nil, unimplemented(
-		"CREDEBL has no batch credential endpoint; call CreateOffer once per subject")
-}
-
 // Revoke is not available. The platform revokes an OID4VC session only
 // when it runs with a status list host, which the stack file does not
 // run. The status list services of VCA own the status bits instead

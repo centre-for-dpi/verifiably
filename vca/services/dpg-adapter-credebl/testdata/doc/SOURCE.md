@@ -69,3 +69,27 @@ These files were written on 2026-09-27 from the same sources.
 The query parameter `credentialType` is `indy` or `jsonld`
 (`IssueCredentialType` of enum.ts). The invitation of
 `oob-offer-created.json` is base64url of an out of band invitation 1.1.
+
+## Bulk issuance
+
+These files were written on 2026-09-27 from the same controller, the
+issuance service and repository of the platform, and the paginator of
+[common.utils.ts](https://raw.githubusercontent.com/credebl/platform/main/libs/common/src/common.utils.ts).
+
+| File | Call | Source |
+| --- | --- | --- |
+| `bulk-upload-created.json` | `POST /v1/orgs/{org}/bulk/upload` | [issuance.controller.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/issuance/issuance.controller.ts) `uploadCSVTemplate`, query `TemplateQuery` and `SchemaType` of [issuance.dto.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/issuance/dtos/issuance.dto.ts), and `uploadCSVTemplate` of [issuance.service.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/issuance/src/issuance.service.ts), which answers with the id of the upload |
+| `bulk-upload-refused.json` | the same call with a bad address | `ResponseMessages.bulkIssuance.error.invalidEmails` of [response-messages](https://raw.githubusercontent.com/credebl/platform/main/libs/common/src/response-messages/index.ts) |
+| `bulk-preview.json` | `GET /v1/orgs/{org}/{upload}/preview` | the controller `previewFileDataForIssuance`, `PreviewFileDetails`, and `previewFileDataForIssuance` of the service. The gateway calls the service through `sendNats`, which wraps the page in `response`. |
+| `bulk-issue-started.json` | `POST /v1/orgs/{org}/{upload}/bulk` | the controller `issueBulkCredentials`, body `ClientDetails`, and `issueBulkCredential` of the service |
+| `bulk-files.json` | `GET /v1/orgs/{org}/bulk/files` | the controller `issuedFileDetails`, `FileParameter`, `issuedFileDetails` of the service, and `getAllFileDetails` of [issuance.repository.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/issuance/src/issuance.repository.ts) with the model `file_upload` |
+| `bulk-file-rows.json` | `GET /v1/orgs/{org}/{file}/bulk/file-data` | the controller `getFileDetailsByFileId`, and `getFileDetailsByFileId` of the repository with the model `file_data` |
+| `bulk-retry-started.json` | `POST /v1/orgs/{org}/{file}/retry/bulk` | the controller `retryBulkCredentials`, and `retryBulkCredential` of the service |
+
+The first column of a file is `email_identifier`
+(`TemplateIdentifier.EMAIL_COLUMN` of enum.ts). The query parameter
+`schemaType` is `indy` or `w3c` (`SchemaType` of enum.ts). The states of
+a file are `FileUploadStatus` of `apps/api-gateway/src/enum.ts`. The
+template call `POST /v1/orgs/{org}/credentials/bulk/template` answers
+with a link into the UI of the platform, so the adapter does not call
+it.

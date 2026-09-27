@@ -126,12 +126,17 @@ func (s *Service) runRows(ctx context.Context, run *batchRun, msg *issuancev1.Is
 	return nil
 }
 
-// nativeRun is what a native batch reads once: the schema version and
-// the format.
+// nativeRun is what a native batch reads once: the schema version, the
+// format, and the channel of the bulk import of the stack.
 type nativeRun struct {
-	schema *schemav1.Schema
-	format commonv1.Format
+	schema  *schemav1.Schema
+	format  commonv1.Format
+	channel backendv1.Channel
 }
+
+// mails reports whether the stack mails each row an offer, so each row
+// needs an address and no credential comes back (ADR-060).
+func (n *nativeRun) mails() bool { return n.channel == backendv1.Channel_CHANNEL_EMAIL }
 
 // prepareNative checks that the stack has a bulk import and reads the
 // schema of the batch.
@@ -144,18 +149,32 @@ func (s *Service) prepareNative(ctx context.Context, msg *issuancev1.IssueBatchR
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("the DPG adapter has no bulk import, so run the batch without native"))
 	}
-	if c := msg.GetChannel(); c != backendv1.Channel_CHANNEL_UNSPECIFIED && c != backendv1.Channel_CHANNEL_PDF {
-		return nil, badRequest("a native batch gives each row a document, so the channel is CHANNEL_PDF")
+	channel := caps.BulkChannel()
+	if c := msg.GetChannel(); c != backendv1.Channel_CHANNEL_UNSPECIFIED && c != channel {
+		if channel == backendv1.Channel_CHANNEL_PDF {
+			return nil, badRequest("a native batch gives each row a document, so the channel is CHANNEL_PDF")
+		}
+		return nil, badRequest(fmt.Sprintf("the bulk import of the DPG delivers each row on %s", channel))
 	}
 	schema, err := s.schema(ctx, msg.GetSchemaId(), msg.GetSchemaVersion())
 	if err != nil {
 		return nil, err
 	}
-	format := formatOf(msg.GetFormat(), schema.GetFormats(), caps)
-	if !caps.SupportsFormat(format) {
-		return nil, badRequest(fmt.Sprintf("the DPG adapter cannot issue the format %s", format))
+	format := msg.GetFormat()
+	if format == commonv1.Format_FORMAT_UNSPECIFIED {
+		// The first format of the schema that the import issues.
+		for _, f := range schema.GetFormats() {
+			if caps.SupportsFormat(f) && caps.BulkIssues(f) {
+				format = f
+				break
+			}
+		}
 	}
-	return &nativeRun{schema: schema, format: format}, nil
+	format = formatOf(format, schema.GetFormats(), caps)
+	if !caps.SupportsFormat(format) || !caps.BulkIssues(format) {
+		return nil, badRequest(fmt.Sprintf("the bulk import of the DPG cannot issue the format %s", format))
+	}
+	return &nativeRun{schema: schema, format: format, channel: channel}, nil
 }
 
 // nativeRow is one row of a native batch that passed the schema.
@@ -164,6 +183,7 @@ type nativeRow struct {
 	claims  map[string]string
 	binding *backendv1.StatusListBinding
 	spec    *backendv1.IssueSpec
+	email   string
 }
 
 // runNative checks every row against the schema, sends the rows that
@@ -181,7 +201,14 @@ func (s *Service) runNative(ctx context.Context, run *batchRun, bulk *nativeRun,
 			n.claims, n.row.Label = claims, label(claims)
 			err = checkClaims(bulk.schema, values)
 		}
-		if err == nil {
+		if err == nil && bulk.mails() {
+			// The stack mails the offer of the row, and its credential
+			// carries no status entry of VCA (ADR-059 decision 4).
+			n.email = strings.TrimSpace(item.GetDelivery().GetEmail())
+			if n.email == "" {
+				err = errors.New("the row has no email address, and the stack mails each offer")
+			}
+		} else if err == nil {
 			n.binding, err = s.allocateStatus(ctx, "", bulk.format)
 		}
 		if err != nil {
@@ -192,7 +219,7 @@ func (s *Service) runNative(ctx context.Context, run *batchRun, bulk *nativeRun,
 			continue
 		}
 		n.spec = &backendv1.IssueSpec{
-			ConfigurationId: configurationOf(bulk.schema), Format: bulk.format,
+			ConfigurationId: configurationFor(bulk.schema, bulk.format), Format: bulk.format,
 			SubjectData: request{values: values}.subjectData(), Status: n.binding,
 		}
 		ready = append(ready, n)
@@ -200,11 +227,14 @@ func (s *Service) runNative(ctx context.Context, run *batchRun, bulk *nativeRun,
 	if len(ready) == 0 {
 		return nil
 	}
-	specs := make([]*backendv1.IssueSpec, 0, len(ready))
+	call := &backendv1.IssueBatchRequest{Specs: make([]*backendv1.IssueSpec, 0, len(ready))}
 	for _, n := range ready {
-		specs = append(specs, n.spec)
+		call.Specs = append(call.Specs, n.spec)
+		if bulk.mails() {
+			call.Emails = append(call.Emails, n.email)
+		}
 	}
-	resp, callErr := s.opts.Issuer.IssueBatch(ctx, connect.NewRequest(&backendv1.IssueBatchRequest{Specs: specs}))
+	resp, callErr := s.opts.Issuer.IssueBatch(ctx, connect.NewRequest(call))
 	results := map[int32]*backendv1.IssueBatchResponse_Item{}
 	if callErr == nil {
 		for _, item := range resp.Msg.GetItems() {
@@ -221,12 +251,18 @@ func (s *Service) runNative(ctx context.Context, run *batchRun, bulk *nativeRun,
 			err = errors.New("the bulk import of the stack returned no result for the row")
 		case item.GetError() != nil:
 			err = fmt.Errorf("the stack refused the row: %s", item.GetError().GetMessage())
+		case bulk.mails() && !item.GetDelivered():
+			err = errors.New("the bulk import of the stack did not take the row")
+		case bulk.mails():
+			var offer offers.Offer
+			offer, err = s.keepMailed(ctx, bulk, n)
+			n.row.OfferID = offer.ID
 		default:
 			var offer offers.Offer
 			offer, err = s.keepNative(ctx, bulk, n, item.GetCredential())
 			n.row.OfferID = offer.ID
 		}
-		s.recordIssue(ctx, bulk.schema.GetId(), n.row.OfferID, bulk.schema.GetVersion(), backendv1.Channel_CHANNEL_PDF.String(), err)
+		s.recordIssue(ctx, bulk.schema.GetId(), n.row.OfferID, bulk.schema.GetVersion(), bulk.channel.String(), err)
 		if derr := run.done(ctx, n.row, err); derr != nil {
 			return derr
 		}
@@ -254,6 +290,31 @@ func (s *Service) keepNative(ctx context.Context, bulk *nativeRun, n nativeRow, 
 		return offers.Offer{}, err
 	}
 	if rerr := s.record(ctx, &offer, n.binding, nil); rerr != nil {
+		s.opts.Log.Warn("the issued record did not reach the log", "error", rerr)
+	}
+	if perr := s.opts.Store.PutOffer(ctx, offer); perr != nil {
+		return offers.Offer{}, internal("store the offer", perr)
+	}
+	return offer, nil
+}
+
+// keepMailed stores one row that the stack mails as a delivered offer
+// on the email channel, with its issued record. The file history of the
+// stack shows whether the mail went out.
+func (s *Service) keepMailed(ctx context.Context, bulk *nativeRun, n nativeRow) (offers.Offer, error) {
+	now := s.opts.Now().UTC()
+	offer := offers.Offer{
+		ID:            s.opts.NewID(),
+		Channel:       backendv1.Channel_CHANNEL_EMAIL.String(),
+		State:         offers.StateDelivered,
+		SchemaID:      bulk.schema.GetId(),
+		SchemaVersion: bulk.schema.GetVersion(),
+		Format:        int32(bulk.format),
+		Claims:        searchable(bulk.schema, n.claims),
+		CreatedAt:     now,
+		ExpiresAt:     now.Add(s.opts.OfferTTL),
+	}
+	if rerr := s.record(ctx, &offer, nil, nil); rerr != nil {
 		s.opts.Log.Warn("the issued record did not reach the log", "error", rerr)
 	}
 	if perr := s.opts.Store.PutOffer(ctx, offer); perr != nil {

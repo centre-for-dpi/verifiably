@@ -1,0 +1,36 @@
+{
+  "statusCode": 200,
+  "message": "File details fetched successfully",
+  "data": {
+    "totalItems": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false,
+    "nextPage": 2,
+    "previousPage": 0,
+    "lastPage": 1,
+    "data": [
+      {
+        "id": "8e9f0a1b-2c3d-4e4f-9a5b-6c7d8e9f0a1b",
+        "name": "[file one].csv",
+        "status": "PARTIALLY_COMPLETED",
+        "upload_type": "ISSUANCE",
+        "createDateTime": "2026-09-27T10:12:40.118Z",
+        "createdBy": "7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e",
+        "lastChangedDateTime": "2026-09-27T10:13:02.904Z",
+        "lastChangedBy": "7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e",
+        "deletedAt": null,
+        "orgId": "0b6c2f0e-5a38-4a1e-9d2b-3f7c1e6a9d41",
+        "credential_type": "indy",
+        "templateId": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS/anoncreds/v0/SCHEMA/RegistrationCertificate/1.0",
+        "failedRecords": 1,
+        "totalRecords": 2,
+        "successfulRecords": 1,
+        "schema": {
+          "name": "RegistrationCertificate",
+          "version": "1.0",
+          "schemaType": "indy"
+        }
+      }
+    ]
+  }
+}

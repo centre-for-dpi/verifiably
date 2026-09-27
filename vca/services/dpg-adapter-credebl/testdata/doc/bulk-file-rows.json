@@ -1,0 +1,53 @@
+{
+  "statusCode": 200,
+  "message": "File details fetched successfully",
+  "data": {
+    "totalItems": 2,
+    "hasNextPage": false,
+    "hasPreviousPage": false,
+    "nextPage": 2,
+    "previousPage": 0,
+    "lastPage": 1,
+    "data": [
+      {
+        "id": "9f0a1b2c-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+        "referenceId": "[holder one]@example.org",
+        "isError": false,
+        "error": "",
+        "detailError": "",
+        "createDateTime": "2026-09-27T10:12:40.230Z",
+        "createdBy": "7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e",
+        "lastChangedDateTime": "2026-09-27T10:12:58.411Z",
+        "lastChangedBy": "7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e",
+        "deletedAt": null,
+        "fileUploadId": "8e9f0a1b-2c3d-4e4f-9a5b-6c7d8e9f0a1b",
+        "schemaId": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS/anoncreds/v0/SCHEMA/RegistrationCertificate/1.0",
+        "credDefId": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS/anoncreds/v0/CLAIM_DEF/2107/default",
+        "status": true,
+        "credential_data": null,
+        "credential_type": "indy"
+      },
+      {
+        "id": "0a1b2c3d-4e5f-4a6b-9c7d-8e9f0a1b2c3d",
+        "referenceId": "[holder two]@example.org",
+        "isError": true,
+        "error": "\"Unable to send email to the user\"",
+        "detailError": "{\"statusCode\":500,\"message\":\"Unable to send email to the user\"}",
+        "createDateTime": "2026-09-27T10:12:40.231Z",
+        "createdBy": "7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e",
+        "lastChangedDateTime": "2026-09-27T10:13:02.880Z",
+        "lastChangedBy": "7b8c9d0e-1f2a-4b3c-8d4e-5f6a7b8c9d0e",
+        "deletedAt": null,
+        "fileUploadId": "8e9f0a1b-2c3d-4e4f-9a5b-6c7d8e9f0a1b",
+        "schemaId": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS/anoncreds/v0/SCHEMA/RegistrationCertificate/1.0",
+        "credDefId": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS/anoncreds/v0/CLAIM_DEF/2107/default",
+        "status": false,
+        "credential_data": {
+          "email_identifier": "[holder two]@example.org",
+          "holder_name": "[holder two]"
+        },
+        "credential_type": "indy"
+      }
+    ]
+  }
+}
