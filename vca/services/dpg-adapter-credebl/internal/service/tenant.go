@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -18,8 +19,10 @@ import (
 
 // CREDEBL organisations are the DPG tenants (ADR-037, P6-C1). A new
 // tenant is an organisation with a tenant wallet in the shared agent of
-// the stack file and a did:key that the agent makes, so it can sign at
-// once. The capability answer lists FEATURE_MULTI_TENANCY.
+// the stack file. The platform makes a DID only with its private key, so
+// the operator makes the DID of a tenant in the platform, and the admin
+// pages make it primary (P6-C1b, ADR-070). The capability answer lists
+// FEATURE_MULTI_TENANCY.
 
 // An organisation holds one client credential: the client of the
 // organisation in the Keycloak of the platform (P6-C8, ADR-038 decision
@@ -33,12 +36,9 @@ import (
 // file does not mount (ADR-005 decision 3).
 const dedicatedMessage = "this deployment runs one shared agent and starts no dedicated agent; choose the shared agent"
 
-// tenantDidKeyType is the key of the did:key of a new tenant.
-const tenantDidKeyType = "ed25519"
-
-// CreateTenant creates an organisation, its wallet in the shared agent
-// and its primary did:key. When a later step fails, the organisation
-// goes again, so no half made tenant stays.
+// CreateTenant creates an organisation and its wallet in the shared
+// agent. When the wallet fails, the organisation goes again, so no half
+// made tenant stays.
 func (s *Service) CreateTenant(
 	ctx context.Context, req *connect.Request[backendv1.CreateTenantRequest],
 ) (*connect.Response[backendv1.CreateTenantResponse], error) {
@@ -57,14 +57,8 @@ func (s *Service) CreateTenant(
 		anyval.Discard(s.client.DeleteOrg(ctx, org.ID))
 		return nil, failed("create the wallet in the shared agent", walletErr)
 	}
-	did, err := s.client.CreateDid(ctx, org.ID, credebl.DidRequest{Method: "key", KeyType: tenantDidKeyType, IsPrimaryDid: true})
-	if err != nil {
-		anyval.Discard(s.client.DeleteOrg(ctx, org.ID))
-		return nil, failed("create the DID of the organisation", err)
-	}
 	return connect.NewResponse(&backendv1.CreateTenantResponse{Tenant: &backendv1.DpgTenant{
 		Id: org.ID, Name: org.Name, AgentType: backendv1.DpgTenant_AGENT_TYPE_SHARED,
-		Dids: []string{did.Did}, PrimaryDid: did.Did,
 	}}), nil
 }
 
@@ -269,4 +263,39 @@ func (s *Service) DeleteClientCredential(
 		return nil, failed("delete the client credential of the organisation", err)
 	}
 	return connect.NewResponse(&backendv1.DeleteClientCredentialResponse{}), nil
+}
+
+// SetTenantPrimaryDid makes one DID of an organisation the DID it signs
+// with (P6-C1b). The DID may come from the agent, or from the operator
+// who made a did:indy or a did:web in the platform with a private key
+// that VCA never sees. The platform takes the DID with the id of its record, so
+// the adapter reads the DIDs of the organisation first.
+func (s *Service) SetTenantPrimaryDid(
+	ctx context.Context, req *connect.Request[backendv1.SetTenantPrimaryDidRequest],
+) (*connect.Response[backendv1.SetTenantPrimaryDidResponse], error) {
+	tenant, did := strings.TrimSpace(req.Msg.GetTenantId()), strings.TrimSpace(req.Msg.GetDid())
+	if tenant == "" || did == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the request needs the tenant id and the DID"))
+	}
+	dids, err := s.client.OrgDids(ctx, tenant)
+	if err != nil {
+		return nil, failed("read the DIDs of the organisation", err)
+	}
+	var record credebl.OrgDid
+	for _, d := range dids {
+		if d.Did == did {
+			record = d
+		}
+	}
+	if record.ID == "" {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("the organisation holds no DID %s", did))
+	}
+	if serr := s.client.SetPrimaryDid(ctx, tenant, record); serr != nil {
+		return nil, failed("set the primary DID of the organisation", serr)
+	}
+	res, err := s.GetTenant(ctx, connect.NewRequest(&backendv1.GetTenantRequest{Id: tenant}))
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&backendv1.SetTenantPrimaryDidResponse{Tenant: res.Msg.GetTenant()}), nil
 }

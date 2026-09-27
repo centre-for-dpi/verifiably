@@ -223,10 +223,13 @@ func (s *Service) GetCapabilities(
 		// The stack file runs one shared agent and no Docker socket, so
 		// a tenant gets a wallet in the shared agent only.
 		TenantAgentTypes: []backendv1.DpgTenant_AgentType{backendv1.DpgTenant_AGENT_TYPE_SHARED},
-		DidMethods:       append([]string(nil), DidMethods...),
-		KeyTypes:         append([]string(nil), KeyTypes...),
-		WalletDidMethods: s.walletDidMethods(),
-		DpgInfo:          s.dpgInfo(),
+		// The operator makes a did:indy and a did:web in the platform,
+		// and the admin pages make one primary (P6-C1b).
+		OperatorDidMethods:          append([]string(nil), OperatorDidMethods...),
+		X509KeyReference:            X509KeyReference,
+		TenantClientCredentialLimit: ClientCredentialLimit,
+		WalletDidMethods:            s.walletDidMethods(),
+		DpgInfo:                     s.dpgInfo(),
 	}), nil
 }
 

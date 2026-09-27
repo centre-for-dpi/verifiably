@@ -213,7 +213,6 @@ func TestFakeServesTheOrganisationCalls(t *testing.T) {
 		{http.MethodGet, org + "/users", 200, "[ISSUER EMAIL]"},
 		{http.MethodPut, org + "/primary-did", 201, "Primary DID"},
 		{http.MethodPost, org + "/agents/wallet", 201, "tenantId"},
-		{http.MethodPost, org + "/agents/did", 201, "did:key"},
 		{http.MethodDelete, org, 202, "deleted"},
 		{http.MethodDelete, org, 404, ""},
 		{http.MethodGet, org, 404, ""},

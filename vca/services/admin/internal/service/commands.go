@@ -64,6 +64,13 @@ var commands = []command{
 			{name: "id", text: "The tenant id.", mandatory: true},
 			{name: "stack", text: "The stack, for example DPG_CREDEBL.", mandatory: true},
 		}},
+	{path: "admin tenant primary-did", rpc: "SetTenantPrimaryDid",
+		long: "Makes one DID of the stack tenant the DID it signs with. The stack must list the primary DID feature and run.",
+		flags: []flag{
+			{name: "id", text: "The tenant id.", mandatory: true},
+			{name: "stack", text: "The stack, for example DPG_CREDEBL.", mandatory: true},
+			{name: "did", text: "One DID of the stack tenant.", mandatory: true},
+		}},
 	{path: "admin trust add", rpc: "UpsertTrustEntry", flags: []flag{
 		{name: "did", text: "The DID of the entity."},
 		{name: "x509-subject", text: "The x509 subject of the entity."},

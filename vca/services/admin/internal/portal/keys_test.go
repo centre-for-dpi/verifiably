@@ -154,3 +154,41 @@ func TestStackCredentialsWithoutABindingPointAtTenants(t *testing.T) {
 		t.Error("the page offers a stack credential without a bound tenant")
 	}
 }
+
+// TestStackCredentialFormHidesAFullTenant is P6-C1b: a stack that keeps
+// one client credential per tenant takes no second one, so the create
+// form leaves out each tenant that holds its credential. With every
+// tenant full, the form gives way to a note. A stack with no limit
+// keeps offering the tenant.
+func TestStackCredentialFormHidesAFullTenant(t *testing.T) {
+	tenancy := newFakeStack("CREDEBL", backendv1.Feature_FEATURE_MULTI_TENANCY, backendv1.Feature_FEATURE_TENANT_CLIENT_CREDENTIALS)
+	tenancy.credentialLimit = 1
+	h := newHarnessWith(t, true, stackPeers(tenancy, newFakeStack("Plain stack")))
+	h.signIn(t)
+	if status, _ := h.post(t, "/admin/tenants", url.Values{"display_name": {"Ministry of Health"}, "stacks": {"DPG_CREDEBL"}}); status != http.StatusSeeOther {
+		t.Fatal("the tenant could not be created")
+	}
+	tenant := h.tenantID(t)
+	target := `value="` + tenant + `|DPG_CREDEBL"`
+	if page := h.page(t, "/admin/keys"); !strings.Contains(page, target) {
+		t.Fatal("the form does not offer the tenant with no credential")
+	}
+	if status, _ := h.post(t, "/admin/keys/stack", url.Values{"target": {tenant + "|DPG_CREDEBL"}, "display_name": {"Records sync"}}); status != http.StatusOK {
+		t.Fatalf("create = %d", status)
+	}
+	page := h.page(t, "/admin/keys")
+	a11ytest.AssertPage(t, page)
+	if strings.Contains(page, target) || strings.Contains(page, `name="target"`) {
+		t.Error("the form offers a tenant that holds its one credential")
+	}
+	if !strings.Contains(page, msg.T("admin.keys.stack.full.text")) || !strings.Contains(page, "Records sync") {
+		t.Error("the page does not say why the form is gone, or lost the list")
+	}
+	open, _, other := credentialHarness(t, backendv1.Feature_FEATURE_TENANT_CLIENT_CREDENTIALS)
+	if status, _ := open.post(t, "/admin/keys/stack", url.Values{"target": {other + "|DPG_CREDEBL"}, "display_name": {"Records sync"}}); status != http.StatusOK {
+		t.Fatalf("create = %d", status)
+	}
+	if page := open.page(t, "/admin/keys"); !strings.Contains(page, `value="`+other+`|DPG_CREDEBL"`) {
+		t.Error("a stack with no limit lost the tenant from the form")
+	}
+}

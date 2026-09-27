@@ -39,7 +39,6 @@ func TestOrgCallsWithoutAPlatform(t *testing.T) {
 		func() error { _, _, err := c.ListOrgs(ctx, 1, 10); return err }(),
 		c.DeleteOrg(ctx, "o"),
 		c.CreateSharedWallet(ctx, "o", "l"),
-		func() error { _, err := c.CreateDid(ctx, "o", DidRequest{}); return err }(),
 		func() error { _, err := c.OrgDids(ctx, "o"); return err }(),
 		c.SetPrimaryDid(ctx, "o", OrgDid{}),
 		func() error { _, err := c.OrgMembers(ctx, "o"); return err }(),
@@ -60,9 +59,6 @@ func TestOrgAnswersWithoutTheirParts(t *testing.T) {
 	}
 	if _, err := c.GetOrg(ctx, "o"); !errors.Is(err, ErrNoOrganisation) {
 		t.Errorf("GetOrg err = %v", err)
-	}
-	if _, err := c.CreateDid(ctx, "o", DidRequest{}); err == nil {
-		t.Error("a DID answer with no DID passed")
 	}
 }
 
@@ -160,7 +156,6 @@ func TestOrgCallsReportAFailure(t *testing.T) {
 	for i, err := range []error{
 		func() error { _, err := c.CreateOrg(ctx, "n", "d"); return err }(),
 		func() error { _, err := c.GetOrg(ctx, "o"); return err }(),
-		func() error { _, err := c.CreateDid(ctx, "o", DidRequest{}); return err }(),
 		func() error { _, err := c.OrgDids(ctx, "o"); return err }(),
 		func() error { _, err := c.OrgMembers(ctx, "o"); return err }(),
 	} {
@@ -194,10 +189,6 @@ func TestOrgCallsReadTheDocumentedAnswers(t *testing.T) {
 	dids, err := c.OrgDids(ctx, org)
 	if err != nil || len(dids) != 2 || !dids[0].IsPrimaryDid || !strings.HasPrefix(dids[0].Did, "did:key:") {
 		t.Errorf("OrgDids = %v, %v", dids, err)
-	}
-	did, err := c.CreateDid(ctx, org, DidRequest{Method: "key", KeyType: "ed25519", IsPrimaryDid: true})
-	if err != nil || did.Did != dids[0].Did {
-		t.Errorf("CreateDid = %v, %v", did, err)
 	}
 	members, err := c.OrgMembers(ctx, org)
 	if err != nil || len(members) != 2 || strings.Join(members[0].Roles, ",") != "owner" || strings.Join(members[1].Roles, ",") != "issuer" {

@@ -44,7 +44,7 @@ DIDComm wallet for each holder in the shared agent of the stack.
 | `GET /v1/orgs/{org}/dids` | Reads the DIDs of an organisation. |
 | `GET /v1/orgs/{org}/users` | Reads the members of an organisation with their roles. |
 | `POST /v1/orgs/{org}/agents/wallet` | Gives an organisation a wallet in the shared agent. |
-| `POST /v1/orgs/{org}/agents/did` | Asks the agent for a new primary `did:key`. |
+| `PUT /v1/orgs/{org}/primary-did` | Makes one DID of an organisation its primary DID. |
 | `POST /v1/orgs/{org}/schemas` with the type `indy` | Writes an AnonCreds schema on a ledger. |
 | `POST /v1/orgs/{org}/cred-defs` | Writes the credential definition of an AnonCreds schema. |
 | `POST /v1/orgs/{org}/schemas` with the schema type `no_ledger` | Stores a W3C JSON-LD schema in the schema file server. |
@@ -105,7 +105,8 @@ The answer of `GetCapabilities` reports what the platform supports.
 | Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUER_IDENTITY_IMPORT_X509`, `FEATURE_ISSUANCE_STATUS`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ANONCREDS_PROOF`, `FEATURE_WEBHOOKS`, `FEATURE_HOLDER_NOTIFICATIONS`, `FEATURE_TENANT_CLIENT_CREDENTIALS`, `FEATURE_ECOSYSTEMS`, `FEATURE_REVOCATION` with the status list host, `FEATURE_BULK_NATIVE` with a mail provider, and `FEATURE_WALLET_DIDCOMM` and `FEATURE_WALLET_DIDS` with the agent |
 | Wallet DID methods | `did:key`, with the agent |
 | Bulk import | With a mail provider: the email channel, AnonCreds and W3C JSON-LD, and the address column `email_identifier` |
-| DID methods | `did:key` |
+| DID methods | None. The operator makes each DID in the platform. |
+| Operator DID methods | `did:key`, `did:indy`, `did:web` |
 | Key types | `Ed25519`, `secp256r1`, `secp256k1` |
 | Schema formats | AnonCreds on each ledger of the organisation, and W3C JSON-LD |
 | Ledgers | The Indy ledgers where the organisation holds a DID, with the names of the platform |
@@ -137,7 +138,7 @@ Setup sets `VCA_CREDEBL_STATUS_LIST` in an issuer pair.
 The adapter then asks for a revocable offer, and the platform gives each
 SD-JWT credential a Token Status List entry.
 The agent signs each list with the DID of the issuer.
-So the organisation needs a DID signer, which `did:key` is.
+So the organisation needs a primary DID, which the operator makes.
 
 `Revoke` takes the issuance session as the credential id.
 It calls the revoke route of the platform, and the agent sets the revoked
@@ -212,7 +213,7 @@ answer says so.
 | `CreateTenant` with a dedicated agent | The platform starts a dedicated agent through the Docker socket. The stack file mounts none, so every tenant gets the shared agent. |
 | `ImportIssuerIdentity` with a DID | The agent keeps the key of every DID and takes no key reference. Set another primary DID in the platform, or import an X.509 chain. |
 | A revocable credential definition | The adapter writes every credential definition without a revocation registry. |
-| `ProvisionIssuerIdentity` for `did:indy` and `did:web` | The agent takes the private key in the request for those methods. The adapter never holds a key, so it makes `did:key` only. |
+| `ProvisionIssuerIdentity` | The pinned platform makes a DID of any method only with its private key in the request. The adapter never holds a key. The operator makes the DID in the platform. |
 | A clear of a webhook | The platform has no call that clears one. Set another address instead. |
 | A change of the holder notification address | The platform keeps the first address and has no change call. |
 | `VerifyCredential` | The adapter does not send an uploaded credential to the platform. The scanner shows no stack check. |
@@ -297,9 +298,10 @@ address sits in a query parameter, so the swap covers the percent
 encoded form as well.
 
 **Organisations are the tenants.** A new tenant is an organisation with
-a wallet in the shared agent and a primary `did:key` that the agent
-makes. The adapter creates them in that order. When the wallet or the
-DID fails, it deletes the organisation again. The tenant list leaves out
+a wallet in the shared agent. The adapter creates them in that order.
+When the wallet fails, it deletes the organisation again. The tenant
+gets no DID from the adapter. The operator makes one, as the next
+section says. The tenant list leaves out
 the organisation `Platform-admin`, which holds the shared agent. Delete
 refuses that organisation and the organisation of the adapter.
 
@@ -308,9 +310,42 @@ organisation with the roles in every organisation. The adapter keeps the
 roles of the organisation it reads.
 
 **The issuer identity is the primary DID.** The identity lists the DIDs
-of the organisation of the adapter, the primary DID first. A new
-identity is a `did:key` that the agent makes and marks primary. The key
+of the organisation of the adapter, the primary DID first. The key
 stays in the Askar wallet of the agent.
+
+**The operator makes each DID with a key of its own.** The pinned
+gateway refuses a `did:key`, a `did:indy` and a `did:web` without a
+private key in the request. It names that key `seed`, 32 characters.
+The agent then signs with it. The adapter never holds a key
+(ADR-001 decision 3), so it makes no DID (ADR-070). The answer names the
+three methods in `operator_did_methods`. The operator sends the key
+straight to the platform from the host, never through VCA. The platform
+admin owns the organisation of the adapter and each tenant, so its sign
+in serves both. Run these steps on the host, in a shell that keeps no
+history:
+
+1. Load `PLATFORM_ADMIN_EMAIL`, `CREDEBL_PLATFORM_ADMIN_PASSWORD` and
+   `CRYPTO_PRIVATE_KEY` of `deploy/credebl/.env` into the shell:
+   `set -a; . deploy/credebl/.env; set +a`.
+2. Encrypt the password as the sign in of the platform reads it:
+   `printf '"%s"' "$CREDEBL_PLATFORM_ADMIN_PASSWORD" | openssl enc -aes-256-cbc -md md5 -salt -a -A -pass env:CRYPTO_PRIVATE_KEY`.
+3. Sign in at the api gateway on host port 17181:
+   `curl -s -X POST http://127.0.0.1:17181/v1/auth/signin -H 'Content-Type: application/json' -d '{"email":"<email>","password":"<encrypted password>"}'`.
+   The token is `data.access_token` of the answer.
+4. Write the DID request into a file of mode 0600, and post it:
+   `curl -s -X POST http://127.0.0.1:17181/v1/orgs/<organisation id>/agents/did -H "Authorization: Bearer <token>" -H 'Content-Type: application/json' -d @did.json`.
+5. Delete the file.
+
+The organisation of the adapter is `VCA_CREDEBL_ORG_ID` of the `.env`
+of the pair. The admin tenant page shows the id of each tenant.
+A `did:web` request holds `{"method": "web", "keyType": "ed25519", "domain": "<host>", "seed": "<32 characters>", "isPrimaryDid": true}`.
+Serve the DID document of the answer at `https://<host>/.well-known/did.json`.
+A `did:indy` request holds `{"method": "indy", "keyType": "ed25519", "network": "<network>", "role": "endorser", "did": "<nym>", "seed": "<32 characters>", "isPrimaryDid": true}`.
+Write the nym of that key on the Indy network first, with the tools of the network.
+The network is one of `VCA_CREDEBL_INDY_LEDGERS`.
+A `did:key` request holds `{"method": "key", "keyType": "ed25519", "seed": "<32 characters>", "isPrimaryDid": true}`.
+The organisation of the adapter needs `isPrimaryDid` true.
+For a tenant, the admin tenant page offers "Make primary" too (`FEATURE_TENANT_PRIMARY_DID`).
 
 **An X.509 chain binds to a certificate row of the platform.** The
 platform imports a certificate only with its private key, and VCA never

@@ -114,3 +114,10 @@ func (s *Service) RemoveEcosystemMember(
 ) (*connect.Response[backendv1.RemoveEcosystemMemberResponse], error) {
 	return nil, unimplemented(tenantMessage)
 }
+
+// SetTenantPrimaryDid is not available. See tenantMessage.
+func (s *Service) SetTenantPrimaryDid(
+	context.Context, *connect.Request[backendv1.SetTenantPrimaryDidRequest],
+) (*connect.Response[backendv1.SetTenantPrimaryDidResponse], error) {
+	return nil, unimplemented(tenantMessage)
+}

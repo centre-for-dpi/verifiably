@@ -263,6 +263,11 @@ func (p *Portal) stackCredentials(ctx context.Context, b *blocks, s session, f f
 	if err != nil {
 		return "", err
 	}
+	held := map[string]int32{}
+	for _, c := range res.Msg.GetCredentials() {
+		held[c.GetTenantId()+"|"+c.GetStack().String()]++
+	}
+	open := openTargets(targets, held, offered)
 	rows := make([]components.Row, 0, len(res.Msg.GetCredentials()))
 	for _, c := range res.Msg.GetCredentials() {
 		created := ""
@@ -295,16 +300,39 @@ func (p *Portal) stackCredentials(ctx context.Context, b *blocks, s session, f f
 		},
 		Rows: rows, Empty: msg.T("admin.keys.stack.none"),
 	})
-	create := b.add("card", components.Card{
-		ID: "create-stack-credential", Title: msg.T("admin.keys.stack.new.label"), Text: msg.T("admin.keys.stack.new.text"),
-		Body: stackedForm(at+"/keys/stack", s.CSRF, components.Join(
-			b.add("field", components.Field{ID: "target", Label: msg.T("admin.keys.stack.target.label"), Type: "select", Options: targets}),
-			b.add("field", components.Field{ID: "credential_name", Name: "display_name", Label: msg.T("admin.keys.display_name.label"), Required: true}),
-			b.add("button", components.Button{Text: msg.T("admin.keys.stack.create.label"), Type: "submit", Variant: "primary"}),
-		)),
-	})
+	var create template.HTML
+	if len(open) == 0 {
+		// Every tenant holds as many credentials as its stack keeps.
+		create = b.add("note", components.Note{Label: msg.T("admin.keys.stack.new.label"), Text: msg.T("admin.keys.stack.full.text")})
+	} else {
+		create = b.add("card", components.Card{
+			ID: "create-stack-credential", Title: msg.T("admin.keys.stack.new.label"), Text: msg.T("admin.keys.stack.new.text"),
+			Body: stackedForm(at+"/keys/stack", s.CSRF, components.Join(
+				b.add("field", components.Field{ID: "target", Label: msg.T("admin.keys.stack.target.label"), Type: "select", Options: open}),
+				b.add("field", components.Field{ID: "credential_name", Name: "display_name", Label: msg.T("admin.keys.display_name.label"), Required: true}),
+				b.add("button", components.Button{Text: msg.T("admin.keys.stack.create.label"), Type: "submit", Variant: "primary"}),
+			)),
+		})
+	}
 	block.Body = components.Join(faults, table, create)
 	return b.add("block", block), nil
+}
+
+// openTargets keeps the targets whose stack takes one more client
+// credential of the tenant. A stack that names a limit, such as one
+// credential per tenant, takes none once the tenant holds that many
+// (P6-C1b).
+func openTargets(targets []components.Option, held map[string]int32, offered map[string]stacks.Stack) []components.Option {
+	out := make([]components.Option, 0, len(targets))
+	for _, o := range targets {
+		_, stack, _ := strings.Cut(o.Value, "|")
+		limit := offered[stack].Capabilities.GetTenantClientCredentialLimit()
+		if limit > 0 && held[o.Value] >= limit {
+			continue
+		}
+		out = append(out, o)
+	}
+	return out
 }
 
 // createKey creates one key and shows its secret once.

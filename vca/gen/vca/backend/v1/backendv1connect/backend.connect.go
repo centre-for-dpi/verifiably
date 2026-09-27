@@ -226,6 +226,9 @@ const (
 	// TenantBackendServiceRemoveEcosystemMemberProcedure is the fully-qualified name of the
 	// TenantBackendService's RemoveEcosystemMember RPC.
 	TenantBackendServiceRemoveEcosystemMemberProcedure = "/vca.backend.v1.TenantBackendService/RemoveEcosystemMember"
+	// TenantBackendServiceSetTenantPrimaryDidProcedure is the fully-qualified name of the
+	// TenantBackendService's SetTenantPrimaryDid RPC.
+	TenantBackendServiceSetTenantPrimaryDidProcedure = "/vca.backend.v1.TenantBackendService/SetTenantPrimaryDid"
 	// NotificationBackendServiceGetWebhookProcedure is the fully-qualified name of the
 	// NotificationBackendService's GetWebhook RPC.
 	NotificationBackendServiceGetWebhookProcedure = "/vca.backend.v1.NotificationBackendService/GetWebhook"
@@ -1827,6 +1830,9 @@ type TenantBackendServiceClient interface {
 	AddEcosystemMember(context.Context, *connect.Request[v1.AddEcosystemMemberRequest]) (*connect.Response[v1.AddEcosystemMemberResponse], error)
 	// RemoveEcosystemMember removes one member tenant from an ecosystem.
 	RemoveEcosystemMember(context.Context, *connect.Request[v1.RemoveEcosystemMemberRequest]) (*connect.Response[v1.RemoveEcosystemMemberResponse], error)
+	// SetTenantPrimaryDid makes one DID of a tenant the DID it signs with.
+	// The adapter serves it when it lists FEATURE_TENANT_PRIMARY_DID.
+	SetTenantPrimaryDid(context.Context, *connect.Request[v1.SetTenantPrimaryDidRequest]) (*connect.Response[v1.SetTenantPrimaryDidResponse], error)
 }
 
 // NewTenantBackendServiceClient constructs a client for the vca.backend.v1.TenantBackendService
@@ -1924,6 +1930,12 @@ func NewTenantBackendServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(tenantBackendServiceMethods.ByName("RemoveEcosystemMember")),
 			connect.WithClientOptions(opts...),
 		),
+		setTenantPrimaryDid: connect.NewClient[v1.SetTenantPrimaryDidRequest, v1.SetTenantPrimaryDidResponse](
+			httpClient,
+			baseURL+TenantBackendServiceSetTenantPrimaryDidProcedure,
+			connect.WithSchema(tenantBackendServiceMethods.ByName("SetTenantPrimaryDid")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -1943,6 +1955,7 @@ type tenantBackendServiceClient struct {
 	listEcosystemMembers   *connect.Client[v1.ListEcosystemMembersRequest, v1.ListEcosystemMembersResponse]
 	addEcosystemMember     *connect.Client[v1.AddEcosystemMemberRequest, v1.AddEcosystemMemberResponse]
 	removeEcosystemMember  *connect.Client[v1.RemoveEcosystemMemberRequest, v1.RemoveEcosystemMemberResponse]
+	setTenantPrimaryDid    *connect.Client[v1.SetTenantPrimaryDidRequest, v1.SetTenantPrimaryDidResponse]
 }
 
 // CreateTenant calls vca.backend.v1.TenantBackendService.CreateTenant.
@@ -2015,6 +2028,11 @@ func (c *tenantBackendServiceClient) RemoveEcosystemMember(ctx context.Context, 
 	return c.removeEcosystemMember.CallUnary(ctx, req)
 }
 
+// SetTenantPrimaryDid calls vca.backend.v1.TenantBackendService.SetTenantPrimaryDid.
+func (c *tenantBackendServiceClient) SetTenantPrimaryDid(ctx context.Context, req *connect.Request[v1.SetTenantPrimaryDidRequest]) (*connect.Response[v1.SetTenantPrimaryDidResponse], error) {
+	return c.setTenantPrimaryDid.CallUnary(ctx, req)
+}
+
 // TenantBackendServiceHandler is an implementation of the vca.backend.v1.TenantBackendService
 // service.
 type TenantBackendServiceHandler interface {
@@ -2053,6 +2071,9 @@ type TenantBackendServiceHandler interface {
 	AddEcosystemMember(context.Context, *connect.Request[v1.AddEcosystemMemberRequest]) (*connect.Response[v1.AddEcosystemMemberResponse], error)
 	// RemoveEcosystemMember removes one member tenant from an ecosystem.
 	RemoveEcosystemMember(context.Context, *connect.Request[v1.RemoveEcosystemMemberRequest]) (*connect.Response[v1.RemoveEcosystemMemberResponse], error)
+	// SetTenantPrimaryDid makes one DID of a tenant the DID it signs with.
+	// The adapter serves it when it lists FEATURE_TENANT_PRIMARY_DID.
+	SetTenantPrimaryDid(context.Context, *connect.Request[v1.SetTenantPrimaryDidRequest]) (*connect.Response[v1.SetTenantPrimaryDidResponse], error)
 }
 
 // NewTenantBackendServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -2146,6 +2167,12 @@ func NewTenantBackendServiceHandler(svc TenantBackendServiceHandler, opts ...con
 		connect.WithSchema(tenantBackendServiceMethods.ByName("RemoveEcosystemMember")),
 		connect.WithHandlerOptions(opts...),
 	)
+	tenantBackendServiceSetTenantPrimaryDidHandler := connect.NewUnaryHandler(
+		TenantBackendServiceSetTenantPrimaryDidProcedure,
+		svc.SetTenantPrimaryDid,
+		connect.WithSchema(tenantBackendServiceMethods.ByName("SetTenantPrimaryDid")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.backend.v1.TenantBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TenantBackendServiceCreateTenantProcedure:
@@ -2176,6 +2203,8 @@ func NewTenantBackendServiceHandler(svc TenantBackendServiceHandler, opts ...con
 			tenantBackendServiceAddEcosystemMemberHandler.ServeHTTP(w, r)
 		case TenantBackendServiceRemoveEcosystemMemberProcedure:
 			tenantBackendServiceRemoveEcosystemMemberHandler.ServeHTTP(w, r)
+		case TenantBackendServiceSetTenantPrimaryDidProcedure:
+			tenantBackendServiceSetTenantPrimaryDidHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -2239,6 +2268,10 @@ func (UnimplementedTenantBackendServiceHandler) AddEcosystemMember(context.Conte
 
 func (UnimplementedTenantBackendServiceHandler) RemoveEcosystemMember(context.Context, *connect.Request[v1.RemoveEcosystemMemberRequest]) (*connect.Response[v1.RemoveEcosystemMemberResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.RemoveEcosystemMember is not implemented"))
+}
+
+func (UnimplementedTenantBackendServiceHandler) SetTenantPrimaryDid(context.Context, *connect.Request[v1.SetTenantPrimaryDidRequest]) (*connect.Response[v1.SetTenantPrimaryDidResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.SetTenantPrimaryDid is not implemented"))
 }
 
 // NotificationBackendServiceClient is a client for the vca.backend.v1.NotificationBackendService

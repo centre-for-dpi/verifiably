@@ -57,6 +57,10 @@ type fakeStack struct {
 	ecoOn      bool
 	ecosystems []*backendv1.Ecosystem
 	ecoMembers map[string][]string
+	// operatorDids are the DID methods the operator makes in the stack,
+	// and credentialLimit the client credentials of one tenant.
+	operatorDids    []string
+	credentialLimit int32
 }
 
 func newFakeStack(name string, features ...backendv1.Feature) *fakeStack {
@@ -70,8 +74,19 @@ func newFakeStack(name string, features ...backendv1.Feature) *fakeStack {
 func (f *fakeStack) GetCapabilities(context.Context, *connect.Request[backendv1.GetCapabilitiesRequest]) (*connect.Response[backendv1.GetCapabilitiesResponse], error) {
 	return connect.NewResponse(&backendv1.GetCapabilitiesResponse{
 		Features: f.features, DpgInfo: &backendv1.DpgInfo{DisplayName: f.name, Version: f.version},
-		TenantAgentTypes: f.agentTypes,
+		TenantAgentTypes: f.agentTypes, OperatorDidMethods: f.operatorDids, TenantClientCredentialLimit: f.credentialLimit,
 	}), nil
+}
+
+func (f *fakeStack) SetTenantPrimaryDid(_ context.Context, req *connect.Request[backendv1.SetTenantPrimaryDidRequest]) (*connect.Response[backendv1.SetTenantPrimaryDidResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t, ok := f.tenants[req.Msg.GetTenantId()]
+	if !ok {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("no tenant"))
+	}
+	t.PrimaryDid = req.Msg.GetDid()
+	return connect.NewResponse(&backendv1.SetTenantPrimaryDidResponse{Tenant: t}), nil
 }
 
 func (f *fakeStack) CreateTenant(_ context.Context, req *connect.Request[backendv1.CreateTenantRequest]) (*connect.Response[backendv1.CreateTenantResponse], error) {

@@ -44,6 +44,7 @@ func (p *Portal) registerTenants(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+at+"/tenants/{id}/delete", p.posted(p.deleteTenant))
 	mux.HandleFunc("POST "+at+"/tenants/{id}/bind", p.posted(p.bindTenant))
 	mux.HandleFunc("POST "+at+"/tenants/{id}/unbind", p.posted(p.unbindTenant))
+	mux.HandleFunc("POST "+at+"/tenants/{id}/primary-did", p.posted(p.setPrimaryDid))
 }
 
 // tenancyStacks returns the live stacks whose adapter lists multi
@@ -217,7 +218,7 @@ func (p *Portal) tenant(w http.ResponseWriter, r *http.Request, s session) error
 	}
 	var onStacks, bind template.HTML
 	if len(offered) > 0 || len(t.GetBindings()) > 0 {
-		onStacks = p.bindingsBlock(b, t, s.CSRF)
+		onStacks = p.bindingsBlock(b, f, t, s.CSRF)
 	}
 	if len(unbound) > 0 {
 		options := make([]components.ChoiceOption, 0, len(unbound))
@@ -252,7 +253,7 @@ func (p *Portal) tenant(w http.ResponseWriter, r *http.Request, s session) error
 }
 
 // bindingsBlock is the section of the stack tenants of one tenant.
-func (p *Portal) bindingsBlock(b *blocks, t *adminv1.Tenant, csrf string) template.HTML {
+func (p *Portal) bindingsBlock(b *blocks, f frame, t *adminv1.Tenant, csrf string) template.HTML {
 	base := p.opts.Prefix + "/tenants/" + t.GetId()
 	if len(t.GetBindings()) == 0 {
 		// The bind card follows the block, so the lead says what to do.
@@ -266,15 +267,24 @@ func (p *Portal) bindingsBlock(b *blocks, t *adminv1.Tenant, csrf string) templa
 	for _, bd := range t.GetBindings() {
 		withMembers = withMembers || len(bd.GetTenant().GetMembers()) > 0
 	}
+	primary := map[configv1.Dpg]bool{}
+	for _, st := range stacks.With(f.snap, backendv1.Feature_FEATURE_TENANT_PRIMARY_DID) {
+		primary[st.Dpg] = true
+	}
 	rows := make([]components.Row, 0, len(t.GetBindings()))
 	for _, bd := range t.GetBindings() {
 		dids := make([]template.HTML, 0, len(bd.GetTenant().GetDids()))
 		for _, d := range bd.GetTenant().GetDids() {
 			dids = append(dids, shortCode(d))
-			if d == bd.GetTenant().GetPrimaryDid() {
-				dids = append(dids, template.HTML(" "), b.add("badge", components.Badge{Status: "info", Text: msg.T("admin.tenants.primary_did.label")}))
+			switch {
+			case d == bd.GetTenant().GetPrimaryDid():
+				dids = append(dids, template.HTML(" "), b.add("badge", components.Badge{Status: "info", Text: msg.T("admin.tenants.primary_did.label")}), template.HTML(`<br>`))
+			case primary[bd.GetStack()]:
+				// The form is a block of its own, so it needs no break.
+				dids = append(dids, p.primaryForm(b, t.GetId(), bd.GetStack(), d, csrf))
+			default:
+				dids = append(dids, template.HTML(`<br>`))
 			}
-			dids = append(dids, template.HTML(`<br>`))
 		}
 		if len(dids) == 0 {
 			dids = append(dids, template.HTML(template.HTMLEscapeString(msg.T("admin.tenants.no_dids.label")))) //nolint:gosec // the text is escaped
@@ -313,8 +323,49 @@ func (p *Portal) bindingsBlock(b *blocks, t *adminv1.Tenant, csrf string) templa
 		Columns: columns, Rows: rows,
 	})
 	return b.add("block", components.Block{
-		ID: "on-stacks", Title: msg.T("admin.tenants.on_stacks.label"), Lead: msg.T("admin.tenants.on_stacks.lead"), Body: table,
+		ID: "on-stacks", Title: msg.T("admin.tenants.on_stacks.label"), Lead: msg.T("admin.tenants.on_stacks.lead"),
+		Body: components.Join(table, operatorDidNotes(b, f, t)),
 	})
+}
+
+// orList joins values as "a, b or c".
+func orList(values []string) string {
+	if len(values) < 2 {
+		return strings.Join(values, "")
+	}
+	return strings.Join(values[:len(values)-1], ", ") + " or " + values[len(values)-1]
+}
+
+// primaryForm is the "Make primary" action of one DID of a stack
+// tenant (P6-C1b).
+func (p *Portal) primaryForm(b *blocks, id string, stack configv1.Dpg, did, csrf string) template.HTML {
+	return form(p.opts.Prefix+"/tenants/"+id+"/primary-did", csrf,
+		template.HTML(`<input type="hidden" name="stack" value="`+template.HTMLEscapeString(stack.String())+`">`+ //nolint:gosec // every value is escaped
+			`<input type="hidden" name="did" value="`+template.HTMLEscapeString(did)+`">`),
+		b.add("button", components.Button{Text: msg.T("admin.tenants.make_primary.label"), Type: "submit", Variant: "secondary",
+			AriaLabel: msg.T("admin.tenants.make_primary.did.label", did)}))
+}
+
+// operatorDidNotes says, for each bound stack whose DID methods need a
+// key of the operator, that the operator makes such a DID in the stack
+// itself. The key never passes through VCA (P6-C1b).
+func operatorDidNotes(b *blocks, f frame, t *adminv1.Tenant) template.HTML {
+	bound := map[configv1.Dpg]bool{}
+	for _, bd := range t.GetBindings() {
+		bound[bd.GetStack()] = true
+	}
+	var out []template.HTML
+	for _, st := range stacks.List(f.snap) {
+		methods := st.Capabilities.GetOperatorDidMethods()
+		if !bound[st.Dpg] || len(methods) == 0 {
+			continue
+		}
+		out = append(out, b.add("note", components.Note{
+			Label: msg.T("admin.tenants.operator_dids.label"),
+			Text:  msg.T("admin.tenants.operator_dids.text", orList(methods), st.Name),
+		}))
+	}
+	return components.Join(out...)
 }
 
 // membersCell lists the members of one stack tenant with their roles,
@@ -450,6 +501,22 @@ func (p *Portal) bindTenant(w http.ResponseWriter, r *http.Request, s session) e
 		return err
 	}
 	p.redirect(w, r, "/tenants/"+id, "tenant-bound")
+	return nil
+}
+
+// setPrimaryDid makes one DID of a stack tenant its primary DID.
+func (p *Portal) setPrimaryDid(w http.ResponseWriter, r *http.Request, s session) error {
+	d, err := stackValue(r.PostFormValue("stack"))
+	if err != nil {
+		return err
+	}
+	id := r.PathValue("id")
+	if _, err := p.opts.Client.SetTenantPrimaryDid(r.Context(), call(s, &adminv1.SetTenantPrimaryDidRequest{
+		Id: id, Stack: d, Did: r.PostFormValue("did"),
+	})); err != nil {
+		return err
+	}
+	p.redirect(w, r, "/tenants/"+id, "tenant-primary-did")
 	return nil
 }
 

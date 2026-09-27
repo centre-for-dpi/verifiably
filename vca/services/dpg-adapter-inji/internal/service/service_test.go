@@ -831,6 +831,10 @@ func TestTenantServiceUnimplementedWithoutFeature(t *testing.T) {
 			_, err := svc.RemoveEcosystemMember(ctx, connect.NewRequest(&backendv1.RemoveEcosystemMemberRequest{EcosystemId: "e-1", TenantId: "t-1"}))
 			return err
 		},
+		func() error {
+			_, err := svc.SetTenantPrimaryDid(ctx, connect.NewRequest(&backendv1.SetTenantPrimaryDidRequest{TenantId: "t-1", Did: "did:key:z6Mk"}))
+			return err
+		},
 	}
 	for i, call := range calls {
 		err := call()

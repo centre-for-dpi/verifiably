@@ -337,3 +337,52 @@ func agentValue(name string) backendv1.DpgTenant_AgentType {
 	}
 	return backendv1.DpgTenant_AGENT_TYPE_UNSPECIFIED
 }
+
+// SetTenantPrimaryDid implements AdminServiceHandler. It makes one DID
+// of a stack tenant the DID the tenant signs with, on a stack that lists
+// FEATURE_TENANT_PRIMARY_DID (P6-C1b). The answer reads every stack
+// tenant again, as GetTenant does.
+func (s *Service) SetTenantPrimaryDid(ctx context.Context, req *connect.Request[adminv1.SetTenantPrimaryDidRequest]) (*connect.Response[adminv1.SetTenantPrimaryDidResponse], error) {
+	id, err := s.guard(ctx, req.Header())
+	if err != nil {
+		return nil, err
+	}
+	tenant, err := s.setTenantPrimaryDid(ctx, req.Msg)
+	if serr := s.write(ctx, id.Actor, "admin.SetTenantPrimaryDid", req.Msg.GetId(), err); serr != nil {
+		return nil, fail(serr)
+	}
+	m := tenantProto(tenant)
+	for _, b := range m.GetBindings() {
+		s.refresh(ctx, b)
+	}
+	return connect.NewResponse(&adminv1.SetTenantPrimaryDidResponse{Tenant: m}), nil
+}
+
+// primaryDid is the feature a stack lists when any DID of a tenant can
+// become its primary DID.
+const primaryDid = backendv1.Feature_FEATURE_TENANT_PRIMARY_DID
+
+// setTenantPrimaryDid does the work of SetTenantPrimaryDid.
+func (s *Service) setTenantPrimaryDid(ctx context.Context, m *adminv1.SetTenantPrimaryDidRequest) (records.Tenant, error) {
+	if m.GetDid() == "" {
+		return records.Tenant{}, fmt.Errorf("%w: the request names no DID", records.ErrInvalid)
+	}
+	tenant, err := s.d.Records.GetTenant(ctx, m.GetId())
+	if err != nil {
+		return records.Tenant{}, err
+	}
+	b, ok := tenant.Binding(m.GetStack().String())
+	if !ok {
+		return records.Tenant{}, fmt.Errorf("%w: the tenant has no binding on %s", records.ErrNotFound, m.GetStack())
+	}
+	st, err := s.d.Stacks.Find(ctx, m.GetStack(), primaryDid)
+	if err != nil {
+		return records.Tenant{}, err
+	}
+	if _, err := s.d.Stacks.Tenants(st).SetTenantPrimaryDid(ctx, connect.NewRequest(&backendv1.SetTenantPrimaryDidRequest{
+		TenantId: b.TenantID, Did: m.GetDid(),
+	})); err != nil {
+		return records.Tenant{}, stackError(st, "set the primary DID", err)
+	}
+	return tenant, nil
+}

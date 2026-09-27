@@ -46,6 +46,11 @@ service AdminService {
   rpc UnbindTenant(UnbindTenantRequest) returns (UnbindTenantResponse) {
     option (vca.common.v1.description) = "Removes the tenant from one stack.";
   }
+  // SetTenantPrimaryDid makes one DID of the stack tenant the DID it
+  // signs with. The stack must list the primary DID feature.
+  rpc SetTenantPrimaryDid(SetTenantPrimaryDidRequest) returns (SetTenantPrimaryDidResponse) {
+    option (vca.common.v1.description) = "Makes one DID of a stack tenant the DID it signs with.";
+  }
 
   // UpsertTrustEntry creates or replaces one trust entry (ADR-011).
   // The admin service forwards the entry to the trust service, which
@@ -354,6 +359,23 @@ message UnbindTenantRequest {
 
 // UnbindTenantResponse returns the tenant without the binding.
 message UnbindTenantResponse {
+  // The tenant.
+  Tenant tenant = 1;
+}
+
+// SetTenantPrimaryDidRequest names the tenant, the stack and the DID.
+message SetTenantPrimaryDidRequest {
+  // The tenant id.
+  string id = 1;
+  // The stack.
+  vca.config.v1.Dpg stack = 2;
+  // One DID of the stack tenant.
+  string did = 3;
+}
+
+// SetTenantPrimaryDidResponse returns the tenant with the stack tenant
+// read again.
+message SetTenantPrimaryDidResponse {
   // The tenant.
   Tenant tenant = 1;
 }

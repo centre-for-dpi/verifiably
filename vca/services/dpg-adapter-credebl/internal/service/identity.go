@@ -5,20 +5,18 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"strings"
 
 	"connectrpc.com/connect"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
-	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/credebl"
 )
 
 // The issuer identity on CREDEBL is the primary DID of the organisation
-// of the adapter (ADR-046, P6-C1). The agent of the organisation makes
-// and keeps every key, so the adapter never sees one (ADR-001 decision
-// 3). The agent needs the private key in the request for a did:indy and
-// a did:web, so the adapter provisions a did:key only.
+// of the adapter (ADR-046, P6-C1). The agent of the organisation keeps
+// every key. The pinned platform makes a DID only with its private key
+// in the request, for every method, so the adapter provisions none
+// (ADR-001 decision 3, ADR-070). The operator makes the DID in the
+// platform, and the admin pages make it primary (P6-C1b).
 
 // importMessage says why a DID import answers Unimplemented. An X.509
 // chain imports (P6-C9, x509.go).
@@ -28,20 +26,30 @@ const importMessage = "the agent of the CREDEBL organisation keeps the key of ev
 // keyBackend names the key store of the agent: the Askar wallet of Credo.
 const keyBackend = "askar"
 
-// DidMethods are the DID methods the adapter provisions.
-var DidMethods = []string{"did:key"}
+// OperatorDidMethods are the DID methods that the operator makes in the
+// platform with a private key of the operator (P6-C1b). The pinned
+// gateway refuses a did:key, a did:indy and a did:web without the key in
+// the request (Validator.validateDid of libs/common/src/validator.ts at
+// the platform tag v2.2.1-alpha.4). The pinned agent takes that key as
+// the private key of the DID (handleKey, handleIndy and handleWeb of
+// DidController.ts at the agent tag v2.2.1-alpha-jsonld-vc.2.1). An
+// Indy DID without a key needs an endorser, and the platform drops the
+// transaction to endorse. So the key goes from the operator to the
+// platform, never through VCA, and the admin pages make such a DID the
+// primary one.
+var OperatorDidMethods = []string{"did:key", "did:indy", "did:web"}
 
-// KeyTypes are the key types of a provisioned did:key, as the pages
-// name them.
-var KeyTypes = []string{"Ed25519", "secp256r1", "secp256k1"}
+// provisionMessage says why a provision answers Unimplemented.
+const provisionMessage = "the CREDEBL platform makes a DID only with its private key in the request, and the adapter never holds one; " +
+	"make the DID in the platform as the primary DID, or make it primary on the admin tenant page"
 
-// agentKeyTypes maps a key type of the pages onto the name the agent
-// takes.
-var agentKeyTypes = map[string]string{
-	"Ed25519":   "ed25519",
-	"secp256r1": "p256",
-	"secp256k1": "k256",
-}
+// X509KeyReference is the key reference of an X.509 import: the
+// certificate row of the platform that keeps the key (ADR-068).
+const X509KeyReference = `{"certificateId": "<certificate id>"}`
+
+// ClientCredentialLimit is the number of client credentials the platform
+// keeps per organisation (ADR-067 decision 4).
+const ClientCredentialLimit = 1
 
 // verificationKeyTypes maps a verification method type of a DID
 // document onto a key type of the pages.
@@ -119,42 +127,9 @@ func documentKeyType(document json.RawMessage) string {
 	return verificationKeyTypes[doc.VerificationMethod[0].Type]
 }
 
-// ProvisionIssuerIdentity asks the agent for a did:key and makes it the
-// primary DID of the organisation of the adapter.
+// ProvisionIssuerIdentity is not available. See provisionMessage.
 func (s *Service) ProvisionIssuerIdentity(
-	ctx context.Context, req *connect.Request[backendv1.ProvisionIssuerIdentityRequest],
+	context.Context, *connect.Request[backendv1.ProvisionIssuerIdentityRequest],
 ) (*connect.Response[backendv1.ProvisionIssuerIdentityResponse], error) {
-	method := strings.TrimSpace(req.Msg.GetMethod())
-	if !contains(DidMethods, method) {
-		return nil, connect.NewError(connect.CodeInvalidArgument,
-			errors.New("the adapter provisions did:key only; the agent needs the private key for another method"))
-	}
-	keyType := req.Msg.GetKeyType()
-	if keyType == "" {
-		keyType = KeyTypes[0]
-	}
-	agentType, ok := agentKeyTypes[keyType]
-	if !ok {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the key type is not one of "+strings.Join(KeyTypes, ", ")))
-	}
-	if _, err := s.client.CreateDid(ctx, s.client.OrgID(), credebl.DidRequest{
-		Method: strings.TrimPrefix(method, "did:"), KeyType: agentType, IsPrimaryDid: true,
-	}); err != nil {
-		return nil, failed("create the DID of the organisation", err)
-	}
-	id, err := s.identity(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return connect.NewResponse(&backendv1.ProvisionIssuerIdentityResponse{Identity: id}), nil
-}
-
-// contains reports whether the list holds the value.
-func contains(list []string, v string) bool {
-	for _, x := range list {
-		if x == v {
-			return true
-		}
-	}
-	return false
+	return nil, unimplemented(provisionMessage)
 }

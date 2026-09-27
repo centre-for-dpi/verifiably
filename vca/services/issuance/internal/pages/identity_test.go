@@ -11,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"html"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -391,5 +392,57 @@ func TestIdentityPageListsStackPlugins(t *testing.T) {
 		if !strings.Contains(doc, want) {
 			t.Errorf("the page lacks %q", want)
 		}
+	}
+}
+
+// TestIdentityPageNamesTheOneImportKindAndItsKeyReference is P6-C1b: a
+// stack that takes one import kind names it, such as "PKI (X.509)",
+// though no tabs show. A stack that names the shape of its key
+// reference gets that shape in the hint of the field.
+func TestIdentityPageNamesTheOneImportKindAndItsKeyReference(t *testing.T) {
+	h := newHarness(t, backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_X509)
+	h.caps.caps.X509KeyReference = `{"certificateId": "<certificate id>"}`
+	h.build(t)
+	doc := body(t, h.get(t, "/identity/"))
+	a11ytest.AssertPage(t, doc)
+	if !strings.Contains(doc, html.EscapeString(msg.T("issuer.identity.kind.one", msg.T("issuer.identity.tab.x509.label")))) {
+		t.Error("the page does not name the one import kind")
+	}
+	if !strings.Contains(doc, html.EscapeString(msg.T("issuer.identity.key_reference.shape.hint", h.caps.caps.X509KeyReference))) ||
+		strings.Contains(doc, msg.T("issuer.identity.key_reference.hint")) {
+		t.Error("the key reference hint does not name the shape the stack takes")
+	}
+	plain := newHarness(t, backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_X509)
+	doc = body(t, plain.get(t, "/identity/"))
+	if !strings.Contains(doc, msg.T("issuer.identity.key_reference.hint")) {
+		t.Error("a stack with no shape lost the generic hint")
+	}
+	both := newHarness(t, allIdentity...)
+	both.caps.caps.X509KeyReference = `{"certificateId": "<certificate id>"}`
+	both.build(t)
+	doc = body(t, both.get(t, "/identity/"))
+	if strings.Contains(doc, html.EscapeString(msg.T("issuer.identity.kind.one", msg.T("issuer.identity.tab.did.label")))) ||
+		strings.Contains(doc, html.EscapeString(msg.T("issuer.identity.key_reference.shape.hint", both.caps.caps.X509KeyReference))) {
+		t.Error("the DID tab of two kinds names one kind, or takes the X.509 shape")
+	}
+}
+
+// TestIdentityPageSaysTheOperatorMakesTheDid is P6-C1b: a stack that
+// makes a DID only with a key of the operator names its methods, and
+// the page says that the operator makes the DID in the stack. A stack
+// that names none shows no such note.
+func TestIdentityPageSaysTheOperatorMakesTheDid(t *testing.T) {
+	h := newHarness(t, backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_X509)
+	h.caps.caps.OperatorDidMethods = []string{"did:key", "did:indy", "did:web"}
+	h.build(t)
+	doc := body(t, h.get(t, "/identity/"))
+	a11ytest.AssertPage(t, doc)
+	want := html.EscapeString(msg.T("issuer.identity.operator_dids.text", "did:key, did:indy or did:web", waltidName))
+	if !strings.Contains(doc, want) {
+		t.Errorf("the page misses %q", want)
+	}
+	plain := newHarness(t, backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_X509)
+	if doc := body(t, plain.get(t, "/identity/")); strings.Contains(doc, msg.T("issuer.identity.operator_dids.label")) {
+		t.Error("a stack with no operator DID methods shows the note")
 	}
 }

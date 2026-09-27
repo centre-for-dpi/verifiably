@@ -57,6 +57,9 @@ const (
 	// AdminServiceUnbindTenantProcedure is the fully-qualified name of the AdminService's UnbindTenant
 	// RPC.
 	AdminServiceUnbindTenantProcedure = "/vca.admin.v1.AdminService/UnbindTenant"
+	// AdminServiceSetTenantPrimaryDidProcedure is the fully-qualified name of the AdminService's
+	// SetTenantPrimaryDid RPC.
+	AdminServiceSetTenantPrimaryDidProcedure = "/vca.admin.v1.AdminService/SetTenantPrimaryDid"
 	// AdminServiceUpsertTrustEntryProcedure is the fully-qualified name of the AdminService's
 	// UpsertTrustEntry RPC.
 	AdminServiceUpsertTrustEntryProcedure = "/vca.admin.v1.AdminService/UpsertTrustEntry"
@@ -179,6 +182,9 @@ type AdminServiceClient interface {
 	// UnbindTenant removes the tenant from one stack. The stack deletes
 	// its own tenant record.
 	UnbindTenant(context.Context, *connect.Request[v1.UnbindTenantRequest]) (*connect.Response[v1.UnbindTenantResponse], error)
+	// SetTenantPrimaryDid makes one DID of the stack tenant the DID it
+	// signs with. The stack must list the primary DID feature.
+	SetTenantPrimaryDid(context.Context, *connect.Request[v1.SetTenantPrimaryDidRequest]) (*connect.Response[v1.SetTenantPrimaryDidResponse], error)
 	// UpsertTrustEntry creates or replaces one trust entry (ADR-011).
 	// The admin service forwards the entry to the trust service, which
 	// publishes it in every enabled method.
@@ -324,6 +330,12 @@ func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			httpClient,
 			baseURL+AdminServiceUnbindTenantProcedure,
 			connect.WithSchema(adminServiceMethods.ByName("UnbindTenant")),
+			connect.WithClientOptions(opts...),
+		),
+		setTenantPrimaryDid: connect.NewClient[v1.SetTenantPrimaryDidRequest, v1.SetTenantPrimaryDidResponse](
+			httpClient,
+			baseURL+AdminServiceSetTenantPrimaryDidProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("SetTenantPrimaryDid")),
 			connect.WithClientOptions(opts...),
 		),
 		upsertTrustEntry: connect.NewClient[v1.UpsertTrustEntryRequest, v1.UpsertTrustEntryResponse](
@@ -542,6 +554,7 @@ type adminServiceClient struct {
 	deleteTenant                 *connect.Client[v1.DeleteTenantRequest, v1.DeleteTenantResponse]
 	bindTenant                   *connect.Client[v1.BindTenantRequest, v1.BindTenantResponse]
 	unbindTenant                 *connect.Client[v1.UnbindTenantRequest, v1.UnbindTenantResponse]
+	setTenantPrimaryDid          *connect.Client[v1.SetTenantPrimaryDidRequest, v1.SetTenantPrimaryDidResponse]
 	upsertTrustEntry             *connect.Client[v1.UpsertTrustEntryRequest, v1.UpsertTrustEntryResponse]
 	getTrustEntry                *connect.Client[v1.GetTrustEntryRequest, v1.GetTrustEntryResponse]
 	listTrustEntries             *connect.Client[v1.ListTrustEntriesRequest, v1.ListTrustEntriesResponse]
@@ -611,6 +624,11 @@ func (c *adminServiceClient) BindTenant(ctx context.Context, req *connect.Reques
 // UnbindTenant calls vca.admin.v1.AdminService.UnbindTenant.
 func (c *adminServiceClient) UnbindTenant(ctx context.Context, req *connect.Request[v1.UnbindTenantRequest]) (*connect.Response[v1.UnbindTenantResponse], error) {
 	return c.unbindTenant.CallUnary(ctx, req)
+}
+
+// SetTenantPrimaryDid calls vca.admin.v1.AdminService.SetTenantPrimaryDid.
+func (c *adminServiceClient) SetTenantPrimaryDid(ctx context.Context, req *connect.Request[v1.SetTenantPrimaryDidRequest]) (*connect.Response[v1.SetTenantPrimaryDidResponse], error) {
+	return c.setTenantPrimaryDid.CallUnary(ctx, req)
 }
 
 // UpsertTrustEntry calls vca.admin.v1.AdminService.UpsertTrustEntry.
@@ -801,6 +819,9 @@ type AdminServiceHandler interface {
 	// UnbindTenant removes the tenant from one stack. The stack deletes
 	// its own tenant record.
 	UnbindTenant(context.Context, *connect.Request[v1.UnbindTenantRequest]) (*connect.Response[v1.UnbindTenantResponse], error)
+	// SetTenantPrimaryDid makes one DID of the stack tenant the DID it
+	// signs with. The stack must list the primary DID feature.
+	SetTenantPrimaryDid(context.Context, *connect.Request[v1.SetTenantPrimaryDidRequest]) (*connect.Response[v1.SetTenantPrimaryDidResponse], error)
 	// UpsertTrustEntry creates or replaces one trust entry (ADR-011).
 	// The admin service forwards the entry to the trust service, which
 	// publishes it in every enabled method.
@@ -942,6 +963,12 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 		AdminServiceUnbindTenantProcedure,
 		svc.UnbindTenant,
 		connect.WithSchema(adminServiceMethods.ByName("UnbindTenant")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceSetTenantPrimaryDidHandler := connect.NewUnaryHandler(
+		AdminServiceSetTenantPrimaryDidProcedure,
+		svc.SetTenantPrimaryDid,
+		connect.WithSchema(adminServiceMethods.ByName("SetTenantPrimaryDid")),
 		connect.WithHandlerOptions(opts...),
 	)
 	adminServiceUpsertTrustEntryHandler := connect.NewUnaryHandler(
@@ -1164,6 +1191,8 @@ func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOpti
 			adminServiceBindTenantHandler.ServeHTTP(w, r)
 		case AdminServiceUnbindTenantProcedure:
 			adminServiceUnbindTenantHandler.ServeHTTP(w, r)
+		case AdminServiceSetTenantPrimaryDidProcedure:
+			adminServiceSetTenantPrimaryDidHandler.ServeHTTP(w, r)
 		case AdminServiceUpsertTrustEntryProcedure:
 			adminServiceUpsertTrustEntryHandler.ServeHTTP(w, r)
 		case AdminServiceGetTrustEntryProcedure:
@@ -1267,6 +1296,10 @@ func (UnimplementedAdminServiceHandler) BindTenant(context.Context, *connect.Req
 
 func (UnimplementedAdminServiceHandler) UnbindTenant(context.Context, *connect.Request[v1.UnbindTenantRequest]) (*connect.Response[v1.UnbindTenantResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.UnbindTenant is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) SetTenantPrimaryDid(context.Context, *connect.Request[v1.SetTenantPrimaryDidRequest]) (*connect.Response[v1.SetTenantPrimaryDidResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.admin.v1.AdminService.SetTenantPrimaryDid is not implemented"))
 }
 
 func (UnimplementedAdminServiceHandler) UpsertTrustEntry(context.Context, *connect.Request[v1.UpsertTrustEntryRequest]) (*connect.Response[v1.UpsertTrustEntryResponse], error) {

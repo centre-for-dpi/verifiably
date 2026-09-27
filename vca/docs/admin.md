@@ -319,7 +319,7 @@ trust list has one entry. Every role has one enabled provider.
 | `/admin/` | The overview: the stat cards, the first run checklist, and the service health. |
 | `/admin/login` | The sign in chooser with the bootstrap card. `/auth/` draws the same page. |
 | `/admin/tenants` | The tenant list with the create form. The form offers the stacks with multi tenancy. |
-| `/admin/tenants/{id}` | One tenant with its tenant on each stack, its DIDs, and the bind form. The page marks the primary DID and shows the members a stack lists. |
+| `/admin/tenants/{id}` | One tenant with its tenant on each stack, its DIDs, and the bind form. The page marks the primary DID, offers "Make primary" for the others, and shows the members a stack lists. |
 | `/admin/tenants/ecosystems` | The Ecosystems tab, where a stack lists ecosystems: the switch of each stack, the ecosystems with their lead, the members, and the forms. |
 | `/admin/trust` | The trust list. Pending entries come first, with approve and reject. The add form takes a DID or an X.509 subject. |
 | `/admin/trust/registries` | The local registry with its published lists. Each external registry with its last sync and last error. The add form. |
@@ -353,9 +353,19 @@ reason. Add to stack calls `BindTenant`.
 Remove from stack calls `UnbindTenant`, and the stack deletes its
 tenant. Delete removes the stack tenants first. A stack that does not
 run keeps its tenant, so the delete waits until the stack runs again.
+A stack that lists `FEATURE_TENANT_PRIMARY_DID` offers "Make primary"
+beside each other DID of its tenant. The button calls
+`SetTenantPrimaryDid`, and the stack tenant then signs with that DID.
+Some DID methods need a key that the operator holds, such as a
+`did:indy` or a `did:web` on CREDEBL. The adapter names them in
+`operator_did_methods`. The page then says to make such a DID in the
+stack itself. The key goes from the operator to the stack, never
+through VCA. The next read of the page lists the new DID, and "Make
+primary" makes it the signing DID. The CREDEBL adapter document has the
+two calls of the platform.
 The admin service writes one audit record for each create, bind,
-unbind, and delete. The CLI has the same actions under
-`vca admin tenant`.
+unbind, primary DID change, and delete. The CLI has the same actions
+under `vca admin tenant`.
 
 ### Ecosystems
 
@@ -391,7 +401,10 @@ A stack tenant can hold client credentials of its own. CREDEBL keeps
 one per tenant and refuses a second until you delete the first. The
 page shows them only when a live adapter lists
 `FEATURE_TENANT_CLIENT_CREDENTIALS`. The form offers each tenant on
-such a stack. The stack makes the credential. The answer to the form
+such a stack. A stack that names `tenant_client_credential_limit` takes
+no more credentials of a tenant than that. The form leaves out a
+tenant that holds that many. When every tenant is full, a note replaces
+the form. The stack makes the credential. The answer to the form
 shows the client ID and the secret once. The page never shows the
 secret again, and VCA keeps no copy. The admin service writes one audit
 record for each create and delete, with the credential id and never

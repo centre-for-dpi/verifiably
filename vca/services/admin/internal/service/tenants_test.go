@@ -430,3 +430,69 @@ func TestTenantRPCsWithoutStacksRefuseABinding(t *testing.T) {
 		}
 	}
 }
+
+// SetTenantPrimaryDid makes one DID of a stack tenant primary in the
+// fake.
+func (f *fakeAdapter) SetTenantPrimaryDid(_ context.Context, req *connect.Request[backendv1.SetTenantPrimaryDidRequest]) (*connect.Response[backendv1.SetTenantPrimaryDidResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t, ok := f.tenants[req.Msg.GetTenantId()]
+	if !ok {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("no tenant"))
+	}
+	t.PrimaryDid = req.Msg.GetDid()
+	return connect.NewResponse(&backendv1.SetTenantPrimaryDidResponse{Tenant: t}), nil
+}
+
+// TestSetTenantPrimaryDid makes one DID of a stack tenant primary on a
+// stack that lists the feature, such as a DID the operator made in the
+// stack with a key of its own (P6-C1b). The answer reads the stack
+// tenant again, and the audit log names the tenant.
+func TestSetTenantPrimaryDid(t *testing.T) {
+	h := newHarness(t)
+	fake, _ := withStacks(t, h, backendv1.Feature_FEATURE_TENANT_PRIMARY_DID)
+	ctx := context.Background()
+	if _, err := h.svc.BindTenant(ctx, request(h, &adminv1.BindTenantRequest{Id: h.tenantID, Stack: configv1.Dpg_DPG_CREDEBL})); err != nil {
+		t.Fatal(err)
+	}
+	fake.mu.Lock()
+	fake.tenants["org-1"].Dids = append(fake.tenants["org-1"].Dids, "did:web:health.example")
+	fake.mu.Unlock()
+	res, err := h.svc.SetTenantPrimaryDid(ctx, request(h, &adminv1.SetTenantPrimaryDidRequest{
+		Id: h.tenantID, Stack: configv1.Dpg_DPG_CREDEBL, Did: "did:web:health.example",
+	}))
+	if err != nil {
+		t.Fatalf("SetTenantPrimaryDid: %v", err)
+	}
+	b := res.Msg.GetTenant().GetBindings()
+	if len(b) != 1 || b[0].GetTenant().GetPrimaryDid() != "did:web:health.example" {
+		t.Fatalf("bindings = %v", b)
+	}
+	if recs := auditActions(t, h, "admin.SetTenantPrimaryDid"); len(recs) != 1 || !recs[0].OK || recs[0].Target != h.tenantID {
+		t.Errorf("audit = %+v", recs)
+	}
+	for name, req := range map[string]*adminv1.SetTenantPrimaryDidRequest{
+		"no DID":        {Id: h.tenantID, Stack: configv1.Dpg_DPG_CREDEBL},
+		"unbound stack": {Id: h.tenantID, Stack: configv1.Dpg_DPG_INJI, Did: "did:web:health.example"},
+		"no tenant":     {Id: "missing", Stack: configv1.Dpg_DPG_CREDEBL, Did: "did:web:health.example"},
+	} {
+		if _, rerr := h.svc.SetTenantPrimaryDid(ctx, request(h, req)); rerr == nil {
+			t.Errorf("%s: the call passed", name)
+		}
+	}
+	if _, aerr := h.svc.SetTenantPrimaryDid(ctx, connect.NewRequest(&adminv1.SetTenantPrimaryDidRequest{})); connect.CodeOf(aerr) != connect.CodeUnauthenticated {
+		t.Errorf("an anonymous caller: %v", aerr)
+	}
+	// A stack without the feature refuses before any call.
+	plain := newHarness(t)
+	withStacks(t, plain)
+	if _, berr := plain.svc.BindTenant(ctx, request(plain, &adminv1.BindTenantRequest{Id: plain.tenantID, Stack: configv1.Dpg_DPG_CREDEBL})); berr != nil {
+		t.Fatal(berr)
+	}
+	_, err = plain.svc.SetTenantPrimaryDid(ctx, request(plain, &adminv1.SetTenantPrimaryDidRequest{
+		Id: plain.tenantID, Stack: configv1.Dpg_DPG_CREDEBL, Did: "did:key:z6Mkorg-1",
+	}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Errorf("a stack without the feature: %v", err)
+	}
+}

@@ -4,7 +4,7 @@ package service_test
 
 import (
 	"context"
-	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -30,7 +30,10 @@ const (
 )
 
 // TestCreateTenantCreatesOrg: a tenant is an organisation with a wallet
-// in the shared agent and a primary did:key, in that order.
+// in the shared agent, in that order. The pinned platform makes a DID
+// only with its private key in the request, so the tenant gets no DID
+// from the adapter. The operator makes one in the platform, and the
+// admin pages make it primary (P6-C1b).
 func TestCreateTenantCreatesOrg(t *testing.T) {
 	svc, f := newService(t, nil)
 	res, err := svc.CreateTenant(context.Background(), connect.NewRequest(&backendv1.CreateTenantRequest{Name: "[ORGANISATION]"}))
@@ -44,8 +47,8 @@ func TestCreateTenantCreatesOrg(t *testing.T) {
 	if tenant.GetAgentType() != backendv1.DpgTenant_AGENT_TYPE_SHARED {
 		t.Errorf("agent type = %v, want shared", tenant.GetAgentType())
 	}
-	if tenant.GetPrimaryDid() != fixtureDid || len(tenant.GetDids()) == 0 {
-		t.Errorf("DIDs = %v, primary %q", tenant.GetDids(), tenant.GetPrimaryDid())
+	if tenant.GetPrimaryDid() != "" || len(tenant.GetDids()) != 0 {
+		t.Errorf("DIDs = %v, primary %q; the adapter makes no DID", tenant.GetDids(), tenant.GetPrimaryDid())
 	}
 	var org map[string]string
 	if orgErr := f.RequestJSON("/v1/orgs", &org); orgErr != nil || org["name"] != "[ORGANISATION]" {
@@ -55,24 +58,11 @@ func TestCreateTenantCreatesOrg(t *testing.T) {
 	if walletErr := f.RequestJSON("/v1/orgs/"+fixtureOrg+"/agents/wallet", &wallet); walletErr != nil || wallet["label"] != "[ORGANISATION]" {
 		t.Errorf("the wallet request = %v, %v", wallet, walletErr)
 	}
-	var did map[string]any
-	if didErr := f.RequestJSON("/v1/orgs/"+fixtureOrg+"/agents/did", &did); didErr != nil {
-		t.Fatalf("the DID request: %v", didErr)
-	}
-	if did["method"] != "key" || did["keyType"] != "ed25519" || did["isPrimaryDid"] != true {
-		t.Errorf("the DID request = %v", did)
-	}
-	for _, secret := range []string{"seed", "privatekey"} {
-		if _, ok := did[secret]; ok {
-			t.Errorf("the DID request carries %s; the agent makes the key", secret)
-		}
-	}
 	order := strings.Join(f.Calls(), "\n")
 	create := strings.Index(order, "POST /v1/orgs\n")
 	walletAt := strings.Index(order, "POST /v1/orgs/"+fixtureOrg+"/agents/wallet")
-	didAt := strings.Index(order, "POST /v1/orgs/"+fixtureOrg+"/agents/did")
-	if create < 0 || walletAt < create || didAt < walletAt {
-		t.Errorf("calls out of order:\n%s", order)
+	if create < 0 || walletAt < create || strings.Contains(order, "/agents/did") {
+		t.Errorf("calls:\n%s", order)
 	}
 	_, err = svc.CreateTenant(context.Background(), connect.NewRequest(&backendv1.CreateTenantRequest{Name: " "}))
 	wantCode(t, err, connect.CodeInvalidArgument)
@@ -170,45 +160,27 @@ func TestTenantUsersListed(t *testing.T) {
 	}
 }
 
-// TestSetPrimaryDid: a new issuer identity becomes the primary DID of
-// the organisation of the adapter, and the identity reads the primary
-// DID first.
-func TestSetPrimaryDid(t *testing.T) {
+// TestProvisionNeedsTheKeyOfTheOperator: the pinned gateway refuses a
+// DID of any method without its private key in the request (Validator
+// validateDid of libs/common/src/validator.ts at the platform tag
+// v2.2.1-alpha.4). The adapter never holds such a key, so a provision
+// answers Unimplemented and names the way through the platform. It
+// calls no platform route (P6-C1b).
+func TestProvisionNeedsTheKeyOfTheOperator(t *testing.T) {
 	svc, f := newService(t, nil)
-	res, err := svc.ProvisionIssuerIdentity(context.Background(), connect.NewRequest(&backendv1.ProvisionIssuerIdentityRequest{
-		Method: "did:key", KeyType: "secp256r1",
-	}))
-	if err != nil {
-		t.Fatalf("ProvisionIssuerIdentity: %v", err)
-	}
-	var did map[string]any
-	if err := f.RequestJSON("/v1/orgs/org-1/agents/did", &did); err != nil {
-		t.Fatalf("the DID request: %v", err)
-	}
-	if did["method"] != "key" || did["keyType"] != "p256" || did["isPrimaryDid"] != true {
-		t.Errorf("the DID request = %v", did)
-	}
-	id := res.Msg.GetIdentity()
-	if len(id.GetIdentifiers()) == 0 || id.GetIdentifiers()[0] != fixtureDid {
-		t.Errorf("identifiers = %v, want the primary DID first", id.GetIdentifiers())
-	}
-	if id.GetKey().GetType() != "Ed25519" || id.GetKey().GetBackend() != "askar" {
-		t.Errorf("key = %v", id.GetKey())
-	}
-	var doc map[string]any
-	if err := json.Unmarshal([]byte(id.GetDidDocument()), &doc); err != nil || doc["id"] != fixtureDid {
-		t.Errorf("DID document = %s, %v", id.GetDidDocument(), err)
-	}
-	if id.GetMetadata().GetDisplayName() != "[ORGANISATION]" {
-		t.Errorf("metadata = %v", id.GetMetadata())
-	}
-	for _, bad := range []*backendv1.ProvisionIssuerIdentityRequest{
+	for _, req := range []*backendv1.ProvisionIssuerIdentityRequest{
+		{Method: "did:key", KeyType: "Ed25519"},
 		{Method: "did:web", KeyType: "Ed25519", Domain: "issuer.example"},
 		{Method: "did:indy", KeyType: "Ed25519"},
-		{Method: "did:key", KeyType: "RSA"},
 	} {
-		_, err := svc.ProvisionIssuerIdentity(context.Background(), connect.NewRequest(bad))
-		wantCode(t, err, connect.CodeInvalidArgument)
+		_, err := svc.ProvisionIssuerIdentity(context.Background(), connect.NewRequest(req))
+		wantCode(t, err, connect.CodeUnimplemented)
+		if !strings.Contains(err.Error(), "private key") {
+			t.Errorf("%s: the message %q does not say why", req.GetMethod(), err)
+		}
+	}
+	if len(f.Calls()) != 0 {
+		t.Errorf("a provision called the platform: %v", f.Calls())
 	}
 }
 
@@ -267,24 +239,12 @@ func TestTenantCallsReportThePlatform(t *testing.T) {
 	f.SetStatus("/v1/orgs", 400)
 	_, err := svc.CreateTenant(ctx, connect.NewRequest(&backendv1.CreateTenantRequest{Name: "[ORGANISATION]"}))
 	wantCode(t, err, connect.CodeInvalidArgument)
-	svc, f = newService(t, nil)
-	f.SetStatus("/v1/orgs/"+fixtureOrg+"/agents/did", 500)
-	if _, didErr := svc.CreateTenant(ctx, connect.NewRequest(&backendv1.CreateTenantRequest{Name: "[ORGANISATION]"})); didErr == nil {
-		t.Fatal("a failed DID passed")
-	}
-	if !strings.Contains(strings.Join(f.Calls(), "\n"), "DELETE /v1/orgs/"+fixtureOrg) {
-		t.Errorf("the half made organisation stayed: %v", f.Calls())
-	}
 	for _, path := range []string{"/v1/orgs/" + fixtureOrg, "/v1/orgs/" + fixtureOrg + "/dids", "/v1/orgs/" + fixtureOrg + "/users"} {
 		svc, f = newService(t, nil)
 		f.SetStatus(path, 403)
 		_, getErr := svc.GetTenant(ctx, connect.NewRequest(&backendv1.GetTenantRequest{Id: fixtureOrg}))
 		wantCode(t, getErr, connect.CodePermissionDenied)
 	}
-	svc, f = newService(t, nil)
-	f.SetStatus("/v1/orgs/org-1/agents/did", 409)
-	_, err = svc.ProvisionIssuerIdentity(ctx, connect.NewRequest(&backendv1.ProvisionIssuerIdentityRequest{Method: "did:key"}))
-	wantCode(t, err, connect.CodeAlreadyExists)
 	svc, f = newService(t, nil)
 	f.SetStatus("/v1/orgs/org-1", 403)
 	_, err = svc.GetIssuerIdentity(ctx, connect.NewRequest(&backendv1.GetIssuerIdentityRequest{}))
@@ -328,5 +288,73 @@ func TestListTenantsPages(t *testing.T) {
 	}
 	if _, err := svc.ListTenants(ctx, connect.NewRequest(&backendv1.ListTenantsRequest{Page: &commonv1.Pagination{PageToken: "2"}})); err != nil {
 		t.Errorf("page 2: %v", err)
+	}
+}
+
+// TestSetTenantPrimaryDid makes one DID of an organisation its primary
+// DID, such as a did:indy the operator made in the platform with a seed
+// VCA never sees (P6-C1b). The platform takes the DID and its record
+// id. A DID the organisation does not hold fails before the platform
+// call.
+func TestSetTenantPrimaryDid(t *testing.T) {
+	svc, f := newService(t, nil)
+	ctx := context.Background()
+	res, err := svc.SetTenantPrimaryDid(ctx, connect.NewRequest(&backendv1.SetTenantPrimaryDidRequest{TenantId: fixtureOrg, Did: fixtureIndyDid}))
+	if err != nil {
+		t.Fatalf("SetTenantPrimaryDid: %v", err)
+	}
+	var body map[string]string
+	if rerr := f.RequestJSON("/v1/orgs/"+fixtureOrg+"/primary-did", &body); rerr != nil {
+		t.Fatalf("the primary DID request: %v", rerr)
+	}
+	if body["did"] != fixtureIndyDid || body["id"] != "6f1a2b3c-4d5e-4f6a-8b7c-9d0e1f2a3b4c" {
+		t.Errorf("the primary DID request = %v", body)
+	}
+	if res.Msg.GetTenant().GetId() != fixtureOrg || len(res.Msg.GetTenant().GetDids()) != 2 {
+		t.Errorf("tenant = %v", res.Msg.GetTenant())
+	}
+	for name, req := range map[string]*backendv1.SetTenantPrimaryDidRequest{
+		"no tenant": {Did: fixtureIndyDid},
+		"no DID":    {TenantId: fixtureOrg},
+	} {
+		_, rerr := svc.SetTenantPrimaryDid(ctx, connect.NewRequest(req))
+		if connect.CodeOf(rerr) != connect.CodeInvalidArgument {
+			t.Errorf("%s: %v", name, rerr)
+		}
+	}
+	calls := len(f.Calls())
+	_, err = svc.SetTenantPrimaryDid(ctx, connect.NewRequest(&backendv1.SetTenantPrimaryDidRequest{TenantId: fixtureOrg, Did: "did:web:elsewhere.example"}))
+	wantCode(t, err, connect.CodeNotFound)
+	for _, c := range f.Calls()[calls:] {
+		if strings.HasSuffix(c, "/primary-did") {
+			t.Errorf("a DID the organisation does not hold reached the platform: %s", c)
+		}
+	}
+	f.SetStatus("/v1/orgs/"+fixtureOrg+"/primary-did", 500)
+	_, err = svc.SetTenantPrimaryDid(ctx, connect.NewRequest(&backendv1.SetTenantPrimaryDidRequest{TenantId: fixtureOrg, Did: fixtureIndyDid}))
+	wantCode(t, err, connect.CodeUnavailable)
+}
+
+// TestOperatorDidMethodsAndLimitsListed: the platform needs the private
+// key for every DID, so the operator makes each DID in the platform and
+// the answer names the methods. The adapter provisions none. The answer also names the
+// primary DID feature, the key reference of an X.509 import, and the
+// one client credential of an organisation (P6-C1b).
+func TestOperatorDidMethodsAndLimitsListed(t *testing.T) {
+	svc, _ := newService(t, nil)
+	caps, err := svc.GetCapabilities(context.Background(), connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := caps.Msg
+	if strings.Join(c.GetOperatorDidMethods(), ",") != "did:key,did:indy,did:web" || len(c.GetDidMethods()) != 0 || len(c.GetKeyTypes()) != 0 {
+		t.Errorf("operator DID methods = %v, DID methods %v, key types %v", c.GetOperatorDidMethods(), c.GetDidMethods(), c.GetKeyTypes())
+	}
+	if !slices.Contains(c.GetFeatures(), backendv1.Feature_FEATURE_TENANT_PRIMARY_DID) ||
+		slices.Contains(c.GetFeatures(), backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION) {
+		t.Errorf("features = %v", c.GetFeatures())
+	}
+	if c.GetX509KeyReference() != `{"certificateId": "<certificate id>"}` || c.GetTenantClientCredentialLimit() != 1 {
+		t.Errorf("key reference %q, limit %d", c.GetX509KeyReference(), c.GetTenantClientCredentialLimit())
 	}
 }

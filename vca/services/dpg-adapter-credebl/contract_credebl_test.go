@@ -125,8 +125,9 @@ func TestContractCreateRequestAndReadTheResult(t *testing.T) {
 }
 
 // TestContractTenantLifecycle creates an organisation with a wallet in
-// the shared agent and a did:key, reads it with its members, and
-// deletes it (P6-C1). It needs a platform that vca dpg bootstrap
+// the shared agent, reads it with its members, and deletes it (P6-C1).
+// The tenant has no DID: the operator makes it (P6-C1b). A DID of the
+// tenant that VCA_CREDEBL_CONTRACT_TENANT_DID names is not made here. It needs a platform that vca dpg bootstrap
 // credebl prepared, so the shared agent is bound.
 func TestContractTenantLifecycle(t *testing.T) {
 	a := newContractApp(t)
@@ -145,8 +146,8 @@ func TestContractTenantLifecycle(t *testing.T) {
 			t.Errorf("DeleteTenant: %v", delErr)
 		}
 	})
-	if !strings.HasPrefix(created.Msg.GetTenant().GetPrimaryDid(), "did:key:") {
-		t.Errorf("tenant = %v, want a primary did:key", created.Msg.GetTenant())
+	if len(created.Msg.GetTenant().GetDids()) != 0 {
+		t.Errorf("tenant = %v, want no DID from the adapter", created.Msg.GetTenant())
 	}
 	got, err := a.Service.GetTenant(ctx, connect.NewRequest(&backendv1.GetTenantRequest{Id: id}))
 	if err != nil {
@@ -158,7 +159,8 @@ func TestContractTenantLifecycle(t *testing.T) {
 }
 
 // TestContractIssuerIdentity reads the DIDs of the organisation of the
-// adapter (P6-C1).
+// adapter (P6-C1). When VCA_CREDEBL_CONTRACT_PRIMARY_DID names a DID
+// that the operator made, it makes that DID the primary one (P6-C1b).
 func TestContractIssuerIdentity(t *testing.T) {
 	a := newContractApp(t)
 	res, err := a.Service.GetIssuerIdentity(context.Background(), connect.NewRequest(&backendv1.GetIssuerIdentityRequest{}))
@@ -169,6 +171,16 @@ func TestContractIssuerIdentity(t *testing.T) {
 		if !strings.HasPrefix(id, "did:") {
 			t.Errorf("identifier %q is not a DID", id)
 		}
+	}
+	did := os.Getenv("VCA_CREDEBL_CONTRACT_PRIMARY_DID")
+	if did == "" {
+		return
+	}
+	cfg := contractEnv(t)
+	if _, err := a.Service.SetTenantPrimaryDid(context.Background(), connect.NewRequest(&backendv1.SetTenantPrimaryDidRequest{
+		TenantId: cfg.OrgID, Did: did,
+	})); err != nil {
+		t.Fatalf("SetTenantPrimaryDid: %v", err)
 	}
 }
 

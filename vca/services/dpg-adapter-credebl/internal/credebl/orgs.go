@@ -190,37 +190,6 @@ func (c *Client) CreateSharedWallet(ctx context.Context, orgID, label string) er
 	return c.call(ctx, http.MethodPost, "/v1/orgs/"+url.PathEscape(orgID)+"/agents/wallet", body, nil)
 }
 
-// DidRequest asks the agent of an organisation for a new DID.
-type DidRequest struct {
-	// Method is the DID method without the did: prefix, such as key.
-	Method string `json:"method"`
-	// KeyType is the key type as the agent names it, such as ed25519.
-	KeyType string `json:"keyType"`
-	// Network names the ledger of a did:indy, such as bcovrin:testnet.
-	Network string `json:"network,omitempty"`
-	// Domain is the host of a did:web.
-	Domain string `json:"domain,omitempty"`
-	// IsPrimaryDid makes the new DID the one the organisation signs with.
-	IsPrimaryDid bool `json:"isPrimaryDid"`
-}
-
-// CreateDid makes one DID in the agent of the organisation. The agent
-// makes and keeps the key; the request carries no key material
-// (ADR-001 decision 3).
-func (c *Client) CreateDid(ctx context.Context, orgID string, req DidRequest) (OrgDid, error) {
-	if c == nil {
-		return OrgDid{}, ErrNoPlatform
-	}
-	var out envelope[OrgDid]
-	if err := c.call(ctx, http.MethodPost, "/v1/orgs/"+url.PathEscape(orgID)+"/agents/did", req, &out); err != nil {
-		return OrgDid{}, err
-	}
-	if out.Data.Did == "" {
-		return OrgDid{}, errors.New("credebl: the DID answer has no DID")
-	}
-	return out.Data, nil
-}
-
 // OrgDids reads the DIDs of one organisation, the primary DID first.
 func (c *Client) OrgDids(ctx context.Context, orgID string) ([]OrgDid, error) {
 	if c == nil {

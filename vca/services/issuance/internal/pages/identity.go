@@ -172,6 +172,14 @@ func (p *Pages) renderIdentity(pg page, v identityView) error {
 		if has(v.caps, backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION) {
 			parts = append(parts, p.instantBlock(b, v, csrf))
 		}
+		if methods := v.caps.GetOperatorDidMethods(); len(methods) > 0 {
+			// The stack makes these DIDs only with a key of the
+			// operator, which never passes through VCA (P6-C1b).
+			parts = append(parts, b.add("note", components.Note{
+				Label: msg.T("issuer.identity.operator_dids.label"),
+				Text:  msg.T("issuer.identity.operator_dids.text", orList(methods), stackName(v.caps)),
+			}))
+		}
 		if kinds := importKinds(v.caps); len(kinds) > 0 {
 			parts = append(parts, p.ownBlock(b, v, kinds, csrf))
 		}
@@ -327,6 +335,14 @@ func (p *Pages) trustChoice(b *blocks, v identityView, id string) template.HTML 
 	})
 }
 
+// orList joins values as "a, b or c".
+func orList(values []string) string {
+	if len(values) < 2 {
+		return strings.Join(values, "")
+	}
+	return strings.Join(values[:len(values)-1], ", ") + " or " + values[len(values)-1]
+}
+
 // importKinds lists the import kinds the adapter offers, DID first.
 func importKinds(caps *backendv1.GetCapabilitiesResponse) []string {
 	var out []string
@@ -355,6 +371,17 @@ func (p *Pages) ownBlock(b *blocks, v identityView, kinds []string, csrf templat
 			links = append(links, components.Link{Href: IdentityPath + "?kind=" + k + "#own", Text: msg.T("issuer.identity.tab." + k + ".label"), Current: k == kind})
 		}
 		tabs = b.add("tabs", components.Tabs{Label: msg.T("issuer.identity.tabs.label"), Links: links})
+	} else {
+		// One kind shows no tabs, so a sentence names it (P6-C1b).
+		tabs = b.add("note", components.Note{
+			Label: msg.T("issuer.identity.tabs.label"), Text: msg.T("issuer.identity.kind.one", msg.T("issuer.identity.tab."+kind+".label")),
+		})
+	}
+	keyHint := msg.T("issuer.identity.key_reference.hint")
+	if shape := v.caps.GetX509KeyReference(); kind == kindX509 && shape != "" {
+		// The stack names the shape of the reference, such as the
+		// certificate row that keeps the key.
+		keyHint = msg.T("issuer.identity.key_reference.shape.hint", shape)
 	}
 	subject := b.add("field", components.Field{ID: "did", Label: msg.T("issuer.identity.did.label"), Value: v.form.Get("did"),
 		Hint: msg.T("issuer.identity.did.hint"), Error: v.errs["did"], Autocomplete: "off"})
@@ -366,7 +393,7 @@ func (p *Pages) ownBlock(b *blocks, v identityView, kinds []string, csrf templat
 		template.HTML(`<input type="hidden" name="kind" value="`+kind+`">`), //nolint:gosec // the kind is one of two constants
 		subject,
 		b.add("field", components.Field{ID: "key_reference", Label: msg.T("issuer.identity.key_reference.label"), Type: "textarea",
-			Value: v.form.Get("key_reference"), Hint: msg.T("issuer.identity.key_reference.hint"), Error: v.errs["key_reference"]}),
+			Value: v.form.Get("key_reference"), Hint: keyHint, Error: v.errs["key_reference"]}),
 		b.add("field", components.Field{ID: "display_name", Label: msg.T("issuer.identity.org.label"), Value: v.form.Get("display_name"),
 			Autocomplete: "organization"}),
 		b.add("field", components.Field{ID: "legal_identifier", Label: msg.T("issuer.identity.legal.label"), Value: v.form.Get("legal_identifier")}),

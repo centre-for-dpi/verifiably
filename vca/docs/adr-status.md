@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-069, one row per decision.
+ADR-070, one row per decision.
 
 The status values are:
 
@@ -743,12 +743,23 @@ A row that is not `Done` carries a note.
 | ADR-069 | 4 Revocable offers, `Revoke` and no suspension | Done | `vca/services/dpg-adapter-credebl/internal/service/issuer.go` | `TestRevokeSession`, `TestOfferIsRevocableWithAStatusList` and `TestRevocationListedWithAStatusList` pin it. |
 | ADR-069 | 5 The ledger entry and the actions of the issued page | Done | `vca/services/dpg-adapter-credebl/internal/service/ledger.go`, `vca/services/issued-credentials/internal/pages/detail.go` | `TestLedgerEntryCarriesTheStatusListEntry` and `TestLedgerRecordOffersOnlyTheStackActions` pin it. |
 
+## ADR-070: The operator makes each DID of a CREDEBL organisation
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-070 | 1 The pinned gateway needs the key of every DID | Done | `vca/services/dpg-adapter-credebl/testdata/doc/SOURCE.md` | The fixture sources cite the validator and the DID controller of the pinned tags. |
+| ADR-070 | 2 No provision and no DID for a new tenant | Done | `vca/services/dpg-adapter-credebl/internal/service/identity.go`, `vca/services/dpg-adapter-credebl/internal/service/tenant.go` | `TestProvisionNeedsTheKeyOfTheOperator` and `TestCreateTenantCreatesOrg` pin it. |
+| ADR-070 | 3 The operator makes the DID, and the pages say so | Done | `vca/docs/dpg-adapter-credebl.md`, `vca/services/admin/internal/portal/tenants.go`, `vca/services/issuance/internal/pages/identity.go` | `TestOperatorDidMethodsAndLimitsListed`, `TestTenantDetailMakesADidPrimary` and `TestIdentityPageSaysTheOperatorMakesTheDid` pin it. |
+| ADR-070 | 4 `SetTenantPrimaryDid` and "Make primary" | Done | `proto/vca/backend/v1/backend.proto`, `proto/vca/admin/v1/admin.proto`, `vca/services/admin/internal/service/tenants.go` | `TestSetTenantPrimaryDid` of the adapter and of the admin service, and `TestTenantDetailMakesADidPrimary`, pin it. |
+| ADR-070 | 5 The key reference shape and the one import kind | Done | `vca/services/issuance/internal/pages/identity.go` | `TestIdentityPageNamesTheOneImportKindAndItsKeyReference` pins it. |
+| ADR-070 | 6 The client credential limit | Done | `vca/services/admin/internal/portal/keys.go` | `TestStackCredentialFormHidesAFullTenant` pins it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 327 |
+| Done | 333 |
 | Partial | 25 |
 | Deferred | 3 |
 | Not started | 26 |
-| Total | 381 |
+| Total | 387 |

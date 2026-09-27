@@ -536,9 +536,9 @@ func TestCapabilitiesCarryDpgInfo(t *testing.T) {
 	if len(resp.Msg.GetStatusMechanisms()) != 0 {
 		t.Errorf("the adapter embeds no status entry: %v", resp.Msg)
 	}
-	// The agent makes a did:key without key material from the adapter
-	// (P6-C1, ADR-001 decision 3).
-	if strings.Join(resp.Msg.GetDidMethods(), ",") != "did:key" || strings.Join(resp.Msg.GetKeyTypes(), ",") != "Ed25519,secp256r1,secp256k1" {
+	// The platform makes a DID only with its private key, so the adapter
+	// provisions none (P6-C1b, ADR-001 decision 3).
+	if len(resp.Msg.GetDidMethods()) != 0 || len(resp.Msg.GetKeyTypes()) != 0 {
 		t.Errorf("DID methods %v, key types %v", resp.Msg.GetDidMethods(), resp.Msg.GetKeyTypes())
 	}
 }
@@ -637,6 +637,10 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 			_, err := svc.GetEcosystemSettings(ctx, connect.NewRequest(&backendv1.GetEcosystemSettingsRequest{}))
 			return err
 		}, true},
+		{backendv1.Feature_FEATURE_TENANT_PRIMARY_DID, func() error {
+			_, err := svc.SetTenantPrimaryDid(ctx, connect.NewRequest(&backendv1.SetTenantPrimaryDidRequest{}))
+			return err
+		}, true},
 	}
 	listed := map[backendv1.Feature]bool{}
 	for _, f := range resp.Msg.GetFeatures() {
@@ -664,8 +668,9 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 // agent keeps every key of the organisation, and the platform takes no
 // key reference for a DID it did not make. So a DID import answers
 // Unimplemented with a reason, and the answer lists no DID import.
-// Provisioning works (P6-C1), and an X.509 chain imports (P6-C9,
-// TestImportX509Certificate).
+// An X.509 chain imports (P6-C9, TestImportX509Certificate). The
+// platform makes no DID without its private key, so provisioning is off
+// too (P6-C1b).
 func TestImportDidUnimplementedWithoutFeature(t *testing.T) {
 	svc, _ := newService(t, nil)
 	ctx := context.Background()
@@ -685,7 +690,7 @@ func TestImportDidUnimplementedWithoutFeature(t *testing.T) {
 		listed[f] = true
 	}
 	if listed[backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_DID] || !listed[backendv1.Feature_FEATURE_ISSUER_IDENTITY_IMPORT_X509] ||
-		!listed[backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION] {
-		t.Errorf("features = %v, want provisioning and the X.509 import without the DID import", caps.Msg.GetFeatures())
+		listed[backendv1.Feature_FEATURE_ISSUER_IDENTITY_PROVISION] {
+		t.Errorf("features = %v, want the X.509 import alone", caps.Msg.GetFeatures())
 	}
 }

@@ -49,3 +49,4 @@ each decision of each record.
 - [ADR-067: The webhook, the holder notification address and the client credential of a CREDEBL organisation](adr/ADR-067-credebl-organisation-settings.md)
 - [ADR-068: CREDEBL ecosystems and the X.509 issuer identity](adr/ADR-068-credebl-ecosystems-and-x509.md)
 - [ADR-069: The CREDEBL stack runs the status list host of the platform](adr/ADR-069-credebl-status-list-host.md)
+- [ADR-070: The operator makes each DID of a CREDEBL organisation](adr/ADR-070-credebl-operator-dids.md)

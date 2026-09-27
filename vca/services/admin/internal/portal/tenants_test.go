@@ -248,3 +248,62 @@ func TestAgentChoiceOffersOnlyListedAgentTypes(t *testing.T) {
 	}
 	a11ytest.AssertPage(t, page)
 }
+
+// TestTenantDetailMakesADidPrimary is P6-C1b: a stack that lists the
+// primary DID feature offers "Make primary" for each other DID of the
+// stack tenant. A stack whose DID methods need a key of the operator
+// says that the operator makes such a DID in the stack itself. A stack
+// without the feature offers neither.
+func TestTenantDetailMakesADidPrimary(t *testing.T) {
+	tenancy := newFakeStack("CREDEBL", backendv1.Feature_FEATURE_MULTI_TENANCY, backendv1.Feature_FEATURE_TENANT_PRIMARY_DID)
+	tenancy.operatorDids = []string{"did:key", "did:indy", "did:web"}
+	indy := "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS"
+	tenancy.mint = func(int) (string, []string) {
+		return "0b6c2f0e", []string{"did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH", indy}
+	}
+	h := newHarnessWith(t, true, stackPeers(tenancy, newFakeStack("Plain stack")))
+	h.signIn(t)
+	if status, _ := h.post(t, "/admin/tenants", url.Values{"display_name": {"Ministry of Health"}, "stacks": {"DPG_CREDEBL"}}); status != http.StatusSeeOther {
+		t.Fatal("the create failed")
+	}
+	tenancy.mu.Lock()
+	tenancy.tenants["0b6c2f0e"].PrimaryDid = "did:key:z6MkfVKJk2cHkCvA3YVXS5Zs7J7p9vB1m3r8XyQw2eT4aLgH"
+	tenancy.mu.Unlock()
+	id := h.tenantID(t)
+	page := h.page(t, "/admin/tenants/"+id)
+	a11ytest.AssertPage(t, page)
+	action := `action="/admin/tenants/` + id + `/primary-did"`
+	if strings.Count(page, action) != 1 || !strings.Contains(page, `value="`+indy+`"`) {
+		t.Errorf("the page offers %d primary DID forms, want one for the Indy DID", strings.Count(page, action))
+	}
+	if !strings.Contains(page, msg.T("admin.tenants.operator_dids.text", "did:key, did:indy or did:web", "CREDEBL")) {
+		t.Error("the page does not say how the operator makes a DID with a key of its own")
+	}
+	status, _ := h.post(t, "/admin/tenants/"+id+"/primary-did", url.Values{"stack": {"DPG_CREDEBL"}, "did": {indy}})
+	if status != http.StatusSeeOther {
+		t.Fatalf("make primary: %d", status)
+	}
+	tenancy.mu.Lock()
+	got := tenancy.tenants["0b6c2f0e"].GetPrimaryDid()
+	tenancy.mu.Unlock()
+	if got != indy {
+		t.Errorf("primary DID = %s", got)
+	}
+	page = h.page(t, "/admin/tenants/"+id+"?notice=tenant-primary-did")
+	if !strings.Contains(page, portal.Notices["tenant-primary-did"].Text) {
+		t.Error("the page does not confirm the change")
+	}
+	if status, _ := h.post(t, "/admin/tenants/"+id+"/primary-did", url.Values{"stack": {"NOT_A_STACK"}, "did": {indy}}); status == http.StatusSeeOther {
+		t.Error("a bad stack value passed")
+	}
+
+	plain, other := tenancyHarness(t)
+	other.mint = tenancy.mint
+	if status, _ := plain.post(t, "/admin/tenants", url.Values{"display_name": {"Ministry of Health"}, "stacks": {"DPG_CREDEBL"}}); status != http.StatusSeeOther {
+		t.Fatal("the create failed")
+	}
+	page = plain.page(t, "/admin/tenants/"+plain.tenantID(t))
+	if strings.Contains(page, "/primary-did\"") || strings.Contains(page, msg.T("admin.tenants.operator_dids.label")) {
+		t.Error("a stack without the feature offers a primary DID change")
+	}
+}

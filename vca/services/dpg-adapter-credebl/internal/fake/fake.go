@@ -794,8 +794,6 @@ func (f *Server) serveOrgs(w http.ResponseWriter, r *http.Request, orgs Answer) 
 		f.sendStatus(w, http.StatusCreated, "doc/primary-did.json")
 	case len(parts) == 5 && parts[3] == "agents" && parts[4] == "wallet" && r.Method == http.MethodPost:
 		f.sendStatus(w, http.StatusCreated, "doc/wallet-created.json")
-	case len(parts) == 5 && parts[3] == "agents" && parts[4] == "did" && r.Method == http.MethodPost:
-		f.sendStatus(w, http.StatusCreated, "doc/did-created.json")
 	default:
 		return false
 	}

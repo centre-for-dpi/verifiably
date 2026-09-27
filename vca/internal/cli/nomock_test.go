@@ -74,6 +74,7 @@ type nomockException struct {
 var nomockAllowlist = []nomockException{
 	{"vca/internal/cli/migrate.go", "fake", "A comment says that a test replaces the database opener with a fake."},
 	{"vca/docs/dpg-adapter-credebl.md", "fake", "The document describes the test double of the adapter tests."},
+	{"vca/docs/dpg-adapter-credebl.md", "seed", "The DID call of the CREDEBL platform names its private key field seed. The document tells the operator to send the key of the operator straight to the platform."},
 	{"vca/docs/dpg-adapter-inji.md", "fake", "The document describes the test double of the adapter tests."},
 	{"vca/docs/dpg-adapter-waltid.md", "fake", "The document describes the test double of the adapter tests."},
 	{"vca/internal/cli/credebl.go", "seed", "The CREDEBL release names its database initialisation script prisma db seed. The data comes from setup."},

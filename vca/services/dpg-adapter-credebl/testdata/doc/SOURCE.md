@@ -27,13 +27,15 @@ The api gateway wraps each answer as `statusCode`, `message` and `data`:
 | `offer-sessions.json` | `GET /v1/orgs/{org}/oid4vc/credential-offer` | the same controller `getAllCredentialOffers`, and `getIssuanceSessionsByQuery` of the agent service. The fifth session is a revocable offer: its credential carries the `status` claim and its metadata the `StatusListInfo` that `createCredentialOffer` and `processStatusList` of the agent write, read on 2026-09-27 at the agent tag `v2.2.1-alpha-jsonld-vc.2.1` |
 | `session-revoked.json` | `POST /v1/orgs/{org}/openid4vc/issuance-sessions/{id}/revoke` | the same controller `revokeCredential` at the platform tag `v2.2.1-alpha.4`, `revokeCredential` of `apps/oid4vc-issuance/src/oid4vc-issuance.service.ts`, and `revokeBySessionId` of the agent issuance sessions service |
 | `upstream-master-table.json.txt` | none: the master table that the database initialisation reads | [credebl-master-table.json](https://raw.githubusercontent.com/credebl/platform/main/libs/prisma-service/prisma/data/credebl-master-table/credebl-master-table.json), read on 2026-09-27 and kept as it is, with [seed.ts](https://raw.githubusercontent.com/credebl/platform/main/libs/prisma-service/prisma/seed.ts) `createPlatformUser` and `createKeycloakUser`. The file ends in `.txt` because it holds the placeholder text of the release in a password field, which the secret scan reads as a value. The CLI test `TestNoUpstreamCredeblCredentialSurvives` checks that none of its credentials reach a deployment. |
-| `did-created.json` | `POST /v1/orgs/{org}/agents/did` | [agent-service.controller.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/agent-service/agent-service.controller.ts) `createDid`, body [create-did.dto.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/agent-service/dto/create-did.dto.ts), and `createDid` in [agent-service.service.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/agent-service/src/agent-service.service.ts) |
 
-The agent makes the key of a `did:key` without a seed. The agent needs
-a seed for `did:indy` and `did:web`, which is the private key
-([DidController.ts](https://raw.githubusercontent.com/credebl/agent-controller/main/src/controllers/did/DidController.ts)
-`handleIndy`, `handleWeb`). The adapter never sends key material
-(ADR-001 decision 3), so it makes `did:key` identities only.
+The api gateway refuses a `did:key`, a `did:indy` and a `did:web`
+without a seed in the request (`Validator.validateDid` of
+[validator.ts](https://raw.githubusercontent.com/credebl/platform/v2.2.1-alpha.4/libs/common/src/validator.ts),
+read on 2026-09-27). The agent takes the seed as the private key
+([DidController.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/controllers/did/DidController.ts)
+`handleKey`, `handleIndy`, `handleWeb`). The adapter never sends key
+material (ADR-001 decision 3), so it makes no DID of an organisation.
+The operator makes it in the platform (ADR-070).
 
 ## The schema body of an SD-JWT template
 

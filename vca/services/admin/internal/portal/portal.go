@@ -346,6 +346,7 @@ var Notices = map[string]components.Toast{
 	"tenant-deleted":           {Level: "warn", Text: msg.T("admin.tenants.deleted")},
 	"tenant-bound":             {Level: "ok", Text: msg.T("admin.tenants.bound")},
 	"tenant-unbound":           {Level: "warn", Text: msg.T("admin.tenants.unbound")},
+	"tenant-primary-did":       {Level: "ok", Text: msg.T("admin.tenants.primary_did.set")},
 	"trust-saved":              {Level: "ok", Text: msg.T("admin.trust.saved")},
 	"trust-deleted":            {Level: "warn", Text: msg.T("admin.trust.deleted")},
 	"trust-approved":           {Level: "ok", Text: msg.T("admin.trust.approved")},
