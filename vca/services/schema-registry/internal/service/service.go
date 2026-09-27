@@ -171,10 +171,16 @@ func (s *Service) register(ctx context.Context, r record.Record) (map[string]str
 			// (P6-C2).
 			ledger = r.Ledger
 		}
+		// An SD-JWT VC carries the vct that the issuer metadata of the
+		// registry names, so a verifier that asks for it finds it.
+		typ := r.Type
+		if f == record.FormatDcSdJwt || f == record.FormatVcSdJwt {
+			typ = metadata.Vct(s.opts.Metadata.BaseURL, r)
+		}
 		if s.opts.Backend != nil {
 			resp, err := s.opts.Backend.RegisterCredentialConfiguration(ctx, connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{
 				Configuration: &backendv1.CredentialConfiguration{
-					Id: id, Format: record.FormatToProto(f), Type: r.Type, JsonSchema: r.JSONSchema,
+					Id: id, Format: record.FormatToProto(f), Type: typ, JsonSchema: r.JSONSchema,
 					Display: string(display), SdClaims: append([]string(nil), r.SDClaims...),
 					Contexts: append([]string(nil), r.Contexts...), Ledger: ledger,
 				},

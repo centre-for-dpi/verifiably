@@ -163,7 +163,7 @@ func TestPublishAndRetire(t *testing.T) {
 	if pub.Msg.GetConfigurationId() != "dpg:Degree_dc+sd-jwt" || pub.Msg.GetSchema().GetState() != schemav1.State_STATE_PUBLISHED {
 		t.Fatalf("publish %v", pub.Msg)
 	}
-	if len(fb.calls) != 2 || fb.calls[0].GetType() != "Degree" || fb.calls[0].GetFormat() != commonv1.Format_FORMAT_DC_SD_JWT || fb.calls[0].GetSdClaims()[0] != "name" {
+	if len(fb.calls) != 2 || fb.calls[0].GetType() != "https://r/.well-known/vct/Degree" || fb.calls[0].GetFormat() != commonv1.Format_FORMAT_DC_SD_JWT || fb.calls[0].GetSdClaims()[0] != "name" {
 		t.Fatalf("calls %v", fb.calls)
 	}
 	var display []map[string]any

@@ -241,8 +241,20 @@ func (c *Cache) keyTargets(ctx context.Context) ([]Source, error) {
 }
 
 // issuerKeys reads the keys of one issuer. A DID document must name the
-// DID it was read for.
+// DID it was read for. A did:key and a did:jwk carry their key, so they
+// need no network.
 func (c *Cache) issuerKeys(ctx context.Context, issuer string) (Source, error) {
+	if strings.HasPrefix(issuer, "did:key:") || strings.HasPrefix(issuer, "did:jwk:") {
+		doc, err := did.NewResolver(nil, nil).Resolve(ctx, issuer)
+		if err != nil {
+			return Source{}, err
+		}
+		set, err := ports.KeysOf(doc)
+		if err != nil {
+			return Source{}, err
+		}
+		return keySource(set, issuer)
+	}
 	if strings.HasPrefix(issuer, "did:web:") {
 		u, err := did.WebURL(issuer)
 		if err != nil {

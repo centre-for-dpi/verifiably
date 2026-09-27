@@ -53,7 +53,10 @@ stateDiagram-v2
 once per format (ADR-013 decision 3). The DPG returns the configuration
 id it stores. The record keeps that id. When the backend fails, the state
 does not change and the RPC returns `unavailable`. The call of the
-`anoncreds` format names the ledger of the version.
+`anoncreds` format names the ledger of the version. The call of an
+SD-JWT VC format names the `vct` of the issuer metadata as the type. The
+stack signs that `vct` into the credential, so a verifier that asks for
+it finds the credential.
 
 `Retire` with version zero retires every published version of the schema.
 Issuance with a retired version stops. Verifiers can still read it.

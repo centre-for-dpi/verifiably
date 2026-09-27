@@ -621,14 +621,19 @@ func checkClaims(schema *schemav1.Schema, instance map[string]any) error {
 // configurationKeys maps a format onto the key of the configuration ids
 // of a schema, as the schema registry names it.
 var configurationKeys = map[commonv1.Format]string{
-	commonv1.Format_FORMAT_ANONCREDS: "anoncreds",
-	commonv1.Format_FORMAT_LDP_VC:    "ldp_vc",
+	commonv1.Format_FORMAT_ANONCREDS:   "anoncreds",
+	commonv1.Format_FORMAT_LDP_VC:      "ldp_vc",
+	commonv1.Format_FORMAT_VC_SD_JWT:   "vc+sd-jwt",
+	commonv1.Format_FORMAT_DC_SD_JWT:   "dc+sd-jwt",
+	commonv1.Format_FORMAT_JWT_VC_JSON: "jwt_vc_json",
+	commonv1.Format_FORMAT_MSO_MDOC:    "mso_mdoc",
 }
 
 // configurationFor returns the configuration id of the stack for one
 // format of a schema. The registry keeps the id that the adapter gave at
 // the publication, such as the credential definition of an AnonCreds
-// schema. Any other format uses the type of the schema.
+// schema or the registration of an SD-JWT VC. A schema with no such id
+// uses its type.
 func configurationFor(schema *schemav1.Schema, format commonv1.Format) string {
 	if key, ok := configurationKeys[format]; ok {
 		if id := strings.TrimSpace(schema.GetConfigurationIds()[key]); id != "" {
@@ -720,15 +725,19 @@ func (s *Service) allocateStatus(ctx context.Context, purpose string, format com
 	if name == "none" {
 		return nil, nil
 	}
-	if s.opts.Status == nil {
-		s.opts.Log.Warn("no status service, so the credential is not revocable")
-		return nil, nil
-	}
+	// An SD-JWT VC carries a Token Status List entry, which a service of
+	// its own keeps. Every other format carries a Bitstring entry.
+	lists := s.opts.Status
 	kind := statusv1.Kind_KIND_BITSTRING
 	bindingKind := backendv1.StatusListBinding_KIND_BITSTRING
 	if format == commonv1.Format_FORMAT_VC_SD_JWT || format == commonv1.Format_FORMAT_DC_SD_JWT {
+		lists = s.opts.StatusToken
 		kind = statusv1.Kind_KIND_TOKEN
 		bindingKind = backendv1.StatusListBinding_KIND_TOKEN
+	}
+	if lists == nil {
+		s.opts.Log.Warn("no status service of the list kind, so the credential is not revocable", "kind", kind.String())
+		return nil, nil
 	}
 	statusPurpose := statusv1.Purpose_PURPOSE_REVOCATION
 	switch name {
@@ -740,7 +749,7 @@ func (s *Service) allocateStatus(ctx context.Context, purpose string, format com
 	default:
 		return nil, badRequest(fmt.Sprintf("the status purpose %q is not known", purpose))
 	}
-	resp, err := s.opts.Status.AllocateIndex(ctx, connect.NewRequest(&statusv1.AllocateIndexRequest{
+	resp, err := lists.AllocateIndex(ctx, connect.NewRequest(&statusv1.AllocateIndexRequest{
 		Purpose: statusPurpose, Kind: kind,
 	}))
 	if err != nil {
@@ -763,10 +772,17 @@ func (s *Service) record(ctx context.Context, offer *offers.Offer,
 	if len(payload) == 0 {
 		payload = []byte(offer.OfferURI)
 	}
+	// A request that names no subject, such as one of the issue page,
+	// still writes its record (ADR-017 decision 1). The offer then
+	// stands for the subject, and it holds no personal data.
+	subject := offer.SubjectRef
+	if strings.TrimSpace(subject) == "" {
+		subject = "offer-" + offer.ID
+	}
 	id, err := s.opts.Recorder.Record(ctx, &issuedv1.IssuedRecord{
 		SchemaId:         offer.SchemaID,
 		SchemaVersion:    offer.SchemaVersion,
-		Subject:          &commonv1.Subject{Ref: offer.SubjectRef},
+		Subject:          &commonv1.Subject{Ref: subject},
 		Format:           commonv1.Format(offer.Format),
 		StatusBinding:    binding,
 		Status:           issuedv1.Status_STATUS_ACTIVE,

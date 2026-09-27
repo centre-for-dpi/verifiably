@@ -255,11 +255,17 @@ then names the staff member (ADR-039 decision 1).
    service renders them. A stack that signs only when a wallet claims
    gets a page with the pre-authorized offer in its QR code.
 5. It reserves a status list entry, when the deployment has a status
-   service. An SD-JWT credential gets a token status list entry. Another
-   format gets a bitstring status list entry.
+   service of the kind. An SD-JWT credential gets a token status list
+   entry from `VCA_ISSUANCE_STATUS_TOKEN_URL`. Another format gets a
+   bitstring status list entry from `VCA_ISSUANCE_STATUS_URL`. The
+   bitstring service refuses a token list. Without the service of its
+   kind, the credential has no entry and stays valid for good.
 6. It asks the adapter for an offer, or for a signed credential.
 7. It renders the page, when the channel needs one.
-8. It records the issuance in the issued credentials service.
+8. It records the issuance in the issued credentials service. A request
+   that names no subject, such as one of the issue page, records the
+   offer as the subject reference. The record then holds no personal
+   data.
 9. It hands the message to the sender of the channel.
 
 ## The channels

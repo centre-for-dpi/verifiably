@@ -45,7 +45,8 @@ in the log.
 | `VCA_ISSUANCE_ADAPTER_URL` | The base URL of the DPG adapter. Set it. |
 | `VCA_ISSUANCE_ADAPTER_NAME` | The name of the DPG in the issued record. |
 | `VCA_ISSUANCE_SCHEMA_URL` | The base URL of the schema registry. Empty skips the claim check. |
-| `VCA_ISSUANCE_STATUS_URL` | The base URL of the status service. Empty makes every credential permanent. |
+| `VCA_ISSUANCE_STATUS_URL` | The base URL of the Bitstring Status List service. Empty makes every W3C credential permanent. |
+| `VCA_ISSUANCE_STATUS_TOKEN_URL` | The base URL of the Token Status List service. Empty makes every SD-JWT VC permanent. |
 | `VCA_ISSUANCE_ISSUED_URL` | The base URL of the issued credentials service. |
 | `VCA_ISSUANCE_DELIVERY_SENDER` | The sender of the offer channels. The values are `log` and `file`. |
 | `VCA_ISSUANCE_EMAIL_SENDER` | The sender of the email channel. The values are `stub`, `log`, and `file`. |

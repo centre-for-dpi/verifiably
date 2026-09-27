@@ -44,9 +44,13 @@ type Config struct {
 	// PruneInterval is the time between two prune runs. Zero turns the
 	// scheduled job off.
 	PruneInterval time.Duration `env:"PRUNE_INTERVAL" default:"24h"`
-	// StatusURL is the base URL of the status service. Empty rejects
-	// every status change.
+	// StatusURL is the base URL of the Bitstring Status List service.
+	// Empty rejects every change of a Bitstring entry.
 	StatusURL string `env:"STATUS_URL"`
+	// StatusTokenURL is the base URL of the Token Status List service,
+	// which keeps the entries of SD-JWT VCs. Empty rejects every change
+	// of such an entry.
+	StatusTokenURL string `env:"STATUS_TOKEN_URL"`
 	// StatusTimeout bounds one status service call.
 	StatusTimeout time.Duration `env:"STATUS_TIMEOUT" default:"10s"`
 	// PageSizeMax caps the page size of List and Search.
@@ -111,6 +115,7 @@ func Load(getenv func(string) string) (Config, error) {
 // normalize checks the values and fills the derived fields.
 func (c Config) normalize() (Config, error) {
 	c.StatusURL = strings.TrimRight(c.StatusURL, "/")
+	c.StatusTokenURL = strings.TrimRight(c.StatusTokenURL, "/")
 	c.AdapterURL = strings.TrimRight(c.AdapterURL, "/")
 	c.PublicURL = strings.TrimRight(c.PublicURL, "/")
 	var err error

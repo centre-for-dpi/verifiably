@@ -53,8 +53,10 @@ type Deps struct {
 	Issuer clients.Issuer
 	// Schemas replaces the schema client.
 	Schemas clients.Schemas
-	// Status replaces the status client.
+	// Status replaces the Bitstring Status List client.
 	Status clients.Status
+	// StatusToken replaces the Token Status List client.
+	StatusToken clients.Status
 	// Recorder replaces the issued credentials client.
 	Recorder clients.Recorder
 	// PageSchemas replaces the schema list of the pages.
@@ -110,6 +112,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if status == nil && cfg.StatusURL != "" {
 		status = statusv1connect.NewStatusServiceClient(httpClient, cfg.StatusURL)
 	}
+	statusToken := deps.StatusToken
+	if statusToken == nil && cfg.StatusTokenURL != "" {
+		statusToken = statusv1connect.NewStatusServiceClient(httpClient, cfg.StatusTokenURL)
+	}
 	recorder := deps.Recorder
 	if recorder == nil {
 		if cfg.IssuedURL != "" {
@@ -127,6 +133,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Issuer:         issuer,
 		Schemas:        schemas,
 		Status:         status,
+		StatusToken:    statusToken,
 		Recorder:       recorder,
 		Delivery:       senders(cfg, deps),
 		Store:          offers.New(backend, deps.Now),
@@ -160,8 +167,12 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 			"setting", config.Prefix+"SCHEMA_URL")
 	}
 	if status == nil {
-		deps.Log.Warn("no status service, so every credential is not revocable",
+		deps.Log.Warn("no bitstring status service, so every W3C credential is not revocable",
 			"setting", config.Prefix+"STATUS_URL")
+	}
+	if statusToken == nil {
+		deps.Log.Warn("no token status service, so every SD-JWT VC is not revocable",
+			"setting", config.Prefix+"STATUS_TOKEN_URL")
 	}
 	deps.Log.Info("issuance ready", "adapter", cfg.AdapterURL, "sender", cfg.DeliverySender)
 	return &App{Mux: mux, Service: svc}, nil

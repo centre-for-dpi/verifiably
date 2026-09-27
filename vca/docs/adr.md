@@ -50,3 +50,4 @@ each decision of each record.
 - [ADR-068: CREDEBL ecosystems and the X.509 issuer identity](adr/ADR-068-credebl-ecosystems-and-x509.md)
 - [ADR-069: The CREDEBL stack runs the status list host of the platform](adr/ADR-069-credebl-status-list-host.md)
 - [ADR-070: The operator makes each DID of a CREDEBL organisation](adr/ADR-070-credebl-operator-dids.md)
+- [ADR-071: A verifier checks a status list with the key set under its address](adr/ADR-071-status-list-key-set.md)

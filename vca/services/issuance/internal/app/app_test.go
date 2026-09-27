@@ -192,6 +192,49 @@ func TestBuildUsesTheConfiguredClients(t *testing.T) {
 	}
 }
 
+// TestBuildWarnsOfEachMissingStatusService: an SD-JWT VC takes its
+// status entry from the token service and every other credential from
+// the bitstring service. The log names each one the pair lacks.
+func TestBuildWarnsOfEachMissingStatusService(t *testing.T) {
+	for name, tc := range map[string]struct {
+		env  map[string]string
+		want []string
+		not  []string
+	}{
+		"both": {
+			env: map[string]string{"VCA_ISSUANCE_STATUS_URL": "http://status:8080", "VCA_ISSUANCE_STATUS_TOKEN_URL": "http://status-token:8085"},
+			not: []string{"STATUS_URL", "STATUS_TOKEN_URL"},
+		},
+		"bitstring only": {
+			env:  map[string]string{"VCA_ISSUANCE_STATUS_URL": "http://status:8080"},
+			want: []string{"VCA_ISSUANCE_STATUS_TOKEN_URL"}, not: []string{`"VCA_ISSUANCE_STATUS_URL"`},
+		},
+		"token only": {
+			env:  map[string]string{"VCA_ISSUANCE_STATUS_TOKEN_URL": "http://status-token:8085"},
+			want: []string{`"VCA_ISSUANCE_STATUS_URL"`}, not: []string{"VCA_ISSUANCE_STATUS_TOKEN_URL"},
+		},
+	} {
+		var buf bytes.Buffer
+		env := map[string]string{"VCA_ISSUANCE_STORE_FILE": filepath.Join(t.TempDir(), "state")}
+		for k, v := range tc.env {
+			env[k] = v
+		}
+		if _, err := app.Build(settings(t, env), app.Deps{Log: slog.New(slog.NewJSONHandler(&buf, nil))}); err != nil {
+			t.Fatalf("%s: Build: %v", name, err)
+		}
+		for _, w := range tc.want {
+			if !strings.Contains(buf.String(), w) {
+				t.Errorf("%s: the log does not name %s:\n%s", name, w, buf.String())
+			}
+		}
+		for _, n := range tc.not {
+			if strings.Contains(buf.String(), n) {
+				t.Errorf("%s: the log names %s:\n%s", name, n, buf.String())
+			}
+		}
+	}
+}
+
 func TestBuildReportsABadStore(t *testing.T) {
 	dir := t.TempDir()
 	blocking := filepath.Join(dir, "file")

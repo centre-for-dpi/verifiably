@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-070, one row per decision.
+ADR-071, one row per decision.
 
 The status values are:
 
@@ -754,12 +754,21 @@ A row that is not `Done` carries a note.
 | ADR-070 | 5 The key reference shape and the one import kind | Done | `vca/services/issuance/internal/pages/identity.go` | `TestIdentityPageNamesTheOneImportKindAndItsKeyReference` pins it. |
 | ADR-070 | 6 The client credential limit | Done | `vca/services/admin/internal/portal/keys.go` | `TestStackCredentialFormHidesAFullTenant` pins it. |
 
+## ADR-071: A verifier checks a status list with the key set under its address
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-071 | 1 The keys of the issuer come first | Done | `vca/core/policy/status.go` | `TestStatusToken` pins it. |
+| ADR-071 | 2 Then the key set under the list address | Done | `vca/core/policy/status.go` | `TestStatusListSignedUnderItsAddress`, `TestStatusListKeysNeedTheListAddress` and the walt.id walkthrough pin it. |
+| ADR-071 | 3 The evidence names the key set | Done | `vca/core/policy/status.go` | `TestStatusListSignedUnderItsAddress` pins it. |
+| ADR-071 | 4 The cache reads a self resolving DID | Done | `vca/services/verifier-policy/internal/cache/sync.go` | `TestStatusListOfASelfResolvingIssuer` and the CREDEBL walkthrough pin it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 359 |
+| Done | 363 |
 | Partial | 19 |
 | Deferred | 3 |
 | Not started | 6 |
-| Total | 387 |
+| Total | 391 |

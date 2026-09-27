@@ -50,9 +50,14 @@ const (
 type Options struct {
 	// Store is the append only log. It is required.
 	Store *store.Store
-	// Status is the status list client. Revoke and Reinstate call it
-	// (ADR-017 decision 3). Nil rejects every status change.
+	// Status is the client of the Bitstring Status List service. Revoke
+	// and Reinstate call it for a Bitstring entry (ADR-017 decision 3).
+	// Nil rejects every change of such an entry.
 	Status statusv1connect.StatusServiceClient
+	// StatusToken is the client of the Token Status List service, which
+	// keeps the entries of SD-JWT VCs. Nil rejects every change of such
+	// an entry.
+	StatusToken statusv1connect.StatusServiceClient
 	// Head signs the chain head (ADR-017 decision 4). Nil rejects
 	// GetChainHead.
 	Head *head.Signer
@@ -492,9 +497,13 @@ func (s *Service) change(ctx context.Context, id string, want record.Status, rea
 	if stack {
 		return s.changeInStack(ctx, id, current, want, reason)
 	}
-	if s.opts.Status == nil {
+	lists := s.opts.Status
+	if current.Binding.Kind == record.KindToken {
+		lists = s.opts.StatusToken
+	}
+	if lists == nil {
 		return record.Record{}, connect.NewError(connect.CodeFailedPrecondition,
-			errors.New("the service has no status list client"))
+			fmt.Errorf("the service has no client of the %s status lists", kindName(current.Binding.Kind)))
 	}
 	req := connect.NewRequest(&statusv1.SetStatusRequest{
 		ListId: current.Binding.ListID,
@@ -502,7 +511,7 @@ func (s *Service) change(ctx context.Context, id string, want record.Status, rea
 		Value:  value,
 		Reason: reason,
 	})
-	if _, serr := s.opts.Status.SetStatus(ctx, req); serr != nil {
+	if _, serr := lists.SetStatus(ctx, req); serr != nil {
 		return record.Record{}, unavailable("the status service", serr)
 	}
 	changed, err := s.opts.Store.SetStatus(id, want, reason, s.opts.Now())
@@ -621,4 +630,13 @@ func page(p *commonv1.Pagination, total, max int) (start, end int, next string, 
 		return start, total, "", nil
 	}
 	return start, end, strconv.Itoa(end), nil
+}
+
+// kindName names the status list kind of a binding. A binding with no
+// kind predates the field and points into a Bitstring list.
+func kindName(k record.StatusKind) string {
+	if k == "" {
+		return string(record.KindBitstring)
+	}
+	return string(k)
 }

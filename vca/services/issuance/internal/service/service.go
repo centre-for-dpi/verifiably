@@ -44,9 +44,12 @@ type Options struct {
 	Issuer clients.Issuer
 	// Schemas reads a published schema. Nil turns the claim check off.
 	Schemas clients.Schemas
-	// Status allocates a status list entry. Nil makes every credential
-	// not revocable.
+	// Status allocates a Bitstring Status List entry for a W3C
+	// credential. Nil makes such a credential not revocable.
 	Status clients.Status
+	// StatusToken allocates an IETF Token Status List entry for an
+	// SD-JWT VC. Nil makes such a credential not revocable.
+	StatusToken clients.Status
 	// Recorder writes the issued record.
 	Recorder clients.Recorder
 	// Delivery sends a message to a citizen.

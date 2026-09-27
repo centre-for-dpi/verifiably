@@ -83,7 +83,14 @@ then fetches the list through the cached fetcher and reads the entry.
 A Bitstring Status List credential decodes with
 `core/statuslist/bitstring`. A Status List Token decodes with
 `core/statuslist/token`. A token that is a compact JWS is signature
-checked with the keys of its issuer.
+checked with the keys of the credential issuer first (ADR-071).
+
+A status service of VCA signs the lists of an issuer whose key sits in
+a DPG, such as walt.id. It publishes its key set under the list
+address. For a list at `<base>/status/<id>` the key set is at
+`<base>/.well-known/jwks.json`. When the keys of the issuer do not
+pass the list, the check reads that key set. The evidence then says
+`signature: valid, key set of the list`.
 
 The `fail_mode` parameter decides what an unreachable list means:
 
@@ -126,7 +133,7 @@ set time. The cache keeps three kinds of copy.
 |---|---|---|
 | Trust list | `ExportSnapshot` of the trust registry: the local entries and the copy of each external registry, with its registry id and name. | The JWS signature against the key set of the trust registry, the `typ` header, and the `exp` claim. |
 | Registry keys | The key set of the trust registry. The `did:web` documents and key sets of the listed issuers. The X.509 anchor chains of the external registries. | A DID document must name the DID it came from and hold a usable key. A key set must hold a key. Each certificate must be valid now and signed by the next one. |
-| Status lists | The status lists that the listed issuers publish, and each list that a check read online. | The keys of its issuer must check the signature of a status list token. A plain JSON list says `not checked`, as the online check does. |
+| Status lists | The status lists that the listed issuers publish, and each list that a check read online. | The keys of its issuer must check the signature of a status list token. A `did:key` or a `did:jwk` issuer carries its key, so the cache reads no network for it. A plain JSON list says `not checked`, as the online check does. |
 
 A read that fails, or a copy that fails its check, keeps the last good
 copy. The source then shows the reason in `last_error`. The copies sit

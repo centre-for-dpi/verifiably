@@ -33,9 +33,12 @@ type Config struct {
 	// SchemaURL is the base URL of the schema registry. Empty turns the
 	// claim check off.
 	SchemaURL string `env:"SCHEMA_URL"`
-	// StatusURL is the base URL of the status service. Empty makes every
-	// credential not revocable.
+	// StatusURL is the base URL of the Bitstring Status List service.
+	// Empty makes every W3C credential not revocable.
 	StatusURL string `env:"STATUS_URL"`
+	// StatusTokenURL is the base URL of the Token Status List service.
+	// Empty makes every SD-JWT VC not revocable.
+	StatusTokenURL string `env:"STATUS_TOKEN_URL"`
 	// IssuedURL is the base URL of the issued credentials service. Empty
 	// writes the record to the log only.
 	IssuedURL string `env:"ISSUED_URL"`

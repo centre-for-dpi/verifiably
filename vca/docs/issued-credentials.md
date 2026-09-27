@@ -117,9 +117,12 @@ never claims a change that the list does not hold.
 | A reason that is empty | The service rejects the call. |
 | A reinstate of an active credential | The service rejects the call. |
 
-The status client is a `vca.status.v1.StatusService` Connect client. The
-deployment sets its base URL. Without a URL the service reports a failed
-precondition, so an operator sees the missing setting at once.
+The status client is a `vca.status.v1.StatusService` Connect client.
+Each list kind has its own service. A token entry, as an SD-JWT VC
+carries, goes to `VCA_ISSUED_STATUS_TOKEN_URL`. A bitstring entry goes
+to `VCA_ISSUED_STATUS_URL`. Without the URL of the kind, the service
+reports a failed precondition. An operator then sees the missing
+setting at once.
 
 A stack can change the status of a credential in its own ledger. A
 record from that ledger carries the ledger id in `dpg_credential_id`.

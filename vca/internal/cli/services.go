@@ -403,7 +403,10 @@ func Catalog() []Service {
 				{Env: "VCA_ISSUANCE_PUBLIC_URL", Kind: LinkPublicURL},
 				{Env: "VCA_ISSUANCE_ADAPTER_URL", Kind: LinkAdapterURL},
 				{Env: "VCA_ISSUANCE_SCHEMA_URL", Target: "schema-registry", Kind: LinkURL},
+				// An SD-JWT VC takes a Token Status List entry, and every
+				// other credential a Bitstring entry.
 				{Env: "VCA_ISSUANCE_STATUS_URL", Target: "status-bitstring", Kind: LinkURL},
+				{Env: "VCA_ISSUANCE_STATUS_TOKEN_URL", Target: "status-token", Kind: LinkURL},
 				{Env: "VCA_ISSUANCE_ISSUED_URL", Target: "issued-credentials", Kind: LinkURL},
 				staffJWKS("VCA_ISSUANCE_AUTH_JWKS_URL", "issuer-auth"),
 				staffLogin("VCA_ISSUANCE_LOGIN_URL"),
@@ -424,6 +427,7 @@ func Catalog() []Service {
 		{Name: "issued-credentials", ListenEnv: "VCA_ISSUED_LISTEN", ExposedPort: 8084, Roles: issuer, Stateful: true, UI: true,
 			Links: append([]Link{
 				{Env: "VCA_ISSUED_STATUS_URL", Target: "status-bitstring", Kind: LinkURL},
+				{Env: "VCA_ISSUED_STATUS_TOKEN_URL", Target: "status-token", Kind: LinkURL},
 				{Env: "VCA_ISSUED_PUBLIC_URL", Kind: LinkPublicURL},
 				{Env: "VCA_ISSUED_ADAPTER_URL", Kind: LinkAdapterURL},
 				staffJWKS("VCA_ISSUED_AUTH_JWKS_URL", "issuer-auth"),

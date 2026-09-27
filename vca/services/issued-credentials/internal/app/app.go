@@ -58,9 +58,12 @@ type Deps struct {
 	ReadFile func(string) ([]byte, error)
 	// HTTPClient calls the status service. Nil means http.DefaultClient.
 	HTTPClient connect.HTTPClient
-	// Status replaces the status service client. Tests set it. When it
-	// is nil the wiring builds a Connect client from the configuration.
+	// Status replaces the Bitstring Status List client. Tests set it.
+	// When it is nil the wiring builds a Connect client from the
+	// configuration.
 	Status statusv1connect.StatusServiceClient
+	// StatusToken replaces the Token Status List client in the same way.
+	StatusToken statusv1connect.StatusServiceClient
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// Log receives start messages. Nil means slog.Default.
@@ -106,6 +109,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if status == nil && cfg.StatusURL != "" {
 		status = statusv1connect.NewStatusServiceClient(httpClient(cfg, deps), cfg.StatusURL)
 	}
+	statusToken := deps.StatusToken
+	if statusToken == nil && cfg.StatusTokenURL != "" {
+		statusToken = statusv1connect.NewStatusServiceClient(httpClient(cfg, deps), cfg.StatusTokenURL)
+	}
 	var adapter *stack.Adapter
 	if cfg.AdapterURL != "" {
 		client := &http.Client{Timeout: cfg.Timeout}
@@ -115,6 +122,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	opts := service.Options{
 		Store:       st,
 		Status:      status,
+		StatusToken: statusToken,
 		Head:        signer,
 		Retention:   cfg.Retention,
 		Salt:        salt,
@@ -140,8 +148,12 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	if status == nil {
-		deps.Log.Warn("no status service, revoke and reinstate report a failed precondition",
+		deps.Log.Warn("no bitstring status service, a change of a W3C credential reports a failed precondition",
 			"setting", config.Prefix+"STATUS_URL")
+	}
+	if statusToken == nil {
+		deps.Log.Warn("no token status service, a change of an SD-JWT VC reports a failed precondition",
+			"setting", config.Prefix+"STATUS_TOKEN_URL")
 	}
 	if salt == "" {
 		deps.Log.Warn("no subject salt, the subject reference is not hard to guess",

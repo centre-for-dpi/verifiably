@@ -25,6 +25,10 @@ const FailClosed = "closed"
 // ParamFailMode is the name of the fail mode parameter.
 const ParamFailMode = "fail_mode"
 
+// SignedByListKeys is the signature evidence of a status list that the
+// key set under the list address verifies.
+const SignedByListKeys = "valid, key set of the list"
+
 // status checks every credential against its status list
 // (ADR-024 decision 3). The verifier chooses the fail mode.
 func status(ctx context.Context, p Presentation, pc Context) []CheckResult {
@@ -82,7 +86,7 @@ func statusOf(ctx context.Context, index int, c Credential, pc Context, closed b
 // statusValue reads the status of one entry from a list document. It
 // returns the value and how the document was secured.
 func statusValue(ctx context.Context, ref delegation.StatusRef, raw []byte, pc Context) (uint8, string, error) {
-	claims, signed, err := statusClaims(ctx, raw, ref.Issuer, pc)
+	claims, signed, err := statusClaims(ctx, raw, ref, pc)
 	if err != nil {
 		return 0, signed, err
 	}
@@ -112,9 +116,9 @@ func statusValue(ctx context.Context, ref delegation.StatusRef, raw []byte, pc C
 }
 
 // statusClaims decodes the list document. A JSON object is read as it
-// is. A compact JWS is checked with the issuer keys when the service
-// has a key resolver.
-func statusClaims(ctx context.Context, raw []byte, issuer string, pc Context) (map[string]any, string, error) {
+// is. A compact JWS is checked when the service has a key resolver: with
+// the issuer keys first, then with the key set under the list address.
+func statusClaims(ctx context.Context, raw []byte, ref delegation.StatusRef, pc Context) (map[string]any, string, error) {
 	if bytes.HasPrefix(bytes.TrimSpace(raw), []byte("{")) {
 		var doc map[string]any
 		if err := json.Unmarshal(raw, &doc); err != nil {
@@ -129,18 +133,56 @@ func statusClaims(ctx context.Context, raw []byte, issuer string, pc Context) (m
 		if err != nil {
 			return nil, signed, errors.New("the status list token does not parse")
 		}
-		set, err := pc.Keys(ctx, issuer, hdr.Kid)
+		signed, err = listSignature(ctx, compact, hdr.Kid, ref, pc)
 		if err != nil {
-			return nil, signed, errors.New("the status list keys are not available")
+			return nil, "not checked", err
 		}
-		if _, _, err := jose.VerifyWithJWKS(compact, set, jose.SigningAlgorithms); err != nil {
-			return nil, signed, errors.New("the status list signature is not valid")
-		}
-		signed = "valid"
 	}
 	payload, err := jose.PeekPayload(compact)
 	if err != nil {
 		return nil, signed, errors.New("the status list token does not parse")
 	}
 	return payload, signed, nil
+}
+
+// listSignature verifies a status list token. The issuer keys come
+// first. A status service of VCA signs the lists of an issuer whose key
+// sits in a DPG, and it publishes its key set under the list address:
+// <base>/.well-known/jwks.json for a list at <base>/status/<id>. The
+// issuer names that address in the signed credential, so the key set
+// there speaks for the list (ADR-071). It returns the signature
+// evidence.
+func listSignature(ctx context.Context, compact, kid string, ref delegation.StatusRef, pc Context) (string, error) {
+	found := false
+	if set, err := pc.Keys(ctx, ref.Issuer, kid); err == nil {
+		found = true
+		if _, _, verr := jose.VerifyWithJWKS(compact, set, jose.SigningAlgorithms); verr == nil {
+			return "valid", nil
+		}
+	}
+	if base, ok := listBase(ref.URI); ok {
+		if set, err := pc.Keys(ctx, base, kid); err == nil {
+			found = true
+			if _, _, verr := jose.VerifyWithJWKS(compact, set, jose.SigningAlgorithms); verr == nil {
+				return SignedByListKeys, nil
+			}
+		}
+	}
+	if !found {
+		return "", errors.New("the status list keys are not available")
+	}
+	return "", errors.New("the status list signature is not valid")
+}
+
+// listBase returns the base address of a list at <base>/status/<id>,
+// the address under which the status service publishes its key set.
+func listBase(uri string) (string, bool) {
+	if !strings.HasPrefix(uri, "https://") && !strings.HasPrefix(uri, "http://") {
+		return "", false
+	}
+	i := strings.LastIndex(uri, "/status/")
+	if i < 0 || strings.Contains(uri[i+len("/status/"):], "/") {
+		return "", false
+	}
+	return uri[:i], true
 }

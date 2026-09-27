@@ -39,7 +39,8 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_ISSUED_HEAD_PERIOD` | The time between two signatures of an unchanged head. | `24h` |
 | `VCA_ISSUED_RETENTION` | The per schema retention rules, for example `default=5y,visitor=30d`. The units are s, m, h, d, w, and y. | empty: keep every record |
 | `VCA_ISSUED_PRUNE_INTERVAL` | The time between two prune runs. `0` turns the job off. | `24h` |
-| `VCA_ISSUED_STATUS_URL` | The base URL of the status service. | empty: no status change |
+| `VCA_ISSUED_STATUS_URL` | The base URL of the Bitstring Status List service. | empty: no change of a W3C credential |
+| `VCA_ISSUED_STATUS_TOKEN_URL` | The base URL of the Token Status List service. It keeps the entries of SD-JWT VCs. | empty: no change of an SD-JWT VC |
 | `VCA_ISSUED_STATUS_TIMEOUT` | The time limit of one status service call. | `10s` |
 | `VCA_ISSUED_PAGE_SIZE_MAX` | The maximum page size of `List` and `Search`. | `50` |
 | `VCA_ISSUED_AUDIT_DIR` | The directory of the audit store. | empty: in memory |

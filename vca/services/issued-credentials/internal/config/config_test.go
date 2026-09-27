@@ -36,18 +36,19 @@ func TestDefaults(t *testing.T) {
 
 func TestLoadReadsEverySetting(t *testing.T) {
 	c, err := config.Load(env(map[string]string{
-		"VCA_ISSUED_LISTEN":         ":9000",
-		"VCA_ISSUED_STORE_FILE":     "/data/log.json",
-		"VCA_ISSUED_SALT":           "pepper",
-		"VCA_ISSUED_SALT_FILE":      "/run/salt",
-		"VCA_ISSUED_HEAD_KEY_FILE":  "/run/key.pem",
-		"VCA_ISSUED_HEAD_ISSUER":    "issuer.example",
-		"VCA_ISSUED_HEAD_PERIOD":    "12h",
-		"VCA_ISSUED_RETENTION":      "default=5y,visitor=30d",
-		"VCA_ISSUED_PRUNE_INTERVAL": "0",
-		"VCA_ISSUED_STATUS_URL":     "http://status:8080/",
-		"VCA_ISSUED_STATUS_TIMEOUT": "3s",
-		"VCA_ISSUED_PAGE_SIZE_MAX":  "10",
+		"VCA_ISSUED_LISTEN":           ":9000",
+		"VCA_ISSUED_STORE_FILE":       "/data/log.json",
+		"VCA_ISSUED_SALT":             "pepper",
+		"VCA_ISSUED_SALT_FILE":        "/run/salt",
+		"VCA_ISSUED_HEAD_KEY_FILE":    "/run/key.pem",
+		"VCA_ISSUED_HEAD_ISSUER":      "issuer.example",
+		"VCA_ISSUED_HEAD_PERIOD":      "12h",
+		"VCA_ISSUED_RETENTION":        "default=5y,visitor=30d",
+		"VCA_ISSUED_PRUNE_INTERVAL":   "0",
+		"VCA_ISSUED_STATUS_URL":       "http://status:8080/",
+		"VCA_ISSUED_STATUS_TOKEN_URL": "http://status-token:8085/",
+		"VCA_ISSUED_STATUS_TIMEOUT":   "3s",
+		"VCA_ISSUED_PAGE_SIZE_MAX":    "10",
 	}))
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -57,6 +58,9 @@ func TestLoadReadsEverySetting(t *testing.T) {
 	}
 	if c.SaltFile != "/run/salt" || c.HeadKeyFile != "/run/key.pem" || c.HeadIssuer != "issuer.example" {
 		t.Errorf("config = %+v", c)
+	}
+	if c.StatusTokenURL != "http://status-token:8085" {
+		t.Errorf("token status url = %q, the trailing slash must go", c.StatusTokenURL)
 	}
 	if c.StatusURL != "http://status:8080" {
 		t.Errorf("status url = %q, the trailing slash must go", c.StatusURL)

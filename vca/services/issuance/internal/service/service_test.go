@@ -99,6 +99,7 @@ func newHarness(t *testing.T, change func(*service.Options, *harness)) *harness 
 		Issuer:       adapter,
 		Schemas:      h.schemas,
 		Status:       h.status,
+		StatusToken:  h.status,
 		Recorder:     h.recorder,
 		Delivery: delivery.NewRegistry(map[delivery.Channel]delivery.Sender{
 			delivery.ChannelOID4VCI: recorder,
@@ -548,7 +549,7 @@ func TestIssueContinuesWhenTheRecordFails(t *testing.T) {
 func TestIssueWithoutASchemaRegistryOrAStatusService(t *testing.T) {
 	h := newHarness(t, func(o *service.Options, _ *harness) {
 		o.Schemas = nil
-		o.Status = nil
+		o.Status, o.StatusToken = nil, nil
 	})
 	offer := h.issue(t, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, nil)
 	if offer.GetOfferUri() == "" {

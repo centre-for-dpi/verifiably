@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -179,29 +180,45 @@ func TestBuildUsesTheInjectedStatusClient(t *testing.T) {
 	}
 }
 
-func TestBuildMakesAStatusClientFromTheURL(t *testing.T) {
-	var path string
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path = r.URL.Path
-		w.Header().Set("Content-Type", "application/proto")
-		// An empty SetStatusResponse is zero bytes.
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer backend.Close()
-	a := build(t, map[string]string{"VCA_ISSUED_STATUS_URL": backend.URL + "/"}, app.Deps{})
-	if _, err := a.Service.AppendRecord(record.Record{
-		ID: "a", SchemaID: "diploma", SchemaVersion: 1, SubjectRef: "ref", IssuedAt: clock,
-		Binding: record.Binding{Kind: record.KindToken, ListID: "v1", Index: 1},
-	}); err != nil {
-		t.Fatalf("append: %v", err)
+// TestBuildMakesAStatusClientPerListKind: the change of a Bitstring
+// entry goes to the service of STATUS_URL, and the change of a Token
+// Status List entry, as an SD-JWT VC carries, to STATUS_TOKEN_URL.
+func TestBuildMakesAStatusClientPerListKind(t *testing.T) {
+	var mu sync.Mutex
+	got := map[string]string{}
+	backend := func(name string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			got[name] = r.URL.Path
+			mu.Unlock()
+			w.Header().Set("Content-Type", "application/proto")
+			// An empty SetStatusResponse is zero bytes.
+			w.WriteHeader(http.StatusOK)
+		}))
 	}
-	if _, err := a.Service.Revoke(context.Background(), connect.NewRequest(&issuedv1.RevokeRequest{
-		Id: "a", Status: issuedv1.Status_STATUS_SUSPENDED, Reason: "review",
-	})); err != nil {
-		t.Fatalf("revoke: %v", err)
+	bits, token := backend("bitstring"), backend("token")
+	defer bits.Close()
+	defer token.Close()
+	a := build(t, map[string]string{"VCA_ISSUED_STATUS_URL": bits.URL + "/", "VCA_ISSUED_STATUS_TOKEN_URL": token.URL + "/"}, app.Deps{})
+	for id, kind := range map[string]record.StatusKind{"a": record.KindBitstring, "b": record.KindToken} {
+		if _, err := a.Service.AppendRecord(record.Record{
+			ID: id, SchemaID: "diploma", SchemaVersion: 1, SubjectRef: "ref", IssuedAt: clock,
+			Binding: record.Binding{Kind: kind, ListID: "v1", Index: 1},
+		}); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+		if _, err := a.Service.Revoke(context.Background(), connect.NewRequest(&issuedv1.RevokeRequest{
+			Id: id, Status: issuedv1.Status_STATUS_SUSPENDED, Reason: "review",
+		})); err != nil {
+			t.Fatalf("revoke %s: %v", id, err)
+		}
 	}
-	if path != "/vca.status.v1.StatusService/SetStatus" {
-		t.Errorf("path = %q", path)
+	mu.Lock()
+	defer mu.Unlock()
+	for _, name := range []string{"bitstring", "token"} {
+		if got[name] != "/vca.status.v1.StatusService/SetStatus" {
+			t.Errorf("%s service path = %q", name, got[name])
+		}
 	}
 }
 

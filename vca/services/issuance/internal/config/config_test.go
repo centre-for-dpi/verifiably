@@ -48,25 +48,26 @@ func TestLoadFillsTheDefaults(t *testing.T) {
 
 func TestLoadReadsEverySetting(t *testing.T) {
 	cfg, err := config.Load(env(map[string]string{
-		"VCA_ISSUANCE_LISTEN":          ":9000",
-		"VCA_ISSUANCE_PUBLIC_URL":      "https://issuance.example.org",
-		"VCA_ISSUANCE_ADAPTER_URL":     "http://dpg-adapter:8080",
-		"VCA_ISSUANCE_ADAPTER_NAME":    "dpg-adapter-test",
-		"VCA_ISSUANCE_SCHEMA_URL":      "http://schema:8080",
-		"VCA_ISSUANCE_STATUS_URL":      "http://status:8080",
-		"VCA_ISSUANCE_ISSUED_URL":      "http://issued:8080",
-		"VCA_ISSUANCE_DELIVERY_SENDER": "file",
-		"VCA_ISSUANCE_EMAIL_SENDER":    "log",
-		"VCA_ISSUANCE_SMS_SENDER":      "file",
-		"VCA_ISSUANCE_DELIVERY_DIR":    "/data/out",
-		"VCA_ISSUANCE_DOCUMENT_TITLE":  "Farmer Credential",
-		"VCA_ISSUANCE_DOCUMENT_ISSUER": "Ministry of Agriculture",
-		"VCA_ISSUANCE_DOCUMENT_FOOTER": "Keep this page safe.",
-		"VCA_ISSUANCE_STORE_FILE":      "/data/issuance",
-		"VCA_ISSUANCE_OFFER_TTL":       "1h",
-		"VCA_ISSUANCE_TIMEOUT":         "5s",
-		"VCA_ISSUANCE_BATCH_WORKERS":   "2",
-		"VCA_ISSUANCE_PAGE_SIZE_MAX":   "10",
+		"VCA_ISSUANCE_LISTEN":           ":9000",
+		"VCA_ISSUANCE_PUBLIC_URL":       "https://issuance.example.org",
+		"VCA_ISSUANCE_ADAPTER_URL":      "http://dpg-adapter:8080",
+		"VCA_ISSUANCE_ADAPTER_NAME":     "dpg-adapter-test",
+		"VCA_ISSUANCE_SCHEMA_URL":       "http://schema:8080",
+		"VCA_ISSUANCE_STATUS_URL":       "http://status:8080",
+		"VCA_ISSUANCE_STATUS_TOKEN_URL": "http://status-token:8085",
+		"VCA_ISSUANCE_ISSUED_URL":       "http://issued:8080",
+		"VCA_ISSUANCE_DELIVERY_SENDER":  "file",
+		"VCA_ISSUANCE_EMAIL_SENDER":     "log",
+		"VCA_ISSUANCE_SMS_SENDER":       "file",
+		"VCA_ISSUANCE_DELIVERY_DIR":     "/data/out",
+		"VCA_ISSUANCE_DOCUMENT_TITLE":   "Farmer Credential",
+		"VCA_ISSUANCE_DOCUMENT_ISSUER":  "Ministry of Agriculture",
+		"VCA_ISSUANCE_DOCUMENT_FOOTER":  "Keep this page safe.",
+		"VCA_ISSUANCE_STORE_FILE":       "/data/issuance",
+		"VCA_ISSUANCE_OFFER_TTL":        "1h",
+		"VCA_ISSUANCE_TIMEOUT":          "5s",
+		"VCA_ISSUANCE_BATCH_WORKERS":    "2",
+		"VCA_ISSUANCE_PAGE_SIZE_MAX":    "10",
 	}))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -82,6 +83,9 @@ func TestLoadReadsEverySetting(t *testing.T) {
 	}
 	if cfg.DocumentIssuer != "Ministry of Agriculture" {
 		t.Fatalf("issuer = %q", cfg.DocumentIssuer)
+	}
+	if cfg.StatusURL != "http://status:8080" || cfg.StatusTokenURL != "http://status-token:8085" {
+		t.Fatalf("status services = %q, %q", cfg.StatusURL, cfg.StatusTokenURL)
 	}
 }
 
