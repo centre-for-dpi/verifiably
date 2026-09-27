@@ -312,7 +312,12 @@ makes a tenant and a `did:key` at the first login of a holder. The store
 of the adapter keeps a hash of the pairwise subject and the tenant id
 alone. A holder call names a tenant that `Register` made, never the
 tenant of an organisation in the same agent. The data volume keeps the
-store, so a restart opens the same wallets.
+store, so a restart opens the same wallets. `Register` answers
+`Internal` when the store fails or holds a damaged record. It never
+makes a second wallet over a record it cannot read. The adapter makes
+one wallet at a time, so two first logins of one holder share a wallet.
+The record goes in with a compare and swap. When another adapter process
+stored the holder first, `Register` opens that wallet.
 
 **The agent signs the tokens.** The API key buys the token of the base
 wallet, which makes the tenants and signs a token for each. The adapter

@@ -5,9 +5,11 @@ package service_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -673,8 +675,9 @@ func TestHolderWaitsRunOut(t *testing.T) {
 	}
 }
 
-// TestRegisterOpensAStoredWalletOnly: a store that fails fails the
-// call, and a record the adapter cannot read makes a new wallet.
+// TestRegisterOpensAStoredWalletOnly: a record the adapter cannot read
+// fails the call and makes no second wallet, so the holder never loses
+// the first wallet and its credentials.
 func TestRegisterOpensAStoredWalletOnly(t *testing.T) {
 	ctx := context.Background()
 	svc, agent, kv := newHolder(t, nil)
@@ -683,11 +686,111 @@ func TestRegisterOpensAStoredWalletOnly(t *testing.T) {
 	if err != nil || len(keys) != 1 {
 		t.Fatalf("keys %v, %v", keys, err)
 	}
-	if err := kv.Put(ctx, keys[0], []byte("{")); err != nil {
-		t.Fatal(err)
+	if perr := kv.Put(ctx, keys[0], []byte("{")); perr != nil {
+		t.Fatal(perr)
 	}
-	registerHolder(t, svc)
-	if n := count(agent.Calls(), "POST /multi-tenancy/create-tenant"); n != 2 {
+	_, err = svc.Register(ctx, connect.NewRequest(&backendv1.RegisterRequest{PairwiseSubject: holderSubject}))
+	wantCode(t, err, connect.CodeInternal)
+	if n := count(agent.Calls(), "POST /multi-tenancy/create-tenant"); n != 1 {
 		t.Errorf("tenants = %d", n)
+	}
+	if raw, gerr := kv.Get(ctx, keys[0]); gerr != nil || string(raw) != "{" {
+		t.Errorf("the record changed: %q, %v", raw, gerr)
+	}
+}
+
+// failingGet is a store whose reads of holder records fail with an
+// input or output error.
+type failingGet struct{ store.KeyValue }
+
+func (f failingGet) Get(ctx context.Context, key string) ([]byte, error) {
+	if strings.HasPrefix(key, "holder/") {
+		return nil, errors.New("disk read failed")
+	}
+	return f.KeyValue.Get(ctx, key)
+}
+
+// TestRegisterStoreErrorIsInternal is finding 1 of the CREDEBL review:
+// a store that fails on the read answers Internal and makes no tenant,
+// so a stored wallet is never overwritten.
+func TestRegisterStoreErrorIsInternal(t *testing.T) {
+	ctx := context.Background()
+	kv := failingGet{store.Memory()}
+	svc, agent, _ := newHolder(t, func(o *service.Options) { o.Store = kv })
+	_, err := svc.Register(ctx, connect.NewRequest(&backendv1.RegisterRequest{PairwiseSubject: holderSubject}))
+	wantCode(t, err, connect.CodeInternal)
+	if n := count(agent.Calls(), "POST /multi-tenancy/create-tenant"); n != 0 {
+		t.Errorf("the agent made %d tenants", n)
+	}
+}
+
+// TestRegisterConcurrentFirstLogin is finding 1 of the CREDEBL review:
+// two first logins of one holder at the same time open one wallet.
+func TestRegisterConcurrentFirstLogin(t *testing.T) {
+	ctx := context.Background()
+	svc, agent, _ := newHolder(t, nil)
+	const logins = 8
+	ids := make(chan string, logins)
+	var wg sync.WaitGroup
+	for range logins {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			res, err := svc.Register(ctx, connect.NewRequest(&backendv1.RegisterRequest{PairwiseSubject: holderSubject}))
+			if err != nil {
+				ids <- "error: " + err.Error()
+				return
+			}
+			ids <- res.Msg.GetWalletId()
+		}()
+	}
+	wg.Wait()
+	close(ids)
+	seen := map[string]bool{}
+	for id := range ids {
+		seen[id] = true
+	}
+	if len(seen) != 1 {
+		t.Errorf("one holder got the wallets %v", seen)
+	}
+	if n := count(agent.Calls(), "POST /multi-tenancy/create-tenant"); n != 1 {
+		t.Errorf("the agent made %d tenants for one holder", n)
+	}
+}
+
+// casConflict is a store whose first swap of a holder record loses to
+// another adapter process, which stored the wallet of the other record.
+type casConflict struct {
+	store.KeyValue
+	winner []byte
+	once   sync.Once
+}
+
+func (c *casConflict) CompareAndSwap(ctx context.Context, key string, old, value []byte) error {
+	conflict := false
+	if strings.HasPrefix(key, "holder/") {
+		c.once.Do(func() { conflict = true })
+	}
+	if conflict {
+		if err := c.Put(ctx, key, c.winner); err != nil {
+			return err
+		}
+		return store.ErrConflict
+	}
+	return c.KeyValue.CompareAndSwap(ctx, key, old, value)
+}
+
+// TestRegisterLosesARaceToAnotherProcess: when another adapter process
+// stored the wallet of the holder first, Register opens that wallet.
+func TestRegisterLosesARaceToAnotherProcess(t *testing.T) {
+	ctx := context.Background()
+	kv := &casConflict{KeyValue: store.Memory(), winner: []byte(`{"tenant":"winner","did":"did:key:winner"}`)}
+	svc, _, _ := newHolder(t, func(o *service.Options) { o.Store = kv })
+	res, err := svc.Register(ctx, connect.NewRequest(&backendv1.RegisterRequest{PairwiseSubject: holderSubject}))
+	if err != nil || res.Msg.GetWalletId() != "winner" || res.Msg.GetHolderDid() != "did:key:winner" {
+		t.Fatalf("Register = %+v, %v", res, err)
+	}
+	if _, err := kv.Get(ctx, "wallet/winner"); err != nil {
+		t.Errorf("the winner wallet is not open: %v", err)
 	}
 }

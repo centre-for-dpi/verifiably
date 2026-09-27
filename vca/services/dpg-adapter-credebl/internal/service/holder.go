@@ -118,11 +118,14 @@ func (s *Service) Register(
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the request needs a pairwise_subject"))
 	}
 	key := holderKey(subject)
-	if raw, err := s.store.Get(ctx, key); err == nil {
-		var rec holderRecord
-		if json.Unmarshal(raw, &rec) == nil && rec.Tenant != "" {
-			return connect.NewResponse(&backendv1.RegisterResponse{WalletId: rec.Tenant, HolderDid: rec.Did}), nil
-		}
+	s.registerMu.Lock()
+	defer s.registerMu.Unlock()
+	rec, found, err := s.storedHolder(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		return connect.NewResponse(&backendv1.RegisterResponse{WalletId: rec.Tenant, HolderDid: rec.Did}), nil
 	}
 	tenant, err := s.agent.CreateTenant(ctx, s.holderLabel)
 	if err != nil {
@@ -136,10 +139,49 @@ func (s *Service) Register(
 	if err := s.store.Put(ctx, walletKey(tenant), []byte("1")); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	if err := s.store.Put(ctx, key, raw); err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+	// A second adapter process may store the holder first. Its wallet
+	// wins, and this tenant stays unused.
+	switch cerr := s.store.CompareAndSwap(ctx, key, nil, raw); {
+	case errors.Is(cerr, store.ErrConflict):
+		return s.registered(ctx, key)
+	case cerr != nil:
+		return nil, connect.NewError(connect.CodeInternal, cerr)
 	}
 	return connect.NewResponse(&backendv1.RegisterResponse{WalletId: tenant, HolderDid: did}), nil
+}
+
+// registered opens the wallet that another adapter process stored for
+// the holder first.
+func (s *Service) registered(ctx context.Context, key string) (*connect.Response[backendv1.RegisterResponse], error) {
+	rec, found, err := s.storedHolder(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, connect.NewError(connect.CodeInternal, errors.New("the wallet record of the holder went away"))
+	}
+	if err := s.store.Put(ctx, walletKey(rec.Tenant), []byte("1")); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&backendv1.RegisterResponse{WalletId: rec.Tenant, HolderDid: rec.Did}), nil
+}
+
+// storedHolder reads the record of a holder. A missing record gives
+// false. A store that fails or a record the adapter cannot read gives
+// Internal, so Register never overwrites a wallet it could not read.
+func (s *Service) storedHolder(ctx context.Context, key string) (holderRecord, bool, error) {
+	raw, err := s.store.Get(ctx, key)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return holderRecord{}, false, nil
+	case err != nil:
+		return holderRecord{}, false, connect.NewError(connect.CodeInternal, fmt.Errorf("read the wallet record: %w", err))
+	}
+	var rec holderRecord
+	if json.Unmarshal(raw, &rec) != nil || rec.Tenant == "" {
+		return holderRecord{}, false, connect.NewError(connect.CodeInternal, errors.New("the wallet record of the holder is damaged; restore it from a backup"))
+	}
+	return rec, true, nil
 }
 
 // anonCredsCredential returns the wallet credential of a finished

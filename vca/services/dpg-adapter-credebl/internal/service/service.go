@@ -97,6 +97,10 @@ type Service struct {
 	// ledgerMu guards ledgers, the ledgers of the capability answer.
 	ledgerMu sync.Mutex
 	ledgers  ledgerCache
+
+	// registerMu serialises the first login of a holder, so two logins
+	// at once make one wallet.
+	registerMu sync.Mutex
 }
 
 // New returns the service.
