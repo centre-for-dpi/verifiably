@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 )
 
 // EntryPoint is one address an operator opens after a deploy.
@@ -122,6 +123,9 @@ func EntryReport(landing string, points []EntryPoint) string {
 		for _, page := range e.Pages {
 			fmt.Fprintf(&b, "    %-22s %-19s %s\n", page.Title, page.Service, page.URL)
 		}
+		if line := signInLine(e); line != "" {
+			fmt.Fprintf(&b, "    %s\n", line)
+		}
 		if !e.Local {
 			public = true
 		}
@@ -146,11 +150,85 @@ func EntryReport(landing string, points []EntryPoint) string {
 			}
 		}
 	}
+	b.WriteString(firstRun(landing, points))
 	if public {
 		b.WriteString("The public names answer once the reverse proxy of the host has the snippet:\n")
 		b.WriteString("  vca proxy --all | sudo tee /etc/caddy/vca.caddy >/dev/null\n")
 		b.WriteString("  echo 'import /etc/caddy/vca.caddy' | sudo tee -a /etc/caddy/Caddyfile\n")
 		b.WriteString("  sudo systemctl reload caddy\n")
+	}
+	return b.String()
+}
+
+// signInPage returns the page where a person of the pair signs in: the
+// page titled "Sign in" when the pair has one, else its home page.
+func signInPage(e EntryPoint) string {
+	for _, page := range e.Pages {
+		if page.Title == signInTitle {
+			return page.URL
+		}
+	}
+	if len(e.Pages) > 0 {
+		return e.Pages[0].URL
+	}
+	return e.URL
+}
+
+// signInTitle is the page title of the login service of a pair.
+const signInTitle = "Sign in"
+
+// BootstrapTokenEnv is the variable of the .env of an admin pair that
+// holds the one time token which binds the first admin.
+const BootstrapTokenEnv = "VCA_SECRETS_BOOTSTRAP_TOKEN" //nolint:gosec // G101: this is a variable name, not a credential.
+
+// signInLine names the realm of a pair at the Keycloak of its stack, or
+// the provider it signs in with, and the page where a person signs in
+// (P7-01, ADR-035 decision 1).
+func signInLine(e EntryPoint) string {
+	switch {
+	case e.Console != "":
+		return fmt.Sprintf("realm %s, sign in at %s", RealmName(e.Pair.Role), signInPage(e))
+	case e.Login != "":
+		return fmt.Sprintf("provider %s, sign in at %s", e.Login, signInPage(e))
+	}
+	return ""
+}
+
+// firstRun lists the first run steps of the pairs in order: open the
+// landing, bind the first admin with the bootstrap token, run the
+// bootstrap of each pair, and turn self registration off in each realm
+// once the first people signed up (P7-01, ADR-035 decisions 1 and 6).
+func firstRun(landing string, points []EntryPoint) string {
+	var steps []string
+	if landing != "" {
+		steps = append(steps, fmt.Sprintf("Open %s and pick a role.", landing))
+	}
+	var bootstraps, realms []string
+	for _, e := range points {
+		dpg, role := ShortName(e.Pair.Dpg.String()), ShortName(e.Pair.Role.String())
+		if e.Pair.Role == commonv1.Role_ROLE_ADMIN {
+			steps = append(steps, fmt.Sprintf("Bind the first admin at %s with %s of deploy/%s/%s.",
+				signInPage(e), BootstrapTokenEnv, e.Pair.Name(), EnvFileName))
+		} else {
+			bootstraps = append(bootstraps, fmt.Sprintf("vca dpg bootstrap %s --role %s", dpg, role))
+		}
+		if e.Console != "" {
+			realms = append(realms, fmt.Sprintf("vca dpg realm --role %s --dpg %s --registration off", role, dpg))
+		}
+	}
+	if len(bootstraps) > 0 {
+		steps = append(steps, "Run the bootstrap of each pair once: "+strings.Join(bootstraps, "\n     "))
+	}
+	if len(realms) > 0 {
+		steps = append(steps, "After the first sign ups, turn self registration off: "+strings.Join(realms, "\n     "))
+	}
+	if len(steps) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("First run\n")
+	for i, s := range steps {
+		fmt.Fprintf(&b, "  %d. %s\n", i+1, s)
 	}
 	return b.String()
 }

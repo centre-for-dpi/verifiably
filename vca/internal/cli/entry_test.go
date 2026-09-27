@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 )
 
 // writePairEnv writes a .env file and a Caddyfile for one pair.
@@ -271,5 +273,56 @@ func TestProxySnippetHoldsTheLandingSite(t *testing.T) {
 	}
 	if _, _, err := ProxySnippet(t.TempDir(), []Pair{p}); err != nil {
 		t.Errorf("a root without a landing file: %v", err)
+	}
+}
+
+// TestEntryReportNamesRealmsAndFirstRun is P7-01: after the landing and
+// the pages, the report names the realm and the sign in page of every
+// pair, and the first run steps in order: the landing, the bind of the
+// first admin, the bootstrap of each stack, and the end of self
+// registration.
+func TestEntryReportNamesRealmsAndFirstRun(t *testing.T) {
+	root := t.TempDir()
+	d := dpgWaltid(t)
+	admin, issuer := Pair{Role: commonv1.Role_ROLE_ADMIN, Dpg: d}, Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: d}
+	for _, p := range []Pair{admin, issuer} {
+		writePairEnv(t, root, p,
+			"VCA_PUBLIC_URL=https://"+p.Name()+".labs.example\nVCA_OIDC_PUBLIC_URL=https://waltid-keycloak.labs.example\n"+
+				"VCA_OIDC_DISCOVERY_URL="+DefaultDiscoveryURL(p)+"\n", "")
+	}
+	verifier := Pair{Role: commonv1.Role_ROLE_VERIFIER, Dpg: d}
+	writePairEnv(t, root, verifier,
+		"VCA_PUBLIC_URL=https://verifier-waltid.labs.example\nVCA_OIDC_PUBLIC_URL=https://idp.example\n"+
+			"VCA_OIDC_DISCOVERY_URL=https://idp.example/.well-known/openid-configuration\n", "")
+	points, err := EntryPoints(root, []Pair{admin, issuer, verifier})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := EntryReport("https://vca.labs.example", points)
+	for _, want := range []string{
+		"  admin-waltid\n", "    realm vca-admin-realm, sign in at https://admin-waltid.labs.example/admin/\n",
+		"    realm vca-issuer-realm, sign in at https://issuer-waltid.labs.example/auth/\n",
+		"    provider https://idp.example, sign in at https://verifier-waltid.labs.example/auth/\n",
+		"First run\n",
+		"  1. Open https://vca.labs.example and pick a role.\n",
+		"  2. Bind the first admin at https://admin-waltid.labs.example/admin/ with VCA_SECRETS_BOOTSTRAP_TOKEN of deploy/admin-waltid/.env.\n",
+		"  3. Run the bootstrap of each pair once: vca dpg bootstrap waltid --role issuer\n     vca dpg bootstrap waltid --role verifier\n",
+		"  4. After the first sign ups, turn self registration off: vca dpg realm --role admin --dpg waltid --registration off\n",
+		"     vca dpg realm --role issuer --dpg waltid --registration off\n",
+	} {
+		if !strings.Contains(report, want) {
+			t.Errorf("report has no %q:\n%s", want, report)
+		}
+	}
+	if strings.Contains(report, "--role verifier --dpg waltid --registration off") || strings.Contains(report, "bootstrap waltid --role admin") {
+		t.Errorf("the report names a step that does not apply:\n%s", report)
+	}
+	if strings.Index(report, "First run") < strings.Index(report, "Open\n") {
+		t.Errorf("the first run steps come after the pages:\n%s", report)
+	}
+	// Without a landing and an admin pair the steps start at the stack.
+	alone := EntryReport("", points[1:2])
+	if !strings.Contains(alone, "First run\n  1. Run the bootstrap of each pair once: vca dpg bootstrap waltid --role issuer\n") || strings.Contains(alone, "Bind the first admin") {
+		t.Errorf("report of one pair:\n%s", alone)
 	}
 }

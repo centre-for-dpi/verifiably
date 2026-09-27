@@ -157,6 +157,16 @@ Under a base domain the landing answers at `https://vca.<domain>`.
 On a laptop it answers at `http://localhost:17900`.
 The deploy report names it first, under "Start here".
 
+The report then lists the pages of each pair.
+Under the pages it names the realm of the pair, such as `vca-issuer-realm`, and its sign in page.
+A pair with another login provider names that provider instead.
+A "First run" list closes the report:
+
+1. Open the landing and pick a role.
+2. Bind the first admin with `VCA_SECRETS_BOOTSTRAP_TOKEN` of the `.env` of the admin pair.
+3. Run `vca dpg bootstrap <dpg> --role <role>` once for each other pair.
+4. After the first sign ups, turn self registration off with `vca dpg realm`.
+
 ### Ports
 
 Several services share a port in their `EXPOSE` line.
