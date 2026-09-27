@@ -106,6 +106,10 @@ func (s *Service) presentOid4vp(ctx context.Context, tenant, uri string, msg *ba
 	if err != nil {
 		return nil, err
 	}
+	// The agent accepts a request by its address only, so it fetches
+	// the request object again. The request host allowlist of the
+	// portal bounds who can serve a different query on that fetch
+	// (ADR-063 decision 3).
 	answer, err := s.agent.AcceptOid4vpRequest(ctx, tenant, uri)
 	if err != nil {
 		return nil, failed("answer the request", err)

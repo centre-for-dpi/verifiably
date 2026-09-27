@@ -343,6 +343,16 @@ required. `Present` refuses with `FailedPrecondition` when the ticked
 claims leave out a claim the agent sends. `shared_claims` name the claims
 the agent sends (ADR-063 decision 1).
 
+**The agent fetches an OID4VP request once more to answer it.** The
+consent screen of the portal reads the `request_uri` first. The adapter
+resolves it again to check the picks and the claims. The agent then
+fetches it a third time for the answer, because it accepts a request by
+its address only. A verifier could serve a narrow query on the first
+fetches and a wide one on the last. Only a host on the `REQUEST_HOSTS`
+allowlist of the portal gets that far, so keep the allowlist short. The
+adapter closes the gap when the agent accepts a request by the id of the
+resolved request (ADR-063 decision 3).
+
 **An AnonCreds credential reads from its exchange.** The agent lists no
 AnonCreds credential. The finished exchange holds the values of the
 offer and the schema and the credential definition. The adapter returns
