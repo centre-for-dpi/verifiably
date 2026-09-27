@@ -36,7 +36,6 @@ Set at least one walt.id URL. Each URL turns on one role.
 | `VCA_WALTID_KEYCLOAK_VERSION` | The Keycloak release of the stack. The default is `25.0`. |
 | `VCA_WALTID_ISSUER_DID` | The signing DID. Empty onboards one at first use. |
 | `VCA_WALTID_ISSUER_KEY` | The signing key as a JSON web key wrapper. It is a secret. |
-| `VCA_WALTID_VCT_BASE` | The base URL of the `vct` of a custom SD-JWT credential. |
 | `VCA_WALTID_TIMEOUT` | The bound of one call to walt.id. The default is `30s`. |
 | `VCA_WALTID_RETRIES` | The number of extra attempts. The default is `2`. |
 | `VCA_WALTID_MAX_BYTES` | The bound of a response body. The default is 8 megabytes. |

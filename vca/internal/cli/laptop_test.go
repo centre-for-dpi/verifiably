@@ -3,6 +3,8 @@
 package cli
 
 import (
+	"crypto/rand"
+	"strings"
 	"testing"
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -57,5 +59,21 @@ func TestSetupNamesTheIssuingAdapter(t *testing.T) {
 		if got, want := env["VCA_ISSUANCE_ADAPTER_NAME"], "dpg-adapter-"+ShortName(dpg.String()); got != want {
 			t.Errorf("%s: VCA_ISSUANCE_ADAPTER_NAME = %q, want %q", pair.Name(), got, want)
 		}
+	}
+}
+
+// TestSetupRefusesTheRetiredVctBase: a --set flag or an env file that
+// still names VCA_WALTID_VCT_BASE stops setup with a clear message, as
+// the adapter would refuse to start.
+func TestSetupRefusesTheRetiredVctBase(t *testing.T) {
+	flags := baseFlags()
+	flags[RetiredVctBase] = "https://vca.example"
+	_, err := BuildPlan(SetupRequest{Pair: issuerPair(), Flags: flags, Random: rand.Reader})
+	if err == nil || !strings.Contains(err.Error(), RetiredVctBase+" is retired") {
+		t.Fatalf("BuildPlan = %v, want the retired setting named", err)
+	}
+	_, err = BuildPlan(SetupRequest{Pair: issuerPair(), Flags: baseFlags(), File: map[string]string{RetiredVctBase: "https://vca.example"}, Random: rand.Reader})
+	if err == nil {
+		t.Fatal("an env file with the retired setting passed")
 	}
 }

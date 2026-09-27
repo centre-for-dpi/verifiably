@@ -113,6 +113,17 @@ the browser to `/verification-session/{id}/response` of the browser
 session. `GetResult` reads both sessions. The first session with an
 answer decides. The request expires when both expire.
 
+## The vct of an SD-JWT credential
+
+The `vct` of an SD-JWT credential is the type that the schema registry
+names. A verifier query filters on that type, so every stack agrees on
+it. The retired setting `VCA_WALTID_VCT_BASE` built another `vct`, and
+no query found such a credential. An adapter whose `.env` still names
+it stops at start with a message. Setup refuses the setting too, and a
+new setup run drops the line of an old `.env`. A configuration that the
+adapter registered with that setting keeps its `vct` until the issuer
+publishes the schema again.
+
 ## Issuance sessions and callbacks
 
 The issue request can carry the header `statusCallbackUri`. The issuer

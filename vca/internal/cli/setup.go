@@ -142,6 +142,9 @@ func (e *InvalidValuesError) Error() string {
 // higher sources left open, generates the secrets, and renders every file.
 // It writes nothing.
 func BuildPlan(req SetupRequest) (Plan, error) {
+	if err := refuseRetired(req.Flags, req.File); err != nil {
+		return Plan{}, err
+	}
 	settings := Filter(Settings(), req.Pair.Role, req.Pair.Dpg)
 	src := Sources{
 		Flags:    req.Flags,
@@ -698,4 +701,22 @@ func WritePlan(root string, p Plan) ([]string, error) {
 		written = append(written, theme)
 	}
 	return written, nil
+}
+
+// RetiredVctBase names a setting of the walt.id adapter that no release
+// reads any more. Its vct differed from the type of the schema
+// registry, so a verifier query found no credential.
+const RetiredVctBase = "VCA_WALTID_VCT_BASE"
+
+// refuseRetired stops a run whose flags or env file still name a
+// retired setting. Setup drops the line of an old .env by itself,
+// since it writes only the settings it knows.
+func refuseRetired(sources ...map[string]string) error {
+	for _, src := range sources {
+		if strings.TrimSpace(src[RetiredVctBase]) != "" {
+			return fmt.Errorf("%s is retired: the vct of an SD-JWT credential is the type the schema registry names. "+
+				"Remove it from the --set flags and the env file, then run vca setup again", RetiredVctBase)
+		}
+	}
+	return nil
 }

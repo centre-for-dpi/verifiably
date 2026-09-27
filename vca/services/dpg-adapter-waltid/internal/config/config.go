@@ -7,6 +7,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/waltid"
@@ -47,8 +48,6 @@ type Config struct {
 	// or imports, with mode 0600 (ADR-046 decision 4). The adapter reads
 	// it at start. Empty keeps the identity in memory.
 	IdentityFile string `env:"IDENTITY_FILE"`
-	// VctBase is the base URL of the vct of a custom SD-JWT credential.
-	VctBase string `env:"VCT_BASE"`
 	// Timeout bounds one call to walt.id.
 	Timeout time.Duration `env:"TIMEOUT" default:"30s"`
 	// Retries is the number of extra attempts after a failed call.
@@ -87,6 +86,12 @@ func Load(getenv func(string) string) (Config, error) {
 	var c Config
 	if err := shared.Load(Prefix, &c, getenv); err != nil {
 		return Config{}, err
+	}
+	if strings.TrimSpace(getenv(Prefix+"VCT_BASE")) != "" {
+		// The vct of a credential is the type of the schema registry, so
+		// every stack and every verifier query agree on it.
+		return Config{}, fmt.Errorf("config: %sVCT_BASE is retired: the vct of an SD-JWT credential is the type "+
+			"the schema registry names. Remove the line from the .env of the pair, or run vca setup again", Prefix)
 	}
 	if c.IssuerURL == "" && c.VerifierURL == "" && c.Verifier2URL == "" && c.WalletURL == "" {
 		return Config{}, fmt.Errorf("config: set at least one of %sISSUER_URL, %sVERIFIER_URL, %sVERIFIER2_URL, or %sWALLET_URL",

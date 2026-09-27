@@ -59,7 +59,6 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Store:           backend,
 		DpgVersion:      cfg.DpgVersion,
 		StandardVersion: cfg.StandardVersion,
-		VctBase:         cfg.VctBase,
 		Versions:        cfg.Versions(),
 		IdentityFile:    cfg.IdentityFile,
 		KeyStore:        cfg.KeyStore(),

@@ -41,7 +41,6 @@ func TestLoadReadsEverySetting(t *testing.T) {
 		"VCA_WALTID_DPG_VERSION":      "0.19.0",
 		"VCA_WALTID_ISSUER_DID":       "did:web:issuer.example",
 		"VCA_WALTID_ISSUER_KEY":       `{"type":"jwk"}`,
-		"VCA_WALTID_VCT_BASE":         "https://vca.example",
 		"VCA_WALTID_TIMEOUT":          "5s",
 		"VCA_WALTID_RETRIES":          "0",
 		"VCA_WALTID_MAX_BYTES":        "1024",
@@ -212,5 +211,20 @@ func TestLoadReadsTheKeyStore(t *testing.T) {
 		if _, err := config.Load(env(with(extra))); err == nil {
 			t.Errorf("%s: Load accepted it", name)
 		}
+	}
+}
+
+// TestLoadRefusesTheRetiredVctBase: VCA_WALTID_VCT_BASE made a vct that
+// differs from the type of the schema registry, so a verifier found no
+// credential. An old .env that still names it stops the adapter with a
+// message that says what to do.
+func TestLoadRefusesTheRetiredVctBase(t *testing.T) {
+	_, err := config.Load(env(map[string]string{
+		"VCA_WALTID_ISSUER_URL": "http://issuer-api:7002",
+		"VCA_WALTID_VCT_BASE":   "https://vca.example",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "VCA_WALTID_VCT_BASE is retired") ||
+		!strings.Contains(err.Error(), "vca setup") {
+		t.Fatalf("error = %v, want the retired setting and the way out", err)
 	}
 }

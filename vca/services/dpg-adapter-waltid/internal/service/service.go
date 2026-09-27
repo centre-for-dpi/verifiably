@@ -41,8 +41,6 @@ type Options struct {
 	DpgVersion string
 	// StandardVersion is the OID4VCI draft name walt.id serves.
 	StandardVersion string
-	// VctBase is the base URL of the vct of a custom SD-JWT credential.
-	VctBase string
 	// PageSizeMax caps a list page.
 	PageSizeMax int
 	// Versions maps each stack component onto its pinned version for
@@ -72,7 +70,6 @@ type Service struct {
 	store           store.KeyValue
 	dpgVersion      string
 	standardVersion string
-	vctBase         string
 	pageSizeMax     int
 	versions        map[string]string
 	now             func() time.Time
@@ -111,7 +108,6 @@ func New(opts Options) (*Service, error) {
 		store:           opts.Store,
 		dpgVersion:      opts.DpgVersion,
 		standardVersion: opts.StandardVersion,
-		vctBase:         strings.TrimRight(opts.VctBase, "/"),
 		pageSizeMax:     opts.PageSizeMax,
 		versions:        opts.Versions,
 		now:             opts.Now,
@@ -296,7 +292,7 @@ func (s *Service) RegisterCredentialConfiguration(
 	reg := registration{ID: cfg.GetId(), Display: cfg.GetDisplay(), ConfigurationID: configurationID, Format: string(format)}
 	switch {
 	case waltid.IsSdJwt(format):
-		reg.Vct = s.vctFor(cfg)
+		reg.Vct = vctFor(cfg)
 	case format == waltid.FormatMsoMdoc:
 		reg.Doctype = cfg.GetType()
 	default:
@@ -312,14 +308,10 @@ func (s *Service) RegisterCredentialConfiguration(
 	return connect.NewResponse(&backendv1.RegisterCredentialConfigurationResponse{Id: cfg.GetId()}), nil
 }
 
-// vctFor returns the SD-JWT VC type of one configuration. Every adapter
-// must agree on the same value, or the verifier filter finds nothing.
-func (s *Service) vctFor(cfg *backendv1.CredentialConfiguration) string {
-	if s.vctBase == "" {
-		return cfg.GetType()
-	}
-	return s.vctBase + "/credentials/" + cfg.GetId()
-}
+// vctFor returns the SD-JWT VC type of one configuration: the type the
+// schema registry names. Every adapter must agree on the same value, or
+// the verifier filter finds nothing.
+func vctFor(cfg *backendv1.CredentialConfiguration) string { return cfg.GetType() }
 
 // wireFormat maps a contract format onto the walt.id wire format.
 func wireFormat(f commonv1.Format) (waltid.Format, error) {

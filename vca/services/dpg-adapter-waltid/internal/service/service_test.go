@@ -72,7 +72,6 @@ func newService(t *testing.T, r roles) (*service.Service, *fake.Server) {
 			"issuer-api": "0.18.2", "verifier-api": "0.18.2", "wallet-api": "0.18.2", "keycloak": "25.0",
 			"verifier-api2": "0.18.2",
 		},
-		VctBase:     "https://issuer.example.org",
 		PageSizeMax: 1,
 		Now:         func() time.Time { return time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC) },
 	})
@@ -400,8 +399,10 @@ func TestCreateOfferUsesTheSdJwtPathAndSetsTheDisclosureMap(t *testing.T) {
 	if body["authenticationMethod"] != "PRE_AUTHORIZED" {
 		t.Fatalf("authentication method = %v", body["authenticationMethod"])
 	}
-	if body["vct"] != "https://issuer.example.org/credentials/identity-2026" {
-		t.Fatalf("vct = %v", body["vct"])
+	// The vct is the type the schema registry names, so the filter of a
+	// verifier query finds the credential on every stack.
+	if body["vct"] != "IdentityCredential" {
+		t.Fatalf("vct = %v, want the type of the registry", body["vct"])
 	}
 	sd := mustAs[map[string]any](t, body["selectiveDisclosure"])
 	fields := mustAs[map[string]any](t, sd["fields"])
