@@ -1815,6 +1815,10 @@ message ProofSchema {
   // The ids of the credential definitions of the schema that the DPG
   // knows.
   repeated string credential_definitions = 7;
+  // The data type of each attribute, such as string or number, by
+  // attribute name. A predicate compares a number only. An attribute
+  // the map leaves out has an unknown type.
+  map<string, string> attribute_types = 8;
 }
 
 // VerifyCredentialRequest carries one input as the staff member gave it.

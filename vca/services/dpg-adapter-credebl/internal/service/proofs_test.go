@@ -409,7 +409,7 @@ func TestListProofSchemas(t *testing.T) {
 	s := got[0]
 	if s.GetId() != proofSchemaID || s.GetName() != "Farmer" || s.GetVersion() != "1.0" ||
 		!slices.Equal(s.GetAttributes(), []string{"fullName", "acres"}) || s.GetOrganisation() != "[organisation]" ||
-		!slices.Equal(s.GetCredentialDefinitions(), []string{proofCredDef}) || s.GetIssuerDid() != proofIssuer {
+		!slices.Equal(s.GetCredentialDefinitions(), []string{proofCredDef}) || s.GetAttributeTypes()["acres"] != "number" || s.GetIssuerDid() != proofIssuer {
 		t.Errorf("schema = %v", s)
 	}
 	if q := f.Query("/v1/platform/schemas"); !strings.Contains(q, "schemaType=indy") {

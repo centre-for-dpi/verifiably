@@ -35,6 +35,7 @@ func credeblSchemas(context.Context) []portal.StackSchemas {
 	return []portal.StackSchemas{{Stack: "CREDEBL", Schemas: []*backendv1.ProofSchema{{
 		Id: farmerSchemaID, Name: "Farmer", Version: "1.0", Attributes: []string{"fullName", "acres"},
 		IssuerDid: "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS", Organisation: "Ministry of Agriculture",
+		AttributeTypes:        map[string]string{"fullName": "string", "acres": "number"},
 		CredentialDefinitions: []string{farmerCredDef},
 	}}}}
 }
@@ -81,8 +82,11 @@ func TestAnonCredsBuilderPredicates(t *testing.T) {
 		t.Fatalf("builder: %d %s", start.Code, body)
 	}
 	a11ytest.AssertPage(t, body)
+	if strings.Contains(body, `name="op:fullName"`) {
+		t.Error("a text attribute offers a predicate")
+	}
 	for _, want := range []string{
-		`<form method="post" action="/discovery/anoncreds/"`, `hx-post="/discovery/anoncreds/preview"`,
+		`<form method="post" action="/discovery/anoncreds/"`, "Farmer 1.0 of Ministry of Agriculture.", `hx-post="/discovery/anoncreds/preview"`,
 		"Farmer 1.0, CREDEBL", "fullName", "acres", "Ministry of Agriculture", `name="op:acres"`, `name="value:acres"`,
 		`href="/discovery/dcql/"`, `href="/discovery/pe/"`, `name="action" value="save"`,
 	} {

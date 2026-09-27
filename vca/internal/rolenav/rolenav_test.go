@@ -206,3 +206,29 @@ func TestVerifierNavFollowsTheBoard(t *testing.T) {
 		t.Fatalf("verifier nav %s, want %s", strings.Join(got, ", "), want)
 	}
 }
+
+// TestVerifierNavShowsAnonCredsOnlyWithFeature is ADR-061 decision 4:
+// the AnonCreds builder joins the query pages only when a live verifier
+// pair lists FEATURE_ANONCREDS_PROOF.
+func TestVerifierNavShowsAnonCredsOnlyWithFeature(t *testing.T) {
+	labels := func(has Has) string {
+		var got []string
+		for _, s := range Nav(commonv1.Role_ROLE_VERIFIER, has, "/discovery/anoncreds/") {
+			for _, l := range s.Links {
+				text := l.Text
+				if l.Current {
+					text += "*"
+				}
+				got = append(got, text)
+			}
+		}
+		return strings.Join(got, ", ")
+	}
+	anon := func(f backendv1.Feature) bool { return f == backendv1.Feature_FEATURE_ANONCREDS_PROOF }
+	if got := labels(anon); got != "Overview, Discover schemas, DCQL builder, DIF PE queries, AnonCreds queries*, Requests, Results, Caching, Help" {
+		t.Errorf("with the feature: %s", got)
+	}
+	if got := labels(nil); strings.Contains(got, "AnonCreds") {
+		t.Errorf("without the feature: %s", got)
+	}
+}

@@ -465,6 +465,12 @@ func (s *Service) ListProofSchemas(
 		}
 		for _, a := range sc.Attributes {
 			item.Attributes = append(item.Attributes, a.Name)
+			if a.Type != "" {
+				if item.AttributeTypes == nil {
+					item.AttributeTypes = map[string]string{}
+				}
+				item.AttributeTypes[a.Name] = a.Type
+			}
 		}
 		if sc.Organisation != nil {
 			item.Organisation = sc.Organisation.Name

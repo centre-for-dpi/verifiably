@@ -182,7 +182,7 @@ func (st anonState) draft(choice schemaChoice, ok bool) (tmpl.Template, string) 
 			revealed = append(revealed, a)
 		}
 		op := st.ops[a]
-		if op == "" {
+		if op == "" || !comparable(choice.schema, a) {
 			continue
 		}
 		n, err := strconv.ParseInt(st.values[a], 10, 64)
@@ -368,6 +368,9 @@ func (p *Portal) anonAttributesCard(b *blocks, st anonState, choice schemaChoice
 	var predicates []template.HTML
 	for i, a := range s.GetAttributes() {
 		options = append(options, components.ChoiceOption{Value: a, Title: a, Text: msg.T("verifier.anoncreds.attribute.text"), Checked: st.reveal[a]})
+		if !comparable(s, a) {
+			continue
+		}
 		id := strconv.Itoa(i + 1)
 		ops := []components.Option{{Value: "", Text: msg.T("verifier.anoncreds.op.none.label"), Selected: st.ops[a] == ""}}
 		for _, op := range anoncreds.Ops {
@@ -382,9 +385,10 @@ func (p *Portal) anonAttributesCard(b *blocks, st anonState, choice schemaChoice
 	for _, d := range s.GetCredentialDefinitions() {
 		defs = append(defs, components.Option{Value: d, Text: d, Selected: d == st.credDef})
 	}
-	about := msg.T("verifier.anoncreds.schema.about", s.GetId(), s.GetOrganisation(), s.GetIssuerDid())
+	about := msg.T("verifier.anoncreds.schema.about", s.GetName()+" "+s.GetVersion(), s.GetOrganisation())
 	return b.add("card", components.Card{ID: "anoncreds-attribute-card", Title: msg.T("verifier.anoncreds.attributes.label"), Text: about,
 		Body: components.Join(
+			b.add("code", components.Code{ID: "anoncreds-schema-id", Label: "schema_id", Text: s.GetId()}),
 			b.add("choice", components.Choice{ID: "reveal", Legend: msg.T("verifier.anoncreds.reveal.label"), Hint: msg.T("verifier.anoncreds.reveal.hint"),
 				Multiple: true, Options: options}),
 			b.add("fieldset", components.Fieldset{ID: "predicates", Legend: msg.T("verifier.anoncreds.predicates.label"),
@@ -392,6 +396,16 @@ func (p *Portal) anonAttributesCard(b *blocks, st anonState, choice schemaChoice
 			b.add("field", components.Field{ID: "creddef", Label: msg.T("verifier.anoncreds.creddef.label"), Type: "select", Options: defs,
 				Hint: msg.T("verifier.anoncreds.creddef.hint")}),
 		)})
+}
+
+// comparable reports whether a predicate can compare an attribute: a
+// number, or an attribute whose type the stack does not name.
+func comparable(s *backendv1.ProofSchema, attribute string) bool {
+	switch s.GetAttributeTypes()[attribute] {
+	case "", "number", "integer":
+		return true
+	}
+	return false
 }
 
 // anonCredsBlock renders the stored AnonCreds request of a native query

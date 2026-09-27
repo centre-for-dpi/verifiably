@@ -337,6 +337,7 @@ type PlatformSchema struct {
 	// Attributes are the attributes of the schema.
 	Attributes []struct {
 		Name string `json:"attributeName"`
+		Type string `json:"schemaDataType"`
 	} `json:"attributes"`
 	// Organisation names the organisation that wrote the schema.
 	Organisation *struct {

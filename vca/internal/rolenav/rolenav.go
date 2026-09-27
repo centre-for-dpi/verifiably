@@ -116,6 +116,7 @@ func Sections(role commonv1.Role) []Section {
 			{Path: "/discovery/", Key: "verifier.nav.discover.label"},
 			{Path: "/discovery/dcql/", Key: "verifier.nav.dcql.label"},
 			{Path: "/discovery/pe/", Key: "verifier.nav.pe.label"},
+			{Path: "/discovery/anoncreds/", Key: "verifier.nav.anoncreds.label", Feature: backendv1.Feature_FEATURE_ANONCREDS_PROOF},
 			{Path: "/scan/", Key: "verifier.nav.requests.label"},
 			{Path: "/portal/results/", Key: "verifier.nav.results.label"},
 			{Path: "/portal/cache/", Key: "verifier.nav.cache.label"},

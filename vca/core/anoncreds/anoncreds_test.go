@@ -68,7 +68,7 @@ func TestJSONIsTheProofRequestOfTheSpecification(t *testing.T) {
 	if p1.Name != "acres" || p1.Type != ">=" || p1.Value != 10 || len(p1.Restrictions) != 1 || p1.Restrictions[0]["cred_def_id"] != "" {
 		t.Errorf("pred1 = %+v", p1)
 	}
-	if !strings.Contains(string(r.JSON()), `"requested_predicates"`) {
+	if !strings.Contains(string(r.JSON()), `"p_type":">="`) {
 		t.Errorf("json = %s", r.JSON())
 	}
 }

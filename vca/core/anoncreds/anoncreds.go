@@ -11,6 +11,7 @@
 package anoncreds
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -197,10 +198,15 @@ func (r Request) JSON() []byte {
 	for i, p := range r.Predicates {
 		predicates["pred"+strconv.Itoa(i+1)] = specPredicate{Name: p.Name, Type: p.Op, Value: p.Value, Restrictions: p.Restriction.list()}
 	}
-	// Maps of plain structs always encode.
-	return anyval.Must(json.Marshal(map[string]any{
+	// The operators stay as they are, not as HTML escapes. Maps of plain
+	// structs always encode.
+	var out bytes.Buffer
+	enc := json.NewEncoder(&out)
+	enc.SetEscapeHTML(false)
+	anyval.MustDo(enc.Encode(map[string]any{
 		"name": r.Name, "version": r.Version, "requested_attributes": attributes, "requested_predicates": predicates,
 	}))
+	return bytes.TrimRight(out.Bytes(), "\n")
 }
 
 // Names returns every attribute name of the request in order: the
