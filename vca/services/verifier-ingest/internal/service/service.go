@@ -210,6 +210,10 @@ func (s *Service) CreateOid4VpRequest(ctx context.Context, req *connect.Request[
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			errors.New("service: the VCA verifier has no Digital Credentials API flow; send the request through a stack that lists it"))
 	}
+	if isNative(t) || req.Msg.GetDidcomm() || req.Msg.GetConnectionId() != "" {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("service: the VCA verifier speaks no DIDComm, so send the query %q through a stack that asks over DIDComm", t.GetId()))
+	}
 	if !VCAReads(t) {
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("service: the query %q has no DCQL form, so send it through a stack that reads PE", t.GetId()))
@@ -314,6 +318,8 @@ func (s *Service) GetTransaction(ctx context.Context, req *connect.Request[inges
 		Error:           record.Error,
 		StackChecks:     stackChecks(record.StackChecks),
 		DcApiRequest:    record.DcAPIRequest,
+		Didcomm:         record.Didcomm,
+		ConnectionId:    record.ConnectionID,
 	}), nil
 }
 
@@ -371,6 +377,8 @@ func ProtoFormat(name string) commonv1.Format {
 		return commonv1.Format_FORMAT_LDP_VC
 	case "mso_mdoc":
 		return commonv1.Format_FORMAT_MSO_MDOC
+	case "anoncreds":
+		return commonv1.Format_FORMAT_ANONCREDS
 	}
 	return commonv1.Format_FORMAT_UNSPECIFIED
 }

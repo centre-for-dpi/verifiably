@@ -14,6 +14,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anoncreds"
 	"github.com/centre-for-dpi/vc-adapters/core/dcql"
 	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	"github.com/centre-for-dpi/vc-adapters/core/pex"
@@ -53,6 +54,46 @@ type Stack struct {
 // Digital Credentials API.
 func (st Stack) DcAPI() bool {
 	return slices.Contains(st.Features, backendv1.Feature_FEATURE_DC_API_VERIFY)
+}
+
+// Didcomm reports whether the adapter of the stack asks for a proof
+// over DIDComm (ADR-061 decision 1).
+func (st Stack) Didcomm() bool {
+	return slices.Contains(st.Protocols, backendv1.Protocol_PROTOCOL_DIDCOMM_PRESENT_V2)
+}
+
+// AnonCreds reports whether the adapter of the stack asks for AnonCreds
+// proofs with predicates (ADR-061 decision 2).
+func (st Stack) AnonCreds() bool {
+	return st.Didcomm() && slices.Contains(st.Features, backendv1.Feature_FEATURE_ANONCREDS_PROOF)
+}
+
+// DidcommCarrierName is the carrier word of a stored result of a
+// request over DIDComm.
+const DidcommCarrierName = "didcomm"
+
+// isNative reports whether a template holds an AnonCreds proof request.
+func isNative(t *discoveryv1.PresentationTemplate) bool {
+	return t.GetKind() == discoveryv1.TemplateKind_TEMPLATE_KIND_NATIVE
+}
+
+// DidcommQueryFor returns what a stack gets for a template over DIDComm
+// (ADR-061 decision 5): the AnonCreds proof request of a native template
+// when the adapter lists FEATURE_ANONCREDS_PROOF, the definition of a PE
+// template, or the PE form of a DCQL template that loses nothing. ok is
+// false when the stack asks for no proof over DIDComm or reads neither.
+func DidcommQueryFor(t *discoveryv1.PresentationTemplate, st Stack) (peText, anonText string, ok bool) {
+	if !st.Didcomm() {
+		return "", "", false
+	}
+	if isNative(t) {
+		if !st.AnonCreds() || t.GetAnoncreds() == nil {
+			return "", "", false
+		}
+		return "", string(anoncreds.FromProto(t.GetAnoncreds()).JSON()), true
+	}
+	_, peText, ok = QueryFor(t, []backendv1.Protocol{backendv1.Protocol_PROTOCOL_OID4VP_PEX})
+	return peText, "", ok
 }
 
 // StackVerifier is the verifier service of an adapter.
@@ -161,17 +202,26 @@ func (s *Service) findStack(ctx context.Context, pair string) (Stack, bool) {
 // createThroughStack asks the verifier of a stack for a request and
 // keeps a transaction that polls it.
 func (s *Service) createThroughStack(ctx context.Context, msg *ingestv1.CreateOid4VpRequestRequest, t *discoveryv1.PresentationTemplate, ttl time.Duration) (*connect.Response[ingestv1.CreateOid4VpRequestResponse], error) {
+	didcomm := msg.GetDidcomm() || isNative(t)
+	if msg.GetConnectionId() != "" && !didcomm {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("service: a request over a connection goes over DIDComm"))
+	}
 	stack, ok := s.findStack(ctx, msg.GetStack())
 	if !ok {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("service: the stack %q is not a live verifier", msg.GetStack()))
 	}
-	dcqlText, peText, ok := QueryFor(t, stack.Protocols)
+	var dcqlText, peText, anonText string
+	if didcomm {
+		peText, anonText, ok = DidcommQueryFor(t, stack)
+	} else {
+		dcqlText, peText, ok = QueryFor(t, stack.Protocols)
+	}
 	if !ok {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("service: the stack %q reads no form of the query", msg.GetStack()))
 	}
 	var origins []string
 	if msg.GetDcApi() {
-		if !stack.DcAPI() || dcqlText == "" {
+		if !stack.DcAPI() || dcqlText == "" || didcomm {
 			return nil, connect.NewError(connect.CodeFailedPrecondition,
 				fmt.Errorf("service: the stack %q takes no Digital Credentials API request for this query", msg.GetStack()))
 		}
@@ -188,6 +238,7 @@ func (s *Service) createThroughStack(ctx context.Context, msg *ingestv1.CreateOi
 	}
 	resp, err := s.opts.StackClient(stack.Adapter).CreateRequest(ctx, connect.NewRequest(&backendv1.CreateRequestRequest{
 		Dcql: dcqlText, PresentationDefinition: peText, Nonce: nonce, DcApi: msg.GetDcApi(), ExpectedOrigins: origins,
+		AnoncredsRequest: anonText, Didcomm: didcomm, ConnectionId: msg.GetConnectionId(),
 	}))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("service: the stack %q did not create the request: %w", stack.Pair, err))
@@ -197,7 +248,7 @@ func (s *Service) createThroughStack(ctx context.Context, msg *ingestv1.CreateOi
 		ID: id, Nonce: nonce, TemplateID: t.GetId(), TemplateVersion: t.GetVersion(), PolicySetID: t.GetPolicySetId(),
 		State: txn.StatePending, CreatedAt: now, ExpiresAt: now.Add(ttl),
 		Stack: stack.Pair, StackName: stack.Name, Adapter: stack.Adapter, StackState: resp.Msg.GetState(), RequestURI: resp.Msg.GetRequestUri(),
-		DcAPIRequest: resp.Msg.GetDcApiRequest(),
+		DcAPIRequest: resp.Msg.GetDcApiRequest(), Didcomm: didcomm, ConnectionID: msg.GetConnectionId(),
 	}
 	if at := resp.Msg.GetExpiresAt(); at != nil {
 		record.ExpiresAt = at.AsTime()
@@ -307,7 +358,7 @@ func presentationOf(creds []*commonv1.Credential, ref, nonce string, at time.Tim
 
 // formatWord returns the format identifier of a proto format.
 func formatWord(f commonv1.Format) string {
-	for _, name := range []string{"vc+sd-jwt", "dc+sd-jwt", "jwt_vc_json", "ldp_vc", "mso_mdoc"} {
+	for _, name := range []string{"vc+sd-jwt", "dc+sd-jwt", "jwt_vc_json", "ldp_vc", "mso_mdoc", "anoncreds"} {
 		if ProtoFormat(name) == f {
 			return name
 		}
@@ -348,7 +399,7 @@ func (s *Service) finish(ctx context.Context, record *txn.Transaction) {
 func ResultOf(raw *ingestv1.RawPresentation, resp *policyv1.EvaluateResponse, record *txn.Transaction) *resultsv1.VerificationResult {
 	out := &resultsv1.VerificationResult{
 		Verdict: resp.GetVerdict(), PolicySetId: resp.GetPolicySetId(), PolicySetVersion: resp.GetPolicySetVersion(),
-		EvaluatedAt: resp.GetEvaluatedAt(), ReceivedAt: raw.GetReceivedAt(), Carrier: CarrierName, RawRef: raw.GetRef(),
+		EvaluatedAt: resp.GetEvaluatedAt(), ReceivedAt: raw.GetReceivedAt(), Carrier: carrierOf(record), RawRef: raw.GetRef(),
 		TemplateId: record.TemplateID, TemplateVersion: record.TemplateVersion,
 		MaterialAge: resp.GetMaterialAge(), MaterialStale: resp.GetMaterialStale(),
 		StackChecks: stackChecks(record.StackChecks), Stack: record.StackName,
@@ -362,6 +413,14 @@ func ResultOf(raw *ingestv1.RawPresentation, resp *policyv1.EvaluateResponse, re
 		out.Credentials = append(out.Credentials, cardsummary.Build(cred, resp.GetChecks(), cardsummary.Options{Index: i}))
 	}
 	return out
+}
+
+// carrierOf returns the carrier word of the result of a request.
+func carrierOf(record *txn.Transaction) string {
+	if record.Didcomm {
+		return DidcommCarrierName
+	}
+	return CarrierName
 }
 
 // stackChecks returns the checks of a stack as proto messages.

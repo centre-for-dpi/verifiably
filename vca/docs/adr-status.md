@@ -660,15 +660,15 @@ A row that is not `Done` carries a note.
 | ADR-061 | 2 AnonCreds proof requests with predicates | Done | `vca/services/dpg-adapter-credebl/internal/service/proofs.go` | `TestOobProofRequest` and `TestListProofSchemas` pin it. |
 | ADR-061 | 3 The stack verifies, and VCA reads the revealed values | Done | `vca/services/dpg-adapter-credebl/internal/service/proofs.go` | `TestProofResultVerified` and `TestProofResultStates` pin it. |
 | ADR-061 | 4 The AnonCreds builder | Done | `vca/core/anoncreds`, `vca/services/verifier-discovery/internal/portal/anoncreds.go` | `TestAnonCredsBuilderPredicates`, `TestBuildNativeAnonCreds` and `TestAnonCredsSchemasComeFromTheStacks` pin it. |
-| ADR-061 | 5 The DIDComm option of the request page | Not started | | P6-C6 adds it to the verifier ingest service. |
+| ADR-061 | 5 The DIDComm option of the request page | Done | `vca/services/verifier-ingest/internal/service/request.go`, `vca/services/verifier-ingest/internal/scanner/request.go` | `TestAnonCredsRequestGoesOverDidcomm`, `TestRequestPageOffersDidcommProofRequest` and `TestRequestListShowsStackProofRequests` pin it. |
 | ADR-061 | 6 The schema of a PE descriptor on CREDEBL | Done | `vca/services/dpg-adapter-credebl/internal/service/proofs.go` | `TestPeProofRequestOverDidcomm` pins it. |
 
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 286 |
+| Done | 287 |
 | Partial | 25 |
 | Deferred | 3 |
-| Not started | 27 |
+| Not started | 26 |
 | Total | 341 |

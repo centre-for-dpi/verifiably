@@ -93,6 +93,10 @@ type Options struct {
 	// ResultsPath is the page of one result, before its id. Empty means
 	// DefaultResultsPath.
 	ResultsPath string
+	// Didcomm returns the DIDComm side of the verifier of the adapter at
+	// a URL: its connections and its proof requests (ADR-061). Nil means
+	// a Connect client with StackTimeout.
+	Didcomm func(adapterURL string) DidcommVerifier
 }
 
 // Getter reads one document. A fetchguard.Fetcher is one.
@@ -103,6 +107,13 @@ type Getter interface {
 // StackVerifier checks an input with the verifier of a DPG.
 type StackVerifier interface {
 	VerifyCredential(context.Context, *connect.Request[backendv1.VerifyCredentialRequest]) (*connect.Response[backendv1.VerifyCredentialResponse], error)
+}
+
+// DidcommVerifier reads the connections and the proof requests of a
+// stack that asks over DIDComm.
+type DidcommVerifier interface {
+	ListVerifierConnections(context.Context, *connect.Request[backendv1.ListVerifierConnectionsRequest]) (*connect.Response[backendv1.ListVerifierConnectionsResponse], error)
+	ListProofRequests(context.Context, *connect.Request[backendv1.ListProofRequestsRequest]) (*connect.Response[backendv1.ListProofRequestsResponse], error)
 }
 
 // Page serves the camera page.
@@ -132,9 +143,14 @@ func New(opts Options) (*Page, error) {
 	if opts.ResultsPath == "" {
 		opts.ResultsPath = DefaultResultsPath
 	}
+	client := &http.Client{Timeout: opts.StackTimeout}
 	if opts.Stack == nil {
-		client := &http.Client{Timeout: opts.StackTimeout}
 		opts.Stack = func(adapterURL string) StackVerifier {
+			return backendv1connect.NewVerifierBackendServiceClient(client, adapterURL)
+		}
+	}
+	if opts.Didcomm == nil {
+		opts.Didcomm = func(adapterURL string) DidcommVerifier {
 			return backendv1connect.NewVerifierBackendServiceClient(client, adapterURL)
 		}
 	}

@@ -93,6 +93,10 @@ type Transaction struct {
 	// DcAPIRequest is the request object of the Digital Credentials API
 	// that the stack made, as JSON. Empty for any other request.
 	DcAPIRequest string `json:"dc_api_request,omitempty"`
+	// Didcomm is true for a request that went over DIDComm (ADR-061).
+	Didcomm bool `json:"didcomm,omitempty"`
+	// ConnectionID is the DIDComm connection the request went over.
+	ConnectionID string `json:"connection_id,omitempty"`
 }
 
 // StackCheck is one check a stack verifier ran.

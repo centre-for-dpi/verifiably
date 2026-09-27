@@ -190,6 +190,21 @@ browser has the API. The button passes the request object to
 and the service hands it to the adapter. The QR code of the same
 request stays beside the button for every other browser.
 
+A stack adapter that lists `PROTOCOL_DIDCOMM_PRESENT_V2` adds the
+choice "<stack>, DIDComm proof request" (ADR-061 decision 5). It shows
+for an AnonCreds query of the builder when the adapter lists
+`FEATURE_ANONCREDS_PROOF`. It shows for a PE query, and for a DCQL
+query with a lossless PE form, too. The VCA verifier speaks no DIDComm,
+so it does not answer an AnonCreds query. The request carries the flag
+`didcomm`. The QR code, the link, and the document then carry the out
+of band invitation of the stack. The delivery "Connected wallet" sends
+the request over a connection of the stack instead. The form lists the
+connections of each such stack through `ListVerifierConnections`. The
+page of such a request shows no code. The stack checks a DIDComm proof,
+and the service stores the revealed values with the carrier `didcomm`.
+The request list ends with the proof requests of each such stack,
+through `ListProofRequests`.
+
 The state block shows Waiting, Received, and Verified. While the request
 waits, htmx asks for the block every 2 seconds. A refresh link does the
 same without JavaScript. When the request no longer waits, the poll

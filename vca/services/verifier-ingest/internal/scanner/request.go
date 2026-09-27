@@ -74,7 +74,14 @@ const (
 	deliverLink     = "link"
 	deliverDocument = "document"
 	deliverDCAPI    = "dcapi"
+	// deliverConnection sends a DIDComm request over a connection of the
+	// stack (ADR-061 decision 5).
+	deliverConnection = "connection"
 )
+
+// didcommSuffix marks the DIDComm choice of a stack in the form value of
+// the verifier, such as verifier-credebl|didcomm.
+const didcommSuffix = "|didcomm"
 
 // vcaVerifier is the form value of the VCA verifier.
 const vcaVerifier = "vca"
@@ -131,6 +138,55 @@ func (p *Page) dcAPIStacks(ctx context.Context) []string {
 	return out
 }
 
+// didcommStacks returns the live stacks that ask over DIDComm.
+func (p *Page) didcommStacks(ctx context.Context) []service.Stack {
+	var out []service.Stack
+	for _, st := range p.stacks(ctx) {
+		if st.Didcomm() {
+			out = append(out, st)
+		}
+	}
+	return out
+}
+
+// connectionOptions lists the DIDComm connections of the stacks that ask
+// over DIDComm. A stack that does not answer adds none.
+func (p *Page) connectionOptions(ctx context.Context, stacks []service.Stack, picked string) []components.Option {
+	var out []components.Option
+	for _, st := range stacks {
+		resp, err := p.opts.Didcomm(st.Adapter).ListVerifierConnections(ctx, connect.NewRequest(&backendv1.ListVerifierConnectionsRequest{
+			Page: &commonv1.Pagination{PageSize: 100},
+		}))
+		if err != nil {
+			continue
+		}
+		for _, c := range resp.Msg.GetConnections() {
+			label := c.GetLabel()
+			if label == "" {
+				label = c.GetId()
+			}
+			out = append(out, components.Option{Value: c.GetId(), Text: msg.T("verifier.request.connection.option.label", label, st.Name), Selected: c.GetId() == picked})
+		}
+	}
+	if len(out) == 0 {
+		out = append(out, components.Option{Value: "", Text: msg.T("verifier.request.connection.none.label")})
+	}
+	return out
+}
+
+// throughOf names the verifier of a request: the stack, over DIDComm
+// when the request went over DIDComm.
+func (p *Page) throughOf(ctx context.Context, tx interface {
+	GetStack() string
+	GetDidcomm() bool
+}) string {
+	name := p.throughName(ctx, tx.GetStack())
+	if tx.GetDidcomm() {
+		return msg.T("verifier.request.didcomm.through.label", name)
+	}
+	return name
+}
+
 // throughName names the verifier of a request.
 func (p *Page) throughName(ctx context.Context, pair string) string {
 	if pair == "" {
@@ -170,8 +226,11 @@ func (p *Page) templateOf(ctx context.Context, id string) *discoveryv1.Presentat
 
 // kindLabel names the query language of a template.
 func kindLabel(t *discoveryv1.PresentationTemplate) string {
-	if t.GetKind() == discoveryv1.TemplateKind_TEMPLATE_KIND_PE {
+	switch t.GetKind() {
+	case discoveryv1.TemplateKind_TEMPLATE_KIND_PE:
 		return "DIF PE"
+	case discoveryv1.TemplateKind_TEMPLATE_KIND_NATIVE:
+		return "AnonCreds"
 	}
 	return "DCQL"
 }
@@ -185,7 +244,7 @@ func (p *Page) answererOptions(ctx context.Context, t *discoveryv1.PresentationT
 	}
 	for _, st := range p.stacks(ctx) {
 		dcqlText, _, ok := service.QueryFor(t, st.Protocols)
-		if !ok {
+		if !ok || t.GetKind() == discoveryv1.TemplateKind_TEMPLATE_KIND_NATIVE {
 			continue
 		}
 		text := msg.T("verifier.request.stack.pe")
@@ -193,6 +252,14 @@ func (p *Page) answererOptions(ctx context.Context, t *discoveryv1.PresentationT
 			text = msg.T("verifier.request.stack.dcql")
 		}
 		out = append(out, components.ChoiceOption{Value: st.Pair, Title: st.Name, Text: text})
+	}
+	// A stack that asks over DIDComm offers a DIDComm proof request of
+	// the template too (ADR-061 decision 5).
+	for _, st := range p.stacks(ctx) {
+		if _, _, ok := service.DidcommQueryFor(t, st); ok {
+			out = append(out, components.ChoiceOption{Value: st.Pair + didcommSuffix, Title: msg.T("verifier.request.didcomm.option.label", st.Name),
+				Text: msg.T("verifier.request.stack.didcomm")})
+		}
 	}
 	checked := false
 	for i := range out {
@@ -227,6 +294,7 @@ func paragraph(text string) template.HTML {
 // requestForm is what the new request form holds.
 type requestForm struct {
 	template, through, deliver string
+	connection                 string
 	expires                    int
 	problem                    string
 }
@@ -272,6 +340,15 @@ func (p *Page) renderForm(w http.ResponseWriter, r *http.Request, f requestForm)
 			delivery = append(delivery, components.ChoiceOption{Value: deliverDCAPI, Title: msg.T("verifier.request.deliver.dcapi.label"),
 				Text: msg.T("verifier.request.deliver.dcapi.text", strings.Join(names, ", ")), Checked: f.deliver == deliverDCAPI})
 		}
+		// A stack that asks over DIDComm sends a request to a wallet that
+		// connected before (ADR-061 decision 5).
+		var connection template.HTML
+		if didcommStacks := p.didcommStacks(r.Context()); len(didcommStacks) > 0 {
+			delivery = append(delivery, components.ChoiceOption{Value: deliverConnection, Title: msg.T("verifier.request.deliver.connection.label"),
+				Text: msg.T("verifier.request.deliver.connection.text"), Checked: f.deliver == deliverConnection})
+			connection = b.add("field", components.Field{ID: "connection", Label: msg.T("verifier.request.connection.label"), Type: "select",
+				Options: p.connectionOptions(r.Context(), didcommStacks, f.connection), Hint: msg.T("verifier.request.connection.hint")})
+		}
 		times := make([]components.Option, 0, len(expiries))
 		for _, n := range expiries {
 			times = append(times, components.Option{Value: strconv.Itoa(n), Text: msg.T("verifier.request.expires." + strconv.Itoa(n) + ".label"), Selected: n == f.expires})
@@ -283,6 +360,7 @@ func (p *Page) renderForm(w http.ResponseWriter, r *http.Request, f requestForm)
 				}}),
 			p.answererChoice(r.Context(), b, picked, f.through),
 			b.add("choice", components.Choice{ID: "deliver", Legend: msg.T("verifier.request.deliver.label"), Options: delivery}),
+			connection,
 			b.add("field", components.Field{ID: "expires", Label: msg.T("verifier.request.expires.label"), Type: "select", Options: times,
 				Hint: msg.T("verifier.request.expires.hint")}),
 			b.add("button", components.Button{Text: msg.T("verifier.request.send.label"), Type: "submit", Variant: "primary"}),
@@ -326,23 +404,31 @@ func (p *Page) createRequest(w http.ResponseWriter, r *http.Request) error {
 	}
 	f := requestForm{
 		template: r.PostForm.Get("template"), through: r.PostForm.Get("through"),
-		deliver: r.PostForm.Get("deliver"), expires: 300,
+		deliver: r.PostForm.Get("deliver"), connection: strings.TrimSpace(r.PostForm.Get("connection")), expires: 300,
 	}
 	if n, err := strconv.Atoi(r.PostForm.Get("expires")); err == nil {
 		f.expires = n
 	}
 	switch f.deliver {
-	case deliverLink, deliverDocument, deliverDCAPI:
+	case deliverLink, deliverDocument, deliverDCAPI, deliverConnection:
 	default:
 		f.deliver = deliverQR
 	}
-	stack := f.through
+	stack, didcomm := strings.CutSuffix(f.through, didcommSuffix)
 	if stack == vcaVerifier {
 		stack = ""
 	}
+	connection := ""
+	if f.deliver == deliverConnection {
+		if !didcomm || f.connection == "" {
+			f.problem = msg.T("verifier.request.problem.connection")
+			return p.renderForm(w, r, f)
+		}
+		connection = f.connection
+	}
 	resp, err := p.opts.Client.CreateOid4VpRequest(r.Context(), connect.NewRequest(&ingestv1.CreateOid4VpRequestRequest{
 		TemplateId: f.template, Stack: stack, ExpiresInSeconds: int32(min(max(f.expires, 0), 3600)), //nolint:gosec // the value is clamped to one hour
-		DcApi: f.deliver == deliverDCAPI,
+		DcApi: f.deliver == deliverDCAPI, Didcomm: didcomm, ConnectionId: connection,
 	}))
 	if err != nil {
 		f.problem = msg.T("verifier.request.problem.send") + " " + connectReason(err)
@@ -383,16 +469,24 @@ func (p *Page) requestPage(w http.ResponseWriter, r *http.Request) error {
 	}
 	t := p.templateOf(r.Context(), tx.GetTemplateId())
 	b := &blocks{kit: p.opts.Kit}
-	through := p.throughName(r.Context(), tx.GetStack())
+	through := p.throughOf(r.Context(), tx)
 	summary := b.add("card", components.Card{ID: "request-query", Title: msg.T("verifier.request.query.label"),
 		Text:   msg.T("verifier.request.query.text", t.GetDisplayName(), kindLabel(t), through),
 		Footer: footerOf(tx)})
+	if tx.GetConnectionId() != "" {
+		// A request over a connection reaches the wallet with no code
+		// and no link (ADR-061 decision 5).
+		ways = nil
+	}
 	links := make([]components.Link, 0, len(ways))
 	for _, d := range ways {
 		links = append(links, components.Link{Href: p.requestsPath() + url.PathEscape(id) + "?as=" + d,
 			Text: msg.T("verifier.request.deliver." + d + ".label"), Current: d == as})
 	}
-	tabs := b.add("tabs", components.Tabs{Label: msg.T("verifier.request.deliver.label"), Links: links})
+	var tabs template.HTML
+	if len(links) > 0 {
+		tabs = b.add("tabs", components.Tabs{Label: msg.T("verifier.request.deliver.label"), Links: links})
+	}
 	delivery := template.HTML(`<div id="request-delivery">`) + p.delivery(b, tx, id, as, staffsession.HiddenField(r.Context())) + template.HTML(`</div>`)
 	state := p.stateBlock(r.Context(), b, tx, id)
 	if b.err != nil {
@@ -430,6 +524,9 @@ func pending(tx *ingestv1.GetTransactionResponse) bool {
 func (p *Page) delivery(b *blocks, tx *ingestv1.GetTransactionResponse, id, as string, hidden template.HTML) template.HTML {
 	if !pending(tx) {
 		return paragraph(msg.T("verifier.request.delivery.closed"))
+	}
+	if tx.GetConnectionId() != "" {
+		return paragraph(msg.T("verifier.request.connection.sent"))
 	}
 	uri := tx.GetRequestUri()
 	switch as {
@@ -604,7 +701,7 @@ func (p *Page) verdictCard(ctx context.Context, b *blocks, tx *ingestv1.GetTrans
 			Text: msg.T("verifier.request.result.missing"), Body: saved + done})
 	}
 	badge := template.HTML(`<p>`) + b.add("badge", verdictBadge(result.GetVerdict())) + template.HTML(`</p>`)
-	meta := msg.T("verifier.request.verified.at", clock(result.GetEvaluatedAt().AsTime()), p.throughName(ctx, tx.GetStack()))
+	meta := msg.T("verifier.request.verified.at", clock(result.GetEvaluatedAt().AsTime()), p.throughOf(ctx, tx))
 	var rows []components.Row
 	checks := append([]*policyv1.CheckResult(nil), result.GetChecks()...)
 	for _, c := range result.GetCredentials() {
@@ -728,7 +825,7 @@ func (p *Page) requestList(w http.ResponseWriter, r *http.Request) error {
 		}
 		rows = append(rows, components.Row{
 			{HTML: link(p.requestsPath()+url.PathEscape(s.GetTransactionId()), name)},
-			{Text: p.throughName(r.Context(), s.GetStack())},
+			{Text: p.throughOf(r.Context(), s)},
 			{HTML: b.add("badge", stateWord(s))},
 			{HTML: b.add("badge", listVerdict(s.GetVerdict()))},
 			{Text: clock(s.GetCreatedAt().AsTime())},
@@ -742,13 +839,48 @@ func (p *Page) requestList(w http.ResponseWriter, r *http.Request) error {
 		},
 		Rows: rows, Empty: msg.T("verifier.request.list.empty")})
 	action := b.add("button", components.Button{Text: msg.T("verifier.request.tab.new.label"), Href: p.requestsPath() + "new", Variant: "primary"})
+	proofs := p.stackProofTables(r.Context(), b)
 	if b.err != nil {
 		return b.err
 	}
 	return p.render(w, r, components.Page{
 		Title: msg.T("verifier.request.list.title.label"), Lead: msg.T("verifier.request.list.lead"), Description: msg.T("verifier.request.list.lead"),
-		Content: components.Join(p.scanTabs(b, "list"), template.HTML(`<div class="form-actions">`), action, template.HTML(`</div>`), table),
+		Content: components.Join(p.scanTabs(b, "list"), template.HTML(`<div class="form-actions">`), action, template.HTML(`</div>`), table, proofs),
 	})
+}
+
+// proofListSize is the number of proof requests the list shows of each
+// stack.
+const proofListSize = 20
+
+// stackProofTables renders the DIDComm proof requests of each live stack
+// that asks over DIDComm, newest first (ADR-061 decision 5). A stack
+// that does not answer shows no table.
+func (p *Page) stackProofTables(ctx context.Context, b *blocks) template.HTML {
+	var out template.HTML
+	for i, st := range p.didcommStacks(ctx) {
+		resp, err := p.opts.Didcomm(st.Adapter).ListProofRequests(ctx, connect.NewRequest(&backendv1.ListProofRequestsRequest{
+			Page: &commonv1.Pagination{PageSize: proofListSize},
+		}))
+		if err != nil {
+			continue
+		}
+		rows := make([]components.Row, 0, len(resp.Msg.GetRequests()))
+		for _, pr := range resp.Msg.GetRequests() {
+			wallet := pr.GetConnectionLabel()
+			if wallet == "" {
+				wallet = msg.T("verifier.request.proofs.oob.label")
+			}
+			rows = append(rows, components.Row{{Text: wallet}, {Text: pr.GetState()}, {Text: clock(pr.GetCreatedAt().AsTime())}, {Text: pr.GetError()}})
+		}
+		out += b.add("table", components.Table{ID: "stack-proofs-" + strconv.Itoa(i+1), Caption: msg.T("verifier.request.proofs.caption.label", st.Name),
+			Columns: []string{
+				msg.T("verifier.request.proofs.column.wallet.label"), msg.T("verifier.request.column.state.label"),
+				msg.T("verifier.request.column.created.label"), msg.T("verifier.scan.stack.column.reason.label"),
+			},
+			Rows: rows, Empty: msg.T("verifier.request.proofs.empty")})
+	}
+	return out
 }
 
 // listVerdict is the verdict of a request in the list, or a word that
