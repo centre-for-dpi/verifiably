@@ -1,0 +1,65 @@
+{
+  "outOfBandRecord": {
+    "_tags": {
+      "invitationId": "7d8e9f0a-1b2c-4d3e-9f4a-5b6c7d8e9f0a",
+      "recipientKeyFingerprints": [
+        "z6MkwpCi3Hu6EZtcbWTrK4GWFxtgf4ZvynCjhEtFqGjBV5Xi"
+      ],
+      "role": "receiver",
+      "state": "prepare-response",
+      "threadId": "7d8e9f0a-1b2c-4d3e-9f4a-5b6c7d8e9f0a"
+    },
+    "metadata": {},
+    "id": "c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f",
+    "createdAt": "2026-09-27T10:05:39.884Z",
+    "outOfBandInvitation": {
+      "@type": "https://didcomm.org/out-of-band/1.1/invitation",
+      "@id": "7d8e9f0a-1b2c-4d3e-9f4a-5b6c7d8e9f0a",
+      "label": "[verifier organisation]",
+      "accept": [
+        "didcomm/aip1",
+        "didcomm/aip2;env=rfc19"
+      ],
+      "handshake_protocols": [
+        "https://didcomm.org/didexchange/1.1",
+        "https://didcomm.org/connections/1.0"
+      ],
+      "services": [
+        "did:peer:2.Ez6LSqdK2yfVUbk1xmfBxJZ5T5SdRtt7e4DpS1VYqfMkECRkM.Vz6MkwpCi3Hu6EZtcbWTrK4GWFxtgf4ZvynCjhEtFqGjBV5Xi.SeyJ0IjoiZG0iLCJzIjoiaHR0cDovL2NyZWRlYmwtYWdlbnQudmNhLmludGVybmFsOjkwMDEiLCJyIjpbXSwiYSI6WyJkaWRjb21tL2FpcDIiLCJkaWRjb21tL2FpcDI7ZW52PXJmYzE5Il19"
+      ]
+    },
+    "role": "receiver",
+    "state": "prepare-response",
+    "reusable": false,
+    "updatedAt": "2026-09-27T10:05:40.301Z"
+  },
+  "connectionRecord": {
+    "_tags": {
+      "connectionTypes": [],
+      "did": "did:peer:1zQmZMygzYqNwU6Uhmewx5Xepf2VLp5S4HLSwwgf2aiKZuwa",
+      "invitationDid": "did:peer:2.Ez6LSqdK2yfVUbk1xmfBxJZ5T5SdRtt7e4DpS1VYqfMkECRkM.Vz6MkwpCi3Hu6EZtcbWTrK4GWFxtgf4ZvynCjhEtFqGjBV5Xi.SeyJ0IjoiZG0iLCJzIjoiaHR0cDovL2NyZWRlYmwtYWdlbnQudmNhLmludGVybmFsOjkwMDEiLCJyIjpbXSwiYSI6WyJkaWRjb21tL2FpcDIiLCJkaWRjb21tL2FpcDI7ZW52PXJmYzE5Il19",
+      "outOfBandId": "a0b1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d",
+      "previousDids": [],
+      "previousTheirDids": [],
+      "role": "requester",
+      "state": "request-sent",
+      "threadId": "c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f"
+    },
+    "metadata": {},
+    "connectionTypes": [],
+    "previousDids": [],
+    "previousTheirDids": [],
+    "id": "8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d",
+    "createdAt": "2026-09-27T10:05:40.220Z",
+    "did": "did:peer:1zQmZMygzYqNwU6Uhmewx5Xepf2VLp5S4HLSwwgf2aiKZuwa",
+    "invitationDid": "did:peer:2.Ez6LSqdK2yfVUbk1xmfBxJZ5T5SdRtt7e4DpS1VYqfMkECRkM.Vz6MkwpCi3Hu6EZtcbWTrK4GWFxtgf4ZvynCjhEtFqGjBV5Xi.SeyJ0IjoiZG0iLCJzIjoiaHR0cDovL2NyZWRlYmwtYWdlbnQudmNhLmludGVybmFsOjkwMDEiLCJyIjpbXSwiYSI6WyJkaWRjb21tL2FpcDIiLCJkaWRjb21tL2FpcDI7ZW52PXJmYzE5Il19",
+    "theirLabel": "[verifier organisation]",
+    "state": "request-sent",
+    "role": "requester",
+    "autoAcceptConnection": true,
+    "threadId": "c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f",
+    "protocol": "https://didcomm.org/didexchange/1.x",
+    "outOfBandId": "a0b1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d",
+    "updatedAt": "2026-09-27T10:05:40.305Z"
+  }
+}

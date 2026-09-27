@@ -119,6 +119,18 @@ service HolderBackendService {
   // makes the wallet with that PIN when the holder has none. The adapter
   // never stores the PIN.
   rpc UnlockWallet(UnlockWalletRequest) returns (UnlockWalletResponse);
+  // OpenInvitation opens a DIDComm invitation that carries no offer and
+  // no proof request. The wallet keeps the connection (ADR-062). An
+  // adapter serves it when it lists FEATURE_WALLET_DIDCOMM.
+  rpc OpenInvitation(OpenInvitationRequest) returns (OpenInvitationResponse);
+  // ListWalletConnections returns the DIDComm connections of a wallet,
+  // newest first. An adapter serves it when it lists
+  // FEATURE_WALLET_DIDCOMM.
+  rpc ListWalletConnections(ListWalletConnectionsRequest) returns (ListWalletConnectionsResponse);
+  // ListInbox returns the credential offers and the proof requests that
+  // wait for the holder, newest first. Each came to the wallet over a
+  // connection. An adapter serves it when it lists FEATURE_WALLET_DIDCOMM.
+  rpc ListInbox(ListInboxRequest) returns (ListInboxResponse);
 }
 
 // VerifierBackendService drives the verifier side of a DPG.
@@ -495,6 +507,14 @@ enum Feature {
   // finds the subject in the data source that the issuer names for the
   // credential through SetHolderSignInSource.
   FEATURE_HOLDER_SIGN_IN_SOURCE = 26;
+  // The wallet speaks DIDComm (ADR-062). AcceptOffer takes an out of
+  // band invitation that carries a credential offer. Present takes one
+  // that carries a proof request. OpenInvitation, ListInbox, and
+  // ListWalletConnections work.
+  FEATURE_WALLET_DIDCOMM = 27;
+  // The wallet binds new credentials to a default DID that the holder
+  // picks with SetDefaultDid.
+  FEATURE_WALLET_DEFAULT_DID = 28;
 }
 
 // GetCapabilitiesRequest has no fields.
@@ -1183,6 +1203,9 @@ message WalletCredential {
   string issuer = 4;
   // The time the wallet received the credential.
   google.protobuf.Timestamp received_at = 5;
+  // True when the wallet of the DPG cannot remove the credential. The
+  // wallet portal then offers no remove button for it.
+  bool permanent = 6;
 }
 
 // ListCredentialsRequest selects a wallet.
@@ -1205,12 +1228,16 @@ message ListCredentialsResponse {
 message AcceptOfferRequest {
   // The wallet id from Register.
   string wallet_id = 1;
-  // The openid-credential-offer URI.
+  // The openid-credential-offer URI. An adapter that lists
+  // FEATURE_WALLET_DIDCOMM also takes a DIDComm out of band invitation
+  // that carries a credential offer.
   string offer_uri = 2;
   // The transaction code, when the offer needs one.
   string pin = 3;
   // The IdP access token to use as the authorization grant, when present.
   string authorization_grant = 4;
+  // The id of an offer from ListInbox, in place of offer_uri.
+  string inbox_id = 5;
 }
 
 // AcceptOfferResponse returns the claimed credential.
@@ -1223,12 +1250,16 @@ message AcceptOfferResponse {
 message PresentRequest {
   // The wallet id from Register.
   string wallet_id = 1;
-  // The openid4vp request URI or request object.
+  // The openid4vp request URI or request object. An adapter that lists
+  // FEATURE_WALLET_DIDCOMM also takes a DIDComm out of band invitation
+  // that carries a proof request.
   string request_uri = 2;
   // The ids of the credentials to present, in request order.
   repeated string credential_ids = 3;
   // The claim names to disclose. Empty discloses every requested claim.
   repeated string disclosed_claims = 4;
+  // The id of a proof request from ListInbox, in place of request_uri.
+  string inbox_id = 5;
 }
 
 // PresentResponse reports the outcome of the presentation.
@@ -1411,6 +1442,82 @@ message UnlockWalletRequest {
 
 // UnlockWalletResponse has no fields.
 message UnlockWalletResponse {}
+
+// OpenInvitationRequest names the invitation to open.
+message OpenInvitationRequest {
+  // The wallet id from Register.
+  string wallet_id = 1;
+  // The out of band invitation or the connection invitation, as a URL.
+  string invitation_uri = 2;
+}
+
+// OpenInvitationResponse names the connection the wallet made.
+message OpenInvitationResponse {
+  // The connection.
+  DidcommConnection connection = 1;
+}
+
+// ListWalletConnectionsRequest names the wallet.
+message ListWalletConnectionsRequest {
+  // The wallet id from Register.
+  string wallet_id = 1;
+}
+
+// ListWalletConnectionsResponse returns the connections of the wallet.
+message ListWalletConnectionsResponse {
+  // The connections, newest first. The label is the label of the other
+  // party.
+  repeated DidcommConnection connections = 1;
+}
+
+// ListInboxRequest names the wallet.
+message ListInboxRequest {
+  // The wallet id from Register.
+  string wallet_id = 1;
+}
+
+// ListInboxResponse returns what waits for the holder.
+message ListInboxResponse {
+  // The offers and the proof requests, newest first.
+  repeated InboxItem items = 1;
+}
+
+// InboxItem is one credential offer or proof request that waits for the
+// holder.
+message InboxItem {
+  // The id that AcceptOffer or Present takes as inbox_id.
+  string id = 1;
+  // What the item is.
+  Kind kind = 2;
+  // The label of the connection it came over.
+  string connection_label = 3;
+  // When it came.
+  google.protobuf.Timestamp received_at = 4;
+  // The name of the credential or of the proof request.
+  string name = 5;
+  // The values an offer carries, as name and value.
+  repeated OfferedValue offered = 6;
+  // What a proof request asks for, as plain text: an attribute name, or
+  // a predicate such as "acres >= 10".
+  repeated string requested = 7;
+
+  // Kind names the type of an item.
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    // A credential offer.
+    KIND_OFFER = 1;
+    // A proof request.
+    KIND_PROOF_REQUEST = 2;
+  }
+}
+
+// OfferedValue is one value of a credential offer.
+message OfferedValue {
+  // The attribute name.
+  string name = 1;
+  // The value.
+  string value = 2;
+}
 
 // WalletEvent is one entry of the event log of a wallet.
 message WalletEvent {

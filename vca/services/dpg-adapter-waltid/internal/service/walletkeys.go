@@ -28,6 +28,7 @@ var WalletDidMethods = []string{"did:key", "did:jwk", "did:cheqd"}
 var walletFeatures = []backendv1.Feature{
 	backendv1.Feature_FEATURE_WALLET_KEYS, backendv1.Feature_FEATURE_WALLET_DIDS,
 	backendv1.Feature_FEATURE_WALLET_EVENTS, backendv1.Feature_FEATURE_WALLET_REJECT_OFFER,
+	backendv1.Feature_FEATURE_WALLET_DEFAULT_DID,
 }
 
 // walletSession checks the role and returns the session of a wallet.

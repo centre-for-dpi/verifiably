@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package service serves the vca.backend.v1 services against a CREDEBL
-// platform (ADR-002 decision 2). CREDEBL ships no wallet for a citizen,
-// so the holder service answers with the Connect code Unimplemented.
+// platform (ADR-002 decision 2). The holder service keeps a tenant
+// wallet per holder in the shared agent of the stack (ADR-062). Without
+// the address and the API key of the agent it answers with the Connect
+// code Unimplemented.
 package service
 
 import (
@@ -59,6 +61,18 @@ type Options struct {
 	// MailOffers reports that the stack names a mail provider, so the
 	// platform mails an out of band offer (CHANNEL_EMAIL).
 	MailOffers bool
+	// Agent calls the shared agent of the stack for the holder role
+	// (ADR-062). Nil turns the holder role off.
+	Agent *credebl.Agent
+	// HolderLabel is the label a holder wallet shows the other party of
+	// a connection. Empty means DefaultHolderLabel.
+	HolderLabel string
+	// PollInterval is the wait between two reads of an exchange. Zero
+	// means DefaultPollInterval.
+	PollInterval time.Duration
+	// PollAttempts is the number of reads of an exchange. Zero means
+	// DefaultPollAttempts.
+	PollAttempts int
 }
 
 // Service implements every vca.backend.v1 service of this adapter.
@@ -75,6 +89,10 @@ type Service struct {
 	versions     map[string]string
 	now          func() time.Time
 	mailOffers   bool
+	agent        *credebl.Agent
+	holderLabel  string
+	pollInterval time.Duration
+	pollAttempts int
 
 	// ledgerMu guards ledgers, the ledgers of the capability answer.
 	ledgerMu sync.Mutex
@@ -98,6 +116,15 @@ func New(opts Options) (*Service, error) {
 	if opts.VerifierName == "" {
 		opts.VerifierName = "verifiable-credentials-adapters"
 	}
+	if opts.HolderLabel == "" {
+		opts.HolderLabel = DefaultHolderLabel
+	}
+	if opts.PollInterval <= 0 {
+		opts.PollInterval = DefaultPollInterval
+	}
+	if opts.PollAttempts <= 0 {
+		opts.PollAttempts = DefaultPollAttempts
+	}
 	return &Service{
 		client:       opts.Client,
 		store:        opts.Store,
@@ -111,6 +138,10 @@ func New(opts Options) (*Service, error) {
 		versions:     opts.Versions,
 		now:          opts.Now,
 		mailOffers:   opts.MailOffers,
+		agent:        opts.Agent,
+		holderLabel:  opts.HolderLabel,
+		pollInterval: opts.PollInterval,
+		pollAttempts: opts.PollAttempts,
 	}, nil
 }
 
@@ -162,7 +193,7 @@ func (s *Service) GetCapabilities(
 		},
 		Channels:       s.channels(),
 		ChannelFormats: s.channelFormats(),
-		Roles:          []commonv1.Role{commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_VERIFIER},
+		Roles:          s.roles(),
 		Protocols: []backendv1.Protocol{
 			backendv1.Protocol_PROTOCOL_OID4VCI,
 			backendv1.Protocol_PROTOCOL_OID4VP,
@@ -185,47 +216,28 @@ func (s *Service) GetCapabilities(
 		TenantAgentTypes: []backendv1.DpgTenant_AgentType{backendv1.DpgTenant_AGENT_TYPE_SHARED},
 		DidMethods:       append([]string(nil), DidMethods...),
 		KeyTypes:         append([]string(nil), KeyTypes...),
+		WalletDidMethods: s.walletDidMethods(),
 		DpgInfo:          s.dpgInfo(),
 	}), nil
 }
 
-// holderMessage says what to use instead of the holder role.
-const holderMessage = "CREDEBL ships no wallet for a citizen; " +
-	"use the wallet portal or an external OID4VCI wallet"
-
-// Register is not available. CREDEBL ships no wallet for a citizen.
-func (s *Service) Register(
-	context.Context, *connect.Request[backendv1.RegisterRequest],
-) (*connect.Response[backendv1.RegisterResponse], error) {
-	return nil, unimplemented(holderMessage)
+// roles lists the issuer and the verifier role, and the holder role
+// with the agent (ADR-062 decision 7).
+func (s *Service) roles() []commonv1.Role {
+	out := []commonv1.Role{commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_VERIFIER}
+	if s.holderRole() {
+		out = append(out, commonv1.Role_ROLE_HOLDER)
+	}
+	return out
 }
 
-// ListCredentials is not available. CREDEBL ships no wallet.
-func (s *Service) ListCredentials(
-	context.Context, *connect.Request[backendv1.ListCredentialsRequest],
-) (*connect.Response[backendv1.ListCredentialsResponse], error) {
-	return nil, unimplemented(holderMessage)
-}
-
-// AcceptOffer is not available. CREDEBL ships no wallet.
-func (s *Service) AcceptOffer(
-	context.Context, *connect.Request[backendv1.AcceptOfferRequest],
-) (*connect.Response[backendv1.AcceptOfferResponse], error) {
-	return nil, unimplemented(holderMessage)
-}
-
-// Present is not available. CREDEBL ships no wallet.
-func (s *Service) Present(
-	context.Context, *connect.Request[backendv1.PresentRequest],
-) (*connect.Response[backendv1.PresentResponse], error) {
-	return nil, unimplemented(holderMessage)
-}
-
-// DeleteCredential is not available. CREDEBL ships no wallet.
-func (s *Service) DeleteCredential(
-	context.Context, *connect.Request[backendv1.DeleteCredentialRequest],
-) (*connect.Response[backendv1.DeleteCredentialResponse], error) {
-	return nil, unimplemented(holderMessage)
+// walletDidMethods lists the DID methods of a holder wallet, or none
+// without the holder role.
+func (s *Service) walletDidMethods() []string {
+	if !s.holderRole() {
+		return nil
+	}
+	return append([]string(nil), WalletDidMethods...)
 }
 
 // timestamp returns a protobuf time or nil for the zero time.

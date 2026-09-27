@@ -12,7 +12,8 @@ contract instead. It issues SD-JWT credentials through the OID4VCI
 pre-authorized code flow, and AnonCreds and W3C JSON-LD credentials
 over DIDComm. It hands a CSV file to the bulk import of the platform.
 It checks presentations with DCQL queries over OID4VP. It asks for
-AnonCreds and DIF Presentation Exchange proofs over DIDComm.
+AnonCreds and DIF Presentation Exchange proofs over DIDComm. It keeps a
+DIDComm wallet for each holder in the shared agent of the stack.
 
 ## What it serves
 
@@ -20,7 +21,7 @@ AnonCreds and DIF Presentation Exchange proofs over DIDComm.
 | --- | --- |
 | `CapabilityService` | Always served. |
 | `IssuerBackendService` | Served. |
-| `HolderBackendService` | Never served. CREDEBL ships no wallet for a citizen. |
+| `HolderBackendService` | Served with the address and the API key of the shared agent: a DIDComm wallet per holder (ADR-062). |
 | `VerifierBackendService` | Served: OID4VP with DCQL, and DIDComm proof requests. |
 | `CatalogBackendService` | Served. |
 | `TenantBackendService` | Served for organisations. The client credential RPCs answer `unimplemented`. |
@@ -82,8 +83,9 @@ The answer of `GetCapabilities` reports what the platform supports.
 | Formats | `dc+sd-jwt`, `vc+sd-jwt`, AnonCreds, W3C JSON-LD |
 | Channels | OID4VCI pre-authorized code for SD-JWT. A DIDComm invitation for AnonCreds and W3C JSON-LD. An email from the stack for the same two, when the stack names a mail provider. |
 | Protocols | OID4VCI, OID4VP, OID4VP with DCQL, DIDComm issue credential 2.0, DIDComm present proof 2.0 |
-| Roles | Issuer and verifier |
-| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUANCE_STATUS`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ANONCREDS_PROOF`, and `FEATURE_BULK_NATIVE` with a mail provider |
+| Roles | Issuer and verifier. Holder too with the agent. |
+| Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUANCE_STATUS`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ANONCREDS_PROOF`, `FEATURE_BULK_NATIVE` with a mail provider, and `FEATURE_WALLET_DIDCOMM` and `FEATURE_WALLET_DIDS` with the agent |
+| Wallet DID methods | `did:key`, with the agent |
 | Bulk import | With a mail provider: the email channel, AnonCreds and W3C JSON-LD, and the address column `email_identifier` |
 | DID methods | `did:key` |
 | Key types | `Ed25519`, `secp256r1`, `secp256k1` |
@@ -108,7 +110,13 @@ CREDEBL is the only one of the three DPGs that reads DCQL.
 | --- | --- |
 | `Issue` | CREDEBL signs a credential only when a wallet claims an offer. |
 | `Revoke` | The platform revokes an OID4VC session only with a status list host. The stack file runs none, so the status services of VCA own the status bits. |
-| Every holder RPC | CREDEBL ships no wallet for a citizen. |
+| Every holder RPC without the agent | The holder role needs the admin address and the API key of the shared agent. `vca setup` writes both into a holder pair. |
+| The cloud wallet service of the platform | The pinned cloud wallet service reads the agent with a call that the pinned agent refuses. Its proof paths hold a stray brace. Its holder account also needs a mail check. The adapter keeps each holder wallet in the shared agent instead (ADR-062). |
+| `AcceptOffer` with an OID4VCI offer, and `Present` with an OID4VP request | The wallet of the stack speaks DIDComm. Ask the issuer or the verifier for a DIDComm invitation. |
+| `DeleteCredential` of an AnonCreds credential | The agent has no call that removes one. The wallet portal offers no remove button for it. |
+| A decline of an offer or a proof request | The agent has no decline call. The wallet portal forgets a scanned invitation, and an inbox entry waits. |
+| Basic messages | The pinned agent has no basic message call. |
+| `CreateKey`, `ListKeys` and `SetDefaultDid` | The agent makes the key of each DID itself and binds no credential to a default DID. |
 | Every client credential RPC | The adapter makes no client credential of an organisation yet. The admin pages offer no stack credential. |
 | `CreateTenant` with a dedicated agent | The platform starts a dedicated agent through the Docker socket. The stack file mounts none, so every tenant gets the shared agent. |
 | `ImportIssuerIdentity` | The agent keeps every key and takes no key reference. Set another primary DID in the platform. |
@@ -298,6 +306,31 @@ organisation, with the credential definitions of each.
 **A DCQL query arrives in two shapes.** The adapter reads the whole
 request body with its `query` member, and the bare query as well.
 
+**Each holder has a tenant wallet in the shared agent.** `Register`
+makes a tenant and a `did:key` at the first login of a holder. The store
+of the adapter keeps a hash of the pairwise subject and the tenant id
+alone. A holder call names a tenant that `Register` made, never the
+tenant of an organisation in the same agent. The data volume keeps the
+store, so a restart opens the same wallets.
+
+**The agent signs the tokens.** The API key buys the token of the base
+wallet, which makes the tenants and signs a token for each. The adapter
+keeps the tokens in memory. After a refused token it asks for a new
+token once.
+
+**The wallet receives an invitation only after the holder accepts.**
+The wallet portal reads the scanned invitation itself and shows what it
+carries. On accept the adapter hands the invitation to the tenant. The
+agent makes the connection and takes the message it carries. The adapter
+finds the exchange by the thread of that message and accepts it. It then
+waits for the credential or the answer of the verifier.
+
+**An AnonCreds credential reads from its exchange.** The agent lists no
+AnonCreds credential. The finished exchange holds the values of the
+offer and the schema and the credential definition. The adapter returns
+the JSON view of the DIDComm proof results. A W3C credential reads as
+the agent stores it.
+
 ## Tests
 
 The recorded set replays answers of the CREDEBL 2.x api gateway from
@@ -310,4 +343,4 @@ The contract set targets a real platform. It carries the build tag
 
 - Service folder: `services/dpg-adapter-credebl`
 - Contract: `proto/vca/backend/v1/backend.proto`
-- Decisions: ADR-002 decisions 2 and 4, ADR-016 decision 6, ADR-022 decision 3, ADR-030 decision 2, ADR-059, ADR-060, ADR-061
+- Decisions: ADR-002 decisions 2 and 4, ADR-016 decision 6, ADR-022 decision 3, ADR-030 decision 2, ADR-059, ADR-060, ADR-061, ADR-062

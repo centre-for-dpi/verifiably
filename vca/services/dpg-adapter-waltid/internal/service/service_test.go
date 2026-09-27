@@ -832,6 +832,14 @@ func TestCapabilitiesListOnlyImplementedFeatures(t *testing.T) {
 			_, err := svc.GetWebhook(ctx, connect.NewRequest(&backendv1.GetWebhookRequest{}))
 			return err
 		}, true},
+		{backendv1.Feature_FEATURE_WALLET_DEFAULT_DID, func() error {
+			_, err := svc.SetDefaultDid(ctx, connect.NewRequest(&backendv1.SetDefaultDidRequest{WalletId: "probe"}))
+			return err
+		}, true},
+		{backendv1.Feature_FEATURE_WALLET_DIDCOMM, func() error {
+			_, err := svc.ListInbox(ctx, connect.NewRequest(&backendv1.ListInboxRequest{WalletId: "probe"}))
+			return err
+		}, true},
 	}
 	listed := map[backendv1.Feature]bool{}
 	for _, f := range resp.Msg.GetFeatures() {

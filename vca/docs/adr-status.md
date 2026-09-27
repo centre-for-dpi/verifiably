@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-061, one row per decision.
+ADR-062, one row per decision.
 
 The status values are:
 
@@ -663,12 +663,24 @@ A row that is not `Done` carries a note.
 | ADR-061 | 5 The DIDComm option of the request page | Done | `vca/services/verifier-ingest/internal/service/request.go`, `vca/services/verifier-ingest/internal/scanner/request.go` | `TestAnonCredsRequestGoesOverDidcomm`, `TestRequestPageOffersDidcommProofRequest` and `TestRequestListShowsStackProofRequests` pin it. |
 | ADR-061 | 6 The schema of a PE descriptor on CREDEBL | Done | `vca/services/dpg-adapter-credebl/internal/service/proofs.go` | `TestPeProofRequestOverDidcomm` pins it. |
 
+## ADR-062: The DIDComm holder wallet of a CREDEBL stack
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-062 | 1 A tenant wallet per holder in the shared agent | Done | `vca/services/dpg-adapter-credebl/internal/credebl/agent.go` | `TestAgentTenantAndTokens` and `TestCreateCloudWallet` pin it. |
+| ADR-062 | 2 The hashed subject maps onto the tenant | Done | `vca/services/dpg-adapter-credebl/internal/service/holder.go` | `TestCreateCloudWallet` pins it. |
+| ADR-062 | 3 The DIDComm wallet RPCs | Done | `vca/services/dpg-adapter-credebl/internal/service/holder.go` | `TestAcceptOfferThroughInvitation`, `TestAcceptProofRequest`, `TestOpenInvitationKeepsTheConnection` and `TestListInbox` pin it. |
+| ADR-062 | 4 The wallet portal shows an invitation before the wallet takes it | Not started | `vca/services/wallet-portal` | The adapter RPCs exist. The pages follow. |
+| ADR-062 | 5 AnonCreds and W3C credentials, and permanent ones | Partial | `vca/services/dpg-adapter-credebl/internal/service/holder.go` | `TestListCloudCredentials` pins the adapter. The wallet portal still offers a remove button for a permanent credential. |
+| ADR-062 | 6 The keys page with DIDs alone | Partial | `vca/services/dpg-adapter-credebl/internal/service/holder.go` | `TestWalletDids` pins the adapter. The keys page still needs `FEATURE_WALLET_KEYS`. |
+| ADR-062 | 7 The holder role with the agent, and setup | Done | `vca/services/dpg-adapter-credebl/internal/service/service.go`, `vca/internal/cli/credebl.go` | `TestCapabilitiesListHolderRole` and `TestCredeblHolderPairReachesTheAgent` pin it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 287 |
-| Partial | 25 |
+| Done | 291 |
+| Partial | 27 |
 | Deferred | 3 |
-| Not started | 26 |
-| Total | 341 |
+| Not started | 27 |
+| Total | 348 |

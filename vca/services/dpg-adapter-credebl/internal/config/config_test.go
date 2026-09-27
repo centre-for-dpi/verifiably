@@ -180,3 +180,29 @@ func stackImageRefs(t *testing.T, path string) map[string]string {
 	}
 	return out
 }
+
+// TestLoadReadsTheAgentOfTheHolderRole is ADR-062 decision 7: the
+// address and the API key of the shared agent turn the holder role on.
+// The key is a secret, and the label has a default.
+func TestLoadReadsTheAgentOfTheHolderRole(t *testing.T) {
+	values := required()
+	cfg, err := config.Load(env(values))
+	if err != nil || cfg.AgentURL != "" || cfg.AgentAPIKey != "" || cfg.HolderLabel != "Wallet" || cfg.HolderRole() {
+		t.Fatalf("defaults = %+v, %v", cfg, err)
+	}
+	values["VCA_CREDEBL_AGENT_URL"] = "http://credebl-agent.vca.internal:8001"
+	values["VCA_CREDEBL_AGENT_API_KEY"] = "key"
+	values["VCA_CREDEBL_HOLDER_LABEL"] = "Citizen wallet"
+	if cfg, err = config.Load(env(values)); err != nil || !cfg.HolderRole() || cfg.HolderLabel != "Citizen wallet" {
+		t.Fatalf("config = %+v, %v", cfg, err)
+	}
+	vars, err := config.Describe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range vars {
+		if v.Name == "VCA_CREDEBL_AGENT_API_KEY" && !v.Secret {
+			t.Error("the agent API key is not a secret")
+		}
+	}
+}

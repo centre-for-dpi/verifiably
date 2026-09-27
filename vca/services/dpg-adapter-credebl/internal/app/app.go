@@ -61,6 +61,15 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		OrgID:    cfg.OrgID,
 		IssuerID: cfg.IssuerID,
 	})
+	var agent *credebl.Agent
+	if cfg.HolderRole() {
+		agent = credebl.NewAgent(credebl.AgentOptions{
+			HTTP: dpgclient.New(dpgclient.Options{
+				BaseURL: cfg.AgentURL, Timeout: cfg.Timeout, Retries: cfg.Retries, MaxBytes: cfg.MaxBytes, HTTP: deps.HTTP,
+			}),
+			APIKey: cfg.AgentAPIKey,
+		})
+	}
 	svc, err := service.New(service.Options{
 		Client:       client,
 		Store:        backend,
@@ -72,6 +81,8 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		DefaultPin:   cfg.DefaultPin,
 		Versions:     cfg.Versions(),
 		MailOffers:   cfg.MailOffers,
+		Agent:        agent,
+		HolderLabel:  cfg.HolderLabel,
 	})
 	if err != nil {
 		return nil, err
@@ -89,7 +100,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		deps.Log.Warn("no public host rewrite, so a wallet outside the deployment may not reach an offer",
 			"settings", config.Prefix+"PUBLIC_URL and "+config.Prefix+"INTERNAL_URL")
 	}
-	deps.Log.Info("CREDEBL adapter ready", "org", cfg.OrgID, "issuer", cfg.IssuerID)
+	deps.Log.Info("CREDEBL adapter ready", "org", cfg.OrgID, "issuer", cfg.IssuerID, "holder", cfg.HolderRole())
 	return &App{Mux: mux, Service: svc}, nil
 }
 

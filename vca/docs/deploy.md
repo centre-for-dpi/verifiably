@@ -558,6 +558,19 @@ The adapter also lists the bulk import of the platform (ADR-060).
 That import mails an offer to each row of a CSV file.
 Without a provider the adapter lists no email channel and no bulk import.
 
+### CREDEBL holder wallets
+
+A CREDEBL holder pair keeps a DIDComm wallet for each holder in the
+shared agent of the stack (ADR-062).
+Setup writes `VCA_CREDEBL_AGENT_API_KEY` of the pair from
+`CREDEBL_AGENT_API_KEY` of `deploy/credebl/.env`.
+The adapter reaches the admin port of the agent on the compose network.
+Its data volume keeps the tenant of each holder, so keep the volume.
+The holder pair runs the same services as before, so the memory floor
+does not change.
+A wallet reaches an issuer or a verifier on the address of the agent.
+Set `CREDEBL_AGENT_ENDPOINT` to its public address on a public host.
+
 The platform keeps the invitation of each email, and the files of a bulk
 issuance, on the volume `credebl-files`.
 The initialisation gives that volume to the user of the platform images.

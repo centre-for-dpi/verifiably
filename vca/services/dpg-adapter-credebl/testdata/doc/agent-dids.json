@@ -1,0 +1,36 @@
+[
+  {
+    "_tags": {
+      "did": "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
+      "method": "key",
+      "methodSpecificIdentifier": "z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
+      "role": "created"
+    },
+    "metadata": {},
+    "keys": [
+      {
+        "didDocumentRelativeKeyId": "#z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
+        "kmsKeyId": "2c1d9a7e-4b3f-4e8a-9d6c-5b4a3f2e1d0c"
+      }
+    ],
+    "id": "e4d3c2b1-a0f9-4e8d-8c7b-6a5f4e3d2c1b",
+    "did": "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
+    "role": "created",
+    "createdAt": "2026-09-27T10:02:12.017Z",
+    "updatedAt": "2026-09-27T10:02:12.017Z"
+  },
+  {
+    "_tags": {
+      "did": "did:peer:1zQmZMygzYqNwU6Uhmewx5Xepf2VLp5S4HLSwwgf2aiKZuwa",
+      "method": "peer",
+      "methodSpecificIdentifier": "1zQmZMygzYqNwU6Uhmewx5Xepf2VLp5S4HLSwwgf2aiKZuwa",
+      "role": "created"
+    },
+    "metadata": {},
+    "id": "f5e4d3c2-b1a0-4f9e-8d7c-6b5a4f3e2d1c",
+    "did": "did:peer:1zQmZMygzYqNwU6Uhmewx5Xepf2VLp5S4HLSwwgf2aiKZuwa",
+    "role": "created",
+    "createdAt": "2026-09-27T10:05:40.220Z",
+    "updatedAt": "2026-09-27T10:05:40.220Z"
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "token": "[tenant token]",
+  "_tags": {
+    "label": "[holder wallet]"
+  },
+  "metadata": {},
+  "storageVersion": "0.5",
+  "id": "5f3c6a1e-8b2d-4c7a-9e1f-2a3b4c5d6e7f",
+  "createdAt": "2026-09-27T10:02:11.405Z",
+  "config": {
+    "label": "[holder wallet]",
+    "connectionImageUrl": null
+  },
+  "updatedAt": "2026-09-27T10:02:11.405Z"
+}

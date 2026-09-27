@@ -1,0 +1,17 @@
+{
+  "_tags": {
+    "connectionId": "9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e",
+    "role": "prover",
+    "state": "done",
+    "threadId": "3d4e5f6a-7b8c-4d9e-8f0a-1b2c3d4e5f6a"
+  },
+  "metadata": {},
+  "id": "4f5a6b7c-8d9e-4f0a-9b1c-2d3e4f5a6b7c",
+  "createdAt": "2026-09-27T10:21:04.660Z",
+  "protocolVersion": "v2",
+  "state": "done",
+  "role": "prover",
+  "connectionId": "9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e",
+  "threadId": "3d4e5f6a-7b8c-4d9e-8f0a-1b2c3d4e5f6a",
+  "updatedAt": "2026-09-27T10:21:06.980Z"
+}

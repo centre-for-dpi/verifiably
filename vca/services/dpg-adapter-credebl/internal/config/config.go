@@ -61,10 +61,22 @@ type Config struct {
 	// platform mails an out of band offer. vca setup sets it when the
 	// stack .env names EMAIL_PROVIDER.
 	MailOffers bool `env:"MAIL_OFFERS" default:"false"`
-	// StoreFile keeps the verifier id between restarts. Empty keeps it
-	// in memory.
+	// StoreFile keeps the verifier id and the tenant of each holder
+	// between restarts. Empty keeps them in memory.
 	StoreFile string `env:"STORE_FILE"`
+	// AgentURL is the admin address of the shared agent of the stack.
+	// With AgentAPIKey it turns the holder role on (ADR-062).
+	AgentURL string `env:"AGENT_URL"`
+	// AgentAPIKey is the API key of the shared agent. vca setup writes
+	// it from the stack .env into a holder pair.
+	AgentAPIKey string `env:"AGENT_API_KEY" secret:"true"`
+	// HolderLabel is the label a holder wallet shows the other party of
+	// a DIDComm connection.
+	HolderLabel string `env:"HOLDER_LABEL" default:"Wallet"`
 }
+
+// HolderRole reports whether the settings turn the holder role on.
+func (c Config) HolderRole() bool { return c.AgentURL != "" && c.AgentAPIKey != "" }
 
 // Load reads the settings with getenv, for example os.Getenv.
 func Load(getenv func(string) string) (Config, error) {

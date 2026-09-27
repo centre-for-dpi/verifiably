@@ -160,7 +160,8 @@ func TestWalletFeaturesListedWithTheWallet(t *testing.T) {
 			listed[f] = true
 		}
 		for _, f := range []backendv1.Feature{backendv1.Feature_FEATURE_WALLET_KEYS, backendv1.Feature_FEATURE_WALLET_DIDS,
-			backendv1.Feature_FEATURE_WALLET_EVENTS, backendv1.Feature_FEATURE_WALLET_REJECT_OFFER} {
+			backendv1.Feature_FEATURE_WALLET_EVENTS, backendv1.Feature_FEATURE_WALLET_REJECT_OFFER,
+			backendv1.Feature_FEATURE_WALLET_DEFAULT_DID} {
 			if listed[f] != row.want {
 				t.Errorf("%+v: %v listed = %v", row.r, f, listed[f])
 			}

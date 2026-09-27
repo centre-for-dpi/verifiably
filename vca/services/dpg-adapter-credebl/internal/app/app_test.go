@@ -3,6 +3,7 @@
 package app_test
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -107,5 +108,34 @@ func TestBuildReportsABadStoreDirectory(t *testing.T) {
 	cfg.StoreFile = filepath.Join(blocking, "state")
 	if _, err := app.Build(cfg, app.Deps{HTTP: f.Client()}); err == nil {
 		t.Fatal("Build accepted a store path inside a file")
+	}
+}
+
+// TestBuildWiresTheHolderAgent is ADR-062 decision 7: with the agent
+// the adapter serves the holder role, and without it the role is off.
+func TestBuildWiresTheHolderAgent(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	agent := fake.NewAgent(testdata)
+	defer agent.Close()
+	cfg := settings(f)
+	cfg.AgentURL, cfg.AgentAPIKey, cfg.HolderLabel = agent.URL(), fake.AgentAPIKey, "Wallet"
+	a, err := app.Build(cfg, app.Deps{HTTP: f.Client()})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	srv := httptest.NewServer(a.Mux)
+	defer srv.Close()
+	resp, err := srv.Client().Post(srv.URL+"/vca.backend.v1.HolderBackendService/Register", "application/json",
+		strings.NewReader(`{"pairwiseSubject":"s-1"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if cerr := resp.Body.Close(); cerr != nil || err != nil {
+		t.Fatalf("read: %v %v", err, cerr)
+	}
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), fake.FirstTenant) {
+		t.Fatalf("Register: %d %s", resp.StatusCode, body)
 	}
 }

@@ -1,0 +1,74 @@
+{
+  "outOfBandRecord": {
+    "_tags": {
+      "invitationId": "6c7d8e9f-0a1b-4c2d-8e3f-4a5b6c7d8e9f",
+      "recipientKeyFingerprints": [
+        "z6MkwpCi3Hu6EZtcbWTrK4GWFxtgf4ZvynCjhEtFqGjBV5Xi"
+      ],
+      "role": "receiver",
+      "state": "prepare-response",
+      "threadId": "6c7d8e9f-0a1b-4c2d-8e3f-4a5b6c7d8e9f"
+    },
+    "metadata": {},
+    "id": "b1c2d3e4-f5a6-4b7c-8d9e-0f1a2b3c4d5e",
+    "createdAt": "2026-09-27T10:05:39.884Z",
+    "outOfBandInvitation": {
+      "@type": "https://didcomm.org/out-of-band/1.1/invitation",
+      "@id": "6c7d8e9f-0a1b-4c2d-8e3f-4a5b6c7d8e9f",
+      "label": "[verifier organisation]",
+      "accept": [
+        "didcomm/aip1",
+        "didcomm/aip2;env=rfc19"
+      ],
+      "handshake_protocols": [
+        "https://didcomm.org/didexchange/1.1",
+        "https://didcomm.org/connections/1.0"
+      ],
+      "services": [
+        "did:peer:2.Ez6LSqdK2yfVUbk1xmfBxJZ5T5SdRtt7e4DpS1VYqfMkECRkM.Vz6MkwpCi3Hu6EZtcbWTrK4GWFxtgf4ZvynCjhEtFqGjBV5Xi.SeyJ0IjoiZG0iLCJzIjoiaHR0cDovL2NyZWRlYmwtYWdlbnQudmNhLmludGVybmFsOjkwMDEiLCJyIjpbXSwiYSI6WyJkaWRjb21tL2FpcDIiLCJkaWRjb21tL2FpcDI7ZW52PXJmYzE5Il19"
+      ],
+      "requests~attach": [
+        {
+          "@id": "5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a",
+          "mime-type": "application/json",
+          "data": {
+            "base64": "eyJAdHlwZSI6Imh0dHBzOi8vZGlkY29tbS5vcmcvcHJlc2VudC1wcm9vZi8yLjAvcmVxdWVzdC1wcmVzZW50YXRpb24iLCJAaWQiOiIzZDRlNWY2YS03YjhjLTRkOWUtOGYwYS0xYjJjM2Q0ZTVmNmEiLCJ3aWxsX2NvbmZpcm0iOnRydWUsImZvcm1hdHMiOlt7ImF0dGFjaF9pZCI6ImIyYzNkNGU1LWY2YTctNGI4Yy05ZDBlLTFmMmEzYjRjNWQ2ZSIsImZvcm1hdCI6ImFub25jcmVkcy9wcm9vZi1yZXF1ZXN0QHYxLjAifV0sInJlcXVlc3RfcHJlc2VudGF0aW9uc35hdHRhY2giOlt7IkBpZCI6ImIyYzNkNGU1LWY2YTctNGI4Yy05ZDBlLTFmMmEzYjRjNWQ2ZSIsIm1pbWUtdHlwZSI6ImFwcGxpY2F0aW9uL2pzb24iLCJkYXRhIjp7ImJhc2U2NCI6ImV5SnVZVzFsSWpvaVJtRnliV1Z5SUdOb1pXTnJJaXdpZG1WeWMybHZiaUk2SWpFdU1DSXNJbTV2Ym1ObElqb2lXMjV2Ym1ObFhTSXNJbkpsY1hWbGMzUmxaRjloZEhSeWFXSjFkR1Z6SWpwN0ltRjBkSEl4SWpwN0ltNWhiV1VpT2lKbWRXeHNUbUZ0WlNJc0luSmxjM1J5YVdOMGFXOXVjeUk2VzNzaWMyTm9aVzFoWDJsa0lqb2laR2xrT21sdVpIazZZbU52ZG5KcGJqcDBaWE4wYm1WME9sSmhPRVpIWWpKdFdITlVaekZrTkZaeFZtNVpjRk12WVc1dmJtTnlaV1J6TDNZd0wxTkRTRVZOUVM5R1lYSnRaWEl2TVM0d0luMWRmWDBzSW5KbGNYVmxjM1JsWkY5d2NtVmthV05oZEdWeklqcDdJbkJ5WldReElqcDdJbTVoYldVaU9pSmhZM0psY3lJc0luQmZkSGx3WlNJNklqNDlJaXdpY0Y5MllXeDFaU0k2TVRBc0luSmxjM1J5YVdOMGFXOXVjeUk2VzNzaWMyTm9aVzFoWDJsa0lqb2laR2xrT21sdVpIazZZbU52ZG5KcGJqcDBaWE4wYm1WME9sSmhPRVpIWWpKdFdITlVaekZrTkZaeFZtNVpjRk12WVc1dmJtTnlaV1J6TDNZd0wxTkRTRVZOUVM5R1lYSnRaWEl2TVM0d0luMWRmWDE5In19XX0="
+          }
+        }
+      ]
+    },
+    "role": "receiver",
+    "state": "prepare-response",
+    "reusable": false,
+    "updatedAt": "2026-09-27T10:05:40.301Z"
+  },
+  "connectionRecord": {
+    "_tags": {
+      "connectionTypes": [],
+      "did": "did:peer:1zQmZMygzYqNwU6Uhmewx5Xepf2VLp5S4HLSwwgf2aiKZuwa",
+      "invitationDid": "did:peer:2.Ez6LSqdK2yfVUbk1xmfBxJZ5T5SdRtt7e4DpS1VYqfMkECRkM.Vz6MkwpCi3Hu6EZtcbWTrK4GWFxtgf4ZvynCjhEtFqGjBV5Xi.SeyJ0IjoiZG0iLCJzIjoiaHR0cDovL2NyZWRlYmwtYWdlbnQudmNhLmludGVybmFsOjkwMDEiLCJyIjpbXSwiYSI6WyJkaWRjb21tL2FpcDIiLCJkaWRjb21tL2FpcDI7ZW52PXJmYzE5Il19",
+      "outOfBandId": "a0b1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d",
+      "previousDids": [],
+      "previousTheirDids": [],
+      "role": "requester",
+      "state": "request-sent",
+      "threadId": "c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f"
+    },
+    "metadata": {},
+    "connectionTypes": [],
+    "previousDids": [],
+    "previousTheirDids": [],
+    "id": "8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d",
+    "createdAt": "2026-09-27T10:05:40.220Z",
+    "did": "did:peer:1zQmZMygzYqNwU6Uhmewx5Xepf2VLp5S4HLSwwgf2aiKZuwa",
+    "invitationDid": "did:peer:2.Ez6LSqdK2yfVUbk1xmfBxJZ5T5SdRtt7e4DpS1VYqfMkECRkM.Vz6MkwpCi3Hu6EZtcbWTrK4GWFxtgf4ZvynCjhEtFqGjBV5Xi.SeyJ0IjoiZG0iLCJzIjoiaHR0cDovL2NyZWRlYmwtYWdlbnQudmNhLmludGVybmFsOjkwMDEiLCJyIjpbXSwiYSI6WyJkaWRjb21tL2FpcDIiLCJkaWRjb21tL2FpcDI7ZW52PXJmYzE5Il19",
+    "theirLabel": "[verifier organisation]",
+    "state": "request-sent",
+    "role": "requester",
+    "autoAcceptConnection": true,
+    "threadId": "c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f",
+    "protocol": "https://didcomm.org/didexchange/1.x",
+    "outOfBandId": "a0b1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d",
+    "updatedAt": "2026-09-27T10:05:40.305Z"
+  }
+}

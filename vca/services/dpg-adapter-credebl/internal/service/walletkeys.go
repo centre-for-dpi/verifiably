@@ -10,11 +10,14 @@ import (
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 )
 
-// walletKeysMessage says why the wallet key, DID, decline, and event
-// RPCs answer Unimplemented. The adapter lists none of FEATURE_WALLET_KEYS,
-// FEATURE_WALLET_DIDS, FEATURE_WALLET_REJECT_OFFER, and
-// FEATURE_WALLET_EVENTS, so no holder page offers them for this stack.
-const walletKeysMessage = "this adapter does not manage the keys, the DIDs, the offers, or the event log of a wallet"
+// walletKeysMessage says why the wallet key, default DID, decline, and
+// event RPCs answer Unimplemented. The adapter lists none of
+// FEATURE_WALLET_KEYS, FEATURE_WALLET_DEFAULT_DID,
+// FEATURE_WALLET_REJECT_OFFER, and FEATURE_WALLET_EVENTS, so no holder
+// page offers them for this stack. The agent makes the key of a DID
+// itself, binds no credential to a default DID, and has no decline
+// call.
+const walletKeysMessage = "this adapter does not manage the keys, the default DID, the offers, or the event log of a wallet"
 
 // ListKeys answers Unimplemented. See walletKeysMessage.
 func (s *Service) ListKeys(context.Context, *connect.Request[backendv1.ListKeysRequest]) (*connect.Response[backendv1.ListKeysResponse], error) {
@@ -23,16 +26,6 @@ func (s *Service) ListKeys(context.Context, *connect.Request[backendv1.ListKeysR
 
 // CreateKey answers Unimplemented. See walletKeysMessage.
 func (s *Service) CreateKey(context.Context, *connect.Request[backendv1.CreateKeyRequest]) (*connect.Response[backendv1.CreateKeyResponse], error) {
-	return nil, unimplemented(walletKeysMessage)
-}
-
-// ListDids answers Unimplemented. See walletKeysMessage.
-func (s *Service) ListDids(context.Context, *connect.Request[backendv1.ListDidsRequest]) (*connect.Response[backendv1.ListDidsResponse], error) {
-	return nil, unimplemented(walletKeysMessage)
-}
-
-// CreateDid answers Unimplemented. See walletKeysMessage.
-func (s *Service) CreateDid(context.Context, *connect.Request[backendv1.CreateDidRequest]) (*connect.Response[backendv1.CreateDidResponse], error) {
 	return nil, unimplemented(walletKeysMessage)
 }
 

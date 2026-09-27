@@ -1,0 +1,29 @@
+{
+  "_tags": {
+    "connectionTypes": [],
+    "did": "did:peer:1zQmZMygzYqNwU6Uhmewx5Xepf2VLp5S4HLSwwgf2aiKZuwa",
+    "invitationDid": "did:peer:2.Ez6LSqdK2yfVUbk1xmfBxJZ5T5SdRtt7e4DpS1VYqfMkECRkM.Vz6MkwpCi3Hu6EZtcbWTrK4GWFxtgf4ZvynCjhEtFqGjBV5Xi.SeyJ0IjoiZG0iLCJzIjoiaHR0cDovL2NyZWRlYmwtYWdlbnQudmNhLmludGVybmFsOjkwMDEiLCJyIjpbXSwiYSI6WyJkaWRjb21tL2FpcDIiLCJkaWRjb21tL2FpcDI7ZW52PXJmYzE5Il19",
+    "outOfBandId": "a0b1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d",
+    "previousDids": [],
+    "previousTheirDids": [],
+    "role": "requester",
+    "state": "completed",
+    "threadId": "c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f"
+  },
+  "metadata": {},
+  "connectionTypes": [],
+  "previousDids": [],
+  "previousTheirDids": [],
+  "id": "8a9b0c1d-2e3f-4a5b-9c6d-7e8f9a0b1c2d",
+  "createdAt": "2026-09-27T10:05:40.220Z",
+  "did": "did:peer:1zQmZMygzYqNwU6Uhmewx5Xepf2VLp5S4HLSwwgf2aiKZuwa",
+  "invitationDid": "did:peer:2.Ez6LSqdK2yfVUbk1xmfBxJZ5T5SdRtt7e4DpS1VYqfMkECRkM.Vz6MkwpCi3Hu6EZtcbWTrK4GWFxtgf4ZvynCjhEtFqGjBV5Xi.SeyJ0IjoiZG0iLCJzIjoiaHR0cDovL2NyZWRlYmwtYWdlbnQudmNhLmludGVybmFsOjkwMDEiLCJyIjpbXSwiYSI6WyJkaWRjb21tL2FpcDIiLCJkaWRjb21tL2FpcDI7ZW52PXJmYzE5Il19",
+  "theirLabel": "[issuer organisation]",
+  "state": "completed",
+  "role": "requester",
+  "autoAcceptConnection": true,
+  "threadId": "c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f",
+  "protocol": "https://didcomm.org/didexchange/1.x",
+  "outOfBandId": "a0b1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d",
+  "updatedAt": "2026-09-27T10:05:40.305Z"
+}

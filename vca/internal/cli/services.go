@@ -308,8 +308,15 @@ func Catalog() []Service {
 				{Env: "VCA_DATASOURCE_CSV_DIR", Value: "/data/csv"},
 			},
 			Routes: []Route{{Match: "/sources/*", Page: "Data sources"}}},
+		// The data volume keeps the verifier id and the tenant of each
+		// holder. A holder pair reaches the admin port of the shared agent
+		// for the wallets (ADR-062).
 		{Name: "dpg-adapter-credebl", ListenEnv: "VCA_CREDEBL_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_CREDEBL,
-			Links: []Link{dpgURL("VCA_CREDEBL_API_URL")}},
+			Links:    []Link{dpgURL("VCA_CREDEBL_API_URL")},
+			Stateful: true, Fixed: []FixedValue{
+				{Env: "VCA_CREDEBL_STORE_FILE", Value: "/data/credebl-state"},
+				{Env: CredeblAdapterAgentURLEnv, Value: "http://" + SharedAgentHost + ":8001", Roles: holder},
+			}},
 		{Name: "dpg-adapter-inji", ListenEnv: "VCA_INJI_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_INJI,
 			Links: []Link{
 				dpgURL("VCA_INJI_CERTIFY_URL", commonv1.Role_ROLE_ISSUER),

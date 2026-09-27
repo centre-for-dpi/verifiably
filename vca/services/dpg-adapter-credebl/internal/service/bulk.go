@@ -65,6 +65,10 @@ func (s *Service) features() []backendv1.Feature {
 	if s.mailOffers {
 		out = append(out, backendv1.Feature_FEATURE_BULK_NATIVE)
 	}
+	// A tenant wallet per holder in the shared agent (ADR-062).
+	if s.holderRole() {
+		out = append(out, backendv1.Feature_FEATURE_WALLET_DIDCOMM, backendv1.Feature_FEATURE_WALLET_DIDS)
+	}
 	return out
 }
 

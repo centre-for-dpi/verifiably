@@ -1,0 +1,31 @@
+{
+  "request": {
+    "anoncreds": {
+      "name": "Farmer check",
+      "version": "1.0",
+      "nonce": "[nonce]",
+      "requested_attributes": {
+        "attr1": {
+          "name": "fullName",
+          "restrictions": [
+            {
+              "schema_id": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS/anoncreds/v0/SCHEMA/Farmer/1.0"
+            }
+          ]
+        }
+      },
+      "requested_predicates": {
+        "pred1": {
+          "name": "acres",
+          "p_type": ">=",
+          "p_value": 10,
+          "restrictions": [
+            {
+              "schema_id": "did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS/anoncreds/v0/SCHEMA/Farmer/1.0"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

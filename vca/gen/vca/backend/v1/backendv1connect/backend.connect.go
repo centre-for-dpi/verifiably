@@ -151,6 +151,15 @@ const (
 	// HolderBackendServiceUnlockWalletProcedure is the fully-qualified name of the
 	// HolderBackendService's UnlockWallet RPC.
 	HolderBackendServiceUnlockWalletProcedure = "/vca.backend.v1.HolderBackendService/UnlockWallet"
+	// HolderBackendServiceOpenInvitationProcedure is the fully-qualified name of the
+	// HolderBackendService's OpenInvitation RPC.
+	HolderBackendServiceOpenInvitationProcedure = "/vca.backend.v1.HolderBackendService/OpenInvitation"
+	// HolderBackendServiceListWalletConnectionsProcedure is the fully-qualified name of the
+	// HolderBackendService's ListWalletConnections RPC.
+	HolderBackendServiceListWalletConnectionsProcedure = "/vca.backend.v1.HolderBackendService/ListWalletConnections"
+	// HolderBackendServiceListInboxProcedure is the fully-qualified name of the HolderBackendService's
+	// ListInbox RPC.
+	HolderBackendServiceListInboxProcedure = "/vca.backend.v1.HolderBackendService/ListInbox"
 	// VerifierBackendServiceCreateRequestProcedure is the fully-qualified name of the
 	// VerifierBackendService's CreateRequest RPC.
 	VerifierBackendServiceCreateRequestProcedure = "/vca.backend.v1.VerifierBackendService/CreateRequest"
@@ -880,6 +889,18 @@ type HolderBackendServiceClient interface {
 	// makes the wallet with that PIN when the holder has none. The adapter
 	// never stores the PIN.
 	UnlockWallet(context.Context, *connect.Request[v1.UnlockWalletRequest]) (*connect.Response[v1.UnlockWalletResponse], error)
+	// OpenInvitation opens a DIDComm invitation that carries no offer and
+	// no proof request. The wallet keeps the connection (ADR-062). An
+	// adapter serves it when it lists FEATURE_WALLET_DIDCOMM.
+	OpenInvitation(context.Context, *connect.Request[v1.OpenInvitationRequest]) (*connect.Response[v1.OpenInvitationResponse], error)
+	// ListWalletConnections returns the DIDComm connections of a wallet,
+	// newest first. An adapter serves it when it lists
+	// FEATURE_WALLET_DIDCOMM.
+	ListWalletConnections(context.Context, *connect.Request[v1.ListWalletConnectionsRequest]) (*connect.Response[v1.ListWalletConnectionsResponse], error)
+	// ListInbox returns the credential offers and the proof requests that
+	// wait for the holder, newest first. Each came to the wallet over a
+	// connection. An adapter serves it when it lists FEATURE_WALLET_DIDCOMM.
+	ListInbox(context.Context, *connect.Request[v1.ListInboxRequest]) (*connect.Response[v1.ListInboxResponse], error)
 }
 
 // NewHolderBackendServiceClient constructs a client for the vca.backend.v1.HolderBackendService
@@ -983,6 +1004,24 @@ func NewHolderBackendServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(holderBackendServiceMethods.ByName("UnlockWallet")),
 			connect.WithClientOptions(opts...),
 		),
+		openInvitation: connect.NewClient[v1.OpenInvitationRequest, v1.OpenInvitationResponse](
+			httpClient,
+			baseURL+HolderBackendServiceOpenInvitationProcedure,
+			connect.WithSchema(holderBackendServiceMethods.ByName("OpenInvitation")),
+			connect.WithClientOptions(opts...),
+		),
+		listWalletConnections: connect.NewClient[v1.ListWalletConnectionsRequest, v1.ListWalletConnectionsResponse](
+			httpClient,
+			baseURL+HolderBackendServiceListWalletConnectionsProcedure,
+			connect.WithSchema(holderBackendServiceMethods.ByName("ListWalletConnections")),
+			connect.WithClientOptions(opts...),
+		),
+		listInbox: connect.NewClient[v1.ListInboxRequest, v1.ListInboxResponse](
+			httpClient,
+			baseURL+HolderBackendServiceListInboxProcedure,
+			connect.WithSchema(holderBackendServiceMethods.ByName("ListInbox")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -1003,6 +1042,9 @@ type holderBackendServiceClient struct {
 	getCredentialDocument *connect.Client[v1.GetCredentialDocumentRequest, v1.GetCredentialDocumentResponse]
 	getWalletLock         *connect.Client[v1.GetWalletLockRequest, v1.GetWalletLockResponse]
 	unlockWallet          *connect.Client[v1.UnlockWalletRequest, v1.UnlockWalletResponse]
+	openInvitation        *connect.Client[v1.OpenInvitationRequest, v1.OpenInvitationResponse]
+	listWalletConnections *connect.Client[v1.ListWalletConnectionsRequest, v1.ListWalletConnectionsResponse]
+	listInbox             *connect.Client[v1.ListInboxRequest, v1.ListInboxResponse]
 }
 
 // Register calls vca.backend.v1.HolderBackendService.Register.
@@ -1080,6 +1122,21 @@ func (c *holderBackendServiceClient) UnlockWallet(ctx context.Context, req *conn
 	return c.unlockWallet.CallUnary(ctx, req)
 }
 
+// OpenInvitation calls vca.backend.v1.HolderBackendService.OpenInvitation.
+func (c *holderBackendServiceClient) OpenInvitation(ctx context.Context, req *connect.Request[v1.OpenInvitationRequest]) (*connect.Response[v1.OpenInvitationResponse], error) {
+	return c.openInvitation.CallUnary(ctx, req)
+}
+
+// ListWalletConnections calls vca.backend.v1.HolderBackendService.ListWalletConnections.
+func (c *holderBackendServiceClient) ListWalletConnections(ctx context.Context, req *connect.Request[v1.ListWalletConnectionsRequest]) (*connect.Response[v1.ListWalletConnectionsResponse], error) {
+	return c.listWalletConnections.CallUnary(ctx, req)
+}
+
+// ListInbox calls vca.backend.v1.HolderBackendService.ListInbox.
+func (c *holderBackendServiceClient) ListInbox(ctx context.Context, req *connect.Request[v1.ListInboxRequest]) (*connect.Response[v1.ListInboxResponse], error) {
+	return c.listInbox.CallUnary(ctx, req)
+}
+
 // HolderBackendServiceHandler is an implementation of the vca.backend.v1.HolderBackendService
 // service.
 type HolderBackendServiceHandler interface {
@@ -1122,6 +1179,18 @@ type HolderBackendServiceHandler interface {
 	// makes the wallet with that PIN when the holder has none. The adapter
 	// never stores the PIN.
 	UnlockWallet(context.Context, *connect.Request[v1.UnlockWalletRequest]) (*connect.Response[v1.UnlockWalletResponse], error)
+	// OpenInvitation opens a DIDComm invitation that carries no offer and
+	// no proof request. The wallet keeps the connection (ADR-062). An
+	// adapter serves it when it lists FEATURE_WALLET_DIDCOMM.
+	OpenInvitation(context.Context, *connect.Request[v1.OpenInvitationRequest]) (*connect.Response[v1.OpenInvitationResponse], error)
+	// ListWalletConnections returns the DIDComm connections of a wallet,
+	// newest first. An adapter serves it when it lists
+	// FEATURE_WALLET_DIDCOMM.
+	ListWalletConnections(context.Context, *connect.Request[v1.ListWalletConnectionsRequest]) (*connect.Response[v1.ListWalletConnectionsResponse], error)
+	// ListInbox returns the credential offers and the proof requests that
+	// wait for the holder, newest first. Each came to the wallet over a
+	// connection. An adapter serves it when it lists FEATURE_WALLET_DIDCOMM.
+	ListInbox(context.Context, *connect.Request[v1.ListInboxRequest]) (*connect.Response[v1.ListInboxResponse], error)
 }
 
 // NewHolderBackendServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -1221,6 +1290,24 @@ func NewHolderBackendServiceHandler(svc HolderBackendServiceHandler, opts ...con
 		connect.WithSchema(holderBackendServiceMethods.ByName("UnlockWallet")),
 		connect.WithHandlerOptions(opts...),
 	)
+	holderBackendServiceOpenInvitationHandler := connect.NewUnaryHandler(
+		HolderBackendServiceOpenInvitationProcedure,
+		svc.OpenInvitation,
+		connect.WithSchema(holderBackendServiceMethods.ByName("OpenInvitation")),
+		connect.WithHandlerOptions(opts...),
+	)
+	holderBackendServiceListWalletConnectionsHandler := connect.NewUnaryHandler(
+		HolderBackendServiceListWalletConnectionsProcedure,
+		svc.ListWalletConnections,
+		connect.WithSchema(holderBackendServiceMethods.ByName("ListWalletConnections")),
+		connect.WithHandlerOptions(opts...),
+	)
+	holderBackendServiceListInboxHandler := connect.NewUnaryHandler(
+		HolderBackendServiceListInboxProcedure,
+		svc.ListInbox,
+		connect.WithSchema(holderBackendServiceMethods.ByName("ListInbox")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.backend.v1.HolderBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case HolderBackendServiceRegisterProcedure:
@@ -1253,6 +1340,12 @@ func NewHolderBackendServiceHandler(svc HolderBackendServiceHandler, opts ...con
 			holderBackendServiceGetWalletLockHandler.ServeHTTP(w, r)
 		case HolderBackendServiceUnlockWalletProcedure:
 			holderBackendServiceUnlockWalletHandler.ServeHTTP(w, r)
+		case HolderBackendServiceOpenInvitationProcedure:
+			holderBackendServiceOpenInvitationHandler.ServeHTTP(w, r)
+		case HolderBackendServiceListWalletConnectionsProcedure:
+			holderBackendServiceListWalletConnectionsHandler.ServeHTTP(w, r)
+		case HolderBackendServiceListInboxProcedure:
+			holderBackendServiceListInboxHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1320,6 +1413,18 @@ func (UnimplementedHolderBackendServiceHandler) GetWalletLock(context.Context, *
 
 func (UnimplementedHolderBackendServiceHandler) UnlockWallet(context.Context, *connect.Request[v1.UnlockWalletRequest]) (*connect.Response[v1.UnlockWalletResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.UnlockWallet is not implemented"))
+}
+
+func (UnimplementedHolderBackendServiceHandler) OpenInvitation(context.Context, *connect.Request[v1.OpenInvitationRequest]) (*connect.Response[v1.OpenInvitationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.OpenInvitation is not implemented"))
+}
+
+func (UnimplementedHolderBackendServiceHandler) ListWalletConnections(context.Context, *connect.Request[v1.ListWalletConnectionsRequest]) (*connect.Response[v1.ListWalletConnectionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.ListWalletConnections is not implemented"))
+}
+
+func (UnimplementedHolderBackendServiceHandler) ListInbox(context.Context, *connect.Request[v1.ListInboxRequest]) (*connect.Response[v1.ListInboxResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.HolderBackendService.ListInbox is not implemented"))
 }
 
 // VerifierBackendServiceClient is a client for the vca.backend.v1.VerifierBackendService service.

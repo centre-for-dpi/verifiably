@@ -12,12 +12,14 @@ It serves these roles:
   pre-authorized code offers.
 - Verifier: it starts and reads OID4VP transactions with DCQL queries.
 - Catalogue: it lists the credential templates of the issuer.
+- Holder: it keeps a DIDComm wallet for each holder as a tenant of the
+  shared agent of the stack (ADR-062). Without the agent address and
+  API key the holder service answers with the Connect code
+  `unimplemented`.
 
-CREDEBL ships no wallet for a citizen, so the holder service answers
-with the Connect code `unimplemented`.
-
-The service reaches CREDEBL over the api gateway of CREDEBL only. It
-never opens the CREDEBL database and it never controls a container.
+The service reaches CREDEBL over the api gateway of CREDEBL and the
+admin port of the shared agent only. It never opens the CREDEBL
+database and it never controls a container.
 
 ## How to run
 
@@ -40,7 +42,10 @@ never opens the CREDEBL database and it never controls a container.
 | `VCA_CREDEBL_TIMEOUT` | The bound of one call. The default is `30s`. |
 | `VCA_CREDEBL_RETRIES` | The number of extra attempts. The default is `2`. |
 | `VCA_CREDEBL_MAX_BYTES` | The bound of a response body. The default is 8 megabytes. |
-| `VCA_CREDEBL_STORE_FILE` | The file that keeps the verifier id. Empty uses memory. |
+| `VCA_CREDEBL_STORE_FILE` | The file that keeps the verifier id and the tenant of each holder. Empty uses memory. The compose file names a file on the data volume. |
+| `VCA_CREDEBL_AGENT_URL` | The admin address of the shared agent. With the API key it turns the holder wallet on (ADR-062). The compose file of a holder pair names it. |
+| `VCA_CREDEBL_AGENT_API_KEY` | The API key of the shared agent. `vca setup` writes it from the stack into a holder pair. It holds a secret. |
+| `VCA_CREDEBL_HOLDER_LABEL` | The label a holder wallet shows the other party of a connection. The default is `Wallet`. |
 
 Run the binary:
 

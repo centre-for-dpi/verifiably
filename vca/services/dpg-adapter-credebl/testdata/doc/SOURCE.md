@@ -118,3 +118,32 @@ exchange are those of the present proof protocol of the agent:
 `declined`. The platform needs the schema of each input descriptor of a
 DIF PE request (`InputDescriptors` of the DTO), and it keeps only the
 path of each field.
+
+## The holder wallet in the shared agent
+
+These files were written on 2026-09-27 from the controllers of the
+agent at the release that the stack file pins,
+`v2.2.1-alpha-jsonld-vc.2.1`, and from the records of Credo 0.6.2, the
+release the agent builds on. Each record is the `toJSON` form of its
+class. The agent answers without the wrapper of the api gateway. Every
+label and every value is a placeholder in square brackets.
+
+| File | Call | Source |
+| --- | --- | --- |
+| `agent-token.json` | `POST /agent/token` | [AgentController.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/controllers/agent/AgentController.ts) `getAgentToken`, and `expressAuthentication` of [authentication.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/authentication.ts), which compares the whole `Authorization` header with the API key |
+| `agent-tenant-created.json`, `agent-tenant-token.json` | `POST /multi-tenancy/create-tenant`, `POST /multi-tenancy/get-token/{tenant}` | [MultiTenancyController.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/controllers/multi-tenancy/MultiTenancyController.ts), which answers with the tenant record and a token |
+| `agent-did-created.json`, `agent-dids.json` | `POST /dids/write`, `GET /dids` | [DidController.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/controllers/did/DidController.ts) `handleKey` without a seed, and `getDids`, which lists the DID records a tenant made, a `did:peer` of each connection included |
+| `agent-oob-received-offer.json`, `agent-oob-received-request.json`, `agent-oob-received-connection.json` | `POST /didcomm/oob/receive-invitation-url` | [OutOfBandController.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/controllers/didcomm/outofband/OutOfBandController.ts) `receiveInvitationFromUrl`, which answers with the out of band record and the connection record |
+| `agent-invitations.txt` | none: the invitation URLs of the three answers above | the out of band invitation of Aries RFC 0434, with an offer of issue credential 2.0 or a request of present proof 2.0 in `requests~attach` |
+| `agent-connections.json`, `agent-connection-completed.json` | `GET /didcomm/connections`, `GET /didcomm/connections/{id}` | [ConnectionController.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/controllers/didcomm/connections/ConnectionController.ts), and `DidCommConnectionRecord` of Credo |
+| `agent-credentials-offer-received.json`, `agent-credential-offer-received.json`, `agent-credential-request-sent.json`, `agent-credential-done.json`, `agent-credential-done-jsonld.json`, `agent-credential-done-unbound.json`, `agent-credential-abandoned.json`, `agent-credentials-done.json` | `GET /didcomm/credentials`, `GET /didcomm/credentials/{id}`, `POST /didcomm/credentials/accept-offer` | [CredentialController.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/controllers/didcomm/credentials/CredentialController.ts), and `DidCommCredentialExchangeRecord` of Credo with the metadata keys `_anoncreds/credential` and `_anoncreds/credentialRequest` |
+| `agent-credential-form-data.json` | `GET /didcomm/credentials/{id}/form-data` | the same controller, and `getFormatData` of Credo, which answers with the offer per format and `offerAttributes` |
+| `agent-w3c-credentials.json` | `GET /didcomm/credentials/w3c` | the same controller `getAllW3c`, and `W3cCredentialRecord` of Credo 0.6, which keeps the credential in `credentialInstances` |
+| `agent-proofs-request-received.json`, `agent-proof-request-received.json`, `agent-proof-presentation-sent.json`, `agent-proof-done.json`, `agent-proof-abandoned.json` | `GET /didcomm/proofs`, `GET /didcomm/proofs/{id}`, `POST /didcomm/proofs/{id}/accept-request` | [ProofController.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/controllers/didcomm/proofs/ProofController.ts), which picks the credentials of the answer itself, and `DidCommProofExchangeRecord` of Credo |
+| `agent-proof-form-data.json` | `GET /didcomm/proofs/{id}/form-data` | the same controller, and `getFormatData` of Credo, which answers with the request per format |
+
+The removal of a W3C credential goes through `DELETE
+/openid4vc/holder/credential` of
+[holder.service.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/controllers/openid4vc/holder/holder.service.ts),
+with the type `w3c-vc`. The agent has no call that removes an AnonCreds
+credential, no decline call, and no basic message call.

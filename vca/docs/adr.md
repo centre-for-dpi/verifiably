@@ -41,3 +41,4 @@ each decision of each record.
 - [ADR-059: DIDComm issuance channels and the formats each channel carries](adr/ADR-059-didcomm-issuance.md)
 - [ADR-060: The CSV bulk import of a stack that mails each row](adr/ADR-060-stack-bulk-import.md)
 - [ADR-061: DIDComm proof requests and the AnonCreds proof request builder](adr/ADR-061-didcomm-proof-requests.md)
+- [ADR-062: The DIDComm holder wallet of a CREDEBL stack](adr/ADR-062-didcomm-holder-wallet.md)
