@@ -1276,6 +1276,16 @@ After you change a service chart, package the dependencies again:
 cd vca && VCA_WRITE_HELM=1 go test ./internal/cli/ -run TestPackagedCharts
 ```
 
+`helm dependency build` refuses a `Chart.lock` whose digest differs from
+the digest of the dependencies in `Chart.yaml`.
+`TestChartLocksMatchTheirCharts` computes that digest the way helm does.
+The test fails when a lock under `deploy/vca/helm` is out of step.
+After you change the dependencies of a chart, write the lock again:
+
+```sh
+cd vca && VCA_WRITE_HELM=1 go test ./internal/cli/ -run TestChartLocks
+```
+
 The umbrella chart holds the theme file of every page in the ConfigMap
 `<release>-theme` (ADR-032 decision 1).
 Its default is `files/theme.yaml`, a copy of `deploy/vca/theme.yaml`.

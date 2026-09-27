@@ -41,6 +41,9 @@ dependencies:
 - name: trust-registry
   repository: file://../trust-registry
   version: 0.1.0
+- name: verifier-auth
+  repository: file://../verifier-auth
+  version: 0.1.0
 - name: verifier-combined
   repository: file://../verifier-combined
   version: 0.1.0
@@ -62,5 +65,5 @@ dependencies:
 - name: wallet-portal
   repository: file://../wallet-portal
   version: 0.1.0
-digest: sha256:261c57ae08bd41b4427af456e66e9cd85338909cdda2911d8fdacade2a1a1905
-generated: "2026-09-24T09:00:00.000000000Z"
+digest: sha256:d31f1f9dbefae095827269a0a8633189fe92c8426262790d3ec6ab3a8360bd86
+generated: "2026-09-27T00:00:00.000000000Z"
