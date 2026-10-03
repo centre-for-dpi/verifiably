@@ -182,6 +182,38 @@ func (s *Service) list(ctx context.Context, kind, wallet string) ([]record, erro
 	return out, nil
 }
 
+// Sweep removes every expired record of every wallet and returns how
+// many it removed. A record expires PendingTTL after its last write, and
+// get removes it when its own key comes back. A holder who opens many
+// requests and never answers leaves records whose keys never come back,
+// so the app runs Sweep on a timer. A record that does not parse stays
+// for an operator to read.
+func (s *Service) Sweep(ctx context.Context) (int, error) {
+	now := s.opts.Now()
+	removed := 0
+	for _, kind := range []string{KindOffer, KindPresentation, KindHeld, KindSignIn} {
+		keys, err := s.opts.Store.List(ctx, kind+"/")
+		if err != nil {
+			return removed, fmt.Errorf("service: list the records: %w", err)
+		}
+		for _, k := range keys {
+			raw, err := s.opts.Store.Get(ctx, k)
+			if err != nil {
+				continue
+			}
+			var rec record
+			if json.Unmarshal(raw, &rec) != nil || !now.After(rec.ExpiresAt) {
+				continue
+			}
+			if err := s.opts.Store.Delete(ctx, k); err != nil {
+				return removed, fmt.Errorf("service: remove the record: %w", err)
+			}
+			removed++
+		}
+	}
+	return removed, nil
+}
+
 // newID returns a random record id.
 func newID() string {
 	b := make([]byte, 12)

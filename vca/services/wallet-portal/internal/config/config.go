@@ -91,6 +91,12 @@ type Config struct {
 	// PendingTTL is how long a pending offer or presentation stays
 	// readable.
 	PendingTTL time.Duration `env:"PENDING_TTL" default:"15m"`
+	// PendingSweep is how often the service removes the expired pending
+	// records of every wallet.
+	PendingSweep time.Duration `env:"PENDING_SWEEP" default:"5m"`
+	// RequestObjectMaxBytes caps the request object that the service
+	// keeps with an open presentation request. A larger one is refused.
+	RequestObjectMaxBytes int64 `env:"REQUEST_OBJECT_MAX_BYTES" default:"65536"`
 	// PageSizeMax caps the page size of a list RPC.
 	PageSizeMax int `env:"PAGE_SIZE_MAX" default:"50"`
 	// ClientID is the client id of the wallet at the authorization server
@@ -154,6 +160,8 @@ func (c Config) Check() error {
 		{c.MaxPasteBytes > 0, "MAX_PASTE_BYTES must be positive"},
 		{c.MaxBlobBytes > 0, "MAX_BLOB_BYTES must be positive"},
 		{c.PendingTTL > 0, "PENDING_TTL must be positive"},
+		{c.PendingSweep > 0, "PENDING_SWEEP must be positive"},
+		{c.RequestObjectMaxBytes > 0, "REQUEST_OBJECT_MAX_BYTES must be positive"},
 		{c.PageSizeMax > 0, "PAGE_SIZE_MAX must be positive"},
 		{c.CrawlTTL > 0, "CRAWL_TTL must be positive"},
 		{c.CSRFKey == "" || len(c.CSRFKey) >= 16, "CSRF_KEY must have 16 bytes or more"},

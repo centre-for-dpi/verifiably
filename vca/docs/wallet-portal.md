@@ -224,6 +224,12 @@ wallet.
 
 The service keeps the offer or the request for the time in
 `PENDING_TTL`. A pending record holds no credential content.
+The record of a presentation request keeps the request object of the
+verifier. The service refuses an object above
+`REQUEST_OBJECT_MAX_BYTES`, 64 KiB by default, and keeps none of it.
+Every `PENDING_SWEEP`, 5 minutes by default, the service removes the
+expired records of every wallet. So a request that nobody answers
+leaves no file on the volume.
 
 ## Credential storage
 

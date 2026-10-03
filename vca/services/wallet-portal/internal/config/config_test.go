@@ -28,6 +28,9 @@ func TestLoadDefaults(t *testing.T) {
 	if c.PendingTTL != 15*time.Minute {
 		t.Fatalf("pending = %s", c.PendingTTL)
 	}
+	if c.PendingSweep != 5*time.Minute || c.RequestObjectMaxBytes != 64<<10 {
+		t.Fatalf("sweep = %s, request object cap = %d", c.PendingSweep, c.RequestObjectMaxBytes)
+	}
 	if _, ok := c.HolderBackendURL(); ok {
 		t.Fatal("want browser storage by default")
 	}
@@ -66,6 +69,8 @@ func TestLoadRejects(t *testing.T) {
 	cases := map[string]map[string]string{
 		"PAGE_SIZE_MAX":  {"VCA_WALLET_PORTAL_PAGE_SIZE_MAX": "0"},
 		"PENDING_TTL":    {"VCA_WALLET_PORTAL_PENDING_TTL": "0s"},
+		"PENDING_SWEEP":  {"VCA_WALLET_PORTAL_PENDING_SWEEP": "0s"},
+		"OBJECT_MAX":     {"VCA_WALLET_PORTAL_REQUEST_OBJECT_MAX_BYTES": "0"},
 		"MAX_BLOB_BYTES": {"VCA_WALLET_PORTAL_MAX_BLOB_BYTES": "0"},
 		"MAX_PASTE":      {"VCA_WALLET_PORTAL_MAX_PASTE_BYTES": "0"},
 		"STATUS_TTL":     {"VCA_WALLET_PORTAL_STATUS_TTL": "0s"},

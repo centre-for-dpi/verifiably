@@ -58,6 +58,32 @@ type App struct {
 	// Blobs holds the ciphertext of the browser store. Its routes answer
 	// only while the wallet keeps the browser store.
 	Blobs *blobs.Store
+	// log receives a line per sweep that removed a record.
+	log *slog.Logger
+}
+
+// SweepPending removes the expired pending records of every wallet at
+// each tick of every, until ctx ends. An open presentation request keeps
+// its request object, so an unanswered request would else stay on the
+// volume. It returns the error of the context.
+func (a *App) SweepPending(ctx context.Context, every time.Duration) error {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-t.C:
+		}
+		n, err := a.Service.Sweep(ctx)
+		if err != nil {
+			a.log.Warn("the sweep of the pending records failed", "error", err)
+			continue
+		}
+		if n > 0 {
+			a.log.Info("removed expired pending records", "records", n)
+		}
+	}
 }
 
 // Deps are the side effects the wiring needs. Tests inject fakes.
@@ -163,7 +189,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		PageSizeMax:    cfg.PageSizeMax,
 		MaxPasteBytes:  cfg.MaxPasteBytes,
 		PendingTTL:     cfg.PendingTTL,
-		Now:            deps.Now,
+		// The service keeps the request object of each open request, so
+		// it caps it, and the app sweeps the expired records.
+		MaxRequestObjectBytes: cfg.RequestObjectMaxBytes,
+		Now:                   deps.Now,
 	})
 	if err != nil {
 		return nil, err
@@ -184,7 +213,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	mux.Handle(walletportalv1connect.NewWalletPortalServiceHandler(svc, peerauth.Require(cfg.Peer),
 		connect.WithInterceptors(session.Interceptor(verify))))
 	mux.Handle("GET "+ui.Prefix, assets)
-	app := &App{Mux: mux, Service: svc, Portal: pages}
+	app := &App{Mux: mux, Service: svc, Portal: pages, log: deps.Log}
 	guarded := http.NewServeMux()
 	pages.Register(guarded)
 	// The browser store serves a wallet without a holder backend, and a

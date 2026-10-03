@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/serve"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/config"
@@ -69,6 +70,8 @@ func serveOrProbe(ctx context.Context, healthcheck bool, getenv func(string) str
 	}
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// The sweep of the expired pending records ends with the service.
+	go func() { anyval.Discard(a.SweepPending(ctx, cfg.PendingSweep)) }()
 	return serve.Run(ctx, serve.Options{
 		Listen: cfg.Listen, Handler: a.Mux, Ready: a.Ready, Log: log,
 	})

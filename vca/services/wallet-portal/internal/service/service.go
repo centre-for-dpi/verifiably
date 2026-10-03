@@ -49,6 +49,11 @@ const DefaultMaxPasteBytes = 64 << 10
 // readable.
 const DefaultPendingTTL = 15 * time.Minute
 
+// DefaultMaxRequestObjectBytes caps the request object the wallet keeps
+// with an open presentation request. A signed request with a
+// certificate chain fits well below it.
+const DefaultMaxRequestObjectBytes = 64 << 10
+
 // Options configure the service.
 type Options struct {
 	// Holder is the holder backend of the DPG. A nil client selects the
@@ -121,6 +126,10 @@ type Options struct {
 	// PendingTTL is the life of an offer or a presentation. Zero means
 	// DefaultPendingTTL.
 	PendingTTL time.Duration
+	// MaxRequestObjectBytes caps the request object that the wallet
+	// keeps with an open presentation request. Zero means
+	// DefaultMaxRequestObjectBytes.
+	MaxRequestObjectBytes int64
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 	// NewID returns a record id. Nil makes a random id.
@@ -148,6 +157,9 @@ func New(opts Options) (*Service, error) {
 	}
 	if opts.MaxPasteBytes <= 0 {
 		opts.MaxPasteBytes = DefaultMaxPasteBytes
+	}
+	if opts.MaxRequestObjectBytes <= 0 {
+		opts.MaxRequestObjectBytes = DefaultMaxRequestObjectBytes
 	}
 	if opts.PendingTTL <= 0 {
 		opts.PendingTTL = DefaultPendingTTL
@@ -792,6 +804,12 @@ func (s *Service) request(ctx context.Context, citizen session.Citizen, idOrURI 
 	full, object, err := present.FetchObject(ctx, parsed, s.opts.RequestHosts, s.opts.Fetch)
 	if err != nil {
 		return "", present.Request{}, record{}, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if n := int64(len(object)); n > s.opts.MaxRequestObjectBytes {
+		// The wallet keeps the object until the holder answers, so it
+		// keeps none above the cap.
+		return "", present.Request{}, record{}, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("service: the request object of the verifier holds %d bytes, and the wallet keeps at most %d bytes", n, s.opts.MaxRequestObjectBytes))
 	}
 	if rec.ID == "" || len(object) > 0 {
 		rec.ID, rec.URI, rec.Object = id, uri, string(object)
