@@ -89,6 +89,12 @@ The package runs in about ten seconds with the race detector. The first
 run builds the commands, so it takes longer. The test runs on Linux and
 macOS.
 
+The time limit of a walk starts after the build. A loaded machine can
+spend most of a minute on the build. A limit that counted the build
+stopped the services in the middle of a walk. The proxy of a pair then
+read an unexpected EOF. The errors of each proxy now join the failure
+report, beside the output of each service.
+
 ## vca-release: publish a release
 
 A push of a tag `vX.Y.Z` starts the workflow. See

@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 	"net"
 	"net/http"
@@ -512,6 +513,11 @@ func (d *deployment) proxy(rp *runningPair) {
 	t := d.t
 	routes := cli.PairRoutes(rp.pair, nil)
 	refused := cli.RefusedRoutes(rp.pair)
+	// The errors of the proxy join the failure report, so a stopped
+	// service shows as the reason of a broken page.
+	errs := &logBuffer{}
+	d.logs["proxy of "+rp.pair.Name()] = errs
+	errorLog := log.New(errs, "", log.LstdFlags)
 	home := cli.HomeOf(rp.pair.Role)
 	target := func(service string) *url.URL {
 		return &url.URL{Scheme: "http", Host: "127.0.0.1:" + strconv.Itoa(rp.ports[service])}
@@ -545,6 +551,7 @@ func (d *deployment) proxy(rp *runningPair) {
 			service, strip = sr.Service, sr.Route.StripPrefix()
 		}
 		rp2 := httputil.NewSingleHostReverseProxy(target(service))
+		rp2.ErrorLog = errorLog
 		if strip != "" {
 			r.URL.Path = strings.TrimPrefix(r.URL.Path, strip)
 			r.URL.RawPath = ""

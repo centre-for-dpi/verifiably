@@ -60,7 +60,10 @@ type walk struct {
 // laptop deployment lets the wallet read the requests of the verifier
 // on this host, and the discovery service read the pairs over plain
 // http on the loopback address (docs/verifier-discovery.md).
-func newWalk(ctx context.Context, t *testing.T, dpg configv1.Dpg, stack string, dpgURLs map[string]string) *walk {
+//
+// It builds the commands of the services. The context of the walk
+// starts later, in begin, so the build takes none of its time.
+func newWalk(t *testing.T, dpg configv1.Dpg, stack string, dpgURLs map[string]string) *walk {
 	t.Helper()
 	var pairs []cli.Pair
 	for _, role := range []commonv1.Role{commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_HOLDER, commonv1.Role_ROLE_VERIFIER, commonv1.Role_ROLE_ADMIN} {
@@ -70,8 +73,7 @@ func newWalk(ctx context.Context, t *testing.T, dpg configv1.Dpg, stack string, 
 	holder := pairs[1].Name()
 	d.set(holder, "VCA_WALLET_PORTAL_DPG_ADAPTERS", "")
 	d.set(holder, "VCA_WALLET_AUTH_HOLDER_BACKEND_URL", "")
-	w := &walk{t: t, ctx: ctx, d: d, stack: stack, key: newHolderKey(t)}
-	w.staff, w.citizen, w.checker, w.operator = newBrowser(ctx, t), newBrowser(ctx, t), newBrowser(ctx, t), newBrowser(ctx, t)
+	w := &walk{t: t, d: d, stack: stack, key: newHolderKey(t)}
 	for role, claims := range map[commonv1.Role]map[string]any{
 		commonv1.Role_ROLE_ISSUER:   {"name": "Amina Odhiambo", "realm_access": map[string]any{"roles": []string{"issuer-admin"}}},
 		commonv1.Role_ROLE_HOLDER:   {"name": "Wanjiku Njeri"},
@@ -83,6 +85,16 @@ func newWalk(ctx context.Context, t *testing.T, dpg configv1.Dpg, stack string, 
 		}
 	}
 	return w
+}
+
+// begin starts the context of the walk, which bounds the processes and
+// every request to limit, and opens the browser of each person. The
+// deadline counts from now, after the build of the commands (P7-05).
+func (w *walk) begin(limit time.Duration) context.CancelFunc {
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	w.ctx = ctx
+	w.staff, w.citizen, w.checker, w.operator = newBrowser(ctx, w.t), newBrowser(ctx, w.t), newBrowser(ctx, w.t), newBrowser(ctx, w.t)
+	return cancel
 }
 
 // start runs the processes and names the pairs.
@@ -272,12 +284,11 @@ func (w *walk) done(began time.Time) {
 // its answer. The verdict turns from "issuer untrusted" to valid. Every
 // page passes the accessibility rules of the kit.
 func TestWalkthroughWaltid(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*budget)
-	defer cancel()
 	api := newWaltidIssuer(t)
-	w := newWalk(ctx, t, configv1.Dpg_DPG_WALTID, "walt.id Community Stack", map[string]string{"http://waltid-issuer-api:7002": api.srv.URL})
+	w := newWalk(t, configv1.Dpg_DPG_WALTID, "walt.id Community Stack", map[string]string{"http://waltid-issuer-api:7002": api.srv.URL})
 	// The budget starts once the commands are built: a first run on a
 	// machine builds them once.
+	defer w.begin(2 * budget)()
 	began := time.Now()
 	w.start()
 	w.landing()
@@ -328,12 +339,11 @@ func TestWalkthroughWaltid(t *testing.T) {
 // is revocable, and the revocation of the issuer turns the verdict to
 // invalid (P6-C1b, P6-C5b).
 func TestWalkthroughCredebl(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*budget)
-	defer cancel()
 	stack := newCredeblStack(t)
-	w := newWalk(ctx, t, configv1.Dpg_DPG_CREDEBL, "CREDEBL", map[string]string{
+	w := newWalk(t, configv1.Dpg_DPG_CREDEBL, "CREDEBL", map[string]string{
 		"http://credebl-api-gateway:5000": stack.srv.URL, "http://credebl-agent.vca.internal:8001": stack.srv.URL,
 	})
+	defer w.begin(2 * budget)()
 	began := time.Now()
 	// The operator answers the two questions of vca setup for CREDEBL.
 	// vca dpg bootstrap then writes the organisation and its OID4VC
