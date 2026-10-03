@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-075, one row per decision.
+ADR-076, one row per decision.
 
 The status values are:
 
@@ -804,12 +804,20 @@ A row that is not `Done` carries a note.
 | ADR-075 | 6 One Secret per Helm chart | Done | `deploy/vca/helm/*/templates/deployment.yaml`, `vca/internal/cli/peer.go` | `TestServiceChartsReadTheirPeerSecret` and `TestHelmPeerSecrets` pin it. |
 | ADR-075 | 7 The guard test of the handlers | Done | `vca/internal/cli/peerguard_test.go` | `TestEveryConnectHandlerChecksItsCaller` pins it. |
 
+## ADR-076: The answer of Issue names the status entry its credential carries
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-076 | 1 `IssueResponse` names the entry | Done | `proto/vca/backend/v1/backend.proto`, `vca/services/dpg-adapter-inji/internal/service/issuer.go` | `TestIssueNamesTheStatusEntryOfTheRow` pins it. walt.id and CREDEBL serve no `Issue`. |
+| ADR-076 | 2 `credential_id` for a list of the stack | Done | `vca/services/issuance/internal/service/issue.go` | `TestADocumentOfAStackWithItsOwnListRecordsTheEntryOfIssue` pins it. |
+| ADR-076 | 3 The record of a document keeps the entry of the answer | Done | `vca/services/issuance/internal/service/issue.go` | `TestADocumentWhoseCredentialCarriesNoStatusRecordsNone` and `TestADocumentRecordsTheVcaEntryTheAnswerNames` pin it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 385 |
+| Done | 388 |
 | Partial | 19 |
 | Deferred | 3 |
 | Not started | 5 |
-| Total | 412 |
+| Total | 415 |

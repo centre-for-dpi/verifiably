@@ -34,9 +34,9 @@ type fakeAdapter struct {
 	offer *backendv1.CreateOfferResponse
 	// offerErr fails CreateOffer.
 	offerErr error
-	// noEcho makes CreateOffer name no status entry, as for a stack
-	// that embeds none. Else an offer with no status of its own names
-	// the status entry of the spec, as a stack that embeds it does.
+	// noEcho makes CreateOffer and Issue name no status entry, as for a
+	// stack that embeds none. Else an answer with no status of its own
+	// names the status entry of the spec, as a stack that embeds it does.
 	noEcho bool
 	// credential is the answer of Issue.
 	credential *backendv1.IssueResponse
@@ -102,7 +102,11 @@ func (f *fakeAdapter) Issue(
 	if f.issueErr != nil {
 		return nil, f.issueErr
 	}
-	return connect.NewResponse(f.credential), nil
+	out, ok := proto.Clone(f.credential).(*backendv1.IssueResponse)
+	if ok && out.GetStatus() == nil && !f.noEcho {
+		out.Status = req.Msg.GetSpec().GetStatus()
+	}
+	return connect.NewResponse(out), nil
 }
 
 func (f *fakeAdapter) GetIssuanceStatus(

@@ -89,3 +89,53 @@ func TestAnOfferRecordsTheVcaEntryTheCredentialCarries(t *testing.T) {
 		t.Fatalf("dpg_credential_id = %q, want none for a VCA entry", record.GetDpgCredentialId())
 	}
 }
+
+// TestADocumentOfAStackWithItsOwnListRecordsTheEntryOfIssue is ADR-072
+// decision 2 for Issue: the answer names the entry of the list of the
+// stack and the id the adapter revokes by, and the record keeps both.
+func TestADocumentOfAStackWithItsOwnListRecordsTheEntryOfIssue(t *testing.T) {
+	h := newHarness(t, func(_ *service.Options, h *harness) {
+		h.adapter.capabilities = ownList()
+		h.adapter.credential.Status = stackEntry()
+		h.adapter.credential.CredentialId = "5f2c1d7b-6a09-4e83-9c14-2b7d8e0f3a56"
+	})
+	h.issue(t, backendv1.Channel_CHANNEL_PDF, nil)
+	if len(h.status.requests) != 0 {
+		t.Fatalf("the stack embeds no entry of VCA, yet the service allocated %d index(es)", len(h.status.requests))
+	}
+	record := h.recorder.last()
+	if !proto.Equal(record.GetStatusBinding(), stackEntry()) {
+		t.Fatalf("the record names %v, want the entry of the stack", record.GetStatusBinding())
+	}
+	if record.GetDpgCredentialId() != "5f2c1d7b-6a09-4e83-9c14-2b7d8e0f3a56" {
+		t.Fatalf("dpg_credential_id = %q, want the id the adapter revokes by", record.GetDpgCredentialId())
+	}
+}
+
+// TestADocumentWhoseCredentialCarriesNoStatusRecordsNone: an answer of
+// Issue that names no entry gives a record with no entry, on the document
+// and the identity QR channels.
+func TestADocumentWhoseCredentialCarriesNoStatusRecordsNone(t *testing.T) {
+	for _, channel := range []backendv1.Channel{backendv1.Channel_CHANNEL_PDF, backendv1.Channel_CHANNEL_CLAIM169_QR} {
+		h := newHarness(t, func(_ *service.Options, h *harness) {
+			h.adapter.noEcho = true
+			h.adapter.capabilities.Channels = append(h.adapter.capabilities.Channels, backendv1.Channel_CHANNEL_CLAIM169_QR)
+			h.adapter.credential.Claim169Qr = identityText(t)
+		})
+		h.issue(t, channel, nil)
+		if record := h.recorder.last(); record.GetStatusBinding() != nil {
+			t.Fatalf("%v: the credential carries no status entry, yet the record names %v", channel, record.GetStatusBinding())
+		}
+	}
+}
+
+// TestADocumentRecordsTheVcaEntryTheAnswerNames: an adapter that embeds
+// the entry of the spec names it, and the record keeps it.
+func TestADocumentRecordsTheVcaEntryTheAnswerNames(t *testing.T) {
+	h := newHarness(t, nil)
+	h.issue(t, backendv1.Channel_CHANNEL_PDF, nil)
+	binding := h.recorder.last().GetStatusBinding()
+	if binding.GetListId() != "list-1" || binding.GetIndex() != 12 || binding.GetDpgList() {
+		t.Fatalf("binding = %v, want the VCA entry list-1 index 12", binding)
+	}
+}

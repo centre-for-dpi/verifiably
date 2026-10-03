@@ -898,6 +898,12 @@ message IssueResponse {
   // then base45. Empty when the DPG signed none. An adapter fills it
   // when it lists CHANNEL_CLAIM169_QR.
   string claim169_qr = 3;
+  // The status entry the credential carries, as in CreateOfferResponse
+  // (ADR-076). The adapter returns spec.status when the DPG embeds that
+  // entry. A DPG that writes an entry of its own list gets dpg_list set.
+  // Revoke then names credential_id. Empty means the credential carries
+  // no status entry, so VCA cannot revoke it.
+  StatusListBinding status = 4;
 }
 
 // IssueBatchRequest asks for many credentials in one call.

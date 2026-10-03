@@ -262,9 +262,9 @@ then names the staff member (ADR-039 decision 1).
    kind, the credential has no entry and stays valid for good. It
    reserves none when the adapter lists no status mechanism of the kind.
    Such a stack keeps its own list, or writes no entry at all.
-6. It asks the adapter for an offer, or for a signed credential. The
-   answer of an offer names the status entry that the credential
-   carries (ADR-072). That entry can sit in a list of the stack.
+6. It asks the adapter for an offer, or for a signed credential. Each
+   answer names the status entry that the credential carries (ADR-072,
+   ADR-076). That entry can sit in a list of the stack.
 7. It renders the page, when the channel needs one.
 8. It records the issuance in the issued credentials service, with the
    entry the credential carries. An entry of the stack comes with the

@@ -3517,7 +3517,13 @@ type IssueResponse struct {
 	// MOSIP QR code specification 1.1.0: claim 169 in a CWT, then zlib,
 	// then base45. Empty when the DPG signed none. An adapter fills it
 	// when it lists CHANNEL_CLAIM169_QR.
-	Claim169Qr    string `protobuf:"bytes,3,opt,name=claim169_qr,json=claim169Qr,proto3" json:"claim169_qr,omitempty"`
+	Claim169Qr string `protobuf:"bytes,3,opt,name=claim169_qr,json=claim169Qr,proto3" json:"claim169_qr,omitempty"`
+	// The status entry the credential carries, as in CreateOfferResponse
+	// (ADR-076). The adapter returns spec.status when the DPG embeds that
+	// entry. A DPG that writes an entry of its own list gets dpg_list set.
+	// Revoke then names credential_id. Empty means the credential carries
+	// no status entry, so VCA cannot revoke it.
+	Status        *StatusListBinding `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3571,6 +3577,13 @@ func (x *IssueResponse) GetClaim169Qr() string {
 		return x.Claim169Qr
 	}
 	return ""
+}
+
+func (x *IssueResponse) GetStatus() *StatusListBinding {
+	if x != nil {
+		return x.Status
+	}
+	return nil
 }
 
 // IssueBatchRequest asks for many credentials in one call.
@@ -11678,14 +11691,15 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\x06status\x18\x06 \x01(\v2!.vca.backend.v1.StatusListBindingR\x06status\x12#\n" +
 	"\rcredential_id\x18\a \x01(\tR\fcredentialId\"=\n" +
 	"\fIssueRequest\x12-\n" +
-	"\x04spec\x18\x01 \x01(\v2\x19.vca.backend.v1.IssueSpecR\x04spec\"\x90\x01\n" +
+	"\x04spec\x18\x01 \x01(\v2\x19.vca.backend.v1.IssueSpecR\x04spec\"\xcb\x01\n" +
 	"\rIssueResponse\x129\n" +
 	"\n" +
 	"credential\x18\x01 \x01(\v2\x19.vca.common.v1.CredentialR\n" +
 	"credential\x12#\n" +
 	"\rcredential_id\x18\x02 \x01(\tR\fcredentialId\x12\x1f\n" +
 	"\vclaim169_qr\x18\x03 \x01(\tR\n" +
-	"claim169Qr\"\\\n" +
+	"claim169Qr\x129\n" +
+	"\x06status\x18\x04 \x01(\v2!.vca.backend.v1.StatusListBindingR\x06status\"\\\n" +
 	"\x11IssueBatchRequest\x12/\n" +
 	"\x05specs\x18\x01 \x03(\v2\x19.vca.backend.v1.IssueSpecR\x05specs\x12\x16\n" +
 	"\x06emails\x18\x02 \x03(\tR\x06emails\"\xfd\x01\n" +
@@ -12626,243 +12640,244 @@ var file_vca_backend_v1_backend_proto_depIdxs = []int32{
 	42,  // 51: vca.backend.v1.CreateOfferResponse.status:type_name -> vca.backend.v1.StatusListBinding
 	43,  // 52: vca.backend.v1.IssueRequest.spec:type_name -> vca.backend.v1.IssueSpec
 	196, // 53: vca.backend.v1.IssueResponse.credential:type_name -> vca.common.v1.Credential
-	43,  // 54: vca.backend.v1.IssueBatchRequest.specs:type_name -> vca.backend.v1.IssueSpec
-	183, // 55: vca.backend.v1.IssueBatchResponse.items:type_name -> vca.backend.v1.IssueBatchResponse.Item
-	42,  // 56: vca.backend.v1.RevokeRequest.status:type_name -> vca.backend.v1.StatusListBinding
-	6,   // 57: vca.backend.v1.RevokeRequest.action:type_name -> vca.backend.v1.RevokeRequest.Action
-	192, // 58: vca.backend.v1.RevokeResponse.revoked_at:type_name -> google.protobuf.Timestamp
-	7,   // 59: vca.backend.v1.GetIssuanceStatusResponse.state:type_name -> vca.backend.v1.GetIssuanceStatusResponse.State
-	196, // 60: vca.backend.v1.GetIssuanceStatusResponse.credential:type_name -> vca.common.v1.Credential
-	192, // 61: vca.backend.v1.GetIssuanceStatusResponse.claimed_at:type_name -> google.protobuf.Timestamp
-	192, // 62: vca.backend.v1.GetIssuanceStatusResponse.expires_at:type_name -> google.protobuf.Timestamp
-	184, // 63: vca.backend.v1.ListIssuedCredentialsRequest.attributes:type_name -> vca.backend.v1.ListIssuedCredentialsRequest.AttributesEntry
-	190, // 64: vca.backend.v1.ListIssuedCredentialsRequest.page:type_name -> vca.common.v1.Pagination
-	58,  // 65: vca.backend.v1.ListIssuedCredentialsResponse.credentials:type_name -> vca.backend.v1.LedgerEntry
-	191, // 66: vca.backend.v1.ListIssuedCredentialsResponse.page:type_name -> vca.common.v1.PageResult
-	192, // 67: vca.backend.v1.LedgerEntry.issued_at:type_name -> google.protobuf.Timestamp
-	192, // 68: vca.backend.v1.LedgerEntry.expires_at:type_name -> google.protobuf.Timestamp
-	42,  // 69: vca.backend.v1.LedgerEntry.status:type_name -> vca.backend.v1.StatusListBinding
-	192, // 70: vca.backend.v1.LedgerEntry.status_changed_at:type_name -> google.protobuf.Timestamp
-	38,  // 71: vca.backend.v1.GetIssuerMetadataResponse.configurations:type_name -> vca.backend.v1.CredentialConfiguration
-	185, // 72: vca.backend.v1.IssuerIdentity.metadata:type_name -> vca.backend.v1.IssuerIdentity.Metadata
-	186, // 73: vca.backend.v1.IssuerIdentity.key:type_name -> vca.backend.v1.IssuerIdentity.Key
-	61,  // 74: vca.backend.v1.GetIssuerIdentityResponse.identity:type_name -> vca.backend.v1.IssuerIdentity
-	61,  // 75: vca.backend.v1.ProvisionIssuerIdentityResponse.identity:type_name -> vca.backend.v1.IssuerIdentity
-	61,  // 76: vca.backend.v1.ImportIssuerIdentityResponse.identity:type_name -> vca.backend.v1.IssuerIdentity
-	189, // 77: vca.backend.v1.SetPresentationRequirementRequest.format:type_name -> vca.common.v1.Format
-	68,  // 78: vca.backend.v1.GetPresentationRequirementResponse.requirement:type_name -> vca.backend.v1.SetPresentationRequirementRequest
-	72,  // 79: vca.backend.v1.GetHolderSignInSourceResponse.source:type_name -> vca.backend.v1.HolderSignInSource
-	72,  // 80: vca.backend.v1.SetHolderSignInSourceRequest.source:type_name -> vca.backend.v1.HolderSignInSource
-	72,  // 81: vca.backend.v1.SetHolderSignInSourceResponse.source:type_name -> vca.backend.v1.HolderSignInSource
-	196, // 82: vca.backend.v1.WalletCredential.credential:type_name -> vca.common.v1.Credential
-	192, // 83: vca.backend.v1.WalletCredential.received_at:type_name -> google.protobuf.Timestamp
-	190, // 84: vca.backend.v1.ListCredentialsRequest.page:type_name -> vca.common.v1.Pagination
-	79,  // 85: vca.backend.v1.ListCredentialsResponse.credentials:type_name -> vca.backend.v1.WalletCredential
-	191, // 86: vca.backend.v1.ListCredentialsResponse.page:type_name -> vca.common.v1.PageResult
-	79,  // 87: vca.backend.v1.AcceptOfferResponse.credential:type_name -> vca.backend.v1.WalletCredential
-	88,  // 88: vca.backend.v1.ListKeysResponse.keys:type_name -> vca.backend.v1.WalletKey
-	88,  // 89: vca.backend.v1.CreateKeyResponse.key:type_name -> vca.backend.v1.WalletKey
-	192, // 90: vca.backend.v1.WalletDid.created_at:type_name -> google.protobuf.Timestamp
-	93,  // 91: vca.backend.v1.ListDidsResponse.dids:type_name -> vca.backend.v1.WalletDid
-	93,  // 92: vca.backend.v1.CreateDidResponse.did:type_name -> vca.backend.v1.WalletDid
-	3,   // 93: vca.backend.v1.GetWalletLockResponse.state:type_name -> vca.backend.v1.WalletLock
-	34,  // 94: vca.backend.v1.OpenInvitationResponse.connection:type_name -> vca.backend.v1.DidcommConnection
-	34,  // 95: vca.backend.v1.ListWalletConnectionsResponse.connections:type_name -> vca.backend.v1.DidcommConnection
-	114, // 96: vca.backend.v1.ListInboxResponse.items:type_name -> vca.backend.v1.InboxItem
-	8,   // 97: vca.backend.v1.InboxItem.kind:type_name -> vca.backend.v1.InboxItem.Kind
-	192, // 98: vca.backend.v1.InboxItem.received_at:type_name -> google.protobuf.Timestamp
-	115, // 99: vca.backend.v1.InboxItem.offered:type_name -> vca.backend.v1.OfferedValue
-	192, // 100: vca.backend.v1.WalletEvent.at:type_name -> google.protobuf.Timestamp
-	190, // 101: vca.backend.v1.ListEventsRequest.page:type_name -> vca.common.v1.Pagination
-	116, // 102: vca.backend.v1.ListEventsResponse.events:type_name -> vca.backend.v1.WalletEvent
-	191, // 103: vca.backend.v1.ListEventsResponse.page:type_name -> vca.common.v1.PageResult
-	192, // 104: vca.backend.v1.CreateRequestResponse.expires_at:type_name -> google.protobuf.Timestamp
-	9,   // 105: vca.backend.v1.GetResultResponse.state:type_name -> vca.backend.v1.GetResultResponse.State
-	196, // 106: vca.backend.v1.GetResultResponse.presented:type_name -> vca.common.v1.Credential
-	187, // 107: vca.backend.v1.GetResultResponse.dpg_checks:type_name -> vca.backend.v1.GetResultResponse.DpgCheck
-	192, // 108: vca.backend.v1.GetResultResponse.received_at:type_name -> google.protobuf.Timestamp
-	190, // 109: vca.backend.v1.ListCredentialTypesRequest.page:type_name -> vca.common.v1.Pagination
-	38,  // 110: vca.backend.v1.ListCredentialTypesResponse.configurations:type_name -> vca.backend.v1.CredentialConfiguration
-	191, // 111: vca.backend.v1.ListCredentialTypesResponse.page:type_name -> vca.common.v1.PageResult
-	10,  // 112: vca.backend.v1.DpgTenant.agent_type:type_name -> vca.backend.v1.DpgTenant.AgentType
-	128, // 113: vca.backend.v1.DpgTenant.members:type_name -> vca.backend.v1.TenantMember
-	10,  // 114: vca.backend.v1.CreateTenantRequest.agent_type:type_name -> vca.backend.v1.DpgTenant.AgentType
-	127, // 115: vca.backend.v1.CreateTenantResponse.tenant:type_name -> vca.backend.v1.DpgTenant
-	127, // 116: vca.backend.v1.GetTenantResponse.tenant:type_name -> vca.backend.v1.DpgTenant
-	190, // 117: vca.backend.v1.ListTenantsRequest.page:type_name -> vca.common.v1.Pagination
-	127, // 118: vca.backend.v1.ListTenantsResponse.tenants:type_name -> vca.backend.v1.DpgTenant
-	191, // 119: vca.backend.v1.ListTenantsResponse.page:type_name -> vca.common.v1.PageResult
-	192, // 120: vca.backend.v1.ClientCredential.created_at:type_name -> google.protobuf.Timestamp
-	137, // 121: vca.backend.v1.ListClientCredentialsResponse.credentials:type_name -> vca.backend.v1.ClientCredential
-	137, // 122: vca.backend.v1.CreateClientCredentialResponse.credential:type_name -> vca.backend.v1.ClientCredential
-	127, // 123: vca.backend.v1.SetTenantPrimaryDidResponse.tenant:type_name -> vca.backend.v1.DpgTenant
-	192, // 124: vca.backend.v1.EcosystemMember.joined_at:type_name -> google.protobuf.Timestamp
-	146, // 125: vca.backend.v1.ListEcosystemsResponse.ecosystems:type_name -> vca.backend.v1.Ecosystem
-	146, // 126: vca.backend.v1.CreateEcosystemResponse.ecosystem:type_name -> vca.backend.v1.Ecosystem
-	147, // 127: vca.backend.v1.ListEcosystemMembersResponse.members:type_name -> vca.backend.v1.EcosystemMember
-	192, // 128: vca.backend.v1.Webhook.updated_at:type_name -> google.protobuf.Timestamp
-	162, // 129: vca.backend.v1.GetWebhookResponse.webhook:type_name -> vca.backend.v1.Webhook
-	192, // 130: vca.backend.v1.NotificationEndpoint.updated_at:type_name -> google.protobuf.Timestamp
-	166, // 131: vca.backend.v1.GetNotificationEndpointResponse.endpoint:type_name -> vca.backend.v1.NotificationEndpoint
-	166, // 132: vca.backend.v1.SetNotificationEndpointResponse.endpoint:type_name -> vca.backend.v1.NotificationEndpoint
-	162, // 133: vca.backend.v1.SetWebhookResponse.webhook:type_name -> vca.backend.v1.Webhook
-	190, // 134: vca.backend.v1.ListVerifierConnectionsRequest.page:type_name -> vca.common.v1.Pagination
-	34,  // 135: vca.backend.v1.ListVerifierConnectionsResponse.connections:type_name -> vca.backend.v1.DidcommConnection
-	191, // 136: vca.backend.v1.ListVerifierConnectionsResponse.page:type_name -> vca.common.v1.PageResult
-	190, // 137: vca.backend.v1.ListProofRequestsRequest.page:type_name -> vca.common.v1.Pagination
-	176, // 138: vca.backend.v1.ListProofRequestsResponse.requests:type_name -> vca.backend.v1.ProofRequest
-	191, // 139: vca.backend.v1.ListProofRequestsResponse.page:type_name -> vca.common.v1.PageResult
-	192, // 140: vca.backend.v1.ProofRequest.created_at:type_name -> google.protobuf.Timestamp
-	190, // 141: vca.backend.v1.ListProofSchemasRequest.page:type_name -> vca.common.v1.Pagination
-	179, // 142: vca.backend.v1.ListProofSchemasResponse.schemas:type_name -> vca.backend.v1.ProofSchema
-	191, // 143: vca.backend.v1.ListProofSchemasResponse.page:type_name -> vca.common.v1.PageResult
-	188, // 144: vca.backend.v1.ProofSchema.attribute_types:type_name -> vca.backend.v1.ProofSchema.AttributeTypesEntry
-	187, // 145: vca.backend.v1.VerifyCredentialResponse.dpg_checks:type_name -> vca.backend.v1.GetResultResponse.DpgCheck
-	196, // 146: vca.backend.v1.IssueBatchResponse.Item.credential:type_name -> vca.common.v1.Credential
-	197, // 147: vca.backend.v1.IssueBatchResponse.Item.error:type_name -> vca.common.v1.Error
-	28,  // 148: vca.backend.v1.CapabilityService.GetCapabilities:input_type -> vca.backend.v1.GetCapabilitiesRequest
-	40,  // 149: vca.backend.v1.IssuerBackendService.RegisterCredentialConfiguration:input_type -> vca.backend.v1.RegisterCredentialConfigurationRequest
-	46,  // 150: vca.backend.v1.IssuerBackendService.CreateOffer:input_type -> vca.backend.v1.CreateOfferRequest
-	48,  // 151: vca.backend.v1.IssuerBackendService.Issue:input_type -> vca.backend.v1.IssueRequest
-	50,  // 152: vca.backend.v1.IssuerBackendService.IssueBatch:input_type -> vca.backend.v1.IssueBatchRequest
-	54,  // 153: vca.backend.v1.IssuerBackendService.GetIssuanceStatus:input_type -> vca.backend.v1.GetIssuanceStatusRequest
-	52,  // 154: vca.backend.v1.IssuerBackendService.Revoke:input_type -> vca.backend.v1.RevokeRequest
-	56,  // 155: vca.backend.v1.IssuerBackendService.ListIssuedCredentials:input_type -> vca.backend.v1.ListIssuedCredentialsRequest
-	59,  // 156: vca.backend.v1.IssuerBackendService.GetIssuerMetadata:input_type -> vca.backend.v1.GetIssuerMetadataRequest
-	62,  // 157: vca.backend.v1.IssuerBackendService.GetIssuerIdentity:input_type -> vca.backend.v1.GetIssuerIdentityRequest
-	64,  // 158: vca.backend.v1.IssuerBackendService.ProvisionIssuerIdentity:input_type -> vca.backend.v1.ProvisionIssuerIdentityRequest
-	66,  // 159: vca.backend.v1.IssuerBackendService.ImportIssuerIdentity:input_type -> vca.backend.v1.ImportIssuerIdentityRequest
-	68,  // 160: vca.backend.v1.IssuerBackendService.SetPresentationRequirement:input_type -> vca.backend.v1.SetPresentationRequirementRequest
-	70,  // 161: vca.backend.v1.IssuerBackendService.GetPresentationRequirement:input_type -> vca.backend.v1.GetPresentationRequirementRequest
-	73,  // 162: vca.backend.v1.IssuerBackendService.GetHolderSignInSource:input_type -> vca.backend.v1.GetHolderSignInSourceRequest
-	75,  // 163: vca.backend.v1.IssuerBackendService.SetHolderSignInSource:input_type -> vca.backend.v1.SetHolderSignInSourceRequest
-	32,  // 164: vca.backend.v1.IssuerBackendService.ListConnections:input_type -> vca.backend.v1.ListConnectionsRequest
-	77,  // 165: vca.backend.v1.HolderBackendService.Register:input_type -> vca.backend.v1.RegisterRequest
-	80,  // 166: vca.backend.v1.HolderBackendService.ListCredentials:input_type -> vca.backend.v1.ListCredentialsRequest
-	82,  // 167: vca.backend.v1.HolderBackendService.AcceptOffer:input_type -> vca.backend.v1.AcceptOfferRequest
-	84,  // 168: vca.backend.v1.HolderBackendService.Present:input_type -> vca.backend.v1.PresentRequest
-	86,  // 169: vca.backend.v1.HolderBackendService.DeleteCredential:input_type -> vca.backend.v1.DeleteCredentialRequest
-	89,  // 170: vca.backend.v1.HolderBackendService.ListKeys:input_type -> vca.backend.v1.ListKeysRequest
-	91,  // 171: vca.backend.v1.HolderBackendService.CreateKey:input_type -> vca.backend.v1.CreateKeyRequest
-	94,  // 172: vca.backend.v1.HolderBackendService.ListDids:input_type -> vca.backend.v1.ListDidsRequest
-	96,  // 173: vca.backend.v1.HolderBackendService.CreateDid:input_type -> vca.backend.v1.CreateDidRequest
-	98,  // 174: vca.backend.v1.HolderBackendService.SetDefaultDid:input_type -> vca.backend.v1.SetDefaultDidRequest
-	100, // 175: vca.backend.v1.HolderBackendService.RejectOffer:input_type -> vca.backend.v1.RejectOfferRequest
-	117, // 176: vca.backend.v1.HolderBackendService.ListEvents:input_type -> vca.backend.v1.ListEventsRequest
-	102, // 177: vca.backend.v1.HolderBackendService.GetCredentialDocument:input_type -> vca.backend.v1.GetCredentialDocumentRequest
-	104, // 178: vca.backend.v1.HolderBackendService.GetWalletLock:input_type -> vca.backend.v1.GetWalletLockRequest
-	106, // 179: vca.backend.v1.HolderBackendService.UnlockWallet:input_type -> vca.backend.v1.UnlockWalletRequest
-	108, // 180: vca.backend.v1.HolderBackendService.OpenInvitation:input_type -> vca.backend.v1.OpenInvitationRequest
-	110, // 181: vca.backend.v1.HolderBackendService.ListWalletConnections:input_type -> vca.backend.v1.ListWalletConnectionsRequest
-	112, // 182: vca.backend.v1.HolderBackendService.ListInbox:input_type -> vca.backend.v1.ListInboxRequest
-	119, // 183: vca.backend.v1.VerifierBackendService.CreateRequest:input_type -> vca.backend.v1.CreateRequestRequest
-	123, // 184: vca.backend.v1.VerifierBackendService.GetResult:input_type -> vca.backend.v1.GetResultRequest
-	121, // 185: vca.backend.v1.VerifierBackendService.SubmitBrowserAnswer:input_type -> vca.backend.v1.SubmitBrowserAnswerRequest
-	180, // 186: vca.backend.v1.VerifierBackendService.VerifyCredential:input_type -> vca.backend.v1.VerifyCredentialRequest
-	174, // 187: vca.backend.v1.VerifierBackendService.ListProofRequests:input_type -> vca.backend.v1.ListProofRequestsRequest
-	177, // 188: vca.backend.v1.VerifierBackendService.ListProofSchemas:input_type -> vca.backend.v1.ListProofSchemasRequest
-	172, // 189: vca.backend.v1.VerifierBackendService.ListVerifierConnections:input_type -> vca.backend.v1.ListVerifierConnectionsRequest
-	125, // 190: vca.backend.v1.CatalogBackendService.ListCredentialTypes:input_type -> vca.backend.v1.ListCredentialTypesRequest
-	129, // 191: vca.backend.v1.TenantBackendService.CreateTenant:input_type -> vca.backend.v1.CreateTenantRequest
-	131, // 192: vca.backend.v1.TenantBackendService.GetTenant:input_type -> vca.backend.v1.GetTenantRequest
-	133, // 193: vca.backend.v1.TenantBackendService.ListTenants:input_type -> vca.backend.v1.ListTenantsRequest
-	135, // 194: vca.backend.v1.TenantBackendService.DeleteTenant:input_type -> vca.backend.v1.DeleteTenantRequest
-	138, // 195: vca.backend.v1.TenantBackendService.ListClientCredentials:input_type -> vca.backend.v1.ListClientCredentialsRequest
-	140, // 196: vca.backend.v1.TenantBackendService.CreateClientCredential:input_type -> vca.backend.v1.CreateClientCredentialRequest
-	142, // 197: vca.backend.v1.TenantBackendService.DeleteClientCredential:input_type -> vca.backend.v1.DeleteClientCredentialRequest
-	148, // 198: vca.backend.v1.TenantBackendService.GetEcosystemSettings:input_type -> vca.backend.v1.GetEcosystemSettingsRequest
-	150, // 199: vca.backend.v1.TenantBackendService.SetEcosystemSettings:input_type -> vca.backend.v1.SetEcosystemSettingsRequest
-	152, // 200: vca.backend.v1.TenantBackendService.ListEcosystems:input_type -> vca.backend.v1.ListEcosystemsRequest
-	154, // 201: vca.backend.v1.TenantBackendService.CreateEcosystem:input_type -> vca.backend.v1.CreateEcosystemRequest
-	156, // 202: vca.backend.v1.TenantBackendService.ListEcosystemMembers:input_type -> vca.backend.v1.ListEcosystemMembersRequest
-	158, // 203: vca.backend.v1.TenantBackendService.AddEcosystemMember:input_type -> vca.backend.v1.AddEcosystemMemberRequest
-	160, // 204: vca.backend.v1.TenantBackendService.RemoveEcosystemMember:input_type -> vca.backend.v1.RemoveEcosystemMemberRequest
-	144, // 205: vca.backend.v1.TenantBackendService.SetTenantPrimaryDid:input_type -> vca.backend.v1.SetTenantPrimaryDidRequest
-	163, // 206: vca.backend.v1.NotificationBackendService.GetWebhook:input_type -> vca.backend.v1.GetWebhookRequest
-	165, // 207: vca.backend.v1.NotificationBackendService.SetWebhook:input_type -> vca.backend.v1.SetWebhookRequest
-	167, // 208: vca.backend.v1.NotificationBackendService.GetNotificationEndpoint:input_type -> vca.backend.v1.GetNotificationEndpointRequest
-	169, // 209: vca.backend.v1.NotificationBackendService.SetNotificationEndpoint:input_type -> vca.backend.v1.SetNotificationEndpointRequest
-	11,  // 210: vca.backend.v1.BulkImportBackendService.GetBulkTemplate:input_type -> vca.backend.v1.GetBulkTemplateRequest
-	13,  // 211: vca.backend.v1.BulkImportBackendService.UploadBulkFile:input_type -> vca.backend.v1.UploadBulkFileRequest
-	15,  // 212: vca.backend.v1.BulkImportBackendService.PreviewBulkFile:input_type -> vca.backend.v1.PreviewBulkFileRequest
-	18,  // 213: vca.backend.v1.BulkImportBackendService.IssueBulkFile:input_type -> vca.backend.v1.IssueBulkFileRequest
-	20,  // 214: vca.backend.v1.BulkImportBackendService.ListBulkFiles:input_type -> vca.backend.v1.ListBulkFilesRequest
-	23,  // 215: vca.backend.v1.BulkImportBackendService.ListBulkFileRows:input_type -> vca.backend.v1.ListBulkFileRowsRequest
-	26,  // 216: vca.backend.v1.BulkImportBackendService.RetryBulkFile:input_type -> vca.backend.v1.RetryBulkFileRequest
-	29,  // 217: vca.backend.v1.CapabilityService.GetCapabilities:output_type -> vca.backend.v1.GetCapabilitiesResponse
-	41,  // 218: vca.backend.v1.IssuerBackendService.RegisterCredentialConfiguration:output_type -> vca.backend.v1.RegisterCredentialConfigurationResponse
-	47,  // 219: vca.backend.v1.IssuerBackendService.CreateOffer:output_type -> vca.backend.v1.CreateOfferResponse
-	49,  // 220: vca.backend.v1.IssuerBackendService.Issue:output_type -> vca.backend.v1.IssueResponse
-	51,  // 221: vca.backend.v1.IssuerBackendService.IssueBatch:output_type -> vca.backend.v1.IssueBatchResponse
-	55,  // 222: vca.backend.v1.IssuerBackendService.GetIssuanceStatus:output_type -> vca.backend.v1.GetIssuanceStatusResponse
-	53,  // 223: vca.backend.v1.IssuerBackendService.Revoke:output_type -> vca.backend.v1.RevokeResponse
-	57,  // 224: vca.backend.v1.IssuerBackendService.ListIssuedCredentials:output_type -> vca.backend.v1.ListIssuedCredentialsResponse
-	60,  // 225: vca.backend.v1.IssuerBackendService.GetIssuerMetadata:output_type -> vca.backend.v1.GetIssuerMetadataResponse
-	63,  // 226: vca.backend.v1.IssuerBackendService.GetIssuerIdentity:output_type -> vca.backend.v1.GetIssuerIdentityResponse
-	65,  // 227: vca.backend.v1.IssuerBackendService.ProvisionIssuerIdentity:output_type -> vca.backend.v1.ProvisionIssuerIdentityResponse
-	67,  // 228: vca.backend.v1.IssuerBackendService.ImportIssuerIdentity:output_type -> vca.backend.v1.ImportIssuerIdentityResponse
-	69,  // 229: vca.backend.v1.IssuerBackendService.SetPresentationRequirement:output_type -> vca.backend.v1.SetPresentationRequirementResponse
-	71,  // 230: vca.backend.v1.IssuerBackendService.GetPresentationRequirement:output_type -> vca.backend.v1.GetPresentationRequirementResponse
-	74,  // 231: vca.backend.v1.IssuerBackendService.GetHolderSignInSource:output_type -> vca.backend.v1.GetHolderSignInSourceResponse
-	76,  // 232: vca.backend.v1.IssuerBackendService.SetHolderSignInSource:output_type -> vca.backend.v1.SetHolderSignInSourceResponse
-	33,  // 233: vca.backend.v1.IssuerBackendService.ListConnections:output_type -> vca.backend.v1.ListConnectionsResponse
-	78,  // 234: vca.backend.v1.HolderBackendService.Register:output_type -> vca.backend.v1.RegisterResponse
-	81,  // 235: vca.backend.v1.HolderBackendService.ListCredentials:output_type -> vca.backend.v1.ListCredentialsResponse
-	83,  // 236: vca.backend.v1.HolderBackendService.AcceptOffer:output_type -> vca.backend.v1.AcceptOfferResponse
-	85,  // 237: vca.backend.v1.HolderBackendService.Present:output_type -> vca.backend.v1.PresentResponse
-	87,  // 238: vca.backend.v1.HolderBackendService.DeleteCredential:output_type -> vca.backend.v1.DeleteCredentialResponse
-	90,  // 239: vca.backend.v1.HolderBackendService.ListKeys:output_type -> vca.backend.v1.ListKeysResponse
-	92,  // 240: vca.backend.v1.HolderBackendService.CreateKey:output_type -> vca.backend.v1.CreateKeyResponse
-	95,  // 241: vca.backend.v1.HolderBackendService.ListDids:output_type -> vca.backend.v1.ListDidsResponse
-	97,  // 242: vca.backend.v1.HolderBackendService.CreateDid:output_type -> vca.backend.v1.CreateDidResponse
-	99,  // 243: vca.backend.v1.HolderBackendService.SetDefaultDid:output_type -> vca.backend.v1.SetDefaultDidResponse
-	101, // 244: vca.backend.v1.HolderBackendService.RejectOffer:output_type -> vca.backend.v1.RejectOfferResponse
-	118, // 245: vca.backend.v1.HolderBackendService.ListEvents:output_type -> vca.backend.v1.ListEventsResponse
-	103, // 246: vca.backend.v1.HolderBackendService.GetCredentialDocument:output_type -> vca.backend.v1.GetCredentialDocumentResponse
-	105, // 247: vca.backend.v1.HolderBackendService.GetWalletLock:output_type -> vca.backend.v1.GetWalletLockResponse
-	107, // 248: vca.backend.v1.HolderBackendService.UnlockWallet:output_type -> vca.backend.v1.UnlockWalletResponse
-	109, // 249: vca.backend.v1.HolderBackendService.OpenInvitation:output_type -> vca.backend.v1.OpenInvitationResponse
-	111, // 250: vca.backend.v1.HolderBackendService.ListWalletConnections:output_type -> vca.backend.v1.ListWalletConnectionsResponse
-	113, // 251: vca.backend.v1.HolderBackendService.ListInbox:output_type -> vca.backend.v1.ListInboxResponse
-	120, // 252: vca.backend.v1.VerifierBackendService.CreateRequest:output_type -> vca.backend.v1.CreateRequestResponse
-	124, // 253: vca.backend.v1.VerifierBackendService.GetResult:output_type -> vca.backend.v1.GetResultResponse
-	122, // 254: vca.backend.v1.VerifierBackendService.SubmitBrowserAnswer:output_type -> vca.backend.v1.SubmitBrowserAnswerResponse
-	181, // 255: vca.backend.v1.VerifierBackendService.VerifyCredential:output_type -> vca.backend.v1.VerifyCredentialResponse
-	175, // 256: vca.backend.v1.VerifierBackendService.ListProofRequests:output_type -> vca.backend.v1.ListProofRequestsResponse
-	178, // 257: vca.backend.v1.VerifierBackendService.ListProofSchemas:output_type -> vca.backend.v1.ListProofSchemasResponse
-	173, // 258: vca.backend.v1.VerifierBackendService.ListVerifierConnections:output_type -> vca.backend.v1.ListVerifierConnectionsResponse
-	126, // 259: vca.backend.v1.CatalogBackendService.ListCredentialTypes:output_type -> vca.backend.v1.ListCredentialTypesResponse
-	130, // 260: vca.backend.v1.TenantBackendService.CreateTenant:output_type -> vca.backend.v1.CreateTenantResponse
-	132, // 261: vca.backend.v1.TenantBackendService.GetTenant:output_type -> vca.backend.v1.GetTenantResponse
-	134, // 262: vca.backend.v1.TenantBackendService.ListTenants:output_type -> vca.backend.v1.ListTenantsResponse
-	136, // 263: vca.backend.v1.TenantBackendService.DeleteTenant:output_type -> vca.backend.v1.DeleteTenantResponse
-	139, // 264: vca.backend.v1.TenantBackendService.ListClientCredentials:output_type -> vca.backend.v1.ListClientCredentialsResponse
-	141, // 265: vca.backend.v1.TenantBackendService.CreateClientCredential:output_type -> vca.backend.v1.CreateClientCredentialResponse
-	143, // 266: vca.backend.v1.TenantBackendService.DeleteClientCredential:output_type -> vca.backend.v1.DeleteClientCredentialResponse
-	149, // 267: vca.backend.v1.TenantBackendService.GetEcosystemSettings:output_type -> vca.backend.v1.GetEcosystemSettingsResponse
-	151, // 268: vca.backend.v1.TenantBackendService.SetEcosystemSettings:output_type -> vca.backend.v1.SetEcosystemSettingsResponse
-	153, // 269: vca.backend.v1.TenantBackendService.ListEcosystems:output_type -> vca.backend.v1.ListEcosystemsResponse
-	155, // 270: vca.backend.v1.TenantBackendService.CreateEcosystem:output_type -> vca.backend.v1.CreateEcosystemResponse
-	157, // 271: vca.backend.v1.TenantBackendService.ListEcosystemMembers:output_type -> vca.backend.v1.ListEcosystemMembersResponse
-	159, // 272: vca.backend.v1.TenantBackendService.AddEcosystemMember:output_type -> vca.backend.v1.AddEcosystemMemberResponse
-	161, // 273: vca.backend.v1.TenantBackendService.RemoveEcosystemMember:output_type -> vca.backend.v1.RemoveEcosystemMemberResponse
-	145, // 274: vca.backend.v1.TenantBackendService.SetTenantPrimaryDid:output_type -> vca.backend.v1.SetTenantPrimaryDidResponse
-	164, // 275: vca.backend.v1.NotificationBackendService.GetWebhook:output_type -> vca.backend.v1.GetWebhookResponse
-	171, // 276: vca.backend.v1.NotificationBackendService.SetWebhook:output_type -> vca.backend.v1.SetWebhookResponse
-	168, // 277: vca.backend.v1.NotificationBackendService.GetNotificationEndpoint:output_type -> vca.backend.v1.GetNotificationEndpointResponse
-	170, // 278: vca.backend.v1.NotificationBackendService.SetNotificationEndpoint:output_type -> vca.backend.v1.SetNotificationEndpointResponse
-	12,  // 279: vca.backend.v1.BulkImportBackendService.GetBulkTemplate:output_type -> vca.backend.v1.GetBulkTemplateResponse
-	14,  // 280: vca.backend.v1.BulkImportBackendService.UploadBulkFile:output_type -> vca.backend.v1.UploadBulkFileResponse
-	16,  // 281: vca.backend.v1.BulkImportBackendService.PreviewBulkFile:output_type -> vca.backend.v1.PreviewBulkFileResponse
-	19,  // 282: vca.backend.v1.BulkImportBackendService.IssueBulkFile:output_type -> vca.backend.v1.IssueBulkFileResponse
-	21,  // 283: vca.backend.v1.BulkImportBackendService.ListBulkFiles:output_type -> vca.backend.v1.ListBulkFilesResponse
-	24,  // 284: vca.backend.v1.BulkImportBackendService.ListBulkFileRows:output_type -> vca.backend.v1.ListBulkFileRowsResponse
-	27,  // 285: vca.backend.v1.BulkImportBackendService.RetryBulkFile:output_type -> vca.backend.v1.RetryBulkFileResponse
-	217, // [217:286] is the sub-list for method output_type
-	148, // [148:217] is the sub-list for method input_type
-	148, // [148:148] is the sub-list for extension type_name
-	148, // [148:148] is the sub-list for extension extendee
-	0,   // [0:148] is the sub-list for field type_name
+	42,  // 54: vca.backend.v1.IssueResponse.status:type_name -> vca.backend.v1.StatusListBinding
+	43,  // 55: vca.backend.v1.IssueBatchRequest.specs:type_name -> vca.backend.v1.IssueSpec
+	183, // 56: vca.backend.v1.IssueBatchResponse.items:type_name -> vca.backend.v1.IssueBatchResponse.Item
+	42,  // 57: vca.backend.v1.RevokeRequest.status:type_name -> vca.backend.v1.StatusListBinding
+	6,   // 58: vca.backend.v1.RevokeRequest.action:type_name -> vca.backend.v1.RevokeRequest.Action
+	192, // 59: vca.backend.v1.RevokeResponse.revoked_at:type_name -> google.protobuf.Timestamp
+	7,   // 60: vca.backend.v1.GetIssuanceStatusResponse.state:type_name -> vca.backend.v1.GetIssuanceStatusResponse.State
+	196, // 61: vca.backend.v1.GetIssuanceStatusResponse.credential:type_name -> vca.common.v1.Credential
+	192, // 62: vca.backend.v1.GetIssuanceStatusResponse.claimed_at:type_name -> google.protobuf.Timestamp
+	192, // 63: vca.backend.v1.GetIssuanceStatusResponse.expires_at:type_name -> google.protobuf.Timestamp
+	184, // 64: vca.backend.v1.ListIssuedCredentialsRequest.attributes:type_name -> vca.backend.v1.ListIssuedCredentialsRequest.AttributesEntry
+	190, // 65: vca.backend.v1.ListIssuedCredentialsRequest.page:type_name -> vca.common.v1.Pagination
+	58,  // 66: vca.backend.v1.ListIssuedCredentialsResponse.credentials:type_name -> vca.backend.v1.LedgerEntry
+	191, // 67: vca.backend.v1.ListIssuedCredentialsResponse.page:type_name -> vca.common.v1.PageResult
+	192, // 68: vca.backend.v1.LedgerEntry.issued_at:type_name -> google.protobuf.Timestamp
+	192, // 69: vca.backend.v1.LedgerEntry.expires_at:type_name -> google.protobuf.Timestamp
+	42,  // 70: vca.backend.v1.LedgerEntry.status:type_name -> vca.backend.v1.StatusListBinding
+	192, // 71: vca.backend.v1.LedgerEntry.status_changed_at:type_name -> google.protobuf.Timestamp
+	38,  // 72: vca.backend.v1.GetIssuerMetadataResponse.configurations:type_name -> vca.backend.v1.CredentialConfiguration
+	185, // 73: vca.backend.v1.IssuerIdentity.metadata:type_name -> vca.backend.v1.IssuerIdentity.Metadata
+	186, // 74: vca.backend.v1.IssuerIdentity.key:type_name -> vca.backend.v1.IssuerIdentity.Key
+	61,  // 75: vca.backend.v1.GetIssuerIdentityResponse.identity:type_name -> vca.backend.v1.IssuerIdentity
+	61,  // 76: vca.backend.v1.ProvisionIssuerIdentityResponse.identity:type_name -> vca.backend.v1.IssuerIdentity
+	61,  // 77: vca.backend.v1.ImportIssuerIdentityResponse.identity:type_name -> vca.backend.v1.IssuerIdentity
+	189, // 78: vca.backend.v1.SetPresentationRequirementRequest.format:type_name -> vca.common.v1.Format
+	68,  // 79: vca.backend.v1.GetPresentationRequirementResponse.requirement:type_name -> vca.backend.v1.SetPresentationRequirementRequest
+	72,  // 80: vca.backend.v1.GetHolderSignInSourceResponse.source:type_name -> vca.backend.v1.HolderSignInSource
+	72,  // 81: vca.backend.v1.SetHolderSignInSourceRequest.source:type_name -> vca.backend.v1.HolderSignInSource
+	72,  // 82: vca.backend.v1.SetHolderSignInSourceResponse.source:type_name -> vca.backend.v1.HolderSignInSource
+	196, // 83: vca.backend.v1.WalletCredential.credential:type_name -> vca.common.v1.Credential
+	192, // 84: vca.backend.v1.WalletCredential.received_at:type_name -> google.protobuf.Timestamp
+	190, // 85: vca.backend.v1.ListCredentialsRequest.page:type_name -> vca.common.v1.Pagination
+	79,  // 86: vca.backend.v1.ListCredentialsResponse.credentials:type_name -> vca.backend.v1.WalletCredential
+	191, // 87: vca.backend.v1.ListCredentialsResponse.page:type_name -> vca.common.v1.PageResult
+	79,  // 88: vca.backend.v1.AcceptOfferResponse.credential:type_name -> vca.backend.v1.WalletCredential
+	88,  // 89: vca.backend.v1.ListKeysResponse.keys:type_name -> vca.backend.v1.WalletKey
+	88,  // 90: vca.backend.v1.CreateKeyResponse.key:type_name -> vca.backend.v1.WalletKey
+	192, // 91: vca.backend.v1.WalletDid.created_at:type_name -> google.protobuf.Timestamp
+	93,  // 92: vca.backend.v1.ListDidsResponse.dids:type_name -> vca.backend.v1.WalletDid
+	93,  // 93: vca.backend.v1.CreateDidResponse.did:type_name -> vca.backend.v1.WalletDid
+	3,   // 94: vca.backend.v1.GetWalletLockResponse.state:type_name -> vca.backend.v1.WalletLock
+	34,  // 95: vca.backend.v1.OpenInvitationResponse.connection:type_name -> vca.backend.v1.DidcommConnection
+	34,  // 96: vca.backend.v1.ListWalletConnectionsResponse.connections:type_name -> vca.backend.v1.DidcommConnection
+	114, // 97: vca.backend.v1.ListInboxResponse.items:type_name -> vca.backend.v1.InboxItem
+	8,   // 98: vca.backend.v1.InboxItem.kind:type_name -> vca.backend.v1.InboxItem.Kind
+	192, // 99: vca.backend.v1.InboxItem.received_at:type_name -> google.protobuf.Timestamp
+	115, // 100: vca.backend.v1.InboxItem.offered:type_name -> vca.backend.v1.OfferedValue
+	192, // 101: vca.backend.v1.WalletEvent.at:type_name -> google.protobuf.Timestamp
+	190, // 102: vca.backend.v1.ListEventsRequest.page:type_name -> vca.common.v1.Pagination
+	116, // 103: vca.backend.v1.ListEventsResponse.events:type_name -> vca.backend.v1.WalletEvent
+	191, // 104: vca.backend.v1.ListEventsResponse.page:type_name -> vca.common.v1.PageResult
+	192, // 105: vca.backend.v1.CreateRequestResponse.expires_at:type_name -> google.protobuf.Timestamp
+	9,   // 106: vca.backend.v1.GetResultResponse.state:type_name -> vca.backend.v1.GetResultResponse.State
+	196, // 107: vca.backend.v1.GetResultResponse.presented:type_name -> vca.common.v1.Credential
+	187, // 108: vca.backend.v1.GetResultResponse.dpg_checks:type_name -> vca.backend.v1.GetResultResponse.DpgCheck
+	192, // 109: vca.backend.v1.GetResultResponse.received_at:type_name -> google.protobuf.Timestamp
+	190, // 110: vca.backend.v1.ListCredentialTypesRequest.page:type_name -> vca.common.v1.Pagination
+	38,  // 111: vca.backend.v1.ListCredentialTypesResponse.configurations:type_name -> vca.backend.v1.CredentialConfiguration
+	191, // 112: vca.backend.v1.ListCredentialTypesResponse.page:type_name -> vca.common.v1.PageResult
+	10,  // 113: vca.backend.v1.DpgTenant.agent_type:type_name -> vca.backend.v1.DpgTenant.AgentType
+	128, // 114: vca.backend.v1.DpgTenant.members:type_name -> vca.backend.v1.TenantMember
+	10,  // 115: vca.backend.v1.CreateTenantRequest.agent_type:type_name -> vca.backend.v1.DpgTenant.AgentType
+	127, // 116: vca.backend.v1.CreateTenantResponse.tenant:type_name -> vca.backend.v1.DpgTenant
+	127, // 117: vca.backend.v1.GetTenantResponse.tenant:type_name -> vca.backend.v1.DpgTenant
+	190, // 118: vca.backend.v1.ListTenantsRequest.page:type_name -> vca.common.v1.Pagination
+	127, // 119: vca.backend.v1.ListTenantsResponse.tenants:type_name -> vca.backend.v1.DpgTenant
+	191, // 120: vca.backend.v1.ListTenantsResponse.page:type_name -> vca.common.v1.PageResult
+	192, // 121: vca.backend.v1.ClientCredential.created_at:type_name -> google.protobuf.Timestamp
+	137, // 122: vca.backend.v1.ListClientCredentialsResponse.credentials:type_name -> vca.backend.v1.ClientCredential
+	137, // 123: vca.backend.v1.CreateClientCredentialResponse.credential:type_name -> vca.backend.v1.ClientCredential
+	127, // 124: vca.backend.v1.SetTenantPrimaryDidResponse.tenant:type_name -> vca.backend.v1.DpgTenant
+	192, // 125: vca.backend.v1.EcosystemMember.joined_at:type_name -> google.protobuf.Timestamp
+	146, // 126: vca.backend.v1.ListEcosystemsResponse.ecosystems:type_name -> vca.backend.v1.Ecosystem
+	146, // 127: vca.backend.v1.CreateEcosystemResponse.ecosystem:type_name -> vca.backend.v1.Ecosystem
+	147, // 128: vca.backend.v1.ListEcosystemMembersResponse.members:type_name -> vca.backend.v1.EcosystemMember
+	192, // 129: vca.backend.v1.Webhook.updated_at:type_name -> google.protobuf.Timestamp
+	162, // 130: vca.backend.v1.GetWebhookResponse.webhook:type_name -> vca.backend.v1.Webhook
+	192, // 131: vca.backend.v1.NotificationEndpoint.updated_at:type_name -> google.protobuf.Timestamp
+	166, // 132: vca.backend.v1.GetNotificationEndpointResponse.endpoint:type_name -> vca.backend.v1.NotificationEndpoint
+	166, // 133: vca.backend.v1.SetNotificationEndpointResponse.endpoint:type_name -> vca.backend.v1.NotificationEndpoint
+	162, // 134: vca.backend.v1.SetWebhookResponse.webhook:type_name -> vca.backend.v1.Webhook
+	190, // 135: vca.backend.v1.ListVerifierConnectionsRequest.page:type_name -> vca.common.v1.Pagination
+	34,  // 136: vca.backend.v1.ListVerifierConnectionsResponse.connections:type_name -> vca.backend.v1.DidcommConnection
+	191, // 137: vca.backend.v1.ListVerifierConnectionsResponse.page:type_name -> vca.common.v1.PageResult
+	190, // 138: vca.backend.v1.ListProofRequestsRequest.page:type_name -> vca.common.v1.Pagination
+	176, // 139: vca.backend.v1.ListProofRequestsResponse.requests:type_name -> vca.backend.v1.ProofRequest
+	191, // 140: vca.backend.v1.ListProofRequestsResponse.page:type_name -> vca.common.v1.PageResult
+	192, // 141: vca.backend.v1.ProofRequest.created_at:type_name -> google.protobuf.Timestamp
+	190, // 142: vca.backend.v1.ListProofSchemasRequest.page:type_name -> vca.common.v1.Pagination
+	179, // 143: vca.backend.v1.ListProofSchemasResponse.schemas:type_name -> vca.backend.v1.ProofSchema
+	191, // 144: vca.backend.v1.ListProofSchemasResponse.page:type_name -> vca.common.v1.PageResult
+	188, // 145: vca.backend.v1.ProofSchema.attribute_types:type_name -> vca.backend.v1.ProofSchema.AttributeTypesEntry
+	187, // 146: vca.backend.v1.VerifyCredentialResponse.dpg_checks:type_name -> vca.backend.v1.GetResultResponse.DpgCheck
+	196, // 147: vca.backend.v1.IssueBatchResponse.Item.credential:type_name -> vca.common.v1.Credential
+	197, // 148: vca.backend.v1.IssueBatchResponse.Item.error:type_name -> vca.common.v1.Error
+	28,  // 149: vca.backend.v1.CapabilityService.GetCapabilities:input_type -> vca.backend.v1.GetCapabilitiesRequest
+	40,  // 150: vca.backend.v1.IssuerBackendService.RegisterCredentialConfiguration:input_type -> vca.backend.v1.RegisterCredentialConfigurationRequest
+	46,  // 151: vca.backend.v1.IssuerBackendService.CreateOffer:input_type -> vca.backend.v1.CreateOfferRequest
+	48,  // 152: vca.backend.v1.IssuerBackendService.Issue:input_type -> vca.backend.v1.IssueRequest
+	50,  // 153: vca.backend.v1.IssuerBackendService.IssueBatch:input_type -> vca.backend.v1.IssueBatchRequest
+	54,  // 154: vca.backend.v1.IssuerBackendService.GetIssuanceStatus:input_type -> vca.backend.v1.GetIssuanceStatusRequest
+	52,  // 155: vca.backend.v1.IssuerBackendService.Revoke:input_type -> vca.backend.v1.RevokeRequest
+	56,  // 156: vca.backend.v1.IssuerBackendService.ListIssuedCredentials:input_type -> vca.backend.v1.ListIssuedCredentialsRequest
+	59,  // 157: vca.backend.v1.IssuerBackendService.GetIssuerMetadata:input_type -> vca.backend.v1.GetIssuerMetadataRequest
+	62,  // 158: vca.backend.v1.IssuerBackendService.GetIssuerIdentity:input_type -> vca.backend.v1.GetIssuerIdentityRequest
+	64,  // 159: vca.backend.v1.IssuerBackendService.ProvisionIssuerIdentity:input_type -> vca.backend.v1.ProvisionIssuerIdentityRequest
+	66,  // 160: vca.backend.v1.IssuerBackendService.ImportIssuerIdentity:input_type -> vca.backend.v1.ImportIssuerIdentityRequest
+	68,  // 161: vca.backend.v1.IssuerBackendService.SetPresentationRequirement:input_type -> vca.backend.v1.SetPresentationRequirementRequest
+	70,  // 162: vca.backend.v1.IssuerBackendService.GetPresentationRequirement:input_type -> vca.backend.v1.GetPresentationRequirementRequest
+	73,  // 163: vca.backend.v1.IssuerBackendService.GetHolderSignInSource:input_type -> vca.backend.v1.GetHolderSignInSourceRequest
+	75,  // 164: vca.backend.v1.IssuerBackendService.SetHolderSignInSource:input_type -> vca.backend.v1.SetHolderSignInSourceRequest
+	32,  // 165: vca.backend.v1.IssuerBackendService.ListConnections:input_type -> vca.backend.v1.ListConnectionsRequest
+	77,  // 166: vca.backend.v1.HolderBackendService.Register:input_type -> vca.backend.v1.RegisterRequest
+	80,  // 167: vca.backend.v1.HolderBackendService.ListCredentials:input_type -> vca.backend.v1.ListCredentialsRequest
+	82,  // 168: vca.backend.v1.HolderBackendService.AcceptOffer:input_type -> vca.backend.v1.AcceptOfferRequest
+	84,  // 169: vca.backend.v1.HolderBackendService.Present:input_type -> vca.backend.v1.PresentRequest
+	86,  // 170: vca.backend.v1.HolderBackendService.DeleteCredential:input_type -> vca.backend.v1.DeleteCredentialRequest
+	89,  // 171: vca.backend.v1.HolderBackendService.ListKeys:input_type -> vca.backend.v1.ListKeysRequest
+	91,  // 172: vca.backend.v1.HolderBackendService.CreateKey:input_type -> vca.backend.v1.CreateKeyRequest
+	94,  // 173: vca.backend.v1.HolderBackendService.ListDids:input_type -> vca.backend.v1.ListDidsRequest
+	96,  // 174: vca.backend.v1.HolderBackendService.CreateDid:input_type -> vca.backend.v1.CreateDidRequest
+	98,  // 175: vca.backend.v1.HolderBackendService.SetDefaultDid:input_type -> vca.backend.v1.SetDefaultDidRequest
+	100, // 176: vca.backend.v1.HolderBackendService.RejectOffer:input_type -> vca.backend.v1.RejectOfferRequest
+	117, // 177: vca.backend.v1.HolderBackendService.ListEvents:input_type -> vca.backend.v1.ListEventsRequest
+	102, // 178: vca.backend.v1.HolderBackendService.GetCredentialDocument:input_type -> vca.backend.v1.GetCredentialDocumentRequest
+	104, // 179: vca.backend.v1.HolderBackendService.GetWalletLock:input_type -> vca.backend.v1.GetWalletLockRequest
+	106, // 180: vca.backend.v1.HolderBackendService.UnlockWallet:input_type -> vca.backend.v1.UnlockWalletRequest
+	108, // 181: vca.backend.v1.HolderBackendService.OpenInvitation:input_type -> vca.backend.v1.OpenInvitationRequest
+	110, // 182: vca.backend.v1.HolderBackendService.ListWalletConnections:input_type -> vca.backend.v1.ListWalletConnectionsRequest
+	112, // 183: vca.backend.v1.HolderBackendService.ListInbox:input_type -> vca.backend.v1.ListInboxRequest
+	119, // 184: vca.backend.v1.VerifierBackendService.CreateRequest:input_type -> vca.backend.v1.CreateRequestRequest
+	123, // 185: vca.backend.v1.VerifierBackendService.GetResult:input_type -> vca.backend.v1.GetResultRequest
+	121, // 186: vca.backend.v1.VerifierBackendService.SubmitBrowserAnswer:input_type -> vca.backend.v1.SubmitBrowserAnswerRequest
+	180, // 187: vca.backend.v1.VerifierBackendService.VerifyCredential:input_type -> vca.backend.v1.VerifyCredentialRequest
+	174, // 188: vca.backend.v1.VerifierBackendService.ListProofRequests:input_type -> vca.backend.v1.ListProofRequestsRequest
+	177, // 189: vca.backend.v1.VerifierBackendService.ListProofSchemas:input_type -> vca.backend.v1.ListProofSchemasRequest
+	172, // 190: vca.backend.v1.VerifierBackendService.ListVerifierConnections:input_type -> vca.backend.v1.ListVerifierConnectionsRequest
+	125, // 191: vca.backend.v1.CatalogBackendService.ListCredentialTypes:input_type -> vca.backend.v1.ListCredentialTypesRequest
+	129, // 192: vca.backend.v1.TenantBackendService.CreateTenant:input_type -> vca.backend.v1.CreateTenantRequest
+	131, // 193: vca.backend.v1.TenantBackendService.GetTenant:input_type -> vca.backend.v1.GetTenantRequest
+	133, // 194: vca.backend.v1.TenantBackendService.ListTenants:input_type -> vca.backend.v1.ListTenantsRequest
+	135, // 195: vca.backend.v1.TenantBackendService.DeleteTenant:input_type -> vca.backend.v1.DeleteTenantRequest
+	138, // 196: vca.backend.v1.TenantBackendService.ListClientCredentials:input_type -> vca.backend.v1.ListClientCredentialsRequest
+	140, // 197: vca.backend.v1.TenantBackendService.CreateClientCredential:input_type -> vca.backend.v1.CreateClientCredentialRequest
+	142, // 198: vca.backend.v1.TenantBackendService.DeleteClientCredential:input_type -> vca.backend.v1.DeleteClientCredentialRequest
+	148, // 199: vca.backend.v1.TenantBackendService.GetEcosystemSettings:input_type -> vca.backend.v1.GetEcosystemSettingsRequest
+	150, // 200: vca.backend.v1.TenantBackendService.SetEcosystemSettings:input_type -> vca.backend.v1.SetEcosystemSettingsRequest
+	152, // 201: vca.backend.v1.TenantBackendService.ListEcosystems:input_type -> vca.backend.v1.ListEcosystemsRequest
+	154, // 202: vca.backend.v1.TenantBackendService.CreateEcosystem:input_type -> vca.backend.v1.CreateEcosystemRequest
+	156, // 203: vca.backend.v1.TenantBackendService.ListEcosystemMembers:input_type -> vca.backend.v1.ListEcosystemMembersRequest
+	158, // 204: vca.backend.v1.TenantBackendService.AddEcosystemMember:input_type -> vca.backend.v1.AddEcosystemMemberRequest
+	160, // 205: vca.backend.v1.TenantBackendService.RemoveEcosystemMember:input_type -> vca.backend.v1.RemoveEcosystemMemberRequest
+	144, // 206: vca.backend.v1.TenantBackendService.SetTenantPrimaryDid:input_type -> vca.backend.v1.SetTenantPrimaryDidRequest
+	163, // 207: vca.backend.v1.NotificationBackendService.GetWebhook:input_type -> vca.backend.v1.GetWebhookRequest
+	165, // 208: vca.backend.v1.NotificationBackendService.SetWebhook:input_type -> vca.backend.v1.SetWebhookRequest
+	167, // 209: vca.backend.v1.NotificationBackendService.GetNotificationEndpoint:input_type -> vca.backend.v1.GetNotificationEndpointRequest
+	169, // 210: vca.backend.v1.NotificationBackendService.SetNotificationEndpoint:input_type -> vca.backend.v1.SetNotificationEndpointRequest
+	11,  // 211: vca.backend.v1.BulkImportBackendService.GetBulkTemplate:input_type -> vca.backend.v1.GetBulkTemplateRequest
+	13,  // 212: vca.backend.v1.BulkImportBackendService.UploadBulkFile:input_type -> vca.backend.v1.UploadBulkFileRequest
+	15,  // 213: vca.backend.v1.BulkImportBackendService.PreviewBulkFile:input_type -> vca.backend.v1.PreviewBulkFileRequest
+	18,  // 214: vca.backend.v1.BulkImportBackendService.IssueBulkFile:input_type -> vca.backend.v1.IssueBulkFileRequest
+	20,  // 215: vca.backend.v1.BulkImportBackendService.ListBulkFiles:input_type -> vca.backend.v1.ListBulkFilesRequest
+	23,  // 216: vca.backend.v1.BulkImportBackendService.ListBulkFileRows:input_type -> vca.backend.v1.ListBulkFileRowsRequest
+	26,  // 217: vca.backend.v1.BulkImportBackendService.RetryBulkFile:input_type -> vca.backend.v1.RetryBulkFileRequest
+	29,  // 218: vca.backend.v1.CapabilityService.GetCapabilities:output_type -> vca.backend.v1.GetCapabilitiesResponse
+	41,  // 219: vca.backend.v1.IssuerBackendService.RegisterCredentialConfiguration:output_type -> vca.backend.v1.RegisterCredentialConfigurationResponse
+	47,  // 220: vca.backend.v1.IssuerBackendService.CreateOffer:output_type -> vca.backend.v1.CreateOfferResponse
+	49,  // 221: vca.backend.v1.IssuerBackendService.Issue:output_type -> vca.backend.v1.IssueResponse
+	51,  // 222: vca.backend.v1.IssuerBackendService.IssueBatch:output_type -> vca.backend.v1.IssueBatchResponse
+	55,  // 223: vca.backend.v1.IssuerBackendService.GetIssuanceStatus:output_type -> vca.backend.v1.GetIssuanceStatusResponse
+	53,  // 224: vca.backend.v1.IssuerBackendService.Revoke:output_type -> vca.backend.v1.RevokeResponse
+	57,  // 225: vca.backend.v1.IssuerBackendService.ListIssuedCredentials:output_type -> vca.backend.v1.ListIssuedCredentialsResponse
+	60,  // 226: vca.backend.v1.IssuerBackendService.GetIssuerMetadata:output_type -> vca.backend.v1.GetIssuerMetadataResponse
+	63,  // 227: vca.backend.v1.IssuerBackendService.GetIssuerIdentity:output_type -> vca.backend.v1.GetIssuerIdentityResponse
+	65,  // 228: vca.backend.v1.IssuerBackendService.ProvisionIssuerIdentity:output_type -> vca.backend.v1.ProvisionIssuerIdentityResponse
+	67,  // 229: vca.backend.v1.IssuerBackendService.ImportIssuerIdentity:output_type -> vca.backend.v1.ImportIssuerIdentityResponse
+	69,  // 230: vca.backend.v1.IssuerBackendService.SetPresentationRequirement:output_type -> vca.backend.v1.SetPresentationRequirementResponse
+	71,  // 231: vca.backend.v1.IssuerBackendService.GetPresentationRequirement:output_type -> vca.backend.v1.GetPresentationRequirementResponse
+	74,  // 232: vca.backend.v1.IssuerBackendService.GetHolderSignInSource:output_type -> vca.backend.v1.GetHolderSignInSourceResponse
+	76,  // 233: vca.backend.v1.IssuerBackendService.SetHolderSignInSource:output_type -> vca.backend.v1.SetHolderSignInSourceResponse
+	33,  // 234: vca.backend.v1.IssuerBackendService.ListConnections:output_type -> vca.backend.v1.ListConnectionsResponse
+	78,  // 235: vca.backend.v1.HolderBackendService.Register:output_type -> vca.backend.v1.RegisterResponse
+	81,  // 236: vca.backend.v1.HolderBackendService.ListCredentials:output_type -> vca.backend.v1.ListCredentialsResponse
+	83,  // 237: vca.backend.v1.HolderBackendService.AcceptOffer:output_type -> vca.backend.v1.AcceptOfferResponse
+	85,  // 238: vca.backend.v1.HolderBackendService.Present:output_type -> vca.backend.v1.PresentResponse
+	87,  // 239: vca.backend.v1.HolderBackendService.DeleteCredential:output_type -> vca.backend.v1.DeleteCredentialResponse
+	90,  // 240: vca.backend.v1.HolderBackendService.ListKeys:output_type -> vca.backend.v1.ListKeysResponse
+	92,  // 241: vca.backend.v1.HolderBackendService.CreateKey:output_type -> vca.backend.v1.CreateKeyResponse
+	95,  // 242: vca.backend.v1.HolderBackendService.ListDids:output_type -> vca.backend.v1.ListDidsResponse
+	97,  // 243: vca.backend.v1.HolderBackendService.CreateDid:output_type -> vca.backend.v1.CreateDidResponse
+	99,  // 244: vca.backend.v1.HolderBackendService.SetDefaultDid:output_type -> vca.backend.v1.SetDefaultDidResponse
+	101, // 245: vca.backend.v1.HolderBackendService.RejectOffer:output_type -> vca.backend.v1.RejectOfferResponse
+	118, // 246: vca.backend.v1.HolderBackendService.ListEvents:output_type -> vca.backend.v1.ListEventsResponse
+	103, // 247: vca.backend.v1.HolderBackendService.GetCredentialDocument:output_type -> vca.backend.v1.GetCredentialDocumentResponse
+	105, // 248: vca.backend.v1.HolderBackendService.GetWalletLock:output_type -> vca.backend.v1.GetWalletLockResponse
+	107, // 249: vca.backend.v1.HolderBackendService.UnlockWallet:output_type -> vca.backend.v1.UnlockWalletResponse
+	109, // 250: vca.backend.v1.HolderBackendService.OpenInvitation:output_type -> vca.backend.v1.OpenInvitationResponse
+	111, // 251: vca.backend.v1.HolderBackendService.ListWalletConnections:output_type -> vca.backend.v1.ListWalletConnectionsResponse
+	113, // 252: vca.backend.v1.HolderBackendService.ListInbox:output_type -> vca.backend.v1.ListInboxResponse
+	120, // 253: vca.backend.v1.VerifierBackendService.CreateRequest:output_type -> vca.backend.v1.CreateRequestResponse
+	124, // 254: vca.backend.v1.VerifierBackendService.GetResult:output_type -> vca.backend.v1.GetResultResponse
+	122, // 255: vca.backend.v1.VerifierBackendService.SubmitBrowserAnswer:output_type -> vca.backend.v1.SubmitBrowserAnswerResponse
+	181, // 256: vca.backend.v1.VerifierBackendService.VerifyCredential:output_type -> vca.backend.v1.VerifyCredentialResponse
+	175, // 257: vca.backend.v1.VerifierBackendService.ListProofRequests:output_type -> vca.backend.v1.ListProofRequestsResponse
+	178, // 258: vca.backend.v1.VerifierBackendService.ListProofSchemas:output_type -> vca.backend.v1.ListProofSchemasResponse
+	173, // 259: vca.backend.v1.VerifierBackendService.ListVerifierConnections:output_type -> vca.backend.v1.ListVerifierConnectionsResponse
+	126, // 260: vca.backend.v1.CatalogBackendService.ListCredentialTypes:output_type -> vca.backend.v1.ListCredentialTypesResponse
+	130, // 261: vca.backend.v1.TenantBackendService.CreateTenant:output_type -> vca.backend.v1.CreateTenantResponse
+	132, // 262: vca.backend.v1.TenantBackendService.GetTenant:output_type -> vca.backend.v1.GetTenantResponse
+	134, // 263: vca.backend.v1.TenantBackendService.ListTenants:output_type -> vca.backend.v1.ListTenantsResponse
+	136, // 264: vca.backend.v1.TenantBackendService.DeleteTenant:output_type -> vca.backend.v1.DeleteTenantResponse
+	139, // 265: vca.backend.v1.TenantBackendService.ListClientCredentials:output_type -> vca.backend.v1.ListClientCredentialsResponse
+	141, // 266: vca.backend.v1.TenantBackendService.CreateClientCredential:output_type -> vca.backend.v1.CreateClientCredentialResponse
+	143, // 267: vca.backend.v1.TenantBackendService.DeleteClientCredential:output_type -> vca.backend.v1.DeleteClientCredentialResponse
+	149, // 268: vca.backend.v1.TenantBackendService.GetEcosystemSettings:output_type -> vca.backend.v1.GetEcosystemSettingsResponse
+	151, // 269: vca.backend.v1.TenantBackendService.SetEcosystemSettings:output_type -> vca.backend.v1.SetEcosystemSettingsResponse
+	153, // 270: vca.backend.v1.TenantBackendService.ListEcosystems:output_type -> vca.backend.v1.ListEcosystemsResponse
+	155, // 271: vca.backend.v1.TenantBackendService.CreateEcosystem:output_type -> vca.backend.v1.CreateEcosystemResponse
+	157, // 272: vca.backend.v1.TenantBackendService.ListEcosystemMembers:output_type -> vca.backend.v1.ListEcosystemMembersResponse
+	159, // 273: vca.backend.v1.TenantBackendService.AddEcosystemMember:output_type -> vca.backend.v1.AddEcosystemMemberResponse
+	161, // 274: vca.backend.v1.TenantBackendService.RemoveEcosystemMember:output_type -> vca.backend.v1.RemoveEcosystemMemberResponse
+	145, // 275: vca.backend.v1.TenantBackendService.SetTenantPrimaryDid:output_type -> vca.backend.v1.SetTenantPrimaryDidResponse
+	164, // 276: vca.backend.v1.NotificationBackendService.GetWebhook:output_type -> vca.backend.v1.GetWebhookResponse
+	171, // 277: vca.backend.v1.NotificationBackendService.SetWebhook:output_type -> vca.backend.v1.SetWebhookResponse
+	168, // 278: vca.backend.v1.NotificationBackendService.GetNotificationEndpoint:output_type -> vca.backend.v1.GetNotificationEndpointResponse
+	170, // 279: vca.backend.v1.NotificationBackendService.SetNotificationEndpoint:output_type -> vca.backend.v1.SetNotificationEndpointResponse
+	12,  // 280: vca.backend.v1.BulkImportBackendService.GetBulkTemplate:output_type -> vca.backend.v1.GetBulkTemplateResponse
+	14,  // 281: vca.backend.v1.BulkImportBackendService.UploadBulkFile:output_type -> vca.backend.v1.UploadBulkFileResponse
+	16,  // 282: vca.backend.v1.BulkImportBackendService.PreviewBulkFile:output_type -> vca.backend.v1.PreviewBulkFileResponse
+	19,  // 283: vca.backend.v1.BulkImportBackendService.IssueBulkFile:output_type -> vca.backend.v1.IssueBulkFileResponse
+	21,  // 284: vca.backend.v1.BulkImportBackendService.ListBulkFiles:output_type -> vca.backend.v1.ListBulkFilesResponse
+	24,  // 285: vca.backend.v1.BulkImportBackendService.ListBulkFileRows:output_type -> vca.backend.v1.ListBulkFileRowsResponse
+	27,  // 286: vca.backend.v1.BulkImportBackendService.RetryBulkFile:output_type -> vca.backend.v1.RetryBulkFileResponse
+	218, // [218:287] is the sub-list for method output_type
+	149, // [149:218] is the sub-list for method input_type
+	149, // [149:149] is the sub-list for extension type_name
+	149, // [149:149] is the sub-list for extension extendee
+	0,   // [0:149] is the sub-list for field type_name
 }
 
 func init() { file_vca_backend_v1_backend_proto_init() }

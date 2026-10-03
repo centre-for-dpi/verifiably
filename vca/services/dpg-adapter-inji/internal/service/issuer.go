@@ -373,14 +373,17 @@ func (s *Service) Issue(
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("the request needs a spec with a configuration_id"))
 	}
-	credential, err := s.issueOne(ctx, spec)
+	credential, status, err := s.issueOne(ctx, spec)
 	if err != nil {
 		return nil, err
 	}
+	// The answer names the entry the credential carries, as the answer
+	// of CreateOffer does (ADR-072 decision 1).
 	return connect.NewResponse(&backendv1.IssueResponse{
 		Credential:   credential,
 		CredentialId: inji.KeyID(credential.GetPayload()),
 		Claim169Qr:   identityQR(credential.GetPayload()),
+		Status:       status,
 	}), nil
 }
 
@@ -398,28 +401,29 @@ func identityQR(credential []byte) string {
 	return text
 }
 
-// issueOne runs the pre-authorized flow for one subject.
-func (s *Service) issueOne(ctx context.Context, spec *backendv1.IssueSpec) (*commonv1.Credential, error) {
+// issueOne runs the pre-authorized flow for one subject. It returns the
+// credential and the status entry the credential carries.
+func (s *Service) issueOne(ctx context.Context, spec *backendv1.IssueSpec) (*commonv1.Credential, *backendv1.StatusListBinding, error) {
 	stagingID := s.newID()
 	cfg, err := s.stageRow(ctx, spec, claims.Key(stagingID))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	offerURI, serr := s.certify.Stage(ctx, spec.GetConfigurationId(), map[string]any{inji.StagingClaim: stagingID})
 	if serr != nil {
-		return nil, failed("stage the claims", serr)
+		return nil, nil, failed("stage the claims", serr)
 	}
 	documentURL, derr := inji.OfferDocumentURL(offerURI)
 	if derr != nil {
-		return nil, connect.NewError(connect.CodeInternal, derr)
+		return nil, nil, connect.NewError(connect.CodeInternal, derr)
 	}
 	offer, oerr := s.certify.FetchOffer(ctx, documentURL)
 	if oerr != nil {
-		return nil, failed("read the offer document", oerr)
+		return nil, nil, failed("read the offer document", oerr)
 	}
 	token, terr := s.certify.Redeem(ctx, offer.PreAuthorizedCode())
 	if terr != nil {
-		return nil, failed("redeem the pre-authorized code", terr)
+		return nil, nil, failed("redeem the pre-authorized code", terr)
 	}
 	// The audience of the proof must equal the issuer identifier of the
 	// offer. That identifier is right in both a local deployment and a
@@ -430,17 +434,17 @@ func (s *Service) issueOne(ctx context.Context, spec *backendv1.IssueSpec) (*com
 	}
 	proof, perr := s.proofKey.Sign(audience, token.CNonce, s.now())
 	if perr != nil {
-		return nil, connect.NewError(connect.CodeInternal, perr)
+		return nil, nil, connect.NewError(connect.CodeInternal, perr)
 	}
 	payload, format, cerr := s.certify.RequestCredential(ctx, token.AccessToken,
 		inji.BuildCredentialRequest(cfg, proof))
 	if cerr != nil {
-		return nil, failed("ask for the credential", cerr)
+		return nil, nil, failed("ask for the credential", cerr)
 	}
 	if format == "" {
 		format = cfg.Format
 	}
-	return &commonv1.Credential{Format: contractFormat(format), Payload: payload}, nil
+	return &commonv1.Credential{Format: contractFormat(format), Payload: payload}, carriedStatus(spec, cfg.Format), nil
 }
 
 // IssueBatch produces many credentials in one call. One failure does not
@@ -459,7 +463,7 @@ func (s *Service) IssueBatch(
 	out := &backendv1.IssueBatchResponse{Items: make([]*backendv1.IssueBatchResponse_Item, 0, len(specs))}
 	for i, spec := range specs {
 		item := &backendv1.IssueBatchResponse_Item{Position: toInt32(int64(i))}
-		credential, err := s.issueOne(ctx, spec)
+		credential, _, err := s.issueOne(ctx, spec)
 		if err != nil {
 			item.Error = &commonv1.Error{
 				Code:     "VCA-DPG-ISSUE",

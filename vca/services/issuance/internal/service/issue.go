@@ -227,9 +227,9 @@ func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 	var carried carriedStatus
 	switch {
 	case channel == backendv1.Channel_CHANNEL_CLAIM169_QR:
-		err = s.issueIdentityQR(ctx, &offer, spec, schema, r)
+		err = s.issueIdentityQR(ctx, &offer, spec, schema, r, &carried)
 	case isDocument(channel) && caps.SupportsChannel(backendv1.Channel_CHANNEL_PDF):
-		err = s.issueDocument(ctx, &offer, spec, schema, r)
+		err = s.issueDocument(ctx, &offer, spec, schema, r, &carried)
 	case isDocument(channel):
 		err = s.issueOfferDocument(ctx, &offer, spec, schema, r, &carried)
 	default:
@@ -253,10 +253,10 @@ func (s *Service) issue(ctx context.Context, r request) (offers.Offer, error) {
 }
 
 // carriedStatus is the status entry the credential of an offer
-// carries, as the adapter named it in its answer to CreateOffer.
+// carries, as the adapter named it in its answer to CreateOffer or to
+// Issue (ADR-072).
 type carriedStatus struct {
-	// named is false when the credential came from Issue, which embeds
-	// the entry of the spec.
+	// named is true once an answer of the adapter came back.
 	named bool
 	// entry is nil when the credential carries no status entry.
 	entry *backendv1.StatusListBinding
@@ -265,12 +265,15 @@ type carriedStatus struct {
 	credentialID string
 }
 
-// carry keeps the status entry of an answer of CreateOffer (ADR-018,
+// carry keeps the status entry of an answer of CreateOffer or Issue (ADR-018,
 // ADR-019). The adapter names the entry the credential carries. A stack
 // with a list of its own names an entry of that list and the id it
 // revokes the credential by. An adapter that names no entry issues a
 // credential that no status list can revoke, so the record names none.
-func (c *carriedStatus) carry(resp *backendv1.CreateOfferResponse) {
+func (c *carriedStatus) carry(resp interface {
+	GetStatus() *backendv1.StatusListBinding
+	GetCredentialId() string
+}) {
 	c.named, c.entry = true, resp.GetStatus()
 	if c.entry.GetDpgList() {
 		c.credentialID = resp.GetCredentialId()
@@ -417,7 +420,7 @@ func (s *Service) issueOffer(ctx context.Context, offer *offers.Offer,
 
 // issueDocument asks the adapter for a credential and renders the page.
 func (s *Service) issueDocument(ctx context.Context, offer *offers.Offer,
-	spec *backendv1.IssueSpec, schema *schemav1.Schema, r request,
+	spec *backendv1.IssueSpec, schema *schemav1.Schema, r request, carried *carriedStatus,
 ) error {
 	resp, err := s.opts.Issuer.Issue(ctx, connect.NewRequest(&backendv1.IssueRequest{Spec: spec}))
 	if err != nil {
@@ -425,6 +428,7 @@ func (s *Service) issueDocument(ctx context.Context, offer *offers.Offer,
 		offer.Error = err.Error()
 		return connect.NewError(connect.CodeOf(err), fmt.Errorf("ask for the credential: %w", err))
 	}
+	carried.carry(resp.Msg)
 	return s.credentialDocument(ctx, offer, resp.Msg.GetCredential(), schema, r)
 }
 
@@ -462,7 +466,7 @@ func (s *Service) credentialDocument(ctx context.Context, offer *offers.Offer,
 // carries the code of the stack unchanged, per the MOSIP QR code
 // specification 1.1.0.
 func (s *Service) issueIdentityQR(ctx context.Context, offer *offers.Offer,
-	spec *backendv1.IssueSpec, schema *schemav1.Schema, r request,
+	spec *backendv1.IssueSpec, schema *schemav1.Schema, r request, carried *carriedStatus,
 ) error {
 	resp, err := s.opts.Issuer.Issue(ctx, connect.NewRequest(&backendv1.IssueRequest{Spec: spec}))
 	if err != nil {
@@ -470,6 +474,7 @@ func (s *Service) issueIdentityQR(ctx context.Context, offer *offers.Offer,
 		offer.Error = err.Error()
 		return connect.NewError(connect.CodeOf(err), fmt.Errorf("ask for the credential: %w", err))
 	}
+	carried.carry(resp.Msg)
 	payload, perr := render.IdentityPayload(resp.Msg.GetClaim169Qr())
 	if perr != nil {
 		return connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(

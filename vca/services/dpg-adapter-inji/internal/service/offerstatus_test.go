@@ -46,3 +46,28 @@ func TestCreateOfferWithNoRowNamesNoEntry(t *testing.T) {
 		t.Fatalf("status = %v, want none", resp.Msg.GetStatus())
 	}
 }
+
+// TestIssueNamesTheStatusEntryOfTheRow is ADR-072 decision 1 for Issue:
+// the credential that the adapter fetches carries the entry of the
+// spec, so the answer names it, as the answer of CreateOffer does.
+func TestIssueNamesTheStatusEntryOfTheRow(t *testing.T) {
+	svc, _ := newService(t, both)
+	spec := farmerSpec()
+	resp, err := svc.Issue(context.Background(), connect.NewRequest(&backendv1.IssueRequest{Spec: spec}))
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	if !proto.Equal(resp.Msg.GetStatus(), spec.GetStatus()) {
+		t.Fatalf("status = %v, want the entry of the spec %v", resp.Msg.GetStatus(), spec.GetStatus())
+	}
+	// A spec with no entry gives a credential that carries none.
+	bare := farmerSpec()
+	bare.Status = nil
+	resp, err = svc.Issue(context.Background(), connect.NewRequest(&backendv1.IssueRequest{Spec: bare}))
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	if resp.Msg.GetStatus() != nil {
+		t.Fatalf("status = %v, want none", resp.Msg.GetStatus())
+	}
+}
