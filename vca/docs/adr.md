@@ -56,3 +56,4 @@ each decision of each record.
 - [ADR-074: The role switches of the umbrella chart sit under global](adr/ADR-074-helm-role-switches-under-global.md)
 - [ADR-075: Each internal Connect service checks which service calls it](adr/ADR-075-service-peer-identity.md)
 - [ADR-076: The answer of Issue names the status entry its credential carries](adr/ADR-076-issue-names-its-status-entry.md)
+- [ADR-077: The schema registry registers each published version again at start](adr/ADR-077-registry-registers-again-at-start.md)

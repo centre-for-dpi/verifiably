@@ -121,8 +121,10 @@ it. The retired setting `VCA_WALTID_VCT_BASE` built another `vct`, and
 no query found such a credential. An adapter whose `.env` still names
 it stops at start with a message. Setup refuses the setting too, and a
 new setup run drops the line of an old `.env`. A configuration that the
-adapter registered with that setting keeps its `vct` until the issuer
-publishes the schema again.
+adapter registered with that setting kept its `vct`. The schema registry
+now registers every published version again at each start (ADR-077).
+The adapter then stores the `vct` of the registry instead. A later
+start changes nothing more.
 
 ## Issuance sessions and callbacks
 

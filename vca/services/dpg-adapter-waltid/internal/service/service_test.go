@@ -988,3 +988,49 @@ func TestWebhookServiceUnimplementedWithoutFeature(t *testing.T) {
 		}
 	}
 }
+
+// TestARegistrationAgainReplacesTheRetiredVct is ADR-077 on the side of
+// the adapter: a registration of an earlier release holds the vct of the
+// retired VCA_WALTID_VCT_BASE. The schema registry registers the same
+// configuration again at start, and the next offer carries the type of
+// the registry. A third registration changes nothing.
+func TestARegistrationAgainReplacesTheRetiredVct(t *testing.T) {
+	svc, f := newService(t, all)
+	register := func(typ string) {
+		t.Helper()
+		if _, err := svc.RegisterCredentialConfiguration(context.Background(),
+			connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{
+				Configuration: &backendv1.CredentialConfiguration{
+					Id: "licence_dc+sd-jwt", Format: commonv1.Format_FORMAT_DC_SD_JWT, Type: typ,
+				},
+			})); err != nil {
+			t.Fatalf("RegisterCredentialConfiguration: %v", err)
+		}
+	}
+	offerVct := func() any {
+		t.Helper()
+		if _, err := svc.CreateOffer(context.Background(), connect.NewRequest(&backendv1.CreateOfferRequest{
+			Spec:    &backendv1.IssueSpec{ConfigurationId: "licence_dc+sd-jwt", SubjectData: `{"given_name":"Ada"}`},
+			Channel: backendv1.Channel_CHANNEL_OID4VCI_PREAUTH,
+		})); err != nil {
+			t.Fatalf("CreateOffer: %v", err)
+		}
+		var body map[string]any
+		if err := f.RequestJSON("/openid4vc/sdjwt/issue", &body); err != nil {
+			t.Fatal(err)
+		}
+		return body["vct"]
+	}
+	// The earlier release stored the vct of the retired base URL.
+	register("https://issuer.example.org/credentials/licence_dc+sd-jwt")
+	if got := offerVct(); got != "https://issuer.example.org/credentials/licence_dc+sd-jwt" {
+		t.Fatalf("the old registration gives %v", got)
+	}
+	const registry = "https://issuer.example.org/.well-known/vct/Licence"
+	for range 2 {
+		register(registry)
+		if got := offerVct(); got != registry {
+			t.Fatalf("after the registry registered again, the offer carries %v, want %s", got, registry)
+		}
+	}
+}

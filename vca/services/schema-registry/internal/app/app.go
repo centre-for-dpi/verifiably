@@ -6,6 +6,7 @@
 package app
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -34,6 +35,7 @@ type App struct {
 	Mux     *http.ServeMux
 	Service *service.Service
 	Portal  *portal.Portal
+	log     *slog.Logger
 }
 
 // Deps are the side effects the wiring needs. Tests inject fakes.
@@ -137,7 +139,27 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		http.Redirect(w, r, pages.Prefix()+"/", http.StatusSeeOther)
 	})
 	deps.Log.Info("wired", "portal", pages.Prefix(), "store", storeName(cfg), "backend", cfg.BackendURL != "")
-	return &App{Mux: mux, Service: svc, Portal: pages}, nil
+	return &App{Mux: mux, Service: svc, Portal: pages, log: deps.Log}, nil
+}
+
+// Republish registers every published version with the stack again,
+// once at the start of the registry (ADR-077). The adapter can start
+// after the registry, so a run that the stack refuses waits every and
+// tries again. It returns when every version went, or when ctx ends.
+func (a *App) Republish(ctx context.Context, every time.Duration) error {
+	for {
+		n, err := a.Service.Republish(ctx)
+		if err == nil {
+			a.log.Info("registered every published version with the stack again", "versions", n)
+			return nil
+		}
+		a.log.Warn("the stack refused a registration, so the registry tries again", "error", err, "wait", every.String())
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(every):
+		}
+	}
 }
 
 // storeName says where the versions live, for the start log.

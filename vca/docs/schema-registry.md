@@ -58,6 +58,14 @@ SD-JWT VC format names the `vct` of the issuer metadata as the type. The
 stack signs that `vct` into the credential, so a verifier that asks for
 it finds the credential.
 
+At each start the registry registers every published version again
+(ADR-077). A stack can keep a registration of an earlier release, such
+as a walt.id configuration with a retired `vct`. The registration of the
+registry then replaces it. Every adapter takes the same registration
+twice without harm. A draft and a retired version stay out. While the
+stack refuses, the registry tries again every 15 seconds and logs each
+refusal.
+
 `Retire` with version zero retires every published version of the schema.
 Issuance with a retired version stops. Verifiers can still read it.
 

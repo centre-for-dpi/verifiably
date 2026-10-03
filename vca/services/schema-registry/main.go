@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/serve"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/config"
@@ -58,6 +59,13 @@ func serveOrProbe(ctx context.Context, healthcheck bool, getenv func(string) str
 	}
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// Every published version goes to the stack again, so a registration
+	// of an earlier release gives way to the one of the registry
+	// (ADR-077). The run ends with the service at the latest.
+	go func() {
+		// The run logs each refusal itself, and it ends with the context.
+		anyval.Discard(a.Republish(ctx, republishEvery))
+	}()
 	return serve.Run(ctx, serve.Options{
 		Listen:  cfg.Listen,
 		Handler: a.Mux,
@@ -65,6 +73,10 @@ func serveOrProbe(ctx context.Context, healthcheck bool, getenv func(string) str
 		Log:     log,
 	})
 }
+
+// republishEvery is the wait between two runs of the registration at
+// start, while the stack refuses it.
+const republishEvery = 15 * time.Second
 
 // printLine writes one line to w. It returns the process exit status.
 func printLine(w io.Writer, v any) int {

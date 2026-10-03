@@ -157,6 +157,33 @@ func (s *Service) Publish(ctx context.Context, req *connect.Request[schemav1.Pub
 	return connect.NewResponse(resp), nil
 }
 
+// Republish registers every published version with the DPG again
+// (ADR-077). A stack can keep a registration of an earlier release,
+// such as a walt.id configuration with the retired vct. The
+// registration of the registry then replaces it. Every adapter takes
+// the same registration twice without harm, so the registry runs this
+// at each start. A draft and a retired version stay out. It returns the
+// number of versions it registered, and one error that names each
+// version that failed.
+func (s *Service) Republish(ctx context.Context) (int, error) {
+	if s.opts.Backend == nil {
+		return 0, nil
+	}
+	done := 0
+	var errs []error
+	for _, r := range s.opts.Store.All() {
+		if r.State != record.StatePublished {
+			continue
+		}
+		if _, err := s.register(ctx, r); err != nil {
+			errs = append(errs, fmt.Errorf("%s version %d: %w", r.ID, r.Version, err))
+			continue
+		}
+		done++
+	}
+	return done, errors.Join(errs...)
+}
+
 // register calls the issuer backend once per format and returns the
 // configuration id of each format.
 func (s *Service) register(ctx context.Context, r record.Record) (map[string]string, error) {
