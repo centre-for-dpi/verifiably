@@ -448,8 +448,10 @@ When you reach a service at another name, add the name to
 A name with no port stands for any port.
 `TestEveryInternalConnectServiceListsItsCallers` keeps the lists in step
 with this table.
-`TestEveryConnectHandlerChecksItsCaller` fails when a service mounts an
-internal Connect service without the check.
+`TestEveryConnectHandlerChecksItsCaller` fails when any Go file of
+`vca/` mounts an internal Connect service without the check.
+It follows each constructor by its import path, so an alias, a wrapper,
+or `connect.NewUnaryHandler` does not hide a mount.
 
 A statement has no end of its own.
 It counts until the authority rotates (ADR-075 consequence 4).

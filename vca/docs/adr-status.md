@@ -802,7 +802,7 @@ A row that is not `Done` carries a note.
 | ADR-075 | 4 The callers next to the routes of the catalogue | Done | `vca/internal/cli/services.go` | `TestEveryInternalConnectServiceListsItsCallers` and `TestEveryServiceLinkIsAListedCaller` pin it. |
 | ADR-075 | 5 The upgrade of an earlier deployment | Done | `vca/internal/cli/peer.go` | `TestUpgradeAddsPeerIdentities` pins it. |
 | ADR-075 | 6 One Secret per Helm chart | Done | `deploy/vca/helm/*/templates/deployment.yaml`, `vca/internal/cli/peer.go` | `TestServiceChartsReadTheirPeerSecret` and `TestHelmPeerSecrets` pin it. |
-| ADR-075 | 7 The guard test of the handlers | Done | `vca/internal/cli/peerguard_test.go` | `TestEveryConnectHandlerChecksItsCaller` pins it. |
+| ADR-075 | 7 The guard test of the handlers | Done | `vca/internal/cli/peerguard_test.go` | `TestEveryConnectHandlerChecksItsCaller` pins it over every Go file of `vca/`. It resolves each constructor by import path and finds the wrappers itself. `TestTheGuardSeesEverySpelling` pins the spellings it must see. |
 
 ## ADR-076: The answer of Issue names the status entry its credential carries
 
