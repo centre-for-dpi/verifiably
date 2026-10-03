@@ -87,6 +87,10 @@ type claimStack struct {
 	// answer shapes the credential answer: "" for draft 13, "list" for
 	// the credentials list of OID4VCI 1.0.
 	answer string
+	// version10 makes the credential endpoint take only the proofs
+	// object of OID4VCI 1.0 section 8.2, as an issuer of that version
+	// does. Else it takes only the proof of draft 13.
+	version10 bool
 	// posted is the direct_post answer of a presentation.
 	posted url.Values
 	// freshNonce makes the verifier hand each read of its request a new
@@ -153,11 +157,7 @@ func (c *claimStack) credential(_ context.Context, address, token string, body [
 		return nil, &ports.StatusError{Status: 400}
 	}
 	c.requests = append(c.requests, req)
-	proof, ok := req["proof"].(map[string]any)
-	if !ok {
-		return nil, &ports.StatusError{Status: 400, Body: []byte(`{"error":"invalid_proof"}`)}
-	}
-	jwt, ok := proof["jwt"].(string)
+	jwt, ok := c.proofOf(req)
 	if !ok {
 		return nil, &ports.StatusError{Status: 400, Body: []byte(`{"error":"invalid_proof"}`)}
 	}
@@ -203,6 +203,30 @@ func (c *claimStack) credential(_ context.Context, address, token string, body [
 		return json.Marshal(map[string]any{"credentials": []any{map[string]any{"credential": credential}}})
 	}
 	return json.Marshal(map[string]any{"credential": credential})
+}
+
+// proofOf reads the proof JWT of a credential request in the shape of
+// the version of the issuer: the proofs object with one JWT for OID4VCI
+// 1.0, the proof object for draft 13. A request that carries both is
+// refused, as section 8.2 of OID4VCI 1.0 says.
+func (c *claimStack) proofOf(req map[string]any) (string, bool) {
+	proof, single := req["proof"].(map[string]any)
+	proofs, many := req["proofs"].(map[string]any)
+	switch {
+	case single && many:
+		return "", false
+	case c.version10 && many:
+		list, ok := proofs["jwt"].([]any)
+		if !ok || len(list) != 1 {
+			return "", false
+		}
+		jwt, ok := list[0].(string)
+		return jwt, ok
+	case !c.version10 && single && proof["proof_type"] == "jwt":
+		jwt, ok := proof["jwt"].(string)
+		return jwt, ok
+	}
+	return "", false
 }
 
 // browserStore builds the service of a wallet with no stack wallet,
@@ -288,6 +312,7 @@ func TestClaimIntoTheBrowserStoreSignsWithTheBrowserKey(t *testing.T) {
 func TestClaimReadsTheAnswerOfOid4vci10(t *testing.T) {
 	stack := newClaimStack(t)
 	stack.answer = "list"
+	stack.version10 = true
 	stack.metadata = strings.Replace(stack.metadata, `"credential_endpoint"`, `"nonce_endpoint":"`+claimIssuer+`/nonce","credential_endpoint"`, 1)
 	svc := build(t, func(o *service.Options) {
 		o.Fetch, o.PostCredential = stack.fetch, stack.credential
@@ -307,6 +332,39 @@ func TestClaimReadsTheAnswerOfOid4vci10(t *testing.T) {
 	}
 	if _, err := svc.ClaimFinish(ctx(), step.ID, browser.sign(t, step.SigningInput)); err != nil {
 		t.Fatalf("ClaimFinish: %v", err)
+	}
+	// The request carries the proofs object of OID4VCI 1.0 and no proof
+	// of draft 13 (section 8.2).
+	last := stack.requests[len(stack.requests)-1]
+	if _, single := last["proof"]; single {
+		t.Errorf("the request carries the proof of draft 13: %v", last)
+	}
+	proofs, ok := last["proofs"].(map[string]any)
+	list, listed := proofs["jwt"].([]any)
+	if !ok || !listed || len(list) != 1 {
+		t.Errorf("the request carries no proofs object with one JWT: %v", last)
+	}
+}
+
+// TestClaimSendsTheProofOfDraft13: an issuer with no nonce endpoint is
+// one of draft 13, so the request carries its proof object only.
+func TestClaimSendsTheProofOfDraft13(t *testing.T) {
+	stack := newClaimStack(t)
+	svc := browserStore(t, stack)
+	browser := newBrowserHolder(t)
+	step, err := svc.ClaimStart(ctx(), pasteOffer(t, svc), "4821", browser.jwk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ClaimFinish(ctx(), step.ID, browser.sign(t, step.SigningInput)); err != nil {
+		t.Fatalf("ClaimFinish: %v", err)
+	}
+	last := stack.requests[len(stack.requests)-1]
+	if _, many := last["proofs"]; many {
+		t.Errorf("a draft 13 request carries proofs: %v", last)
+	}
+	if proof, ok := last["proof"].(map[string]any); !ok || proof["proof_type"] != "jwt" {
+		t.Errorf("the request carries no proof of draft 13: %v", last)
 	}
 }
 

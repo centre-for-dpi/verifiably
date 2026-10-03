@@ -777,7 +777,7 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-073 | 1 A signing key that no script exports | Done | `vca/services/wallet-portal/internal/static/wallet.js` | `TestTheBrowserSigningKeyStaysInTheBrowser` runs the script in node when node is on the path. |
-| ADR-073 | 2 The proof and the key binding with ES256 | Done | `vca/services/wallet-portal/internal/holderkey` | `TestProofSignedInTheBrowserPassesTheIssuerCheck` and `TestBindingSignedInTheBrowserPassesTheVerifierCheck` pin it. |
+| ADR-073 | 2 The proof and the key binding with ES256 | Done | `vca/services/wallet-portal/internal/holderkey` | `TestProofSignedInTheBrowserPassesTheIssuerCheck` and `TestBindingSignedInTheBrowserPassesTheVerifierCheck` pin it. An issuer with a nonce endpoint gets `proofs` of OID4VCI 1.0. Any other issuer gets `proof` of draft 13. `TestClaimReadsTheAnswerOfOid4vci10` and `TestClaimSendsTheProofOfDraft13` pin that. |
 | ADR-073 | 3 The portal runs the protocol calls | Done | `vca/services/wallet-portal/internal/service/browserclaim.go` | `TestClaimIntoTheBrowserStoreSignsWithTheBrowserKey` and `TestClaimRefusals` pin it. |
 | ADR-073 | 4 The portal checks each signature | Done | `vca/services/wallet-portal/internal/holderkey` | `TestCheckBindingCoversTheAnswer` and `TestClaimRefusals` pin it. |
 | ADR-073 | 5 The browser seals a claimed credential | Done | `vca/services/wallet-portal/internal/static/wallet.js`, `vca/services/wallet-portal/internal/portal/browser.go` | `TestTheBrowserStoreClaimsWithTheKeyOfTheBrowser` and both walkthroughs pin it. |

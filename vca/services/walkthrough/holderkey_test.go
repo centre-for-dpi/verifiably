@@ -101,22 +101,41 @@ func (b *browser) script(f form, path string, changes ...string) map[string]stri
 // proofKey checks the proof of a credential request, as an issuer does:
 // the key in its header signed it, it names the issuer and the nonce the
 // issuer gave. It returns that key, which the credential then names in
-// cnf.jwk. A request with no proof gets nil.
+// cnf.jwk. A request with no proof gets nil. It reads the proof of
+// draft 13 and the proofs object of OID4VCI 1.0, and refuses a request
+// that carries both (OID4VCI 1.0 section 8.2).
 func proofKey(body []byte, issuer, nonce string) (map[string]any, error) {
 	var req struct {
 		Proof *struct {
 			Type string `json:"proof_type"`
 			JWT  string `json:"jwt"`
 		} `json:"proof"`
+		Proofs *struct {
+			JWT []string `json:"jwt"`
+		} `json:"proofs"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		return nil, err
 	}
-	if req.Proof == nil {
+	var jwt string
+	switch {
+	case req.Proof != nil && req.Proofs != nil:
+		return nil, errors.New("the request carries both proof and proofs")
+	case req.Proofs != nil:
+		if len(req.Proofs.JWT) != 1 {
+			return nil, errors.New("the proofs object holds no single JWT")
+		}
+		jwt = req.Proofs.JWT[0]
+	case req.Proof != nil:
+		if req.Proof.Type != "jwt" {
+			return nil, errors.New("the proof is not a JWT")
+		}
+		jwt = req.Proof.JWT
+	default:
 		return nil, nil
 	}
-	head, _, ok := strings.Cut(req.Proof.JWT, ".")
-	if !ok || req.Proof.Type != "jwt" {
+	head, _, ok := strings.Cut(jwt, ".")
+	if !ok {
 		return nil, errors.New("the proof is not a JWT")
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(head)
@@ -134,7 +153,7 @@ func proofKey(body []byte, issuer, nonce string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	payload, _, err := jose.Verify(req.Proof.JWT, key.Key, []jose.Algorithm{jose.ES256})
+	payload, _, err := jose.Verify(jwt, key.Key, []jose.Algorithm{jose.ES256})
 	if err != nil {
 		return nil, err
 	}

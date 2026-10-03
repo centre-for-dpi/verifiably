@@ -128,6 +128,9 @@ func (s *Service) ClaimStart(ctx context.Context, offerID, pin, jwk string) (Cla
 	rec := record{
 		ID: s.opts.NewID(), URI: meta.CredentialEndpoint, Issuer: grant.Issuer, Types: grant.IDs,
 		AccessToken: token.AccessToken, SigningInput: input, HolderKey: jwk, Request: string(request), Offer: offer.ID,
+		// An issuer with a nonce endpoint follows OID4VCI 1.0 or a draft
+		// after 13, which take the proofs object (section 8.2).
+		Proofs: meta.NonceEndpoint != "",
 	}
 	if err := s.put(ctx, KindClaim, citizen.WalletKey(), rec); err != nil {
 		return Claim{}, connect.NewError(connect.CodeInternal, err)
@@ -163,6 +166,11 @@ func (s *Service) ClaimFinish(ctx context.Context, claimID, signature string) (C
 		return Claimed{}, connect.NewError(connect.CodeInternal, err)
 	}
 	body["proof"] = map[string]any{"proof_type": "jwt", "jwt": proof}
+	if rec.Proofs {
+		// OID4VCI 1.0 takes the proofs object, and never both.
+		delete(body, "proof")
+		body["proofs"] = map[string]any{"jwt": []string{proof}}
+	}
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return Claimed{}, connect.NewError(connect.CodeInternal, err)

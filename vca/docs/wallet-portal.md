@@ -280,6 +280,12 @@ a claim form that `wallet.js` takes over.
    binds the credential to the key in `cnf.jwk`. The portal answers the
    credential, and `wallet.js` seals it into the blob store.
 
+The request carries the proof in the shape of the version of the
+issuer. An issuer with a `nonce_endpoint` follows OID4VCI 1.0, so the
+request carries the object `proofs` with one JWT (section 8.2). Any
+other issuer gets the object `proof` of draft 13. The request never
+carries both.
+
 A step runs once. The two answers are JSON. A refusal carries its
 sentence in `error`. With no script, the claim form reaches the accept
 address, and the page says that the browser signs the claim.

@@ -84,6 +84,9 @@ type record struct {
 	SigningInput string `json:"signing_input,omitempty"`
 	// HolderKey is the public holder key of the browser, as a JWK.
 	HolderKey string `json:"holder_key,omitempty"`
+	// Proofs says that the issuer of that claim takes the proofs object
+	// of OID4VCI 1.0 instead of the proof of draft 13.
+	Proofs bool `json:"proofs,omitempty"`
 	// ExpiresAt is the time the record stops working.
 	ExpiresAt time.Time `json:"expires_at"`
 }
