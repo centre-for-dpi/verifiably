@@ -54,6 +54,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-waltid/peer/keys/data-source.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-waltid-data-source-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-waltid-dpg-adapter-waltid:
@@ -69,6 +75,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_WALTID:-18001}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
+      - type: bind
+        source: ../issuer-waltid/peer/keys/dpg-adapter-waltid.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-waltid-dpg-adapter-waltid-data:/data
   issuer-waltid-issuance:
     <<: *vca-service
@@ -85,6 +97,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-waltid/peer/keys/issuance.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-waltid-issuance-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-waltid-issued-credentials:
@@ -102,6 +120,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-waltid/peer/keys/issued-credentials.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-waltid-issued-credentials-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-waltid-issuer-auth:
@@ -119,6 +143,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-waltid/peer/keys/issuer-auth.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-waltid-issuer-auth-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-waltid-schema-builder-ui:
@@ -136,6 +166,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-waltid/peer/keys/schema-builder-ui.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-waltid-schema-registry:
     <<: *vca-service
@@ -152,6 +188,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-waltid/peer/keys/schema-registry.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-waltid-schema-registry-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-waltid-status-bitstring:
@@ -167,6 +209,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_BITSTRING:-18007}:${VCA_PORTS_STATUS_BITSTRING:-8104}"
     volumes:
+      - type: bind
+        source: ../issuer-waltid/peer/keys/status-bitstring.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-waltid-status-bitstring-data:/data
   issuer-waltid-status-token:
     <<: *vca-service
@@ -181,6 +229,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_TOKEN:-18008}:${VCA_PORTS_STATUS_TOKEN:-8105}"
     volumes:
+      - type: bind
+        source: ../issuer-waltid/peer/keys/status-token.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-waltid-status-token-data:/data
 
   # Profile issuer-inji
@@ -199,6 +253,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-inji/peer/keys/data-source.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-inji-data-source-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-inji-dpg-adapter-inji:
@@ -214,6 +274,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18101}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
+      - type: bind
+        source: ../issuer-inji/peer/keys/dpg-adapter-inji.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-inji-dpg-adapter-inji-data:/data
       - inji-claims:/vca/claims
   issuer-inji-issuance:
@@ -231,6 +297,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-inji/peer/keys/issuance.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-inji-issuance-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-inji-issued-credentials:
@@ -248,6 +320,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-inji/peer/keys/issued-credentials.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-inji-issued-credentials-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-inji-issuer-auth:
@@ -265,6 +343,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-inji/peer/keys/issuer-auth.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-inji-issuer-auth-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-inji-schema-builder-ui:
@@ -282,6 +366,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-inji/peer/keys/schema-builder-ui.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-inji-schema-registry:
     <<: *vca-service
@@ -298,6 +388,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-inji/peer/keys/schema-registry.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-inji-schema-registry-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-inji-status-bitstring:
@@ -313,6 +409,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_BITSTRING:-18107}:${VCA_PORTS_STATUS_BITSTRING:-8104}"
     volumes:
+      - type: bind
+        source: ../issuer-inji/peer/keys/status-bitstring.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-inji-status-bitstring-data:/data
   issuer-inji-status-token:
     <<: *vca-service
@@ -327,6 +429,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_TOKEN:-18108}:${VCA_PORTS_STATUS_TOKEN:-8105}"
     volumes:
+      - type: bind
+        source: ../issuer-inji/peer/keys/status-token.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-inji-status-token-data:/data
 
   # Profile issuer-credebl
@@ -345,6 +453,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-credebl/peer/keys/data-source.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-credebl-data-source-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-credebl-dpg-adapter-credebl:
@@ -360,6 +474,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_CREDEBL:-18201}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
+      - type: bind
+        source: ../issuer-credebl/peer/keys/dpg-adapter-credebl.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-credebl-dpg-adapter-credebl-data:/data
   issuer-credebl-issuance:
     <<: *vca-service
@@ -376,6 +496,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-credebl/peer/keys/issuance.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-credebl-issuance-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-credebl-issued-credentials:
@@ -393,6 +519,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-credebl/peer/keys/issued-credentials.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-credebl-issued-credentials-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-credebl-issuer-auth:
@@ -410,6 +542,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-credebl/peer/keys/issuer-auth.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-credebl-issuer-auth-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-credebl-schema-builder-ui:
@@ -427,6 +565,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-credebl/peer/keys/schema-builder-ui.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-credebl-schema-registry:
     <<: *vca-service
@@ -443,6 +587,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../issuer-credebl/peer/keys/schema-registry.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-credebl-schema-registry-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   issuer-credebl-status-bitstring:
@@ -458,6 +608,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_BITSTRING:-18207}:${VCA_PORTS_STATUS_BITSTRING:-8104}"
     volumes:
+      - type: bind
+        source: ../issuer-credebl/peer/keys/status-bitstring.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-credebl-status-bitstring-data:/data
   issuer-credebl-status-token:
     <<: *vca-service
@@ -472,6 +628,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_TOKEN:-18208}:${VCA_PORTS_STATUS_TOKEN:-8105}"
     volumes:
+      - type: bind
+        source: ../issuer-credebl/peer/keys/status-token.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - issuer-credebl-status-token-data:/data
 
   # Profile holder-waltid
@@ -488,6 +650,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_WALTID:-18300}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
+      - type: bind
+        source: ../holder-waltid/peer/keys/dpg-adapter-waltid.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - holder-waltid-dpg-adapter-waltid-data:/data
   holder-waltid-wallet-auth:
     <<: *vca-service
@@ -504,6 +672,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../holder-waltid/peer/keys/wallet-auth.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - holder-waltid-wallet-auth-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   holder-waltid-wallet-portal:
@@ -521,6 +695,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../holder-waltid/peer/keys/wallet-portal.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - holder-waltid-wallet-portal-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
 
@@ -538,6 +718,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18400}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
+      - type: bind
+        source: ../holder-inji/peer/keys/dpg-adapter-inji.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - holder-inji-dpg-adapter-inji-data:/data
   holder-inji-wallet-auth:
     <<: *vca-service
@@ -554,6 +740,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../holder-inji/peer/keys/wallet-auth.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - holder-inji-wallet-auth-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   holder-inji-wallet-portal:
@@ -571,6 +763,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../holder-inji/peer/keys/wallet-portal.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - holder-inji-wallet-portal-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
 
@@ -588,6 +786,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_CREDEBL:-18500}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
+      - type: bind
+        source: ../holder-credebl/peer/keys/dpg-adapter-credebl.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - holder-credebl-dpg-adapter-credebl-data:/data
   holder-credebl-wallet-auth:
     <<: *vca-service
@@ -604,6 +808,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../holder-credebl/peer/keys/wallet-auth.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - holder-credebl-wallet-auth-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   holder-credebl-wallet-portal:
@@ -621,6 +831,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../holder-credebl/peer/keys/wallet-portal.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - holder-credebl-wallet-portal-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
 
@@ -638,6 +854,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_WALTID:-18600}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
+      - type: bind
+        source: ../verifier-waltid/peer/keys/dpg-adapter-waltid.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-waltid-dpg-adapter-waltid-data:/data
   verifier-waltid-verifier-auth:
     <<: *vca-service
@@ -654,6 +876,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../verifier-waltid/peer/keys/verifier-auth.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-waltid-verifier-auth-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   verifier-waltid-verifier-combined:
@@ -669,6 +897,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_COMBINED:-18602}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
     volumes:
+      - type: bind
+        source: ../verifier-waltid/peer/keys/verifier-combined.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-waltid-verifier-combined-data:/data
   verifier-waltid-verifier-discovery:
     <<: *vca-service
@@ -685,6 +919,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../verifier-waltid/peer/keys/verifier-discovery.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-waltid-verifier-discovery-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   verifier-waltid-verifier-ingest:
@@ -702,6 +942,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../verifier-waltid/peer/keys/verifier-ingest.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-waltid-verifier-ingest-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   verifier-waltid-verifier-policy:
@@ -717,6 +963,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_POLICY:-18605}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
     volumes:
+      - type: bind
+        source: ../verifier-waltid/peer/keys/verifier-policy.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-waltid-verifier-policy-data:/data
   verifier-waltid-verifier-results:
     <<: *vca-service
@@ -733,6 +985,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../verifier-waltid/peer/keys/verifier-results.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-waltid-verifier-results-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
 
@@ -750,6 +1008,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18700}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
+      - type: bind
+        source: ../verifier-inji/peer/keys/dpg-adapter-inji.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-inji-dpg-adapter-inji-data:/data
   verifier-inji-verifier-auth:
     <<: *vca-service
@@ -766,6 +1030,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../verifier-inji/peer/keys/verifier-auth.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-inji-verifier-auth-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   verifier-inji-verifier-combined:
@@ -781,6 +1051,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_COMBINED:-18702}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
     volumes:
+      - type: bind
+        source: ../verifier-inji/peer/keys/verifier-combined.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-inji-verifier-combined-data:/data
   verifier-inji-verifier-discovery:
     <<: *vca-service
@@ -797,6 +1073,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../verifier-inji/peer/keys/verifier-discovery.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-inji-verifier-discovery-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   verifier-inji-verifier-ingest:
@@ -814,6 +1096,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../verifier-inji/peer/keys/verifier-ingest.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-inji-verifier-ingest-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   verifier-inji-verifier-policy:
@@ -829,6 +1117,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_POLICY:-18705}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
     volumes:
+      - type: bind
+        source: ../verifier-inji/peer/keys/verifier-policy.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-inji-verifier-policy-data:/data
   verifier-inji-verifier-results:
     <<: *vca-service
@@ -845,6 +1139,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../verifier-inji/peer/keys/verifier-results.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-inji-verifier-results-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
 
@@ -862,6 +1162,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_CREDEBL:-18800}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
+      - type: bind
+        source: ../verifier-credebl/peer/keys/dpg-adapter-credebl.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-credebl-dpg-adapter-credebl-data:/data
   verifier-credebl-verifier-auth:
     <<: *vca-service
@@ -878,6 +1184,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../verifier-credebl/peer/keys/verifier-auth.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-credebl-verifier-auth-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   verifier-credebl-verifier-combined:
@@ -893,6 +1205,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_COMBINED:-18802}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
     volumes:
+      - type: bind
+        source: ../verifier-credebl/peer/keys/verifier-combined.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-credebl-verifier-combined-data:/data
   verifier-credebl-verifier-discovery:
     <<: *vca-service
@@ -909,6 +1227,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../verifier-credebl/peer/keys/verifier-discovery.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-credebl-verifier-discovery-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   verifier-credebl-verifier-ingest:
@@ -926,6 +1250,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../verifier-credebl/peer/keys/verifier-ingest.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-credebl-verifier-ingest-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   verifier-credebl-verifier-policy:
@@ -941,6 +1271,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_POLICY:-18805}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
     volumes:
+      - type: bind
+        source: ../verifier-credebl/peer/keys/verifier-policy.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-credebl-verifier-policy-data:/data
   verifier-credebl-verifier-results:
     <<: *vca-service
@@ -957,6 +1293,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../verifier-credebl/peer/keys/verifier-results.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - verifier-credebl-verifier-results-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
 
@@ -976,6 +1318,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../admin-waltid/peer/keys/admin.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - admin-waltid-admin-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   admin-waltid-trust-registry:
@@ -991,6 +1339,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_TRUST_REGISTRY:-18901}:${VCA_PORTS_TRUST_REGISTRY:-8100}"
     volumes:
+      - type: bind
+        source: ../admin-waltid/peer/keys/trust-registry.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - admin-waltid-trust-registry-data:/data
 
   # Profile admin-inji
@@ -1009,6 +1363,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../admin-inji/peer/keys/admin.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - admin-inji-admin-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   admin-inji-trust-registry:
@@ -1024,6 +1384,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_TRUST_REGISTRY:-19001}:${VCA_PORTS_TRUST_REGISTRY:-8100}"
     volumes:
+      - type: bind
+        source: ../admin-inji/peer/keys/trust-registry.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - admin-inji-trust-registry-data:/data
 
   # Profile admin-credebl
@@ -1042,6 +1408,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../admin-credebl/peer/keys/admin.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - admin-credebl-admin-data:/data
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
   admin-credebl-trust-registry:
@@ -1057,6 +1429,12 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_TRUST_REGISTRY:-19101}:${VCA_PORTS_TRUST_REGISTRY:-8100}"
     volumes:
+      - type: bind
+        source: ../admin-credebl/peer/keys/trust-registry.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - admin-credebl-trust-registry-data:/data
 
   # The landing of the deployment. Every profile starts it once.
@@ -1075,6 +1453,12 @@ services:
     environment:
       VCA_THEME_FILE: /etc/vca/theme.yaml
     volumes:
+      - type: bind
+        source: ../landing/peer/keys/landing.jwk
+        target: /run/vca/peer/key.jwk
+        read_only: true
+        bind:
+          create_host_path: false
       - ${VCA_THEME_HOST_FILE:-./theme.yaml}:/etc/vca/theme.yaml:ro
 
 networks:

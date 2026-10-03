@@ -361,9 +361,10 @@ func TestNoDeploymentReachesTestdata(t *testing.T) {
 	}
 }
 
-// TestNoBinaryImportsAFakePackage: the internal/fake packages are test
-// doubles (ADR-050 decision 3), so no source file outside a test
-// imports one. The token scan skips them on that ground.
+// TestNoBinaryImportsAFakePackage: the internal/fake packages, the
+// oidctest provider and the peertest identities are test doubles
+// (ADR-050 decision 3), so no source file outside a test imports one.
+// The token scan skips them on that ground.
 func TestNoBinaryImportsAFakePackage(t *testing.T) {
 	fakes := 0
 	for _, rel := range trackedFiles(t) {
@@ -375,7 +376,8 @@ func TestNoBinaryImportsAFakePackage(t *testing.T) {
 			t.Fatalf("read %s: %v", rel, err)
 		}
 		for i, line := range strings.Split(string(data), "\n") {
-			if strings.Contains(line, "/internal/fake\"") || strings.Contains(line, "/oidcflow/oidctest\"") {
+			if strings.Contains(line, "/internal/fake\"") || strings.Contains(line, "/oidcflow/oidctest\"") ||
+				strings.Contains(line, "/internal/peerauth/peertest\"") {
 				t.Errorf("%s:%d imports a fake package", rel, i+1)
 			}
 		}
@@ -387,6 +389,11 @@ func TestNoBinaryImportsAFakePackage(t *testing.T) {
 	fakes = len(entries)
 	if fakes == 0 {
 		t.Fatal("no internal/fake package found; the skip rule of the scan is stale")
+	}
+	// peertest mints peer identities for tests (ADR-075). The guard above
+	// names it, so it must stay where the guard looks.
+	if _, err := os.Stat(filepath.Join(repoRoot(), "vca", "internal", "peerauth", "peertest")); err != nil {
+		t.Fatalf("the peertest package moved; the guard is stale: %v", err)
 	}
 }
 

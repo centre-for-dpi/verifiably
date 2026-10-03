@@ -23,3 +23,7 @@
   3. The authority marks the caller `cli` and the landing as deployment scoped in their statements. A callee takes their tokens at any host, because the vca command calls through a port of the host.
   4. What remains: a party that reads a token can replay it within the window. The replay reaches the same server and procedure, with any body. The token of a deployment scoped caller opens the same procedure on every server that lists that caller.
   5. The window is symmetric. A token counts from 30 seconds before its issue time to 30 seconds after its end. So two clocks can differ by 30 seconds either way, and a replay works for 90 seconds at most.
+  6. Decision 2 changes. The private key of a service leaves the identity file. It is a file of its own in `<pair>/peer/keys/<service>.jwk`, and compose mounts it read only. `VCA_PEER_KEY_FILE` names it in the container.
+  7. The key file has mode 0644, because the container user has another user id than the operator. Its directory has mode 0700, so no other user of the host opens it.
+  8. Decision 6 changes. `vca peer secrets` writes a second Secret per chart with the key, and each pod mounts it as a file. A checksum of both Secrets is an annotation of each pod, so `helm upgrade` after a new run rolls the pods.
+  9. `VCA_PEER_KEY` stays as a fallback for a platform that cannot mount a file. The CLI never writes it, because the environment shows the key.

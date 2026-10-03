@@ -148,9 +148,8 @@ func renderComposeService(b *strings.Builder, p Pair, a PortAssignment) []string
 		volumes = append(volumes, name+"-data")
 	}
 	mounts := a.Service.MountsFor(p)
-	if a.Service.Stateful || a.Service.UI || len(mounts) > 0 {
-		b.WriteString("    volumes:\n")
-	}
+	b.WriteString("    volumes:\n")
+	renderPeerKey(b, "../"+p.Name()+"/"+filepath.ToSlash(PeerKeyFile(a.Service.Name)))
 	for _, v := range volumes {
 		fmt.Fprintf(b, "      - %s:/data\n", v)
 	}
@@ -192,9 +191,25 @@ func renderDeploymentService(b *strings.Builder, s Service) {
 	if s.UI {
 		b.WriteString("    environment:\n")
 		fmt.Fprintf(b, "      %s: %s\n", ThemeFileEnv, ThemeMountPath)
-		b.WriteString("    volumes:\n")
+	}
+	b.WriteString("    volumes:\n")
+	renderPeerKey(b, "../"+s.Name+"/"+filepath.ToSlash(PeerKeyFile(s.Name)))
+	if s.UI {
 		fmt.Fprintf(b, "      - ${%s:-%s}:%s:ro\n", ThemeHostFileEnv, themeHostDefault, ThemeMountPath)
 	}
+}
+
+// renderPeerKey writes the bind mount of the key file of a service
+// (ADR-075). The key stays out of the environment of the container.
+// Compose refuses to start the service when the file is missing, as it
+// does for the identity file, instead of making a directory there.
+func renderPeerKey(b *strings.Builder, source string) {
+	b.WriteString("      - type: bind\n")
+	fmt.Fprintf(b, "        source: %s\n", source)
+	fmt.Fprintf(b, "        target: %s\n", PeerKeyMount)
+	b.WriteString("        read_only: true\n")
+	b.WriteString("        bind:\n")
+	b.WriteString("          create_host_path: false\n")
 }
 
 // Profiles lists the compose profiles of a deploy run. One pair gives one

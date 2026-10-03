@@ -16,6 +16,11 @@
 #   api-key      an apiKey value of 64 hex characters
 #   password     a password, secret or key value that is not a placeholder,
 #                as key: value or as key=value
+#   peer-identity  a tracked identity file, key file or authority key of the
+#                peer authority (ADR-075), whatever it holds
+#   private-jwk  a private JWK: a "d" member in a JSON file, or a key=value
+#                whose value is a base64url JWK with a "d" member. Test
+#                doubles under testdata and in _test.go files stay out.
 #
 # Output is "rule: file:line: detail", one finding per line.
 # Exit status is 1 when it finds at least one secret, else 0.
@@ -45,6 +50,41 @@ while IFS= read -r file; do
       report "keystore: $file: a key store is tracked; generate it on the host instead"
       ;;
   esac
+done < "$findings.files"
+
+# Rule peer-identity: the identity files, the key files and the
+# authority key of ADR-075. The .gitignore of each peer directory keeps
+# them out, so a tracked one is a forced add.
+while IFS= read -r file; do
+  case "$file" in
+    peer/authority.pem|*/peer/authority.pem|peer/*.env|*/peer/*.env|peer/keys/*|*/peer/keys/*)
+      report "peer-identity: $file: an identity of the peer authority is tracked; vca setup writes it on the host"
+      ;;
+  esac
+done < "$findings.files"
+
+# Rule private-jwk: a private JWK in a JSON file, or as the base64url
+# value of a key=value line.
+while IFS= read -r file; do
+  [ -f "$file" ] || continue
+  case "$file" in
+    */testdata/*|testdata/*|*_test.go) continue ;;
+    *.json|*.jwk|*.jwks) ;;
+    *.env|*.properties|*.conf|*.ini) ;;
+    *) continue ;;
+  esac
+  grep -nEIH '"d"[[:space:]]*:[[:space:]]*"[A-Za-z0-9_-]{20,}"' "$file" 2>/dev/null \
+    | awk -F: '{ printf "private-jwk: %s:%s: a private JWK is tracked\n", $1, $2 }' >> "$findings" || true
+  grep -nEI '^[^#]*[A-Za-z0-9_]*KEY"?[[:space:]]*=[[:space:]]*"?[A-Za-z0-9_-]{40,}"?[[:space:]]*$' "$file" 2>/dev/null \
+    | while IFS= read -r hit; do
+        line=${hit%%:*}
+        value=$(printf '%s' "${hit#*=}" | tr -d ' "')
+        pad=$(( (4 - ${#value} % 4) % 4 ))
+        while [ "$pad" -gt 0 ]; do value="$value="; pad=$((pad - 1)); done
+        if printf '%s' "$value" | tr '_-' '/+' | base64 -d 2>/dev/null | grep -q '"d"'; then
+          report "private-jwk: $file:$line: a base64url private JWK is tracked"
+        fi
+      done
 done < "$findings.files"
 
 # Rule private-key: a PEM header with base64 key material on the next

@@ -418,8 +418,18 @@ calls it (ADR-075).
 `deploy/peer/authority.pem`.
 It gives each service an identity file of its own:
 `deploy/<pair>/peer/<service>.env`, and `deploy/landing/peer/landing.env`.
-The file holds the key of the service and a statement of the authority
-on that key.
+The file holds a statement of the authority on the key of the service.
+The private key is a file of its own:
+`deploy/<pair>/peer/keys/<service>.jwk`.
+Compose mounts it read only at `/run/vca/peer/key.jwk`, and
+`VCA_PEER_KEY_FILE` names that path.
+So the key does not show in `docker inspect` or in the environment of
+the process.
+The container user has another user id than you, so the key file has
+mode 0644.
+Its directory `keys` has mode 0700, so no other user of the host opens
+it.
+Compose stops a service whose key file is missing.
 It also lists the callers of each Connect service of the service, from
 the column "Why" above.
 Compose stops a service whose identity file is missing.
@@ -462,9 +472,24 @@ A deployment from an earlier release has no identity files.
 Run `vca dpg upgrade-secrets` once before `vca deploy`.
 It makes the authority and writes each missing identity file.
 It keeps every file that the authority signed.
+It writes the key file of an identity file that still holds the key.
+`hack/secret-scan.sh` fails when git tracks an identity file, a key
+file, or the authority key.
 Under Helm, run `vca peer secrets --release <release> | kubectl apply -f -`.
-It writes one Secret per chart, `<release>-<service>-peer`.
-Each pod reads its own Secret and does not start without it.
+It writes two Secrets per chart.
+`<release>-<service>-peer` holds the variables.
+`<release>-<service>-peer-key` holds the private key.
+Each pod reads the first as its environment and mounts the key as a
+file.
+A pod does not start without them.
+Each run of `vca peer secrets` issues new keys.
+Run `helm upgrade` after it: the checksum of the two Secrets is an
+annotation of each pod, so the pods roll.
+
+`VCA_PEER_KEY` holds the key itself, as base64url, in the environment.
+It is a fallback for a platform that cannot mount a Secret as a file.
+The CLI never writes it, because the environment shows the key.
+Set either `VCA_PEER_KEY_FILE` or `VCA_PEER_KEY`, not both.
 
 ### Plain HTTP paths
 

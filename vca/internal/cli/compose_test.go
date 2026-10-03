@@ -38,8 +38,36 @@ type composeService struct {
 	User        string            `yaml:"user"`
 	CapDrop     []string          `yaml:"cap_drop"`
 	SecurityOpt []string          `yaml:"security_opt"`
-	Volumes     []string          `yaml:"volumes"`
+	Volumes     composeVolumes    `yaml:"volumes"`
 	Environment map[string]string `yaml:"environment"`
+}
+
+// composeVolumes reads the short and the long form of a volume list.
+// A long entry reads as source:target, with :ro when it is read only.
+type composeVolumes []string
+
+// UnmarshalYAML implements yaml.Unmarshaler.
+func (v *composeVolumes) UnmarshalYAML(n *yaml.Node) error {
+	for _, item := range n.Content {
+		if item.Kind == yaml.ScalarNode {
+			*v = append(*v, item.Value)
+			continue
+		}
+		var m struct {
+			Source   string `yaml:"source"`
+			Target   string `yaml:"target"`
+			ReadOnly bool   `yaml:"read_only"`
+		}
+		if err := item.Decode(&m); err != nil {
+			return err
+		}
+		entry := m.Source + ":" + m.Target
+		if m.ReadOnly {
+			entry += ":ro"
+		}
+		*v = append(*v, entry)
+	}
+	return nil
 }
 
 // TestComposeFileIsCurrent keeps the committed compose file equal to the

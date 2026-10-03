@@ -16,6 +16,8 @@ spec:
         {{- include "vca.selectorLabels" . | nindent 8 }}
       annotations:
         checksum/config: {{ toYaml .Values.config | sha256sum }}
+        # A new peer Secret rolls the pods at the next upgrade (ADR-075).
+        checksum/peer: {{ include "vca.peerChecksum" . }}
         {{- if .Values.theme.enabled }}
         checksum/theme: {{ .Values.global.theme.file | sha256sum }}
         {{- end }}
@@ -58,7 +60,7 @@ spec:
             {{- end }}
             # The identity of the service on the cluster network (ADR-075).
             # vca peer secrets writes the Secret. The pod does not start
-            # without it.
+            # without it. The private key is a file of the key Secret.
             - secretRef:
                 name: {{ .Values.peer.secret | default (printf "%s-%s-peer" .Release.Name .Chart.Name) }}
           {{- if .Values.theme.enabled }}
@@ -85,6 +87,11 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            # The private key of the service, a file of a Secret of its
+            # own, so it stays out of the environment (ADR-075).
+            - name: peer-key
+              mountPath: /run/vca/peer
+              readOnly: true
             {{- if .Values.theme.enabled }}
             - name: theme
               mountPath: {{ .Values.theme.mountPath }}
@@ -97,6 +104,14 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: peer-key
+          secret:
+            secretName: {{ .Values.peer.keySecret | default (printf "%s-%s-peer-key" .Release.Name .Chart.Name) }}
+            # 0440: the group of fsGroup reads the key.
+            defaultMode: 288
+            items:
+              - key: key.jwk
+                path: key.jwk
         {{- if .Values.theme.enabled }}
         - name: theme
           configMap:

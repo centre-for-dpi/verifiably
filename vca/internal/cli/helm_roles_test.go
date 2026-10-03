@@ -136,6 +136,13 @@ func renderGate(t *testing.T, helpers string, values map[string]any) bool {
 		"trimSuffix": func(_, s string) string { return s },
 		"include":    func(string, any) string { return "" },
 		"quote":      func(v any) string { return "" },
+		// The checksum of the peer Secrets reads the cluster; the gate
+		// does not call it.
+		"lookup":    func(...any) map[string]any { return nil },
+		"dict":      func(...any) map[string]any { return nil },
+		"get":       func(map[string]any, string) any { return nil },
+		"toJson":    func(any) string { return "" },
+		"sha256sum": func(string) string { return "" },
 	}).Parse(helpers + `{{ template "vca.enabled" . }}`)
 	if err != nil {
 		t.Fatalf("parse the helpers: %v", err)

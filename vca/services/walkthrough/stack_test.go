@@ -312,21 +312,43 @@ func (d *deployment) planWithPeers(t *testing.T, p cli.Pair) (map[string]string,
 	}
 	var env map[string]string
 	peers := map[string]map[string]string{}
+	keys := map[string][]byte{}
 	for _, f := range plan.Files {
 		switch {
 		case f.Name == cli.EnvFileName:
 			env = parse(f.Data)
 		case strings.HasPrefix(f.Name, cli.PeerDir+string(filepath.Separator)) && strings.HasSuffix(f.Name, cli.EnvFileName):
 			peers[f.Name] = parse(f.Data)
+		case strings.HasSuffix(f.Name, ".jwk"):
+			keys[f.Name] = f.Data
 		}
 	}
 	for _, f := range plan.Shared {
-		if f.Name == filepath.Join(cli.LandingDir, cli.PeerFile(cli.LandingService)) {
+		switch f.Name {
+		case filepath.Join(cli.LandingDir, cli.PeerFile(cli.LandingService)):
 			peers[f.Name] = parse(f.Data)
+		case filepath.Join(cli.LandingDir, cli.PeerKeyFile(cli.LandingService)):
+			keys[f.Name] = f.Data
 		}
 	}
 	if env == nil {
 		t.Fatalf("the plan of %s writes no %s", p.Name(), cli.EnvFileName)
+	}
+	// Each identity file names its key at the path that compose mounts.
+	// The processes run on the host, so each one reads the key file of
+	// the plan from a directory of the test instead.
+	dir := t.TempDir()
+	for name, values := range peers {
+		keyName := filepath.Join(filepath.Dir(filepath.Dir(name)), cli.PeerKeyFile(strings.TrimSuffix(filepath.Base(name), cli.EnvFileName)))
+		key, ok := keys[keyName]
+		if !ok {
+			t.Fatalf("the plan of %s writes no key %s for %s", p.Name(), keyName, name)
+		}
+		path := filepath.Join(dir, strings.ReplaceAll(keyName, string(filepath.Separator), "_"))
+		if err := os.WriteFile(path, key, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		values[peerauth.KeyFileEnv] = path
 	}
 	return env, peers
 }

@@ -285,11 +285,16 @@ deploy/keycloak-<dpg>/.env                     mode 0600
 deploy/<dpg>/.env                              mode 0600
 deploy/<dpg>/.gitignore                        mode 0600
 deploy/<role>-<dpg>/peer/<service>.env         mode 0600
+deploy/<role>-<dpg>/peer/keys/<service>.jwk    mode 0644, directory mode 0700
 deploy/landing/peer/landing.env                mode 0600
+deploy/landing/peer/keys/landing.jwk           mode 0644, directory mode 0700
 deploy/peer/authority.pem                      mode 0600
 ```
 
 Each service gets an identity file of its own (ADR-075).
+Its private key is a file in `peer/keys`, which compose mounts read only.
+The container user reads the key file, and no other user of the host
+opens its directory.
 The first run makes the authority key of the deployment, and every
 later run keeps it.
 See `docs/deploy.md`, section Service identity.
@@ -627,10 +632,13 @@ The command first gives each service an identity of the deployment
 A release before it wrote no identity files, and compose stops without
 them.
 The command makes `deploy/peer/authority.pem` when it is missing.
-It then writes `deploy/<pair>/peer/<service>.env` for every service of
-each pair directory, and the file of the landing.
-It keeps each file that the authority signed, so a second run changes
-nothing.
+It then writes `deploy/<pair>/peer/<service>.env` and the key file
+`deploy/<pair>/peer/keys/<service>.jwk` for every service of each pair
+directory, and the files of the landing.
+It keeps each identity that the authority signed, so a second run
+changes nothing.
+An identity file of an earlier release that holds the key itself gets
+a new identity with a key file.
 This step needs no Docker.
 
 ## peer secrets
@@ -642,11 +650,16 @@ vca peer secrets --release <release> [--namespace <namespace>] | kubectl apply -
 Every internal Connect service checks which service calls it (ADR-075).
 Under Helm, each pod reads its identity from the Secret
 `<release>-<service>-peer`.
-The command prints one such Secret for every service chart.
+It mounts its private key from the Secret
+`<release>-<service>-peer-key` as a file.
+The command prints both Secrets for every service chart.
 It keeps the authority in `deploy/peer/authority.pem`, so a later run
 vouches for the same release.
-A pod does not start without its Secret.
-Set `peer.secret` of a chart to read a Secret of another name.
+Each run issues new keys.
+Run `helm upgrade` after it, so the pods roll and read the new keys.
+A pod does not start without its Secrets.
+Set `peer.secret` and `peer.keySecret` of a chart to read Secrets of
+other names.
 
 ## dpg rotate-authz-key
 

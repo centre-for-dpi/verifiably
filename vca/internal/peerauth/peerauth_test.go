@@ -5,9 +5,12 @@ package peerauth_test
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -256,16 +259,39 @@ func TestTheTransportSignsConnectCallsOnly(t *testing.T) {
 	}
 }
 
+// envWithKeyFile returns the variables of the identity file of s, with
+// the key in a file of its own, as vca setup writes them.
+func envWithKeyFile(t *testing.T, s peerauth.Settings) map[string]string {
+	t.Helper()
+	key, err := s.KeyJWK()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "key.jwk")
+	if err := os.WriteFile(path, key, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := s.Env()
+	env[peerauth.KeyFileEnv] = path
+	return env
+}
+
 func TestEnvRoundTrip(t *testing.T) {
 	a := newAuthority(t)
 	s := issue(t, a, "issuance")
 	s.Callers = peerauth.Callers{"vca.issuance.v1.IssuanceService": {"data-source"}, "vca.audit.v1.AuditService": {"admin"}}
 	env := s.Env()
-	for _, name := range []string{peerauth.KeyEnv, peerauth.IdentityEnv, peerauth.AuthorityEnv, peerauth.CallersEnv} {
+	for _, name := range []string{peerauth.IdentityEnv, peerauth.AuthorityEnv, peerauth.CallersEnv} {
 		if env[name] == "" {
 			t.Errorf("Env lacks %s", name)
 		}
 	}
+	// The private key never travels in the environment (finding 4 of the
+	// review of ADR-075): it goes to a file of its own.
+	if _, ok := env[peerauth.KeyEnv]; ok {
+		t.Errorf("Env holds the private key in %s", peerauth.KeyEnv)
+	}
+	env = envWithKeyFile(t, s)
 	got, err := peerauth.Load(func(k string) string { return env[k] })
 	if err != nil {
 		t.Fatal(err)
@@ -282,29 +308,55 @@ func TestEnvRoundTrip(t *testing.T) {
 	if _, cerr := callee.Check(headerFor(t, got, trustGet, "issuer-waltid-issued-credentials:8084"), trustGet); cerr != nil {
 		t.Fatal(cerr)
 	}
+	// The documented fallback: the key itself in VCA_PEER_KEY, as
+	// base64url, where the platform cannot mount a file.
+	key, err := s.KeyJWK()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fallback := s.Env()
+	fallback[peerauth.KeyEnv] = base64.RawURLEncoding.EncodeToString(key)
+	if back, ferr := peerauth.Load(func(k string) string { return fallback[k] }); ferr != nil || !back.Configured() {
+		t.Fatalf("Load of the fallback = %+v, %v", back.ID, ferr)
+	}
 	// No variable at all is a service without an identity.
 	none, err := peerauth.Load(func(string) string { return "" })
 	if err != nil || none.Configured() {
 		t.Fatalf("Load of nothing = %+v, %v", none, err)
 	}
+	if _, err := (peerauth.Settings{}).KeyJWK(); !errors.Is(err, peerauth.ErrNoIdentity) {
+		t.Errorf("KeyJWK with no identity = %v", err)
+	}
 }
 
 func TestLoadRefusesBadValues(t *testing.T) {
 	a := newAuthority(t)
-	env := issue(t, a, "issuance").Env()
-	stranger := issue(t, newAuthority(t), "issuance").Env()
+	env := envWithKeyFile(t, issue(t, a, "issuance"))
+	stranger := envWithKeyFile(t, issue(t, newAuthority(t), "issuance"))
+	dir := t.TempDir()
+	write := func(name, text string) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	public := write("public.jwk", `{"kty":"EC","crv":"P-256","x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU","y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"}`)
 	cases := map[string]map[string]string{
-		"bad key":                    {peerauth.KeyEnv: "%%%"},
-		"key not JSON":               {peerauth.KeyEnv: "bm90IGpzb24"},
-		"public key":                 {peerauth.KeyEnv: env[peerauth.AuthorityEnv]},
+		"missing key file":           {peerauth.KeyFileEnv: filepath.Join(dir, "none.jwk")},
+		"key file not JSON":          {peerauth.KeyFileEnv: write("bad.jwk", "not json")},
+		"public key file":            {peerauth.KeyFileEnv: public},
+		"key file and key":           {peerauth.KeyEnv: "bm90IGpzb24"},
 		"bad authority":              {peerauth.AuthorityEnv: "%%%"},
 		"bad statement":              {peerauth.IdentityEnv: "x.y.z"},
 		"statement of another one":   {peerauth.IdentityEnv: stranger[peerauth.IdentityEnv]},
-		"key of another identity":    {peerauth.KeyEnv: stranger[peerauth.KeyEnv]},
+		"key of another identity":    {peerauth.KeyFileEnv: stranger[peerauth.KeyFileEnv]},
 		"bad callers":                {peerauth.CallersEnv: "vca.trust.v1.TrustService"},
 		"key with no statement":      {peerauth.IdentityEnv: ""},
-		"statement with no key":      {peerauth.KeyEnv: ""},
+		"statement with no key":      {peerauth.KeyFileEnv: ""},
 		"identity with no authority": {peerauth.AuthorityEnv: ""},
+		"bad fallback key":           {peerauth.KeyFileEnv: "", peerauth.KeyEnv: "%%%"},
+		"fallback key not JSON":      {peerauth.KeyFileEnv: "", peerauth.KeyEnv: "bm90IGpzb24"},
 	}
 	for name, change := range cases {
 		getenv := func(k string) string {
@@ -571,7 +623,7 @@ func TestHostsAndScopeRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.Hosts = []string{"landing.internal", "127.0.0.1:8090"}
-	env := s.Env()
+	env := envWithKeyFile(t, s)
 	if env[peerauth.HostsEnv] != "landing.internal,127.0.0.1:8090" {
 		t.Errorf("%s = %q", peerauth.HostsEnv, env[peerauth.HostsEnv])
 	}

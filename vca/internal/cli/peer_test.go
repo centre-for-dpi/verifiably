@@ -5,11 +5,13 @@ package cli
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -213,18 +215,61 @@ func fileOrZero(files []File, name string) File {
 	return f
 }
 
-// loadIdentity parses one identity file.
-func loadIdentity(t *testing.T, data []byte) peerauth.Settings {
+// loadIdentity parses one identity file and the key file beside it.
+// The identity file names the key at its path in the container, so the
+// test writes the key to a file of its own and points there.
+func loadIdentity(t *testing.T, data, key []byte) peerauth.Settings {
 	t.Helper()
 	values, err := ParseDotenv(bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
+	if values[peerauth.KeyEnv] != "" {
+		t.Fatalf("the identity file holds the private key in %s", peerauth.KeyEnv)
+	}
+	if values[peerauth.KeyFileEnv] != PeerKeyMount {
+		t.Fatalf("%s = %q, want %s", peerauth.KeyFileEnv, values[peerauth.KeyFileEnv], PeerKeyMount)
+	}
+	path := filepath.Join(t.TempDir(), "key.jwk")
+	if werr := os.WriteFile(path, key, 0o600); werr != nil {
+		t.Fatal(werr)
+	}
+	values[peerauth.KeyFileEnv] = path
 	s, err := peerauth.Load(func(k string) string { return values[k] })
 	if err != nil {
 		t.Fatal(err)
 	}
 	return s
+}
+
+// planned loads the identity of one service from the files of a plan.
+// dir is the directory of the files: empty for a pair, the service name
+// for a deployment scoped service.
+func planned(t *testing.T, files []File, dir, service string) peerauth.Settings {
+	t.Helper()
+	env, ok := fileOf(files, filepath.Join(dir, PeerFile(service)))
+	key, kok := fileOf(files, filepath.Join(dir, PeerKeyFile(service)))
+	if !ok || !kok {
+		t.Fatalf("the plan has no identity or no key for %s", service)
+	}
+	if key.Mode != 0o644 || key.DirMode != 0o700 {
+		t.Errorf("%s: mode %o in a directory of mode %o, want 0644 in 0700", key.Name, key.Mode, key.DirMode)
+	}
+	return loadIdentity(t, env.Data, key.Data)
+}
+
+// onDisk loads the identity of one service from a directory of deploy.
+func onDisk(t *testing.T, dir, service string) peerauth.Settings {
+	t.Helper()
+	env, err := os.ReadFile(filepath.Join(dir, PeerFile(service))) // #nosec G304 -- a test path
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := os.ReadFile(filepath.Join(dir, PeerKeyFile(service))) // #nosec G304 -- a test path
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loadIdentity(t, env, key)
 }
 
 // TestSetupGivesEveryServiceAnIdentity is ADR-075 decisions 1 and 2.
@@ -251,7 +296,7 @@ func TestSetupGivesEveryServiceAnIdentity(t *testing.T) {
 		if f.Mode != 0o600 {
 			t.Errorf("%s: mode %o", f.Name, f.Mode)
 		}
-		id := loadIdentity(t, f.Data)
+		id := planned(t, first.Files, "", s.Name)
 		if id.ID.Service != s.Name || id.ID.Pair != p.Name() {
 			t.Errorf("%s: identity %+v", s.Name, id.ID)
 		}
@@ -268,16 +313,15 @@ func TestSetupGivesEveryServiceAnIdentity(t *testing.T) {
 			t.Errorf("an identity directory has no .gitignore: %+v", f)
 		}
 	}
-	landing, ok := fileOf(first.Shared, filepath.Join(LandingDir, PeerFile(LandingService)))
-	if !ok || loadIdentity(t, landing.Data).ID.Service != LandingService {
+	if planned(t, first.Shared, LandingDir, LandingService).ID.Service != LandingService {
 		t.Fatal("the landing has no identity")
 	}
 	// The landing serves the whole deployment, so its statement says so.
 	// A service of a pair is bound to its pair (ADR-075 consequence 3).
-	if !loadIdentity(t, landing.Data).ID.Deployment {
+	if !planned(t, first.Shared, LandingDir, LandingService).ID.Deployment {
 		t.Error("the identity of the landing is not deployment scoped")
 	}
-	if issuance, _ := fileOf(first.Files, PeerFile("issuance")); loadIdentity(t, issuance.Data).ID.Deployment {
+	if planned(t, first.Files, "", "issuance").ID.Deployment {
 		t.Error("the identity of a service of a pair is deployment scoped")
 	}
 	// A second run keeps the authority, so every pair trusts the others.
@@ -285,10 +329,8 @@ func TestSetupGivesEveryServiceAnIdentity(t *testing.T) {
 	if _, ok := fileOf(second.Shared, filepath.Join(PeerDir, PeerAuthorityFile)); ok {
 		t.Error("a run with an authority writes a new one")
 	}
-	trust, _ := fileOf(second.Files, PeerFile("trust-registry"))
-	callee := loadIdentity(t, trust.Data)
-	issuance, _ := fileOf(first.Files, PeerFile("issuance"))
-	h, err := loadIdentity(t, issuance.Data).Header("/vca.trust.v1.TrustService/ListEntries", "admin-waltid-trust-registry:8082")
+	callee := planned(t, second.Files, "", "trust-registry")
+	h, err := planned(t, first.Files, "", "issuance").Header("/vca.trust.v1.TrustService/ListEntries", "admin-waltid-trust-registry:8082")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,19 +363,23 @@ func TestComposeGivesEachServiceItsIdentity(t *testing.T) {
 				Path     string `yaml:"path"`
 				Required bool   `yaml:"required"`
 			} `yaml:"env_file"`
+			Volumes []any `yaml:"volumes"`
 		} `yaml:"services"`
 	}
 	if err := yaml.Unmarshal([]byte(RenderCompose()), &doc); err != nil {
 		t.Fatal(err)
 	}
 	want := map[string]string{}
+	keys := map[string]string{}
 	for _, p := range AllPairs() {
 		for _, s := range ServicesFor(p) {
 			want[composeServiceName(p, s)] = "../" + p.Name() + "/" + PeerFile(s.Name)
+			keys[composeServiceName(p, s)] = "../" + p.Name() + "/" + filepath.ToSlash(PeerKeyFile(s.Name))
 		}
 	}
 	for _, s := range DeploymentServices() {
 		want[DeploymentServiceName(s)] = "../" + s.Name + "/" + PeerFile(s.Name)
+		keys[DeploymentServiceName(s)] = "../" + s.Name + "/" + filepath.ToSlash(PeerKeyFile(s.Name))
 	}
 	for name, path := range want {
 		svc, ok := doc.Services[name]
@@ -347,6 +393,22 @@ func TestComposeGivesEachServiceItsIdentity(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("%s does not require %s: %+v", name, path, svc.EnvFile)
+		}
+		// The key file goes in read only. Compose refuses to start the
+		// service when the file is missing, as it does for the identity
+		// file, instead of making a directory there.
+		mounted := false
+		for _, v := range svc.Volumes {
+			m, ok := v.(map[string]any)
+			if !ok {
+				continue
+			}
+			bind, isMap := m["bind"].(map[string]any)
+			mounted = mounted || (m["type"] == "bind" && m["source"] == keys[name] && m["target"] == PeerKeyMount &&
+				m["read_only"] == true && isMap && bind["create_host_path"] == false)
+		}
+		if !mounted {
+			t.Errorf("%s does not mount its key %s at %s: %v", name, keys[name], PeerKeyMount, svc.Volumes)
 		}
 	}
 }
@@ -406,13 +468,22 @@ func TestUpgradeAddsPeerIdentities(t *testing.T) {
 	}
 	issuance := filepath.Join(deploy, pairs[0].Name(), PeerFile("issuance"))
 	before := read(issuance)
-	if id := loadIdentity(t, before); id.ID.Pair != pairs[0].Name() || id.Authority.Keys[0].KeyID != mustIssue(t, authority, "x").Authority.Keys[0].KeyID {
+	if id := onDisk(t, filepath.Join(deploy, pairs[0].Name()), "issuance"); id.ID.Pair != pairs[0].Name() || id.Authority.Keys[0].KeyID != mustIssue(t, authority, "x").Authority.Keys[0].KeyID {
 		t.Errorf("issuance identity %+v", id.ID)
 	}
 	if info, serr := os.Stat(issuance); serr != nil || info.Mode().Perm() != 0o600 {
 		t.Errorf("mode of %s: %v %v", issuance, info, serr)
 	}
-	if loadIdentity(t, read(filepath.Join(deploy, LandingDir, PeerFile(LandingService)))).ID.Service != LandingService {
+	// The key goes to a file that the container user reads, in a
+	// directory that no other user of the host opens.
+	keyPath := filepath.Join(deploy, pairs[0].Name(), PeerKeyFile("issuance"))
+	if info, serr := os.Stat(keyPath); serr != nil || info.Mode().Perm() != 0o644 {
+		t.Errorf("mode of %s: %v %v", keyPath, info, serr)
+	}
+	if info, serr := os.Stat(filepath.Dir(keyPath)); serr != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("mode of %s: %v %v", filepath.Dir(keyPath), info, serr)
+	}
+	if onDisk(t, filepath.Join(deploy, LandingDir), LandingService).ID.Service != LandingService {
 		t.Error("the landing got no identity")
 	}
 	if string(read(filepath.Join(deploy, pairs[0].Name(), PeerDir, ".gitignore"))) != "*\n" {
@@ -432,16 +503,39 @@ func TestUpgradeAddsPeerIdentities(t *testing.T) {
 	// A landing identity of a release before the deployment scope gets
 	// the scope at the next run, with the same authority.
 	landingPath := filepath.Join(deploy, LandingDir, PeerFile(LandingService))
-	old, err := peerIdentity(authority, LandingService, deploymentServiceNamed(t, LandingService), false, rand.Reader, time.Now())
+	old, _, err := peerIdentity(authority, LandingService, deploymentServiceNamed(t, LandingService), false, rand.Reader, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if werr := os.WriteFile(landingPath, old, 0o600); werr != nil {
 		t.Fatal(werr)
 	}
-	if n, err = UpgradePeerIdentities(opts); err != nil || n != 1 || !loadIdentity(t, read(landingPath)).ID.Deployment {
+	if n, err = UpgradePeerIdentities(opts); err != nil || n != 1 || !onDisk(t, filepath.Join(deploy, LandingDir), LandingService).ID.Deployment {
 		t.Fatalf("the landing without scope: wrote %d, %v", n, err)
 	}
+	// An identity file of the release that kept the key in the
+	// environment gets the key file at the next run.
+	inline := mustIssue(t, authority, "issuance")
+	inlineKey, err := inline.KeyJWK()
+	if err != nil {
+		t.Fatal(err)
+	}
+	inlineEnv := inline.Env()
+	inlineEnv[peerauth.KeyEnv] = base64.RawURLEncoding.EncodeToString(inlineKey)
+	var text strings.Builder
+	for k, v := range inlineEnv {
+		text.WriteString(k + "=" + quoteValue(v) + "\n")
+	}
+	if werr := os.WriteFile(issuance, []byte(text.String()), 0o600); werr != nil {
+		t.Fatal(werr)
+	}
+	if rerr := os.Remove(keyPath); rerr != nil {
+		t.Fatal(rerr)
+	}
+	if n, err = UpgradePeerIdentities(opts); err != nil || n != 1 {
+		t.Fatalf("an identity with the key in the environment: wrote %d, %v", n, err)
+	}
+	onDisk(t, filepath.Join(deploy, pairs[0].Name()), "issuance")
 	// An identity of a lost authority gets a new one.
 	if rerr := os.Remove(filepath.Join(deploy, PeerDir, PeerAuthorityFile)); rerr != nil {
 		t.Fatal(rerr)
@@ -461,6 +555,7 @@ func TestHelmPeerSecrets(t *testing.T) {
 	}
 	dec := yaml.NewDecoder(&out)
 	seen := map[string]bool{}
+	envs, keys := map[string]map[string]string{}, map[string]string{}
 	for {
 		var doc struct {
 			Kind     string `yaml:"kind"`
@@ -480,15 +575,37 @@ func TestHelmPeerSecrets(t *testing.T) {
 		if doc.Kind != "Secret" || doc.Metadata.Namespace != "ids" {
 			t.Errorf("document %+v", doc.Metadata)
 		}
-		s, err := peerauth.Load(func(k string) string { return doc.StringData[k] })
+		// The key goes to a Secret of its own, which the pod mounts as a
+		// file. The other Secret holds the variables.
+		if key, isKey := doc.StringData[PeerKeyName]; isKey {
+			keys[doc.Metadata.Name] = key
+			continue
+		}
+		if doc.StringData[peerauth.KeyEnv] != "" || doc.StringData[peerauth.KeyFileEnv] != PeerKeyMount {
+			t.Errorf("secret %s holds the key or names no key file: %v", doc.Metadata.Name, doc.StringData[peerauth.KeyFileEnv])
+		}
+		envs[doc.Metadata.Name] = doc.StringData
+	}
+	for name, values := range envs {
+		key, ok := keys[name+"-key"]
+		if !ok {
+			t.Errorf("no key secret %s-key", name)
+			continue
+		}
+		path := filepath.Join(t.TempDir(), PeerKeyName)
+		if err := os.WriteFile(path, []byte(key), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		values[peerauth.KeyFileEnv] = path
+		s, err := peerauth.Load(func(k string) string { return values[k] })
 		if err != nil {
 			t.Fatal(err)
 		}
-		if doc.Metadata.Name != "vca-"+s.ID.Service+"-peer" || s.ID.Pair != "vca" {
-			t.Errorf("secret %s holds %+v", doc.Metadata.Name, s.ID)
+		if name != "vca-"+s.ID.Service+"-peer" || s.ID.Pair != "vca" {
+			t.Errorf("secret %s holds %+v", name, s.ID)
 		}
 		if s.ID.Deployment != (s.ID.Service == LandingService) {
-			t.Errorf("secret %s: deployment scope %v", doc.Metadata.Name, s.ID.Deployment)
+			t.Errorf("secret %s: deployment scope %v", name, s.ID.Deployment)
 		}
 		seen[s.ID.Service] = true
 	}
@@ -515,8 +632,25 @@ func TestServiceChartsReadTheirPeerSecret(t *testing.T) {
 			t.Errorf("%s: the deployment does not read the peer secret", s.Name)
 		}
 		values := readText(t, filepath.Join(dir, "values.yaml"))
-		if !strings.Contains(values, "\npeer:\n  secret: \"\"\n") {
-			t.Errorf("%s: values.yaml has no peer.secret", s.Name)
+		if !strings.Contains(values, "\npeer:\n  secret: \"\"\n  keySecret: \"\"\n") {
+			t.Errorf("%s: values.yaml has no peer.secret and peer.keySecret", s.Name)
+		}
+		// The key is a file of a Secret of its own, read only. A new
+		// Secret rolls the pods through a checksum, so a rotation takes
+		// effect (finding 4 of the review of ADR-075).
+		for _, want := range []string{
+			"secretName: {{ .Values.peer.keySecret | default (printf \"%s-%s-peer-key\" .Release.Name .Chart.Name) }}",
+			"mountPath: " + path.Dir(PeerKeyMount),
+			"- key: " + PeerKeyName,
+			"checksum/peer: {{ include \"vca.peerChecksum\" . }}",
+		} {
+			if !strings.Contains(deployment, want) {
+				t.Errorf("%s: the deployment has no %q", s.Name, want)
+			}
+		}
+		helpers := readText(t, filepath.Join(dir, "templates", "_helpers.tpl"))
+		if !strings.Contains(helpers, `define "vca.peerChecksum"`) || !strings.Contains(helpers, `lookup "v1" "Secret"`) {
+			t.Errorf("%s: _helpers.tpl has no checksum of the peer Secrets", s.Name)
 		}
 	}
 }

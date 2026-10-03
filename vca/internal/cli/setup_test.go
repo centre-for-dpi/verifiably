@@ -920,8 +920,8 @@ func TestSetupWritesTheLandingEnv(t *testing.T) {
 	// the .gitignore of every stack (ADR-055 decision 1), the master
 	// table of the CREDEBL initialisation (P6-C0d), and the peer
 	// authority with its .gitignore, and the identity of the landing
-	// with its .gitignore (ADR-075).
-	if len(plan.Shared) != 3+2*len(StackDpgs())+1+4 || plan.Shared[0].Name != filepath.Join(LandingDir, EnvFileName) || plan.Shared[0].Mode != 0o600 {
+	// with its .gitignore and its key file (ADR-075).
+	if len(plan.Shared) != 3+2*len(StackDpgs())+1+5 || plan.Shared[0].Name != filepath.Join(LandingDir, EnvFileName) || plan.Shared[0].Mode != 0o600 {
 		t.Fatalf("shared files = %v", sharedNames(plan))
 	}
 	if !strings.Contains(plan.Summary(), filepath.Join(LandingDir, EnvFileName)) {
@@ -929,6 +929,20 @@ func TestSetupWritesTheLandingEnv(t *testing.T) {
 	}
 	if _, writeErr := WritePlan(root, plan); writeErr != nil {
 		t.Fatalf("WritePlan issuer: %v", writeErr)
+	}
+	// The key files: readable by the container user, in a directory that
+	// no other user of the host opens (ADR-075).
+	for path, want := range map[string]os.FileMode{
+		filepath.Join(root, LandingDir, PeerDir, PeerKeyDir):                  0o700,
+		filepath.Join(root, LandingDir, PeerKeyFile(LandingService)):          0o644,
+		filepath.Join(OutputDir(root, issuerPair()), PeerDir, PeerKeyDir):     0o700,
+		filepath.Join(OutputDir(root, issuerPair()), PeerKeyFile("issuance")): 0o644,
+		filepath.Join(OutputDir(root, issuerPair()), PeerFile("issuance")):    0o600,
+		filepath.Join(OutputDir(root, issuerPair()), PeerDir):                 readableDirMode,
+	} {
+		if info, serr := os.Stat(path); serr != nil || info.Mode().Perm() != want {
+			t.Errorf("%s: %v %v, want mode %o", path, info, serr, want)
+		}
 	}
 	f, err := os.Open(landingPath) // #nosec G304 -- a test path
 	if err != nil {

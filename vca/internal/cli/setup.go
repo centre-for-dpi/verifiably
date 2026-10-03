@@ -554,6 +554,21 @@ func makeReadableDir(dir string) error {
 	return nil
 }
 
+// makeDir creates a directory with mode, or with readableDirMode when
+// mode is zero, and sets the mode of a directory that exists.
+func makeDir(dir string, mode fs.FileMode) error {
+	if mode == 0 {
+		return makeReadableDir(dir)
+	}
+	if err := os.MkdirAll(dir, mode); err != nil {
+		return fmt.Errorf("make %s: %w", dir, err)
+	}
+	if err := os.Chmod(dir, mode); err != nil {
+		return fmt.Errorf("set the mode of %s: %w", dir, err)
+	}
+	return nil
+}
+
 // OutputDir returns the directory of a pair under the deploy root.
 func OutputDir(root string, p Pair) string { return filepath.Join(root, p.Name()) }
 
@@ -678,7 +693,7 @@ func WritePlan(root string, p Plan) ([]string, error) {
 	for _, f := range files {
 		path := filepath.Join(dir, f.Name)
 		if sub := filepath.Dir(path); sub != dir {
-			if err := makeReadableDir(sub); err != nil {
+			if err := makeDir(sub, f.DirMode); err != nil {
 				return nil, err
 			}
 		}
@@ -695,7 +710,7 @@ func WritePlan(root string, p Plan) ([]string, error) {
 	// writes them again, so they follow the last run.
 	for _, f := range p.Shared {
 		path := filepath.Join(root, f.Name)
-		if err := makeReadableDir(filepath.Dir(path)); err != nil {
+		if err := makeDir(filepath.Dir(path), f.DirMode); err != nil {
 			return nil, err
 		}
 		if err := os.WriteFile(path, f.Data, f.Mode); err != nil {

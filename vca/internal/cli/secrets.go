@@ -28,6 +28,11 @@ type File struct {
 	Data []byte
 	// Mode is the file mode. A secret gets 0600 (ADR-007 decision 5).
 	Mode fs.FileMode
+	// DirMode is the mode of the directory of the file. Zero gives a
+	// subdirectory the mode readableDirMode. A key that the container
+	// user reads gets a directory of mode 0700, so no other user of the
+	// host opens it.
+	DirMode fs.FileMode
 }
 
 // RandomSecret returns 32 random bytes as base64 without padding.

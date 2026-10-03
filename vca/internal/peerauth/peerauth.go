@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -41,7 +42,15 @@ import (
 // The variables of the identity file of one service. Each service gets
 // a file of its own, so the names carry no service prefix.
 const (
-	// KeyEnv holds the private key of the service, a JWK as base64url.
+	// KeyFileEnv names the file that holds the private key of the
+	// service, a JWK. The vca CLI mounts the file read only, as compose
+	// and Helm allow, so the key stays out of the environment of the
+	// container.
+	KeyFileEnv = "VCA_PEER_KEY_FILE"
+	// KeyEnv holds the private key itself, a JWK as base64url. It is the
+	// fallback for a platform that cannot mount a file. The CLI never
+	// writes it, because the environment shows in docker inspect and in
+	// /proc/1/environ.
 	KeyEnv = "VCA_PEER_KEY"
 	// IdentityEnv holds the statement of the authority.
 	IdentityEnv = "VCA_PEER_IDENTITY"
@@ -266,7 +275,9 @@ func newKey(random io.Reader) (*ecdsa.PrivateKey, error) {
 	return key, nil
 }
 
-// Env returns the variables of the identity file of the service.
+// Env returns the variables of the identity file of the service. The
+// private key is not one of them: KeyJWK returns it for a file of its
+// own, which KeyFileEnv names.
 func (s Settings) Env() map[string]string {
 	out := map[string]string{CallersEnv: s.Callers.String()}
 	if len(s.Hosts) > 0 {
@@ -278,11 +289,17 @@ func (s Settings) Env() map[string]string {
 		out[AuthorityEnv] = base64.RawURLEncoding.EncodeToString(raw)
 	}
 	if s.Configured() {
-		raw := anyval.Must(json.Marshal(jose.JWK{Key: s.Key}))
-		out[KeyEnv] = base64.RawURLEncoding.EncodeToString(raw)
 		out[IdentityEnv] = s.Statement
 	}
 	return out
+}
+
+// KeyJWK returns the private key of the service as a JWK.
+func (s Settings) KeyJWK() ([]byte, error) {
+	if !s.Configured() {
+		return nil, ErrNoIdentity
+	}
+	return json.Marshal(jose.JWK{Key: s.Key})
 }
 
 // Load reads the settings of a service with getenv, for example
@@ -291,6 +308,7 @@ func (s Settings) Env() map[string]string {
 // the authority, and the statement must name the key.
 func Load(getenv func(string) string) (Settings, error) {
 	var s Settings
+	keyFile := strings.TrimSpace(getenv(KeyFileEnv))
 	keyRaw := strings.TrimSpace(getenv(KeyEnv))
 	statement := strings.TrimSpace(getenv(IdentityEnv))
 	authRaw := strings.TrimSpace(getenv(AuthorityEnv))
@@ -311,13 +329,25 @@ func Load(getenv func(string) string) (Settings, error) {
 			return Settings{}, fmt.Errorf("peerauth: %s: %w", AuthorityEnv, err)
 		}
 	}
-	if keyRaw == "" && statement == "" {
+	if keyFile != "" && keyRaw != "" {
+		return Settings{}, fmt.Errorf("peerauth: set %s or %s, not both", KeyFileEnv, KeyEnv)
+	}
+	if keyFile == "" && keyRaw == "" && statement == "" {
 		return s, nil
 	}
-	if keyRaw == "" || statement == "" || authRaw == "" {
-		return Settings{}, fmt.Errorf("peerauth: an identity needs %s, %s, and %s", KeyEnv, IdentityEnv, AuthorityEnv)
+	if (keyFile == "" && keyRaw == "") || statement == "" || authRaw == "" {
+		return Settings{}, fmt.Errorf("peerauth: an identity needs %s, %s, and %s", KeyFileEnv, IdentityEnv, AuthorityEnv)
 	}
-	if s.Key, err = parseKey(keyRaw); err != nil {
+	if keyFile != "" {
+		data, rerr := os.ReadFile(keyFile) // #nosec G304 -- the operator names the file of the key
+		if rerr != nil {
+			return Settings{}, fmt.Errorf("peerauth: %s: %w", KeyFileEnv, rerr)
+		}
+		s.Key, err = parseJWK(data, KeyFileEnv)
+	} else {
+		s.Key, err = parseKey(keyRaw)
+	}
+	if err != nil {
 		return Settings{}, err
 	}
 	id, pub, err := s.verifyStatement(statement)
@@ -325,7 +355,7 @@ func Load(getenv func(string) string) (Settings, error) {
 		return Settings{}, fmt.Errorf("peerauth: %s: %w", IdentityEnv, err)
 	}
 	if !pub.Equal(s.Key.Public()) {
-		return Settings{}, fmt.Errorf("peerauth: %s names another key than %s", IdentityEnv, KeyEnv)
+		return Settings{}, fmt.Errorf("peerauth: %s names another key than the key of the service", IdentityEnv)
 	}
 	s.Statement, s.ID = statement, id
 	return s, nil
@@ -347,19 +377,24 @@ func parseHosts(raw string) ([]string, error) {
 	return out, nil
 }
 
-// parseKey reads the private JWK of KeyEnv.
+// parseKey reads the private JWK of KeyEnv, as base64url.
 func parseKey(raw string) (*ecdsa.PrivateKey, error) {
 	data, err := base64.RawURLEncoding.DecodeString(raw)
 	if err != nil {
 		return nil, fmt.Errorf("peerauth: %s is not base64url: %w", KeyEnv, err)
 	}
+	return parseJWK(data, KeyEnv)
+}
+
+// parseJWK reads a private JWK. from names its source in an error.
+func parseJWK(data []byte, from string) (*ecdsa.PrivateKey, error) {
 	var jwk jose.JWK
 	if err := json.Unmarshal(data, &jwk); err != nil {
-		return nil, fmt.Errorf("peerauth: %s is not a JWK: %w", KeyEnv, err)
+		return nil, fmt.Errorf("peerauth: %s is not a JWK: %w", from, err)
 	}
 	key, ok := jwk.Key.(*ecdsa.PrivateKey)
 	if !ok || key.Curve != elliptic.P256() {
-		return nil, fmt.Errorf("peerauth: %s is not a private ECDSA key on P-256", KeyEnv)
+		return nil, fmt.Errorf("peerauth: %s is not a private ECDSA key on P-256", from)
 	}
 	return key, nil
 }

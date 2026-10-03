@@ -22,11 +22,23 @@ import (
 // The identity of each service on the compose network (ADR-075). Setup
 // keeps one authority key per deployment in deploy/PeerDir and gives
 // each service an identity file of its own under the directory of its
-// pair: <pair>/PeerDir/<service>.env.
+// pair: <pair>/PeerDir/<service>.env, and its private key in
+// <pair>/PeerDir/PeerKeyDir/<service>.jwk.
 const (
 	// PeerDir is the directory of the authority under the deploy root,
 	// and the directory of the identity files under each pair.
 	PeerDir = "peer"
+	// PeerKeyDir is the directory of the key files under PeerDir. It has
+	// mode 0700, so no other user of the host opens it. Each key file in
+	// it has mode 0644, so the container user, whose id differs from the
+	// id of the operator, reads it through its bind mount.
+	PeerKeyDir = "keys"
+	// PeerKeyName is the name of the key file in the container, and its
+	// key in the Helm Secret of the key.
+	PeerKeyName = "key.jwk"
+	// PeerKeyMount is the path of the key file in the container. The
+	// identity file names it in VCA_PEER_KEY_FILE.
+	PeerKeyMount = "/run/vca/peer/" + PeerKeyName
 	// PeerAuthorityFile is the authority key in PKCS#8 PEM form.
 	PeerAuthorityFile = "authority.pem"
 	// CLIPeer is the caller name of the vca command. It signs its calls
@@ -97,6 +109,18 @@ func withCallers(m map[string][]string, service string, callers ...string) map[s
 // directory of its pair or of the landing.
 func PeerFile(service string) string { return filepath.Join(PeerDir, service+EnvFileName) }
 
+// PeerKeyFile is the path of the key file of a service, relative to the
+// directory of its pair.
+func PeerKeyFile(service string) string {
+	return filepath.Join(PeerDir, PeerKeyDir, service+".jwk")
+}
+
+// peerKeyFile returns the key file of a service as a file of a plan,
+// under dir.
+func peerKeyFile(dir, service string, key []byte) File {
+	return File{Name: filepath.Join(dir, PeerKeyFile(service)), Data: key, Mode: 0o644, DirMode: 0o700}
+}
+
 // ReadPeerAuthority reads the authority key of the deployment. A
 // missing file gives nil, so the first setup run makes one.
 func ReadPeerAuthority(root string) ([]byte, error) {
@@ -139,13 +163,19 @@ func peerAuthority(existing []byte, random io.Reader) (peerauth.Authority, []Fil
 // peerIdentity issues the identity of one service and renders its file.
 // owner is the pair, or the service name of a deployment scoped service.
 // deployment marks a deployment scoped service in the statement.
-func peerIdentity(a peerauth.Authority, owner string, s Service, deployment bool, random io.Reader, now time.Time) ([]byte, error) {
+// It returns the identity file and the key file.
+func peerIdentity(a peerauth.Authority, owner string, s Service, deployment bool, random io.Reader, now time.Time) ([]byte, []byte, error) {
 	id, err := a.Issue(peerauth.ID{Service: s.Name, Pair: owner, Deployment: deployment}, random, now)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	key, err := id.KeyJWK()
+	if err != nil {
+		return nil, nil, err
 	}
 	id.Callers = s.Callers
 	values := id.Env()
+	values[peerauth.KeyFileEnv] = PeerKeyMount
 	names := make([]string, 0, len(values))
 	for name := range values {
 		names = append(names, name)
@@ -154,10 +184,11 @@ func peerIdentity(a peerauth.Authority, owner string, s Service, deployment bool
 	var b strings.Builder
 	fmt.Fprintf(&b, "# The identity of %s on the compose network (ADR-075).\n", s.Name)
 	b.WriteString("# The vca CLI wrote this file. Keep it secret. vca setup writes it again.\n")
+	b.WriteString("# The private key is a file of its own, which compose mounts read only.\n")
 	for _, name := range names {
 		b.WriteString(name + "=" + quoteValue(values[name]) + "\n")
 	}
-	return []byte(b.String()), nil
+	return []byte(b.String()), key, nil
 }
 
 // peerFiles returns the identity file of every service of a pair, and
@@ -167,20 +198,21 @@ func peerFiles(p Pair, a peerauth.Authority, random io.Reader, now time.Time) (p
 	ignore := File{Name: filepath.Join(PeerDir, ".gitignore"), Data: []byte("*\n"), Mode: 0o600}
 	pair = append(pair, ignore)
 	for _, s := range ServicesFor(p) {
-		data, err := peerIdentity(a, p.Name(), s, false, random, now)
+		data, key, err := peerIdentity(a, p.Name(), s, false, random, now)
 		if err != nil {
 			return nil, nil, err
 		}
-		pair = append(pair, File{Name: PeerFile(s.Name), Data: data, Mode: 0o600})
+		pair = append(pair, File{Name: PeerFile(s.Name), Data: data, Mode: 0o600}, peerKeyFile("", s.Name, key))
 	}
 	for _, s := range DeploymentServices() {
-		data, err := peerIdentity(a, s.Name, s, true, random, now)
+		data, key, err := peerIdentity(a, s.Name, s, true, random, now)
 		if err != nil {
 			return nil, nil, err
 		}
 		shared = append(shared,
 			File{Name: filepath.Join(s.Name, ignore.Name), Data: ignore.Data, Mode: ignore.Mode},
-			File{Name: filepath.Join(s.Name, PeerFile(s.Name)), Data: data, Mode: 0o600})
+			File{Name: filepath.Join(s.Name, PeerFile(s.Name)), Data: data, Mode: 0o600},
+			peerKeyFile(s.Name, s.Name, key))
 	}
 	return pair, shared, nil
 }
@@ -248,17 +280,17 @@ func UpgradePeerIdentities(opts PeerUpgradeOptions) (int, error) {
 	}
 	written := 0
 	for _, tg := range targets {
-		path := filepath.Join(tg.dir, PeerFile(tg.s.Name))
-		if current(path, trusted, tg.s, tg.deployment) {
+		if current(tg.dir, trusted, tg.s, tg.deployment) {
 			continue
 		}
-		data, err := peerIdentity(authority, tg.owner, tg.s, tg.deployment, opts.Random, now())
+		data, key, err := peerIdentity(authority, tg.owner, tg.s, tg.deployment, opts.Random, now())
 		if err != nil {
 			return written, err
 		}
 		for _, f := range []File{
 			{Name: filepath.Join(PeerDir, ".gitignore"), Data: []byte("*\n"), Mode: 0o600},
 			{Name: PeerFile(tg.s.Name), Data: data, Mode: 0o600},
+			peerKeyFile("", tg.s.Name, key),
 		} {
 			if err := writePeerFile(tg.dir, f); err != nil {
 				return written, err
@@ -273,28 +305,36 @@ func UpgradePeerIdentities(opts PeerUpgradeOptions) (int, error) {
 	return written, nil
 }
 
-// current reports whether the identity file at path holds an identity
-// of the authority with the callers of the catalogue and the scope of
-// the service.
-func current(path, trusted string, s Service, deployment bool) bool {
-	raw, err := os.ReadFile(path) // #nosec G304 -- the path comes from the deploy root
+// current reports whether the identity file of the service under dir
+// holds an identity of the authority with the callers of the catalogue
+// and the scope of the service, and names a key file that holds the key
+// of its statement. An identity file of an earlier release, with the
+// key in the environment, is not current.
+func current(dir, trusted string, s Service, deployment bool) bool {
+	raw, err := os.ReadFile(filepath.Join(dir, PeerFile(s.Name))) // #nosec G304 -- the path comes from the deploy root
 	if err != nil {
 		return false
 	}
 	values, err := ParseDotenv(bytes.NewReader(raw))
-	if err != nil || values[peerauth.AuthorityEnv] != trusted {
+	if err != nil || values[peerauth.AuthorityEnv] != trusted || values[peerauth.KeyEnv] != "" || values[peerauth.KeyFileEnv] != PeerKeyMount {
 		return false
 	}
+	values[peerauth.KeyFileEnv] = filepath.Join(dir, PeerKeyFile(s.Name))
 	id, err := peerauth.Load(func(k string) string { return values[k] })
 	return err == nil && id.ID.Service == s.Name && id.ID.Deployment == deployment &&
 		id.Callers.String() == peerauth.Callers(s.Callers).String()
 }
 
-// writePeerFile writes one file under dir with its mode.
+// writePeerFile writes one file under dir with its mode, in a
+// directory of mode 0750, or of its DirMode.
 func writePeerFile(dir string, f File) error {
 	path := filepath.Join(dir, f.Name)
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return fmt.Errorf("make %s: %w", filepath.Dir(path), err)
+	mode := f.DirMode
+	if mode == 0 {
+		mode = 0o750
+	}
+	if err := makeDir(filepath.Dir(path), mode); err != nil {
+		return err
 	}
 	if err := os.WriteFile(path, f.Data, f.Mode); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
@@ -321,9 +361,10 @@ type PeerHelmOptions struct {
 	Out io.Writer
 }
 
-// HelmPeerSecrets writes one Kubernetes Secret per service chart to
-// opts.Out: <release>-<service>-peer, the Secret that the chart of the
-// service reads (ADR-075 decision 6). Under Helm one copy of each
+// HelmPeerSecrets writes two Kubernetes Secrets per service chart to
+// opts.Out: <release>-<service>-peer with the variables, and
+// <release>-<service>-peer-key with the private key, which the chart of
+// the service mounts as a file (ADR-075 decision 6). Under Helm one copy of each
 // service runs, so the release stands in for the pair. The authority
 // stays in deploy/peer, so a later run vouches for the same release.
 func HelmPeerSecrets(opts PeerHelmOptions) error {
@@ -357,27 +398,41 @@ func HelmPeerSecrets(opts PeerHelmOptions) error {
 		if ierr != nil {
 			return ierr
 		}
+		key, kerr := id.KeyJWK()
+		if kerr != nil {
+			return kerr
+		}
 		id.Callers = s.Callers
 		values := id.Env()
+		values[peerauth.KeyFileEnv] = PeerKeyMount
 		names := make([]string, 0, len(values))
 		for name := range values {
 			names = append(names, name)
 		}
 		sort.Strings(names)
-		b.WriteString("---\n")
-		b.WriteString("# The identity of " + s.Name + " on the cluster network (ADR-075).\n")
-		b.WriteString("apiVersion: v1\nkind: Secret\nmetadata:\n")
-		fmt.Fprintf(&b, "  name: %s-%s-peer\n", opts.Release, s.Name)
-		if opts.Namespace != "" {
-			fmt.Fprintf(&b, "  namespace: %s\n", opts.Namespace)
-		}
-		b.WriteString("type: Opaque\nstringData:\n")
-		for _, name := range names {
-			fmt.Fprintf(&b, "  %s: %q\n", name, values[name])
-		}
+		writeSecret(&b, opts, s.Name+"-peer", "The identity of "+s.Name+" on the cluster network (ADR-075).", names, values)
+		// The key goes to a Secret of its own, which the pod mounts as a
+		// file, so it stays out of the environment of the container.
+		writeSecret(&b, opts, s.Name+"-peer-key", "The private key of "+s.Name+". The pod mounts it read only.",
+			[]string{PeerKeyName}, map[string]string{PeerKeyName: string(key)})
 	}
 	_, err = io.WriteString(opts.Out, b.String())
 	return err
+}
+
+// writeSecret writes one Secret of the release with the values named.
+func writeSecret(b *strings.Builder, opts PeerHelmOptions, suffix, comment string, names []string, values map[string]string) {
+	b.WriteString("---\n")
+	b.WriteString("# " + comment + "\n")
+	b.WriteString("apiVersion: v1\nkind: Secret\nmetadata:\n")
+	fmt.Fprintf(b, "  name: %s-%s\n", opts.Release, suffix)
+	if opts.Namespace != "" {
+		fmt.Fprintf(b, "  namespace: %s\n", opts.Namespace)
+	}
+	b.WriteString("type: Opaque\nstringData:\n")
+	for _, name := range names {
+		fmt.Fprintf(b, "  %s: %q\n", name, values[name])
+	}
 }
 
 // CLIPeerClient returns a copy of c that signs its Connect calls as the
