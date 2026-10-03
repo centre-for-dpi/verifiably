@@ -385,7 +385,10 @@ func (d *deployment) start(ctx context.Context) {
 				t.Fatalf("setup wrote no identity for %s/%s", name, a.Service.Name)
 			}
 			rp.identities[a.Service.Name] = identity
-			d.run(ctx, name+"/"+a.Service.Name, a.Service.Name, a.Service.ListenEnv, addr, merged(env, identity))
+			// The callers reach the process on the loopback address, not
+			// at the name the compose file gives it (ADR-075).
+			own := merged(identity, map[string]string{peerauth.HostsEnv: addr})
+			d.run(ctx, name+"/"+a.Service.Name, a.Service.Name, a.Service.ListenEnv, addr, merged(env, own))
 			ready = append(ready, "http://"+addr+"/readyz")
 		}
 		d.proxy(rp)
@@ -410,7 +413,7 @@ func (d *deployment) start(ctx context.Context) {
 	if landingPeer == nil {
 		t.Fatal("setup wrote no identity for the landing")
 	}
-	d.run(ctx, cli.LandingService, cli.LandingService, listenEnv, addr, merged(env, landingPeer))
+	d.run(ctx, cli.LandingService, cli.LandingService, listenEnv, addr, merged(env, merged(landingPeer, map[string]string{peerauth.HostsEnv: addr})))
 	ready = append(ready, "http://"+addr+"/readyz")
 	d.waitReady(ctx, ready)
 }

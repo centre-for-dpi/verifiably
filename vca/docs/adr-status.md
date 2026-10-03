@@ -798,7 +798,7 @@ A row that is not `Done` carries a note.
 |---|---|---|---|---|
 | ADR-075 | 1 One authority per deployment, kept by the CLI | Done | `vca/internal/cli/peer.go` | `TestSetupGivesEveryServiceAnIdentity` pins it. |
 | ADR-075 | 2 An identity file per service | Done | `vca/internal/cli/peer.go`, `vca/internal/cli/compose.go` | `TestSetupGivesEveryServiceAnIdentity` and `TestComposeGivesEachServiceItsIdentity` pin it. |
-| ADR-075 | 3 A signed token per call and one shared interceptor | Done | `vca/internal/peerauth` | `TestCheck`, `TestAnUnlistedCallerIsRefused` and the peer checks of the walt.id walkthrough pin it. |
+| ADR-075 | 3 A signed token per call and one shared interceptor | Done | `vca/internal/peerauth`, `vca/internal/cli/peer.go` | `TestCheck`, `TestAnUnlistedCallerIsRefused` and the peer checks of the walkthroughs pin it. The amendment of 2026-10-04 binds each token to the host of its callee and makes the time window symmetric. `TestATokenNamesItsCallee` and `TestTheTimeWindowIsSymmetric` pin that. |
 | ADR-075 | 4 The callers next to the routes of the catalogue | Done | `vca/internal/cli/services.go` | `TestEveryInternalConnectServiceListsItsCallers` and `TestEveryServiceLinkIsAListedCaller` pin it. |
 | ADR-075 | 5 The upgrade of an earlier deployment | Done | `vca/internal/cli/peer.go` | `TestUpgradeAddsPeerIdentities` pins it. |
 | ADR-075 | 6 One Secret per Helm chart | Done | `deploy/vca/helm/*/templates/deployment.yaml`, `vca/internal/cli/peer.go` | `TestServiceChartsReadTheirPeerSecret` and `TestHelmPeerSecrets` pin it. |

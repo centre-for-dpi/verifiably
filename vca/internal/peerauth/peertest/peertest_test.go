@@ -42,7 +42,7 @@ func TestTheKitSignsWhatItsServicesTrust(t *testing.T) {
 		}
 	}
 	admin := k.Identity("admin", nil)
-	h, err := admin.Header("/vca.trust.v1.TrustService/GetEntry")
+	h, err := admin.Header("/vca.trust.v1.TrustService/GetEntry", "127.0.0.1:8080")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestTheKitSignsWhatItsServicesTrust(t *testing.T) {
 func TestAFixedKitWorksWithoutATest(t *testing.T) {
 	k := peertest.Fixed()
 	callee := k.Open("trust-registry")
-	h, err := k.Identity(peertest.Caller, nil).Header("/vca.trust.v1.TrustService/GetEntry")
+	h, err := k.Identity(peertest.Caller, nil).Header("/vca.trust.v1.TrustService/GetEntry", "localhost")
 	if err != nil {
 		t.Fatal(err)
 	}

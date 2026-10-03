@@ -425,14 +425,36 @@ the column "Why" above.
 Compose stops a service whose identity file is missing.
 
 A caller signs a token of 60 seconds for each call.
-The token names the procedure, so it opens no other RPC.
+The token names the procedure and the host of the callee.
+The callee takes a token for its own name only:
+`<pair>-<service>` under compose, `<release>-<service>` under Helm.
+A token opens no other procedure and no other server.
+A party that reads a token on the network can still replay it.
+The replay reaches the same server and procedure, with any body.
 The callee checks the statement, the token, and the caller list.
 A call without an identity gets `unauthenticated`.
 A caller that the list does not name gets `permission_denied`.
+Two clocks can differ by 30 seconds either way.
+A token counts from 30 seconds before its issue time to 30 seconds after
+its end.
+So a replay works for 90 seconds at most.
+The vca command and the landing are deployment scoped.
+The vca command calls through a port of the host, so a callee takes
+their tokens at any host.
+Such a token opens the same procedure on every server that lists the
+caller.
+When you reach a service at another name, add the name to
+`VCA_PEER_HOSTS` in its identity file, joined by commas.
+A name with no port stands for any port.
 `TestEveryInternalConnectServiceListsItsCallers` keeps the lists in step
 with this table.
 `TestEveryConnectHandlerChecksItsCaller` fails when a service mounts an
 internal Connect service without the check.
+
+A statement has no end of its own.
+It counts until the authority rotates (ADR-075 consequence 4).
+To rotate, remove `deploy/peer/authority.pem` and run setup or
+`vca dpg upgrade-secrets`.
 
 A deployment from an earlier release has no identity files.
 Run `vca dpg upgrade-secrets` once before `vca deploy`.

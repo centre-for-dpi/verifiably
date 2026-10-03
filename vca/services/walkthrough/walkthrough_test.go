@@ -118,7 +118,8 @@ func (w *walk) start() {
 // a stranger would (ADR-075). A call with no identity gets
 // unauthenticated. The wallet portal holds an identity of the
 // deployment, but the adapter lists only the admin for its tenants, so
-// the call gets permission_denied.
+// the call gets permission_denied. A token for another server gets
+// unauthenticated.
 func (w *walk) peerChecks() {
 	w.t.Helper()
 	adapter := "dpg-adapter-" + cli.ShortName(w.issuer.pair.Dpg.String())
@@ -138,6 +139,23 @@ func (w *walk) peerChecks() {
 	}
 	if code := list(wallet.Client(http.DefaultClient)); code != connect.CodePermissionDenied {
 		w.t.Errorf("the wallet portal got %v from the tenant service, want permission_denied", code)
+	}
+	// A token names the host of its callee. A token that the wallet
+	// portal signed for the adapter of its own pair opens no other
+	// server, so a party that reads it on the network cannot replay it
+	// at the adapter of the issuer pair.
+	own := "127.0.0.1:" + strconv.Itoa(w.holder.ports[adapter])
+	replay, err := wallet.Header("/vca.backend.v1.TenantBackendService/ListTenants", own)
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	req := connect.NewRequest(&backendv1.ListTenantsRequest{})
+	for k, v := range replay {
+		req.Header()[k] = v
+	}
+	_, err = backendv1connect.NewTenantBackendServiceClient(http.DefaultClient, base).ListTenants(w.ctx, req)
+	if code := connect.CodeOf(err); code != connect.CodeUnauthenticated {
+		w.t.Errorf("a token for the adapter of the holder pair got %v at the issuer pair, want unauthenticated", code)
 	}
 }
 

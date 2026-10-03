@@ -56,13 +56,31 @@ func (k *Kit) fail(err error) {
 	k.t.Fatal(err)
 }
 
+// testHosts returns the names of a test server: the loopback address
+// of httptest.NewServer and the host of httptest.NewRequest. A callee
+// of the kit takes a token for any of them.
+func testHosts() []string { return []string{"127.0.0.1", "localhost", "example.com"} }
+
 // Identity issues the identity of one service with the callers given.
+// The service takes the tokens of its callers at the hosts of a test
+// server.
 func (k *Kit) Identity(service string, callers peerauth.Callers) peerauth.Settings {
 	s, err := k.a.Issue(peerauth.ID{Service: service, Pair: "test"}, rand.Reader, time.Now())
 	if err != nil {
 		k.fail(err)
 	}
 	s.Callers = callers
+	s.Hosts = testHosts()
+	return s
+}
+
+// caller issues the identity of Caller. It is deployment scoped, as the
+// vca command is, so a callee takes its token at any host.
+func (k *Kit) caller() peerauth.Settings {
+	s, err := k.a.Issue(peerauth.ID{Service: Caller, Deployment: true}, rand.Reader, time.Now())
+	if err != nil {
+		k.fail(err)
+	}
 	return s
 }
 
@@ -97,14 +115,14 @@ func (k *Kit) Client(c *http.Client) *http.Client {
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	out.Transport = signAll{base: base, id: k.Identity(Caller, nil)}
+	out.Transport = signAll{base: base, id: k.caller()}
 	return out
 }
 
 // Sign puts the identity headers of Caller on r, for a test that
 // serves r with a handler directly.
 func (k *Kit) Sign(r *http.Request) {
-	h, err := k.Identity(Caller, nil).Header(r.URL.Path)
+	h, err := k.caller().Header(r.URL.Path, r.URL.Host)
 	if err != nil {
 		k.fail(err)
 	}
@@ -124,7 +142,7 @@ func (s signAll) RoundTrip(r *http.Request) (*http.Response, error) {
 	if !strings.HasPrefix(r.URL.Path, "/vca.") {
 		return s.base.RoundTrip(r)
 	}
-	h, err := s.id.Header(r.URL.Path)
+	h, err := s.id.Header(r.URL.Path, r.URL.Host)
 	if err != nil {
 		return nil, err
 	}

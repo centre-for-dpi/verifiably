@@ -272,6 +272,14 @@ func TestSetupGivesEveryServiceAnIdentity(t *testing.T) {
 	if !ok || loadIdentity(t, landing.Data).ID.Service != LandingService {
 		t.Fatal("the landing has no identity")
 	}
+	// The landing serves the whole deployment, so its statement says so.
+	// A service of a pair is bound to its pair (ADR-075 consequence 3).
+	if !loadIdentity(t, landing.Data).ID.Deployment {
+		t.Error("the identity of the landing is not deployment scoped")
+	}
+	if issuance, _ := fileOf(first.Files, PeerFile("issuance")); loadIdentity(t, issuance.Data).ID.Deployment {
+		t.Error("the identity of a service of a pair is deployment scoped")
+	}
 	// A second run keeps the authority, so every pair trusts the others.
 	second := planWithAuthority(t, Pair{Role: commonv1.Role_ROLE_ADMIN, Dpg: configv1.Dpg_DPG_WALTID}, auth.Data)
 	if _, ok := fileOf(second.Shared, filepath.Join(PeerDir, PeerAuthorityFile)); ok {
@@ -280,7 +288,7 @@ func TestSetupGivesEveryServiceAnIdentity(t *testing.T) {
 	trust, _ := fileOf(second.Files, PeerFile("trust-registry"))
 	callee := loadIdentity(t, trust.Data)
 	issuance, _ := fileOf(first.Files, PeerFile("issuance"))
-	h, err := loadIdentity(t, issuance.Data).Header("/vca.trust.v1.TrustService/ListEntries")
+	h, err := loadIdentity(t, issuance.Data).Header("/vca.trust.v1.TrustService/ListEntries", "admin-waltid-trust-registry:8082")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,6 +429,19 @@ func TestUpgradeAddsPeerIdentities(t *testing.T) {
 	if !strings.Contains(out.String(), "Every service already holds") {
 		t.Errorf("a second run says %q", out.String())
 	}
+	// A landing identity of a release before the deployment scope gets
+	// the scope at the next run, with the same authority.
+	landingPath := filepath.Join(deploy, LandingDir, PeerFile(LandingService))
+	old, err := peerIdentity(authority, LandingService, deploymentServiceNamed(t, LandingService), false, rand.Reader, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if werr := os.WriteFile(landingPath, old, 0o600); werr != nil {
+		t.Fatal(werr)
+	}
+	if n, err = UpgradePeerIdentities(opts); err != nil || n != 1 || !loadIdentity(t, read(landingPath)).ID.Deployment {
+		t.Fatalf("the landing without scope: wrote %d, %v", n, err)
+	}
 	// An identity of a lost authority gets a new one.
 	if rerr := os.Remove(filepath.Join(deploy, PeerDir, PeerAuthorityFile)); rerr != nil {
 		t.Fatal(rerr)
@@ -465,6 +486,9 @@ func TestHelmPeerSecrets(t *testing.T) {
 		}
 		if doc.Metadata.Name != "vca-"+s.ID.Service+"-peer" || s.ID.Pair != "vca" {
 			t.Errorf("secret %s holds %+v", doc.Metadata.Name, s.ID)
+		}
+		if s.ID.Deployment != (s.ID.Service == LandingService) {
+			t.Errorf("secret %s: deployment scope %v", doc.Metadata.Name, s.ID.Deployment)
 		}
 		seen[s.ID.Service] = true
 	}
@@ -547,7 +571,22 @@ func TestCLIClientSignsWithTheAuthority(t *testing.T) {
 	}
 	callee := mustIssue(t, authority, "dpg-adapter-waltid")
 	callee.Callers = peerauth.Callers{"vca.backend.v1.IssuerBackendService": {CLIPeer}}
-	if id, err := callee.Check(got, "/vca.backend.v1.IssuerBackendService/GetIssuerIdentity"); err != nil || id.Service != CLIPeer {
-		t.Fatalf("the adapter refused the CLI: %v", err)
+	// The CLI calls through a port of the host, so the adapter takes its
+	// token at any host: the identity is deployment scoped.
+	if id, err := callee.Check(got, "/vca.backend.v1.IssuerBackendService/GetIssuerIdentity"); err != nil || id.Service != CLIPeer || !id.Deployment {
+		t.Fatalf("the adapter refused the CLI: %+v, %v", id, err)
 	}
+}
+
+// deploymentServiceNamed returns the deployment scoped service of the
+// name.
+func deploymentServiceNamed(t *testing.T, name string) Service {
+	t.Helper()
+	for _, s := range DeploymentServices() {
+		if s.Name == name {
+			return s
+		}
+	}
+	t.Fatalf("no deployment service %s", name)
+	return Service{}
 }

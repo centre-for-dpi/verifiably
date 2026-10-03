@@ -17,3 +17,9 @@
   3. A token names the procedure, not the instance of the callee. A party that reads a token on the network can replay it to the same procedure within 60 seconds. The network stays the boundary against such a party.
   4. The authority rotates when the operator removes `deploy/peer/authority.pem` and runs setup or `vca dpg upgrade-secrets`. Every identity file then gets a new statement. No list of revoked identities exists.
   5. A deployment from an earlier release stops at `docker compose up` until the operator runs `vca dpg upgrade-secrets`, because compose needs each identity file.
+- Amendment of 2026-10-04:
+  1. Consequence 3 understated the reach of a token. The token named the procedure only. So every server of that Connect service in the deployment took it, with any body.
+  2. A token now names the procedure and the host of the callee in `aud`. A callee takes it for its own name only. That name is `<pair>-<service>` under compose and `<release>-<service>` under Helm, or a name in `VCA_PEER_HOSTS`.
+  3. The authority marks the caller `cli` and the landing as deployment scoped in their statements. A callee takes their tokens at any host, because the vca command calls through a port of the host.
+  4. What remains: a party that reads a token can replay it within the window. The replay reaches the same server and procedure, with any body. The token of a deployment scoped caller opens the same procedure on every server that lists that caller.
+  5. The window is symmetric. A token counts from 30 seconds before its issue time to 30 seconds after its end. So two clocks can differ by 30 seconds either way, and a replay works for 90 seconds at most.

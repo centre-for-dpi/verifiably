@@ -5,10 +5,11 @@
 // deployment and gives each service an identity: a key of its own and a
 // statement, signed by the authority, that binds the name of the
 // service to that key. A caller signs a token of 60 seconds for each
-// call, with the procedure as its audience. The callee checks the
-// statement with the public key of the authority, the token with the key
-// of the statement, and the name against the callers it lists for the
-// Connect service.
+// call, with the procedure and the host of the callee as its audience.
+// The callee checks the statement with the public key of the authority,
+// the token with the key of the statement, the host against its own
+// names, and the name of the caller against the callers it lists for
+// the Connect service.
 //
 // The package holds no state. A Settings value carries everything.
 package peerauth
@@ -49,6 +50,9 @@ const (
 	// CallersEnv holds the callers of each Connect service, as Callers
 	// formats them.
 	CallersEnv = "VCA_PEER_CALLERS"
+	// HostsEnv names more hosts under which the callers reach the
+	// service, joined by commas.
+	HostsEnv = "VCA_PEER_HOSTS"
 )
 
 // The headers of a call.
@@ -69,9 +73,9 @@ const (
 // TokenTTL is the life of the token of one call.
 const TokenTTL = 60 * time.Second
 
-// clockSkew is the clock difference between two services that a token
+// ClockSkew is the clock difference between two services that a token
 // survives.
-const clockSkew = 30 * time.Second
+const ClockSkew = 30 * time.Second
 
 // ErrNoIdentity reports a service that holds no identity, so it cannot
 // sign a call.
@@ -85,8 +89,15 @@ type ID struct {
 	// issuance. The callers lists name services this way.
 	Service string
 	// Pair is the role and DPG pair of the service under compose, or
-	// the release under Helm. It is for the logs only.
+	// the release under Helm. With Service it makes the default host
+	// name of the service.
 	Pair string
+	// Deployment marks a deployment scoped caller, such as the vca
+	// command or the landing. The authority writes it into the
+	// statement. A callee takes the token of such a caller at any host,
+	// because the vca command calls through a port that the host
+	// publishes.
+	Deployment bool
 }
 
 // String names the caller for a log line.
@@ -112,6 +123,10 @@ type Settings struct {
 	// Callers lists the services that may call each Connect service of
 	// this service.
 	Callers Callers
+	// Hosts are more names under which the callers reach this service,
+	// beside the default name <pair>-<service>. A name with no port
+	// stands for any port.
+	Hosts []string
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 }
@@ -132,17 +147,22 @@ type statementClaims struct {
 	Issuer   string         `json:"iss"`
 	Subject  string         `json:"sub"`
 	Pair     string         `json:"pair,omitempty"`
+	Scope    string         `json:"scope,omitempty"`
 	IssuedAt int64          `json:"iat"`
 	Confirm  map[string]any `json:"cnf"`
 }
 
-// tokenClaims is the payload of the token of one call.
+// deploymentScope is the scope claim of a deployment scoped statement.
+const deploymentScope = "deployment"
+
+// tokenClaims is the payload of the token of one call. The audience
+// holds the procedure, then the host of the callee.
 type tokenClaims struct {
-	Issuer    string `json:"iss"`
-	Audience  string `json:"aud"`
-	IssuedAt  int64  `json:"iat"`
-	ExpiresAt int64  `json:"exp"`
-	ID        string `json:"jti"`
+	Issuer    string   `json:"iss"`
+	Audience  []string `json:"aud"`
+	IssuedAt  int64    `json:"iat"`
+	ExpiresAt int64    `json:"exp"`
+	ID        string   `json:"jti"`
 }
 
 // Authority is the key that vouches for every service of a deployment.
@@ -223,10 +243,14 @@ func (a Authority) Issue(id ID, random io.Reader, now time.Time) (Settings, erro
 		return Settings{}, fmt.Errorf("peerauth: %w", err)
 	}
 	auth := a.publicJWK()
-	statement, err := jose.Sign(a.key, auth.KeyID, statementType, statementClaims{
+	claims := statementClaims{
 		Issuer: authorityName, Subject: id.Service, Pair: id.Pair, IssuedAt: now.Unix(),
 		Confirm: map[string]any{"jwk": cnf},
-	})
+	}
+	if id.Deployment {
+		claims.Scope = deploymentScope
+	}
+	statement, err := jose.Sign(a.key, auth.KeyID, statementType, claims)
 	if err != nil {
 		return Settings{}, fmt.Errorf("peerauth: sign the statement: %w", err)
 	}
@@ -245,6 +269,9 @@ func newKey(random io.Reader) (*ecdsa.PrivateKey, error) {
 // Env returns the variables of the identity file of the service.
 func (s Settings) Env() map[string]string {
 	out := map[string]string{CallersEnv: s.Callers.String()}
+	if len(s.Hosts) > 0 {
+		out[HostsEnv] = strings.Join(s.Hosts, ",")
+	}
 	if len(s.Authority.Keys) > 0 {
 		// Parsed or issued keys always encode.
 		raw := anyval.Must(json.Marshal(s.Authority))
@@ -272,6 +299,9 @@ func Load(getenv func(string) string) (Settings, error) {
 		return Settings{}, err
 	}
 	s.Callers = callers
+	if s.Hosts, err = parseHosts(getenv(HostsEnv)); err != nil {
+		return Settings{}, err
+	}
 	if authRaw != "" {
 		raw, derr := base64.RawURLEncoding.DecodeString(authRaw)
 		if derr != nil {
@@ -299,6 +329,22 @@ func Load(getenv func(string) string) (Settings, error) {
 	}
 	s.Statement, s.ID = statement, id
 	return s, nil
+}
+
+// parseHosts reads the value of HostsEnv. Empty gives no host.
+func parseHosts(raw string) ([]string, error) {
+	var out []string
+	for _, h := range strings.Split(raw, ",") {
+		h = strings.ToLower(strings.TrimSpace(h))
+		if h == "" {
+			continue
+		}
+		if strings.ContainsAny(h, " \t/") {
+			return nil, fmt.Errorf("peerauth: %s host %q is not a host", HostsEnv, h)
+		}
+		out = append(out, h)
+	}
+	return out, nil
 }
 
 // parseKey reads the private JWK of KeyEnv.
@@ -344,11 +390,12 @@ func (s Settings) verifyStatement(statement string) (ID, *ecdsa.PublicKey, error
 	if !ok || !jwk.IsPublic() {
 		return ID{}, nil, errors.New("the statement names no public ECDSA key")
 	}
-	return ID{Service: c.Subject, Pair: c.Pair}, pub, nil
+	return ID{Service: c.Subject, Pair: c.Pair, Deployment: c.Scope == deploymentScope}, pub, nil
 }
 
-// Header returns the identity headers of one call of procedure.
-func (s Settings) Header(procedure string) (http.Header, error) {
+// Header returns the identity headers of one call of procedure to the
+// callee at host, the host and port of the URL of the call.
+func (s Settings) Header(procedure, host string) (http.Header, error) {
 	if !s.Configured() {
 		return nil, ErrNoIdentity
 	}
@@ -358,7 +405,7 @@ func (s Settings) Header(procedure string) (http.Header, error) {
 	}
 	now := s.now()
 	token, err := jose.Sign(s.Key, "", tokenType, tokenClaims{
-		Issuer: s.ID.Service, Audience: procedure, IssuedAt: now.Unix(),
+		Issuer: s.ID.Service, Audience: []string{procedure, strings.ToLower(host)}, IssuedAt: now.Unix(),
 		ExpiresAt: now.Add(TokenTTL).Unix(), ID: base64.RawURLEncoding.EncodeToString(jti),
 	})
 	if err != nil {
@@ -402,13 +449,22 @@ func (s Settings) Check(h http.Header, procedure string) (ID, error) {
 	}
 	now := s.now()
 	issued, expires := time.Unix(c.IssuedAt, 0), time.Unix(c.ExpiresAt, 0)
+	audience, host := "", ""
+	if len(c.Audience) == 2 {
+		audience, host = c.Audience[0], c.Audience[1]
+	}
 	switch {
 	case c.Issuer != id.Service:
 		return ID{}, unauthenticated("the token names %q, the identity %q", c.Issuer, id.Service)
-	case c.Audience != procedure:
-		return ID{}, unauthenticated("the token of %s is for %q, not %q", id, c.Audience, procedure)
-	case issued.After(now.Add(clockSkew)), expires.Sub(issued) > TokenTTL+clockSkew, !now.Before(expires):
-		return ID{}, unauthenticated("the token of %s is outside its time", id)
+	case audience != procedure:
+		return ID{}, unauthenticated("the token of %s is for %q, not %q", id, audience, procedure)
+	case !id.Deployment && !s.ownHost(host):
+		return ID{}, unauthenticated("the token of %s is for the host %q, which is no name of %s", id, host, s.ID)
+	case expires.Sub(issued) > TokenTTL || expires.Before(issued):
+		return ID{}, unauthenticated("the token of %s lives longer than %s", id, TokenTTL)
+	case issued.After(now.Add(ClockSkew)), !now.Before(expires.Add(ClockSkew)):
+		return ID{}, unauthenticated("the token of %s is outside its time: issued %s from now, the clocks may differ by %s",
+			id, issued.Sub(now).Round(time.Second), ClockSkew)
 	}
 	service, _, _ := strings.Cut(strings.TrimPrefix(procedure, "/"), "/")
 	if !s.Callers.Allows(service, id.Service) {
@@ -416,6 +472,41 @@ func (s Settings) Check(h http.Header, procedure string) (ID, error) {
 			fmt.Errorf("peerauth: %s may not call %s", id, service))
 	}
 	return id, nil
+}
+
+// ownHost reports whether host, as a token names it, is a name of this
+// service: its default name <pair>-<service> as the first label, or one
+// of Hosts. A name of Hosts with no port stands for any port.
+func (s Settings) ownHost(host string) bool {
+	if host == "" {
+		return false
+	}
+	name := host
+	if i := strings.LastIndex(host, ":"); i >= 0 && !strings.Contains(host[i:], "]") {
+		name = host[:i]
+	}
+	label, _, _ := strings.Cut(name, ".")
+	if own := s.defaultHost(); own != "" && label == own {
+		return true
+	}
+	for _, h := range s.Hosts {
+		if h == host || h == name {
+			return true
+		}
+	}
+	return false
+}
+
+// defaultHost is the name the compose file and the Helm charts give the
+// service: <pair>-<service>, or the service alone with no pair.
+func (s Settings) defaultHost() string {
+	switch {
+	case s.ID.Service == "":
+		return ""
+	case s.ID.Pair == "" || s.ID.Pair == s.ID.Service:
+		return s.ID.Service
+	}
+	return s.ID.Pair + "-" + s.ID.Service
 }
 
 // Client returns a copy of c whose transport signs every Connect call.
@@ -483,7 +574,7 @@ func (t signer) RoundTrip(r *http.Request) (*http.Response, error) {
 	if !t.s.Configured() || !connectCall(r) {
 		return t.base.RoundTrip(r)
 	}
-	h, err := t.s.Header(r.URL.Path)
+	h, err := t.s.Header(r.URL.Path, r.URL.Host)
 	if err != nil {
 		return nil, err
 	}

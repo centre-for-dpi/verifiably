@@ -46,6 +46,9 @@ func issue(t *testing.T, a peerauth.Authority, service string) peerauth.Settings
 func serve(t *testing.T, callee peerauth.Settings, procedure string) (*httptest.Server, *peerauth.ID) {
 	t.Helper()
 	seen := &peerauth.ID{}
+	// The test server listens on the loopback address, which is no
+	// name of the callee in a deployment.
+	callee.Hosts = append(callee.Hosts, "127.0.0.1")
 	h := connect.NewUnaryHandler(procedure,
 		func(ctx context.Context, _ *connect.Request[emptypb.Empty]) (*connect.Response[emptypb.Empty], error) {
 			if id, ok := peerauth.CallerFrom(ctx); ok {
@@ -136,10 +139,18 @@ func TestAnIdentityOfAnotherAuthorityIsRefused(t *testing.T) {
 	}
 }
 
-// headerFor returns the identity headers of one call of s.
-func headerFor(t *testing.T, s peerauth.Settings, procedure string) http.Header {
+// trustHost is the address of the callee "trust-registry" of the pair
+// issuer-waltid on the compose network.
+const trustHost = "issuer-waltid-trust-registry:8082"
+
+// headerFor returns the identity headers of one call of s to the host.
+func headerFor(t *testing.T, s peerauth.Settings, procedure string, host ...string) http.Header {
 	t.Helper()
-	h, err := s.Header(procedure)
+	to := trustHost
+	if len(host) > 0 {
+		to = host[0]
+	}
+	h, err := s.Header(procedure, to)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +177,7 @@ func TestCheck(t *testing.T) {
 	admin := issue(t, a, "admin")
 	swapped := headerFor(t, caller, trustGet)
 	swapped.Set(peerauth.IdentityHeader, admin.Statement)
-	late := func() time.Time { return now.Add(peerauth.TokenTTL + time.Second) }
+	late := func() time.Time { return now.Add(peerauth.TokenTTL + peerauth.ClockSkew + time.Second) }
 	early := func() time.Time { return now.Add(-time.Minute) }
 	cases := []struct {
 		name      string
@@ -268,7 +279,7 @@ func TestEnvRoundTrip(t *testing.T) {
 	// The loaded identity calls a service that trusts the authority.
 	callee := issue(t, a, "issued-credentials")
 	callee.Callers = peerauth.Callers{"vca.trust.v1.TrustService": {"issuance"}}
-	if _, cerr := callee.Check(headerFor(t, got, trustGet), trustGet); cerr != nil {
+	if _, cerr := callee.Check(headerFor(t, got, trustGet, "issuer-waltid-issued-credentials:8084"), trustGet); cerr != nil {
 		t.Fatal(cerr)
 	}
 	// No variable at all is a service without an identity.
@@ -367,7 +378,7 @@ func TestAuthorityPEMRoundTrip(t *testing.T) {
 	if _, err := a.Issue(peerauth.ID{}, rand.Reader, time.Now()); err == nil {
 		t.Error("Issue took no service name")
 	}
-	if _, err := (peerauth.Settings{}).Header(trustGet); !errors.Is(err, peerauth.ErrNoIdentity) {
+	if _, err := (peerauth.Settings{}).Header(trustGet, trustHost); !errors.Is(err, peerauth.ErrNoIdentity) {
 		t.Errorf("Header with no identity = %v", err)
 	}
 }
@@ -383,7 +394,7 @@ func TestAStreamChecksItsCaller(t *testing.T) {
 				return connect.NewError(connect.CodeInternal, errors.New("no caller"))
 			}
 			return stream.Send(&emptypb.Empty{})
-		}, peerauth.Require(callee))
+		}, peerauth.Require(withLoopback(callee)))
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	open := func(s peerauth.Settings) error {
@@ -436,5 +447,147 @@ func TestSignWrapsEveryKindOfClient(t *testing.T) {
 	}
 	if !called {
 		t.Error("the custom client sent nothing")
+	}
+}
+
+// withLoopback returns s with the loopback address as a name of its own.
+func withLoopback(s peerauth.Settings) peerauth.Settings {
+	s.Hosts = append(s.Hosts, "127.0.0.1")
+	return s
+}
+
+// statusAllocate is a procedure that two services of one pair serve.
+const statusAllocate = "/vca.status.v1.StatusService/Allocate"
+
+// TestATokenNamesItsCallee: the token names the procedure and the host
+// of the callee. A callee takes a token for its own name only, so a
+// token that a party reads on the network opens no other server: not
+// the other status service of the pair, not the same service of
+// another pair. A deployment scoped caller, such as the vca command on
+// the machine of the operator, calls through a published port, so the
+// callee takes its token at any host.
+func TestATokenNamesItsCallee(t *testing.T) {
+	a := newAuthority(t)
+	list := peerauth.Callers{"vca.status.v1.StatusService": {"issuance", "cli"}}
+	callee := func(service, pair string) peerauth.Settings {
+		s, err := a.Issue(peerauth.ID{Service: service, Pair: pair}, rand.Reader, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.Callers = list
+		return s
+	}
+	token, bitstring, inji := callee("status-token", "issuer-waltid"), callee("status-bitstring", "issuer-waltid"), callee("status-token", "issuer-inji")
+	issuance := issue(t, a, "issuance")
+	h := headerFor(t, issuance, statusAllocate, "issuer-waltid-status-token:8085")
+	if _, err := token.Check(h, statusAllocate); err != nil {
+		t.Fatalf("the callee the token names: %v", err)
+	}
+	for name, other := range map[string]peerauth.Settings{"the other status service": bitstring, "another pair": inji} {
+		if _, err := other.Check(h, statusAllocate); connect.CodeOf(err) != connect.CodeUnauthenticated {
+			t.Errorf("%s took the token: %v", name, err)
+		}
+	}
+	// The cluster name of a Helm release starts with the same label.
+	if _, err := token.Check(headerFor(t, issuance, statusAllocate, "issuer-waltid-status-token.vca.svc.cluster.local:8085"), statusAllocate); err != nil {
+		t.Errorf("a cluster name of the callee: %v", err)
+	}
+	if _, err := token.Check(headerFor(t, issuance, statusAllocate, ""), statusAllocate); connect.CodeOf(err) != connect.CodeUnauthenticated {
+		t.Errorf("a token that names no host: %v", err)
+	}
+	// More names of the callee come from VCA_PEER_HOSTS. A name with no
+	// port stands for any port.
+	named := token
+	named.Hosts = []string{"127.0.0.1:9000", "status.internal"}
+	for host, ok := range map[string]bool{
+		"127.0.0.1:9000": true, "127.0.0.1:9001": false, "status.internal:8085": true,
+		"issuer-waltid-status-token:8085": true, "issuer-waltid-status-bitstring:8084": false,
+	} {
+		_, err := named.Check(headerFor(t, issuance, statusAllocate, host), statusAllocate)
+		if (err == nil) != ok {
+			t.Errorf("host %s: %v, want accepted %v", host, err, ok)
+		}
+	}
+	// A service with no pair, or a deployment scoped one that carries
+	// its own name as the pair, has its name alone as the host.
+	for _, id := range []peerauth.ID{{Service: "landing"}, {Service: "landing", Pair: "landing"}} {
+		landing, err := a.Issue(id, rand.Reader, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		landing.Callers = list
+		if _, err := landing.Check(headerFor(t, issuance, statusAllocate, "landing:8090"), statusAllocate); err != nil {
+			t.Errorf("the host of %+v: %v", id, err)
+		}
+	}
+	if _, err := (peerauth.Settings{Authority: token.Authority, Callers: list}).Check(h, statusAllocate); connect.CodeOf(err) != connect.CodeUnauthenticated {
+		t.Errorf("a callee with no name of its own took the token: %v", err)
+	}
+	cli, err := a.Issue(peerauth.ID{Service: "cli", Deployment: true}, rand.Reader, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []peerauth.Settings{token, bitstring, inji} {
+		id, err := c.Check(headerFor(t, cli, statusAllocate, "localhost:18085"), statusAllocate)
+		if err != nil || !id.Deployment {
+			t.Errorf("the deployment scoped caller at %s: %+v, %v", c.ID, id, err)
+		}
+	}
+}
+
+// TestTheTimeWindowIsSymmetric: two clocks may differ by ClockSkew
+// either way. A token counts from ClockSkew before its issue time to
+// ClockSkew after its end, and a refusal names the difference.
+func TestTheTimeWindowIsSymmetric(t *testing.T) {
+	a := newAuthority(t)
+	now := time.Now()
+	callee := issue(t, a, "trust-registry")
+	callee.Callers = peerauth.Callers{"vca.trust.v1.TrustService": {"issuance"}}
+	caller := issue(t, a, "issuance")
+	caller.Now = func() time.Time { return now }
+	h := headerFor(t, caller, trustGet)
+	half := peerauth.ClockSkew / 2
+	for at, ok := range map[time.Duration]bool{
+		-half: true, -peerauth.ClockSkew - time.Second: false,
+		peerauth.TokenTTL + half: true, peerauth.TokenTTL + peerauth.ClockSkew + time.Second: false,
+	} {
+		callee.Now = func() time.Time { return now.Add(at) }
+		_, err := callee.Check(h, trustGet)
+		if (err == nil) != ok {
+			t.Errorf("at %v: %v, want accepted %v", at, err, ok)
+		}
+		if err != nil && !strings.Contains(err.Error(), "30s") {
+			t.Errorf("at %v the refusal names no skew: %v", at, err)
+		}
+	}
+}
+
+// TestHostsAndScopeRoundTrip: VCA_PEER_HOSTS and the scope of a
+// deployment scoped identity survive the identity file.
+func TestHostsAndScopeRoundTrip(t *testing.T) {
+	a := newAuthority(t)
+	s, err := a.Issue(peerauth.ID{Service: "landing", Pair: "landing", Deployment: true}, rand.Reader, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Hosts = []string{"landing.internal", "127.0.0.1:8090"}
+	env := s.Env()
+	if env[peerauth.HostsEnv] != "landing.internal,127.0.0.1:8090" {
+		t.Errorf("%s = %q", peerauth.HostsEnv, env[peerauth.HostsEnv])
+	}
+	got, err := peerauth.Load(func(k string) string { return env[k] })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.ID.Deployment || len(got.Hosts) != 2 || got.Hosts[1] != "127.0.0.1:8090" {
+		t.Errorf("Load = %+v, hosts %v", got.ID, got.Hosts)
+	}
+	if _, err := peerauth.Load(func(k string) string {
+		if k == peerauth.HostsEnv {
+			return "a b"
+		}
+		return env[k]
+	}); err == nil {
+		t.Error("Load took a host with a space")
 	}
 }

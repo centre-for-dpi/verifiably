@@ -138,8 +138,9 @@ func peerAuthority(existing []byte, random io.Reader) (peerauth.Authority, []Fil
 
 // peerIdentity issues the identity of one service and renders its file.
 // owner is the pair, or the service name of a deployment scoped service.
-func peerIdentity(a peerauth.Authority, owner string, s Service, random io.Reader, now time.Time) ([]byte, error) {
-	id, err := a.Issue(peerauth.ID{Service: s.Name, Pair: owner}, random, now)
+// deployment marks a deployment scoped service in the statement.
+func peerIdentity(a peerauth.Authority, owner string, s Service, deployment bool, random io.Reader, now time.Time) ([]byte, error) {
+	id, err := a.Issue(peerauth.ID{Service: s.Name, Pair: owner, Deployment: deployment}, random, now)
 	if err != nil {
 		return nil, err
 	}
@@ -166,14 +167,14 @@ func peerFiles(p Pair, a peerauth.Authority, random io.Reader, now time.Time) (p
 	ignore := File{Name: filepath.Join(PeerDir, ".gitignore"), Data: []byte("*\n"), Mode: 0o600}
 	pair = append(pair, ignore)
 	for _, s := range ServicesFor(p) {
-		data, err := peerIdentity(a, p.Name(), s, random, now)
+		data, err := peerIdentity(a, p.Name(), s, false, random, now)
 		if err != nil {
 			return nil, nil, err
 		}
 		pair = append(pair, File{Name: PeerFile(s.Name), Data: data, Mode: 0o600})
 	}
 	for _, s := range DeploymentServices() {
-		data, err := peerIdentity(a, s.Name, s, random, now)
+		data, err := peerIdentity(a, s.Name, s, true, random, now)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -224,9 +225,10 @@ func UpgradePeerIdentities(opts PeerUpgradeOptions) (int, error) {
 	}
 	trusted := authority.PublicSet()
 	type target struct {
-		owner string
-		dir   string
-		s     Service
+		owner      string
+		dir        string
+		s          Service
+		deployment bool
 	}
 	var targets []target
 	for _, p := range AllPairs() {
@@ -241,16 +243,16 @@ func UpgradePeerIdentities(opts PeerUpgradeOptions) (int, error) {
 	for _, s := range DeploymentServices() {
 		dir := filepath.Join(opts.Deploy, s.Name)
 		if _, err := os.Stat(filepath.Join(dir, EnvFileName)); err == nil {
-			targets = append(targets, target{owner: s.Name, dir: dir, s: s})
+			targets = append(targets, target{owner: s.Name, dir: dir, s: s, deployment: true})
 		}
 	}
 	written := 0
 	for _, tg := range targets {
 		path := filepath.Join(tg.dir, PeerFile(tg.s.Name))
-		if current(path, trusted, tg.s) {
+		if current(path, trusted, tg.s, tg.deployment) {
 			continue
 		}
-		data, err := peerIdentity(authority, tg.owner, tg.s, opts.Random, now())
+		data, err := peerIdentity(authority, tg.owner, tg.s, tg.deployment, opts.Random, now())
 		if err != nil {
 			return written, err
 		}
@@ -272,8 +274,9 @@ func UpgradePeerIdentities(opts PeerUpgradeOptions) (int, error) {
 }
 
 // current reports whether the identity file at path holds an identity
-// of the authority with the callers of the catalogue.
-func current(path, trusted string, s Service) bool {
+// of the authority with the callers of the catalogue and the scope of
+// the service.
+func current(path, trusted string, s Service, deployment bool) bool {
 	raw, err := os.ReadFile(path) // #nosec G304 -- the path comes from the deploy root
 	if err != nil {
 		return false
@@ -283,7 +286,8 @@ func current(path, trusted string, s Service) bool {
 		return false
 	}
 	id, err := peerauth.Load(func(k string) string { return values[k] })
-	return err == nil && id.ID.Service == s.Name && id.Callers.String() == peerauth.Callers(s.Callers).String()
+	return err == nil && id.ID.Service == s.Name && id.ID.Deployment == deployment &&
+		id.Callers.String() == peerauth.Callers(s.Callers).String()
 }
 
 // writePeerFile writes one file under dir with its mode.
@@ -343,9 +347,13 @@ func HelmPeerSecrets(opts PeerHelmOptions) error {
 			return werr
 		}
 	}
+	scoped := map[string]bool{}
+	for _, s := range DeploymentServices() {
+		scoped[s.Name] = true
+	}
 	var b strings.Builder
 	for _, s := range Catalog() {
-		id, ierr := authority.Issue(peerauth.ID{Service: s.Name, Pair: opts.Release}, opts.Random, now())
+		id, ierr := authority.Issue(peerauth.ID{Service: s.Name, Pair: opts.Release, Deployment: scoped[s.Name]}, opts.Random, now())
 		if ierr != nil {
 			return ierr
 		}
@@ -385,7 +393,9 @@ func CLIPeerClient(deploy string, c *http.Client, random io.Reader) (*http.Clien
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", filepath.Join(deploy, PeerDir, PeerAuthorityFile), err)
 	}
-	id, err := authority.Issue(peerauth.ID{Service: CLIPeer}, random, time.Now())
+	// The vca command calls through a port that the host publishes, so
+	// its identity is deployment scoped (ADR-075 consequence 3).
+	id, err := authority.Issue(peerauth.ID{Service: CLIPeer, Deployment: true}, random, time.Now())
 	if err != nil {
 		return nil, err
 	}
