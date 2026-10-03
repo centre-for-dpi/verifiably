@@ -244,3 +244,20 @@ func TestAudienceFollowsTheCertifyOfTheOffers(t *testing.T) {
 		}
 	}
 }
+
+// TestLoadReadsThePeerIdentity is ADR-075: the identity file of the
+// service reaches the settings, and a broken one stops the start.
+func TestLoadReadsThePeerIdentity(t *testing.T) {
+	cfg, err := config.Load(env(map[string]string{
+		"VCA_INJI_CERTIFY_URL": "http://certify:8090", "VCA_PEER_CALLERS": "vca.backend.v1.CapabilityService=issuance",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Peer.Callers.Allows("vca.backend.v1.CapabilityService", "issuance") {
+		t.Errorf("callers = %v", cfg.Peer.Callers)
+	}
+	if _, err := config.Load(env(map[string]string{"VCA_INJI_CERTIFY_URL": "http://certify:8090", "VCA_PEER_KEY": "%%%"})); err == nil {
+		t.Fatal("a broken peer key passed")
+	}
+}

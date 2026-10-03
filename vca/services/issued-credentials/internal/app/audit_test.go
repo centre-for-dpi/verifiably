@@ -23,7 +23,7 @@ func TestAuditServiceNeedsAdmin(t *testing.T) {
 	}, app.Deps{})
 	srv := httptest.NewServer(a.Mux)
 	defer srv.Close()
-	client := auditv1connect.NewAuditServiceClient(srv.Client(), srv.URL)
+	client := auditv1connect.NewAuditServiceClient(peers.Client(srv.Client()), srv.URL)
 	for token, want := range map[string]connect.Code{"": connect.CodeUnauthenticated, "someone": connect.CodeUnauthenticated, "admin-token": 0} {
 		req := connect.NewRequest(&auditv1.QueryRequest{})
 		if token != "" {

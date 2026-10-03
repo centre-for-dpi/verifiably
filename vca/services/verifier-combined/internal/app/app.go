@@ -16,6 +16,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1/resultsv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-combined/internal/combos"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-combined/internal/config"
@@ -90,7 +91,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.Handle(combinedv1connect.NewCombinedServiceHandler(svc))
+	mux.Handle(combinedv1connect.NewCombinedServiceHandler(svc, peerauth.Require(cfg.Peer)))
 	if policy == nil {
 		deps.Log.Warn("no policy service, EvaluateCombined reports a failed precondition",
 			"setting", config.Prefix+"POLICY_URL")
@@ -110,7 +111,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 // connectClient returns the client that calls the other services.
 func connectClient(cfg config.Config, deps Deps) connect.HTTPClient {
 	if deps.ConnectClient != nil {
-		return deps.ConnectClient
+		return cfg.Peer.Sign(deps.ConnectClient)
 	}
-	return &http.Client{Timeout: cfg.CallTimeout}
+	return cfg.Peer.Client(&http.Client{Timeout: cfg.CallTimeout})
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/inji"
 	shared "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 )
@@ -173,6 +174,10 @@ type Config struct {
 	// and holds a presentation definition, so its interactive
 	// authorization endpoint checks a presentation before it issues.
 	PresentationDuringIssuance bool `env:"PRESENTATION_DURING_ISSUANCE" default:"false"`
+	// Peer is the identity of the service on the compose network and the
+	// callers of its Connect services, from the VCA_PEER_ variables of its
+	// identity file (ADR-075). They carry no service prefix.
+	Peer peerauth.Settings
 }
 
 // Audience returns the credential endpoint that the tokens of the
@@ -218,6 +223,11 @@ func Load(getenv func(string) string) (Config, error) {
 	if err := shared.Load(Prefix, &c, getenv); err != nil {
 		return Config{}, err
 	}
+	peer, perr := peerauth.Load(getenv)
+	if perr != nil {
+		return Config{}, perr
+	}
+	c.Peer = peer
 	if c.CertifyURL == "" && c.VerifyURL == "" && c.MimotoURL == "" {
 		return Config{}, fmt.Errorf("config: set %sCERTIFY_URL, %sVERIFY_URL or %sMIMOTO_URL", Prefix, Prefix, Prefix)
 	}

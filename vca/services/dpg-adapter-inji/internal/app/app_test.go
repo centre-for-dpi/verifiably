@@ -26,6 +26,7 @@ import (
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/authz"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/config"
@@ -214,9 +215,10 @@ func TestBuildWiresTheHolderRole(t *testing.T) {
 // login, the lock state, the PIN the holder sets, the list, and a claim
 // in Inji Web with the same PIN that then shows in the list.
 func TestHolderPinPathOverConnect(t *testing.T) {
+	peers := peertest.New(t)
 	f := fake.New(testdata)
 	defer f.Close()
-	a, err := app.Build(config.Config{
+	a, err := buildPeered(peers, config.Config{
 		MimotoURL: f.URL(), WebURL: "http://localhost:17085", OfferTTL: time.Minute, Timeout: time.Second, MaxBytes: 1 << 20,
 	}, app.Deps{HTTP: f.Client()})
 	if err != nil {
@@ -224,7 +226,7 @@ func TestHolderPinPathOverConnect(t *testing.T) {
 	}
 	srv := httptest.NewServer(a.Mux)
 	defer srv.Close()
-	holder := backendv1connect.NewHolderBackendServiceClient(srv.Client(), srv.URL)
+	holder := backendv1connect.NewHolderBackendServiceClient(peers.Client(srv.Client()), srv.URL)
 	ctx := t.Context()
 	reg, err := holder.Register(ctx, connect.NewRequest(&backendv1.RegisterRequest{PairwiseSubject: "iss|sub", IdToken: "id.token.of.the.login"}))
 	if err != nil {
@@ -281,15 +283,17 @@ func TestPresentationDefinitionAbsentIs404(t *testing.T) {
 // TestPresentationDefinitionServedFromSetting: the handler serves the
 // definition of SetPresentationRequirement, the file Certify reads.
 func TestPresentationDefinitionServedFromSetting(t *testing.T) {
+	peers := peertest.New(t)
 	f := fake.New(testdata)
 	defer f.Close()
 	a := build(t, f, func(c *config.Config) {
+		c.Peer = peers.Open("dpg-adapter-inji")
 		c.PresentationDuringIssuance = true
 		c.IARIdentityClaims = "vcaSubject"
 	})
 	srv := httptest.NewServer(a.Mux)
 	defer srv.Close()
-	client := backendv1connect.NewIssuerBackendServiceClient(srv.Client(), srv.URL)
+	client := backendv1connect.NewIssuerBackendServiceClient(peers.Client(srv.Client()), srv.URL)
 	set, err := client.SetPresentationRequirement(t.Context(), connect.NewRequest(&backendv1.SetPresentationRequirementRequest{
 		CredentialType: "NationalIdentityCredential", RequiredClaims: []string{"vcaSubject"},
 	}))
@@ -496,6 +500,7 @@ func TestBuildSeedsTheVerifiedClaimsOfTheHolderProvider(t *testing.T) {
 // network with an admin session, and a restart keeps the edit. The
 // proxy of the pair publishes no path to it (ADR-047).
 func TestBuildServesTheHolderProviderToTheAdmin(t *testing.T) {
+	peers := peertest.New(t)
 	f := fake.New(testdata)
 	defer f.Close()
 	key := anyval.Must(oidcflow.GenerateKey())
@@ -511,7 +516,7 @@ func TestBuildServesTheHolderProviderToTheAdmin(t *testing.T) {
 			HolderOIDCDiscoveryURL: "http://keycloak-inji:8080/realms/vca-holder-realm/.well-known/openid-configuration",
 			HolderOIDCClientID:     "vca-inji-authz", AdminJWKSURL: adminJWKS,
 		}
-		a, err := app.Build(cfg, app.Deps{HTTP: f.Client(), Store: kv, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+		a, err := buildPeered(peers, cfg, app.Deps{HTTP: f.Client(), Store: kv, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -520,7 +525,7 @@ func TestBuildServesTheHolderProviderToTheAdmin(t *testing.T) {
 		return srv
 	}
 	srv := build(jwks.URL)
-	client := adminv1connect.NewAdminServiceClient(srv.Client(), srv.URL)
+	client := adminv1connect.NewAdminServiceClient(peers.Client(srv.Client()), srv.URL)
 	if _, err := client.ListAuthProviders(context.Background(), connect.NewRequest(&adminv1.ListAuthProvidersRequest{})); connect.CodeOf(err) != connect.CodeUnauthenticated {
 		t.Fatalf("a call without a session: %v", err)
 	}
@@ -546,7 +551,7 @@ func TestBuildServesTheHolderProviderToTheAdmin(t *testing.T) {
 	}
 	// A restart keeps the edit, and the server offers the claim.
 	again := build("")
-	resp, err := again.Client().Post(again.URL+"/vca.admin.v1.AdminService/ListAuthProviders", "application/json", strings.NewReader("{}"))
+	resp, err := peers.Client(again.Client()).Post(again.URL+"/vca.admin.v1.AdminService/ListAuthProviders", "application/json", strings.NewReader("{}"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -803,6 +808,7 @@ func TestAnAdminRemovalOfAHolderProviderStays(t *testing.T) {
 // seed then loses the flag, and the new record keeps the holder role
 // only.
 func TestTheAdminPicksTheDefaultHolderProvider(t *testing.T) {
+	peers := peertest.New(t)
 	f := fake.New(testdata)
 	defer f.Close()
 	key := anyval.Must(oidcflow.GenerateKey())
@@ -810,6 +816,7 @@ func TestTheAdminPicksTheDefaultHolderProvider(t *testing.T) {
 	jwks := httptest.NewServer(signer.JWKSHandler())
 	defer jwks.Close()
 	a := build(t, f, func(c *config.Config) {
+		c.Peer = peers.Open("dpg-adapter-inji")
 		c.AuthzIssuer = "https://adapter.example/authz"
 		c.AuthzKeySecret = "0123456789abcdef0123456789abcdef"
 		c.HolderOIDCDiscoveryURL = "http://keycloak-inji:8080/realms/vca-holder-realm/.well-known/openid-configuration"
@@ -822,7 +829,7 @@ func TestTheAdminPicksTheDefaultHolderProvider(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := adminv1connect.NewAdminServiceClient(srv.Client(), srv.URL)
+	client := adminv1connect.NewAdminServiceClient(peers.Client(srv.Client()), srv.URL)
 	create := connect.NewRequest(&adminv1.CreateAuthProviderRequest{Provider: &adminv1.AuthProvider{
 		DisplayName: "National ID", DiscoveryUrl: "https://id.gov.example/.well-known/openid-configuration",
 		ClientId: "vca-holders", Enabled: true, IsDefault: true, Roles: []commonv1.Role{commonv1.Role_ROLE_ADMIN},
@@ -848,4 +855,11 @@ func TestTheAdminPicksTheDefaultHolderProvider(t *testing.T) {
 			t.Errorf("%s default = %v", p.GetId(), p.GetIsDefault())
 		}
 	}
+}
+
+// buildPeered builds the service with an identity that lets the client
+// of peers call every RPC (ADR-075).
+func buildPeered(peers *peertest.Kit, cfg config.Config, deps app.Deps) (*app.App, error) {
+	cfg.Peer = peers.Open("dpg-adapter-inji")
+	return app.Build(cfg, deps)
 }

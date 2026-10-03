@@ -18,6 +18,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-policy/internal/cache"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-policy/internal/config"
@@ -118,7 +119,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.Handle(policyv1connect.NewPolicyServiceHandler(svc))
+	mux.Handle(policyv1connect.NewPolicyServiceHandler(svc, peerauth.Require(cfg.Peer)))
 	if trust == nil {
 		deps.Log.Warn("no trust registry, the trust chain check reports an error",
 			"setting", config.Prefix+"TRUST_URL")
@@ -160,7 +161,7 @@ func (a *App) RunCache(ctx context.Context) {
 // connectClient returns the client that calls the trust registry.
 func connectClient(cfg config.Config, deps Deps) connect.HTTPClient {
 	if deps.ConnectClient != nil {
-		return deps.ConnectClient
+		return cfg.Peer.Sign(deps.ConnectClient)
 	}
-	return &http.Client{Timeout: cfg.TrustTimeout}
+	return cfg.Peer.Client(&http.Client{Timeout: cfg.TrustTimeout})
 }

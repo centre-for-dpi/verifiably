@@ -15,6 +15,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/walletauth/v1/walletauthv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
@@ -94,7 +95,7 @@ func Build(cfg config.Config, log *slog.Logger) (*service.Service, error) {
 	}
 	var registrar wallets.Registrar = wallets.LocalRegistrar{}
 	if cfg.HolderBackendURL != "" {
-		registrar = wallets.NewConnectRegistrar(nil, cfg.HolderBackendURL)
+		registrar = wallets.NewConnectRegistrar(cfg.Peer.Client(&http.Client{Timeout: 15 * time.Second}), cfg.HolderBackendURL)
 	}
 	if cfg.AdminToken == "" && cfg.AdminJWKSURL == "" {
 		log.Warn("VCA_WALLET_AUTH_ADMIN_TOKEN and VCA_WALLET_AUTH_ADMIN_JWKS_URL are not set: providers can only come from the environment")
@@ -206,7 +207,7 @@ func Handler(svc *service.Service) http.Handler {
 	mux.Handle(path, oidcflow.RejectQueryTokens(h))
 	adminPath, adminH := oidcflow.NewAdminHandler(svc.Admin())
 	mux.Handle(adminPath, oidcflow.RejectQueryTokens(adminH))
-	auditPath, auditH := auditlog.NewHandler(svc.Audit())
+	auditPath, auditH := auditlog.NewHandler(svc.Audit(), peerauth.Require(svc.Config().Peer))
 	mux.Handle(auditPath, oidcflow.RejectQueryTokens(auditH))
 	mux.Handle("/.well-known/jwks.json", svc.Signer().JWKSHandler())
 	handlers := svc.Handlers()

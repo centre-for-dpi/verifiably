@@ -54,3 +54,4 @@ each decision of each record.
 - [ADR-072: An offer names the status entry its credential carries](adr/ADR-072-offer-names-its-status-entry.md)
 - [ADR-073: The browser store signs with a holder key of its own](adr/ADR-073-browser-holder-signing-key.md)
 - [ADR-074: The role switches of the umbrella chart sit under global](adr/ADR-074-helm-role-switches-under-global.md)
+- [ADR-075: Each internal Connect service checks which service calls it](adr/ADR-075-service-peer-identity.md)

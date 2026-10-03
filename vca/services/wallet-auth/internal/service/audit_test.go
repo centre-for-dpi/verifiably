@@ -21,7 +21,7 @@ import (
 // auditQuery reads every event of the service with a bearer token.
 func (f *fixture) auditQuery(t *testing.T, token string) ([]*auditv1.AuditEvent, error) {
 	t.Helper()
-	client := auditv1connect.NewAuditServiceClient(f.srv.Client(), f.srv.URL, withBearer(token))
+	client := auditv1connect.NewAuditServiceClient(peers.Client(f.srv.Client()), f.srv.URL, withBearer(token))
 	res, err := client.Query(context.Background(), connect.NewRequest(&auditv1.QueryRequest{}))
 	if err != nil {
 		return nil, err

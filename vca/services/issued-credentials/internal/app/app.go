@@ -23,6 +23,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
@@ -115,7 +116,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	}
 	var adapter *stack.Adapter
 	if cfg.AdapterURL != "" {
-		client := &http.Client{Timeout: cfg.Timeout}
+		client := cfg.Peer.Client(&http.Client{Timeout: cfg.Timeout})
 		adapter = stack.New(backendv1connect.NewCapabilityServiceClient(client, cfg.AdapterURL),
 			backendv1connect.NewIssuerBackendServiceClient(client, cfg.AdapterURL), stack.DefaultTTL, deps.Now)
 	}
@@ -138,10 +139,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.Handle(issuedv1connect.NewIssuedServiceHandler(svc))
+	mux.Handle(issuedv1connect.NewIssuedServiceHandler(svc, peerauth.Require(cfg.Peer)))
 	auditPath, auditHandler := auditlog.NewHandler(auditlog.Handler{
 		Log: events, Service: service.Name, Authorize: oidcflow.AuditAuthorizer(cfg.AdminToken, cfg.AdminJWKSURL, nil),
-	})
+	}, peerauth.Require(cfg.Peer))
 	mux.Handle(auditPath, oidcflow.RejectQueryTokens(auditHandler))
 	httpapi.Register(mux, svc, signer)
 	if err := mountPages(mux, cfg, deps, svc, adapter); err != nil {
@@ -180,7 +181,7 @@ func mountPages(mux *http.ServeMux, cfg config.Config, deps Deps, svc *service.S
 		return err
 	}
 	shell, signOut := staffshell.Wire(staffshell.Setup{
-		Role: commonv1.Role_ROLE_ISSUER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.PublicURL,
+		Role: commonv1.Role_ROLE_ISSUER, Peers: cfg.Peers, Peer: cfg.Peer, Auth: cfg.Auth, PublicURL: cfg.PublicURL,
 		SignOut: pages.SignOutPath, Prober: deps.Prober, Client: &http.Client{Timeout: cfg.Timeout}, Now: deps.Now,
 	})
 	opts := pages.Options{Kit: kit, Shell: shell, Records: svc, SignOut: signOut}
@@ -201,9 +202,9 @@ func mountPages(mux *http.ServeMux, cfg config.Config, deps Deps, svc *service.S
 // httpClient returns the client that calls the status service.
 func httpClient(cfg config.Config, deps Deps) connect.HTTPClient {
 	if deps.HTTPClient != nil {
-		return deps.HTTPClient
+		return cfg.Peer.Sign(deps.HTTPClient)
 	}
-	return &http.Client{Timeout: cfg.StatusTimeout}
+	return cfg.Peer.Client(&http.Client{Timeout: cfg.StatusTimeout})
 }
 
 // salt returns the subject salt. The file wins over the variable, so a

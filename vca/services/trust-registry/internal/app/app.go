@@ -18,6 +18,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
@@ -151,10 +152,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.Handle(trustv1connect.NewTrustServiceHandler(svc))
+	mux.Handle(trustv1connect.NewTrustServiceHandler(svc, peerauth.Require(cfg.Peer)))
 	auditPath, auditHandler := auditlog.NewHandler(auditlog.Handler{
 		Log: events, Service: service.Name, Authorize: oidcflow.AuditAuthorizer(cfg.AdminToken, cfg.AdminJWKSURL, nil),
-	})
+	}, peerauth.Require(cfg.Peer))
 	mux.Handle(auditPath, oidcflow.RejectQueryTokens(auditHandler))
 	httpapi.New(svc, cfg.HTTPMaxAge).Register(mux)
 	deps.Log.Info("trust registry ready", "methods", cfg.Methods, "kid", ring.Active().ID, "alg", ring.Active().Alg, "base_url", cfg.BaseURL)

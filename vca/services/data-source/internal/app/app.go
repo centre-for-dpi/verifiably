@@ -22,6 +22,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1/datasourcev1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1/issuancev1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/authz"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/config"
@@ -124,7 +125,8 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	// (ADR-052 decision 3). The RPCs stay on the compose network
 	// (ADR-047).
 	service := servicetoken.Derive(cfg.ServiceSecret, servicetoken.DataSourceLookup)
-	mux.Handle(datasourcev1connect.NewDataSourceServiceHandler(svc,
+	// The caller check of the deployment runs first (ADR-075).
+	mux.Handle(datasourcev1connect.NewDataSourceServiceHandler(svc, peerauth.Require(cfg.Peer),
 		connect.WithInterceptors(authz.ServiceInterceptor(authz.SessionVerifier(guard.Verify), service))))
 	if err := mountPages(mux, cfg, deps, svc, guard); err != nil {
 		return nil, err
@@ -146,10 +148,11 @@ func mountPages(mux *http.ServeMux, cfg config.Config, deps Deps, svc *service.S
 	if err != nil {
 		return err
 	}
-	client := &http.Client{Timeout: cfg.Timeout}
+	// The client signs the calls of the internal services (ADR-075).
+	client := cfg.Peer.Client(&http.Client{Timeout: cfg.Timeout})
 	shell, signOut := staffshell.Wire(staffshell.Setup{
 		Role: commonv1.Role_ROLE_ISSUER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.PublicURL,
-		SignOut: pages.SignOutPath, Prober: deps.Prober, Client: client, Now: deps.Now,
+		SignOut: pages.SignOutPath, Prober: deps.Prober, Client: client, Peer: cfg.Peer, Now: deps.Now,
 	})
 	opts := pages.Options{
 		Kit: kit, Shell: shell, Sources: svc, Schemas: deps.Schemas, Issuance: deps.Issuance,
@@ -162,7 +165,7 @@ func mountPages(mux *http.ServeMux, cfg config.Config, deps Deps, svc *service.S
 	if opts.Issuance == nil && cfg.IssuanceURL != "" {
 		// The stream of a run lasts longer than one call, so the client
 		// has no timeout; the run timeout of the pages bounds it.
-		opts.Issuance = issuancev1connect.NewIssuanceServiceClient(&http.Client{}, cfg.IssuanceURL)
+		opts.Issuance = issuancev1connect.NewIssuanceServiceClient(cfg.Peer.Client(&http.Client{}), cfg.IssuanceURL)
 	}
 	if cfg.CSVDir != "" {
 		opts.SaveCSV = csvSaver(cfg.CSVDir)

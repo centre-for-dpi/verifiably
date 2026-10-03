@@ -7,13 +7,20 @@ package walkthrough_test
 import (
 	"context"
 	"html"
+	"net/http"
 	"regexp"
+	"strconv"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
+
+	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/cli"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 )
 
 // farmerSchema is the JSON Schema of the credential the issuer offers.
@@ -92,6 +99,33 @@ func (w *walk) start() {
 		case commonv1.Role_ROLE_ADMIN:
 			w.admin = rp
 		}
+	}
+}
+
+// peerChecks calls an internal Connect service of a running adapter as
+// a stranger would (ADR-075). A call with no identity gets
+// unauthenticated. The wallet portal holds an identity of the
+// deployment, but the adapter lists only the admin for its tenants, so
+// the call gets permission_denied.
+func (w *walk) peerChecks() {
+	w.t.Helper()
+	adapter := "dpg-adapter-" + cli.ShortName(w.issuer.pair.Dpg.String())
+	base := "http://127.0.0.1:" + strconv.Itoa(w.issuer.ports[adapter])
+	list := func(c *http.Client) connect.Code {
+		_, err := backendv1connect.NewTenantBackendServiceClient(c, base).
+			ListTenants(w.ctx, connect.NewRequest(&backendv1.ListTenantsRequest{}))
+		return connect.CodeOf(err)
+	}
+	if code := list(http.DefaultClient); code != connect.CodeUnauthenticated {
+		w.t.Errorf("a call with no identity got %v, want unauthenticated", code)
+	}
+	values := w.holder.identities["wallet-portal"]
+	wallet, err := peerauth.Load(func(k string) string { return values[k] })
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	if code := list(wallet.Client(http.DefaultClient)); code != connect.CodePermissionDenied {
+		w.t.Errorf("the wallet portal got %v from the tenant service, want permission_denied", code)
 	}
 }
 
@@ -247,6 +281,7 @@ func TestWalkthroughWaltid(t *testing.T) {
 	began := time.Now()
 	w.start()
 	w.landing()
+	w.peerChecks()
 
 	// The issuer staff signs in, makes the identity of the issuer, and
 	// asks for an entry in the trust list.

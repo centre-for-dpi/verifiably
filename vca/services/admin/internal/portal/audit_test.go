@@ -327,7 +327,7 @@ func TestAuditRetentionWithoutPeersSaves(t *testing.T) {
 // to a super admin session only.
 func TestAdminAuditServiceNeedsASuperAdmin(t *testing.T) {
 	h := newHarness(t, false)
-	client := auditv1connect.NewAuditServiceClient(h.server.Client(), h.server.URL)
+	client := auditv1connect.NewAuditServiceClient(h.peers.Client(h.server.Client()), h.server.URL)
 	if _, err := client.Query(context.Background(), connect.NewRequest(&auditv1.QueryRequest{})); connect.CodeOf(err) != connect.CodeUnauthenticated {
 		t.Fatalf("no session: %v", err)
 	}

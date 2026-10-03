@@ -314,6 +314,7 @@ func NewRootCommand(env Environment) *cobra.Command {
 		newAdminCommand(shared),
 		newMigrateCommand(shared),
 		newThemeCommand(shared),
+		newPeerCommand(shared),
 		newManCommand(shared),
 	)
 	return root
@@ -446,8 +447,15 @@ func newSetupCommand(env *Environment) *cobra.Command {
 				if keyErr != nil {
 					return keyErr
 				}
+				// The authority of the deployment vouches for every
+				// service of every pair (ADR-075 decision 1).
+				peerAuthority, peerErr := ReadPeerAuthority(root)
+				if peerErr != nil {
+					return peerErr
+				}
 				plan, err := BuildPlan(SetupRequest{
 					Pair:             p,
+					PeerAuthority:    peerAuthority,
 					Flags:            flags,
 					Env:              env.Getenv,
 					File:             file,
@@ -1064,8 +1072,12 @@ func newDpgUpgradeSecretsCommand(env *Environment) *cobra.Command {
 	var dpgName string
 	cmd := &cobra.Command{
 		Use:   "upgrade-secrets [--dpg <dpg>]",
-		Short: "Keep the old passwords of volumes from before generated secrets.",
-		Long: "upgrade-secrets reads the volumes of each stack from Docker. A " +
+		Short: "Add the service identities and keep the old passwords of older volumes.",
+		Long: "upgrade-secrets first gives every service of each pair directory an " +
+			"identity of the peer authority, as vca setup does (ADR-075). It makes " +
+			"deploy/peer/authority.pem when it is missing and keeps every identity " +
+			"file the authority signed.\n\n" +
+			"It then reads the volumes of each stack from Docker. A " +
 			"volume older than the secrets of deploy/<dpg>/.env holds the " +
 			"default password of an earlier release. The command writes that " +
 			"password into the .env, so the containers reach their data. It " +
@@ -1077,6 +1089,11 @@ func newDpgUpgradeSecretsCommand(env *Environment) *cobra.Command {
 		Example: "  vca dpg upgrade-secrets --dpg <dpg>",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if _, err := UpgradePeerIdentities(PeerUpgradeOptions{
+				Deploy: filepath.Join(env.Root, "deploy"), Random: env.Random, Out: cmd.OutOrStdout(),
+			}); err != nil {
+				return err
+			}
 			opts := UpgradeOptions{
 				Deploy: filepath.Join(env.Root, "deploy"),
 				Probe:  env.NewProbe(cmd.Context()),
@@ -1392,4 +1409,37 @@ func newManCommand(env *Environment) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&dir, "dir", "", "The directory that receives the man pages.")
 	return cmd
+}
+
+// newPeerCommand builds vca peer, the identities of the services on the
+// network of the cluster (ADR-075 decision 6).
+func newPeerCommand(env *Environment) *cobra.Command {
+	peer := &cobra.Command{
+		Use:   "peer",
+		Short: "Manage the identities that the services show each other.",
+		Long: "Every internal Connect service checks which service calls it. vca setup " +
+			"and vca dpg upgrade-secrets write the identities for compose. The " +
+			"subcommands write them for other platforms.",
+	}
+	var release, namespace string
+	secrets := &cobra.Command{
+		Use:   "secrets --release <release> [--namespace <namespace>]",
+		Short: "Print one Kubernetes Secret per service chart.",
+		Long: "secrets prints the Secret <release>-<service>-peer of every service chart. " +
+			"Each pod reads its own Secret and does not start without it. The " +
+			"authority stays in deploy/peer/authority.pem, so a later run vouches for " +
+			"the same release. Pipe the output to kubectl apply.",
+		Example: "  vca peer secrets --release vca --namespace vca | kubectl apply -f -",
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return HelmPeerSecrets(PeerHelmOptions{
+				Deploy: filepath.Join(env.Root, "deploy"), Release: release, Namespace: namespace,
+				Random: env.Random, Out: cmd.OutOrStdout(),
+			})
+		},
+	}
+	secrets.Flags().StringVar(&release, "release", "", "The name of the Helm release.")
+	secrets.Flags().StringVar(&namespace, "namespace", "", "The namespace of the release. Empty leaves it out.")
+	peer.AddCommand(secrets)
+	return peer
 }

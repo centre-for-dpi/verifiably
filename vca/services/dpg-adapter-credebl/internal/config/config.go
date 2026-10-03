@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	shared "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 )
 
@@ -78,6 +79,10 @@ type Config struct {
 	// HolderLabel is the label a holder wallet shows the other party of
 	// a DIDComm connection.
 	HolderLabel string `env:"HOLDER_LABEL" default:"Wallet"`
+	// Peer is the identity of the service on the compose network and the
+	// callers of its Connect services, from the VCA_PEER_ variables of its
+	// identity file (ADR-075). They carry no service prefix.
+	Peer peerauth.Settings
 }
 
 // HolderRole reports whether the settings turn the holder role on.
@@ -89,6 +94,11 @@ func Load(getenv func(string) string) (Config, error) {
 	if err := shared.Load(Prefix, &c, getenv); err != nil {
 		return Config{}, err
 	}
+	peer, perr := peerauth.Load(getenv)
+	if perr != nil {
+		return Config{}, perr
+	}
+	c.Peer = peer
 	if c.Timeout <= 0 {
 		return Config{}, fmt.Errorf("config: %sTIMEOUT must be a positive duration", Prefix)
 	}

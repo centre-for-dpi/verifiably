@@ -373,29 +373,30 @@ home service of the role.
 | `vca.issuerauth.v1.IssuerAuthService` | `issuer-auth` | Public | A portal that drives the login itself calls it. `ListProviders`, `LoginStart`, `LoginCallback`, and `Introspect` are the login flow, as the `/auth/` pages are. `Logout` needs a session. The role mapping RPCs need an admin. |
 | `vca.verifierauth.v1.VerifierAuthService` | `verifier-auth` | Public | The same RPCs and the same checks as `IssuerAuthService`, for verifier staff. |
 | `vca.walletauth.v1.WalletAuthService` | `wallet-auth` | Public | The login flow, as for `issuer-auth`. `RegisterHolderKey`, `GetAuthorizationGrant`, and `Logout` need a holder session. |
-| `vca.audit.v1.AuditService` | `admin`, `issuance`, `issued-credentials`, `issuer-auth`, `trust-registry`, `verifier-auth`, `verifier-results`, `wallet-auth` | Compose network | It needs an admin session. The admin reads every audit log on the compose network (ADR-039). |
-| `vca.backend.v1.CapabilityService` | `dpg-adapter-*` | Compose network | No caller check. The peer probe of each page service calls it. |
-| `vca.backend.v1.IssuerBackendService` | `dpg-adapter-*` | Compose network | No caller check. `issuance` and `schema-registry` call it. `vca dpg bootstrap waltid` calls the host port of the adapter. |
-| `vca.backend.v1.HolderBackendService` | `dpg-adapter-*` | Compose network | No caller check. `wallet-auth` and `wallet-portal` call it. |
-| `vca.backend.v1.VerifierBackendService` | `dpg-adapter-*` | Compose network | No caller check. No party outside the host calls it. |
-| `vca.backend.v1.CatalogBackendService` | `dpg-adapter-*` | Compose network | No caller check. `schema-builder-ui` calls it. |
-| `vca.backend.v1.TenantBackendService` | `dpg-adapter-*` | Compose network | No caller check. The admin calls it for tenants and stack credentials. |
-| `vca.backend.v1.NotificationBackendService` | `dpg-adapter-*` | Compose network | No caller check. The admin calls it for stack webhooks. |
-| `vca.backend.v1.BulkImportBackendService` | `dpg-adapter-*` | Compose network | No caller check. The issuer pages call it for the bulk import of the stack. |
+| `vca.admin.v1.AdminService` | `dpg-adapter-inji` | Compose network | Only `admin` calls it. It edits the holder provider of the holder authorization server, and each call needs an admin session too (ADR-056 decision 2). |
+| `vca.audit.v1.AuditService` | `admin`, `issuance`, `issued-credentials`, `issuer-auth`, `trust-registry`, `verifier-auth`, `verifier-results`, `wallet-auth` | Compose network | Only `admin` calls it, and each call needs an admin session too. The admin reads every audit log on the compose network (ADR-039). |
+| `vca.backend.v1.CapabilityService` | `dpg-adapter-*` | Compose network | The peer probe of each page service calls it, so every page service is a caller. |
+| `vca.backend.v1.IssuerBackendService` | `dpg-adapter-*` | Compose network | `issuance`, `issued-credentials`, and `schema-registry` call it. `vca dpg bootstrap waltid` calls the host port of the adapter as the caller `cli`. |
+| `vca.backend.v1.HolderBackendService` | `dpg-adapter-*` | Compose network | `wallet-auth` and `wallet-portal` call it. |
+| `vca.backend.v1.VerifierBackendService` | `dpg-adapter-*` | Compose network | `verifier-discovery` and `verifier-ingest` call it. No party outside the host calls it. |
+| `vca.backend.v1.CatalogBackendService` | `dpg-adapter-*` | Compose network | `schema-builder-ui` calls it. |
+| `vca.backend.v1.TenantBackendService` | `dpg-adapter-*` | Compose network | Only `admin` calls it, for tenants and stack credentials. |
+| `vca.backend.v1.NotificationBackendService` | `dpg-adapter-*` | Compose network | Only `admin` calls it, for stack webhooks. |
+| `vca.backend.v1.BulkImportBackendService` | `dpg-adapter-*` | Compose network | Only `issuance` calls it, for the bulk import of the stack. |
 | `POST /callbacks/issuance/*`, no RPC | `dpg-adapter-waltid` | Compose network | The walt.id issuer posts session events there. Each offer has its own random token in the path, and a wrong token answers 404. |
-| `vca.combined.v1.CombinedService` | `verifier-combined` | Compose network | No caller check, and no party outside the host calls it. |
-| `vca.datasource.v1.DataSourceService` | `data-source` | Compose network | Without a key set file it trusts the session header of a gateway. The data source pages call it in process. No other service calls it. |
-| `vca.discovery.v1.DiscoveryService` | `verifier-discovery` | Compose network | No caller check. `verifier-ingest`, `verifier-combined`, and `wallet-portal` call it. A wallet reads `/catalog` instead. |
-| `vca.ingest.v1.IngestService` | `verifier-ingest` | Compose network | No caller check. A wallet posts to `/oid4vp/response`. The scanner page posts to `/scan/ingest`. |
-| `vca.issuance.v1.IssuanceService` | `issuance` | Compose network | No caller check. The issuer pages call it in process. |
-| `vca.issued.v1.IssuedService` | `issued-credentials` | Compose network | No caller check. `issuance` and `schema-registry` call it. The issued credentials pages call it in process. An auditor reads `/issued/chain-head` instead. |
-| `vca.policy.v1.PolicyService` | `verifier-policy` | Compose network | No caller check. `verifier-results` and `verifier-combined` call it. |
-| `vca.results.v1.ResultsService` | `verifier-results` | Compose network | No caller check. `verifier-combined` calls it, and the verifier pages call it in process. |
-| `vca.schema.v1.SchemaService` | `schema-registry` | Compose network | No caller check. `issuance` and `schema-builder-ui` call it. A wallet reads the metadata and the schema files instead. |
-| `vca.schemabuilder.v1.SchemaBuilderService` | `schema-builder-ui` | Compose network | No caller check. The builder page calls it in process. |
-| `vca.status.v1.StatusService` | `status-bitstring`, `status-token` | Compose network | No caller check. `issuance` and `issued-credentials` call it. A verifier reads the signed lists instead. |
-| `vca.trust.v1.TrustService` | `trust-registry` | Compose network | No caller check. `admin`, `issuance`, `verifier-discovery`, `verifier-policy`, and `wallet-portal` call it. A verifier reads the signed lists instead. |
-| `vca.walletportal.v1.WalletPortalService` | `wallet-portal` | Compose network | It checks the holder session, but no party outside the host calls it. The pages call it in process, and the browser reads `/wallet/blobs`. |
+| `vca.combined.v1.CombinedService` | `verifier-combined` | Compose network | No service calls it, so its list names no caller. No party outside the host calls it. |
+| `vca.datasource.v1.DataSourceService` | `data-source` | Compose network | `dpg-adapter-inji` and `schema-registry` call it. Each call also needs a staff session or the lookup token of the pair. The data source pages call it in process. |
+| `vca.discovery.v1.DiscoveryService` | `verifier-discovery` | Compose network | `verifier-combined`, `verifier-ingest`, `verifier-results`, and `wallet-portal` call it. A wallet reads `/catalog` instead. |
+| `vca.ingest.v1.IngestService` | `verifier-ingest` | Compose network | Only `verifier-results` calls it. A wallet posts to `/oid4vp/response`. The scanner page posts to `/scan/ingest`. |
+| `vca.issuance.v1.IssuanceService` | `issuance` | Compose network | Only `data-source` calls it, for a bulk run. The issuer pages call it in process. |
+| `vca.issued.v1.IssuedService` | `issued-credentials` | Compose network | `issuance` and `schema-registry` call it. The issued credentials pages call it in process. An auditor reads `/issued/chain-head` instead. |
+| `vca.policy.v1.PolicyService` | `verifier-policy` | Compose network | `verifier-combined`, `verifier-discovery`, `verifier-ingest`, and `verifier-results` call it. |
+| `vca.results.v1.ResultsService` | `verifier-results` | Compose network | `verifier-combined` and `verifier-ingest` call it. The verifier pages call it in process. |
+| `vca.schema.v1.SchemaService` | `schema-registry` | Compose network | `data-source`, `issuance`, and `schema-builder-ui` call it. A wallet reads the metadata and the schema files instead. |
+| `vca.schemabuilder.v1.SchemaBuilderService` | `schema-builder-ui` | Compose network | No service calls it. The builder page calls it in process. |
+| `vca.status.v1.StatusService` | `status-bitstring`, `status-token` | Compose network | `issuance` and `issued-credentials` call it. A verifier reads the signed lists instead. |
+| `vca.trust.v1.TrustService` | `trust-registry` | Compose network | `admin`, `issuance`, `verifier-discovery`, `verifier-policy`, and `wallet-portal` call it. A verifier reads the signed lists instead. |
+| `vca.walletportal.v1.WalletPortalService` | `wallet-portal` | Compose network | No service calls it. It checks the holder session too. The pages call it in process, and the browser reads `/wallet/blobs`. |
 
 `TestNoUnguardedRPCIsPublic` in `internal/cli` holds the allowlist of
 the public rows.
@@ -408,6 +409,38 @@ Every RPC outside the login flow must answer `unauthenticated`,
 `permission_denied`, or `unimplemented`.
 `TestDeployDocClassifiesEveryRPC` keeps this table in step with the
 generated code and the allowlist.
+
+### Service identity
+
+Every Connect service on the compose network checks which service
+calls it (ADR-075).
+`vca setup` makes one authority key for the deployment in
+`deploy/peer/authority.pem`.
+It gives each service an identity file of its own:
+`deploy/<pair>/peer/<service>.env`, and `deploy/landing/peer/landing.env`.
+The file holds the key of the service and a statement of the authority
+on that key.
+It also lists the callers of each Connect service of the service, from
+the column "Why" above.
+Compose stops a service whose identity file is missing.
+
+A caller signs a token of 60 seconds for each call.
+The token names the procedure, so it opens no other RPC.
+The callee checks the statement, the token, and the caller list.
+A call without an identity gets `unauthenticated`.
+A caller that the list does not name gets `permission_denied`.
+`TestEveryInternalConnectServiceListsItsCallers` keeps the lists in step
+with this table.
+`TestEveryConnectHandlerChecksItsCaller` fails when a service mounts an
+internal Connect service without the check.
+
+A deployment from an earlier release has no identity files.
+Run `vca dpg upgrade-secrets` once before `vca deploy`.
+It makes the authority and writes each missing identity file.
+It keeps every file that the authority signed.
+Under Helm, run `vca peer secrets --release <release> | kubectl apply -f -`.
+It writes one Secret per chart, `<release>-<service>-peer`.
+Each pod reads its own Secret and does not start without it.
 
 ### Plain HTTP paths
 

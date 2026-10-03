@@ -1,0 +1,393 @@
+// SPDX-License-Identifier: Apache-2.0
+
+package cli
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
+)
+
+// The identity of each service on the compose network (ADR-075). Setup
+// keeps one authority key per deployment in deploy/PeerDir and gives
+// each service an identity file of its own under the directory of its
+// pair: <pair>/PeerDir/<service>.env.
+const (
+	// PeerDir is the directory of the authority under the deploy root,
+	// and the directory of the identity files under each pair.
+	PeerDir = "peer"
+	// PeerAuthorityFile is the authority key in PKCS#8 PEM form.
+	PeerAuthorityFile = "authority.pem"
+	// CLIPeer is the caller name of the vca command. It signs its calls
+	// with an identity it issues from the authority at each run.
+	CLIPeer = "cli"
+)
+
+// The Connect services that stay on the compose network, by full name
+// (ADR-047 decision 2). The Callers of the catalogue use them.
+const (
+	rpcAdmin         = "vca.admin.v1.AdminService"
+	rpcAudit         = "vca.audit.v1.AuditService"
+	rpcCapability    = "vca.backend.v1.CapabilityService"
+	rpcIssuerBackend = "vca.backend.v1.IssuerBackendService"
+	rpcHolderBackend = "vca.backend.v1.HolderBackendService"
+	rpcVerifierBack  = "vca.backend.v1.VerifierBackendService"
+	rpcCatalog       = "vca.backend.v1.CatalogBackendService"
+	rpcTenant        = "vca.backend.v1.TenantBackendService"
+	rpcNotification  = "vca.backend.v1.NotificationBackendService"
+	rpcBulkImport    = "vca.backend.v1.BulkImportBackendService"
+	rpcCombined      = "vca.combined.v1.CombinedService"
+	rpcDataSource    = "vca.datasource.v1.DataSourceService"
+	rpcDiscovery     = "vca.discovery.v1.DiscoveryService"
+	rpcIngest        = "vca.ingest.v1.IngestService"
+	rpcIssuance      = "vca.issuance.v1.IssuanceService"
+	rpcIssued        = "vca.issued.v1.IssuedService"
+	rpcPolicy        = "vca.policy.v1.PolicyService"
+	rpcResults       = "vca.results.v1.ResultsService"
+	rpcSchema        = "vca.schema.v1.SchemaService"
+	rpcSchemaBuilder = "vca.schemabuilder.v1.SchemaBuilderService"
+	rpcStatus        = "vca.status.v1.StatusService"
+	rpcTrust         = "vca.trust.v1.TrustService"
+	rpcWalletPortal  = "vca.walletportal.v1.WalletPortalService"
+)
+
+// auditCallers are the callers of the audit store of a service: the
+// admin reads every audit log (ADR-039).
+func auditCallers() []string { return []string{"admin"} }
+
+// statusCallers are the callers of a status service: the issuance
+// service allocates an entry, and the issued credentials service
+// changes it.
+func statusCallers() []string { return []string{"issuance", "issued-credentials"} }
+
+// adapterCallers are the callers of the Connect services of a DPG
+// adapter. Catalog fills the callers of the capability service with
+// every service that draws pages.
+func adapterCallers() map[string][]string {
+	return map[string][]string{
+		rpcCapability:    nil,
+		rpcIssuerBackend: {CLIPeer, "issuance", "issued-credentials", "schema-registry"},
+		rpcHolderBackend: {"wallet-auth", "wallet-portal"},
+		rpcVerifierBack:  {"verifier-discovery", "verifier-ingest"},
+		rpcCatalog:       {"schema-builder-ui"},
+		rpcTenant:        {"admin"},
+		rpcNotification:  {"admin"},
+		rpcBulkImport:    {"issuance"},
+	}
+}
+
+// withCallers adds the callers of one more Connect service to m.
+func withCallers(m map[string][]string, service string, callers ...string) map[string][]string {
+	m[service] = callers
+	return m
+}
+
+// PeerFile is the identity file of one service, relative to the
+// directory of its pair or of the landing.
+func PeerFile(service string) string { return filepath.Join(PeerDir, service+EnvFileName) }
+
+// ReadPeerAuthority reads the authority key of the deployment. A
+// missing file gives nil, so the first setup run makes one.
+func ReadPeerAuthority(root string) ([]byte, error) {
+	path := filepath.Join(root, PeerDir, PeerAuthorityFile)
+	raw, err := os.ReadFile(path) // #nosec G304 -- the path comes from the deploy root
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	return raw, nil
+}
+
+// peerAuthority parses the authority of an earlier run, or makes a new
+// one. A new one comes with the files that keep it, relative to the
+// deploy root.
+func peerAuthority(existing []byte, random io.Reader) (peerauth.Authority, []File, error) {
+	if len(existing) > 0 {
+		a, err := peerauth.ParseAuthority(existing)
+		if err != nil {
+			return peerauth.Authority{}, nil, fmt.Errorf("%s: %w", filepath.Join(PeerDir, PeerAuthorityFile), err)
+		}
+		return a, nil, nil
+	}
+	a, err := peerauth.NewAuthority(random)
+	if err != nil {
+		return peerauth.Authority{}, nil, err
+	}
+	pemBytes, err := a.PEM()
+	if err != nil {
+		return peerauth.Authority{}, nil, err
+	}
+	return a, []File{
+		{Name: filepath.Join(PeerDir, PeerAuthorityFile), Data: pemBytes, Mode: 0o600},
+		{Name: filepath.Join(PeerDir, ".gitignore"), Data: []byte("*\n"), Mode: 0o600},
+	}, nil
+}
+
+// peerIdentity issues the identity of one service and renders its file.
+// owner is the pair, or the service name of a deployment scoped service.
+func peerIdentity(a peerauth.Authority, owner string, s Service, random io.Reader, now time.Time) ([]byte, error) {
+	id, err := a.Issue(peerauth.ID{Service: s.Name, Pair: owner}, random, now)
+	if err != nil {
+		return nil, err
+	}
+	id.Callers = s.Callers
+	values := id.Env()
+	names := make([]string, 0, len(values))
+	for name := range values {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	fmt.Fprintf(&b, "# The identity of %s on the compose network (ADR-075).\n", s.Name)
+	b.WriteString("# The vca CLI wrote this file. Keep it secret. vca setup writes it again.\n")
+	for _, name := range names {
+		b.WriteString(name + "=" + quoteValue(values[name]) + "\n")
+	}
+	return []byte(b.String()), nil
+}
+
+// peerFiles returns the identity file of every service of a pair, and
+// of the landing, from the authority of the deployment.
+func peerFiles(p Pair, a peerauth.Authority, random io.Reader, now time.Time) (pair, shared []File, err error) {
+	// Git ignores the identity files beside the keys.
+	ignore := File{Name: filepath.Join(PeerDir, ".gitignore"), Data: []byte("*\n"), Mode: 0o600}
+	pair = append(pair, ignore)
+	for _, s := range ServicesFor(p) {
+		data, err := peerIdentity(a, p.Name(), s, random, now)
+		if err != nil {
+			return nil, nil, err
+		}
+		pair = append(pair, File{Name: PeerFile(s.Name), Data: data, Mode: 0o600})
+	}
+	for _, s := range DeploymentServices() {
+		data, err := peerIdentity(a, s.Name, s, random, now)
+		if err != nil {
+			return nil, nil, err
+		}
+		shared = append(shared,
+			File{Name: filepath.Join(s.Name, ignore.Name), Data: ignore.Data, Mode: ignore.Mode},
+			File{Name: filepath.Join(s.Name, PeerFile(s.Name)), Data: data, Mode: 0o600})
+	}
+	return pair, shared, nil
+}
+
+// PeerUpgradeOptions holds what one run of UpgradePeerIdentities needs.
+type PeerUpgradeOptions struct {
+	// Deploy is the deploy directory under the repository root.
+	Deploy string
+	// Random is the source of the keys.
+	Random io.Reader
+	// Now reads the clock. Nil reads the real clock.
+	Now func() time.Time
+	// Out receives the report. It never shows a key.
+	Out io.Writer
+}
+
+// UpgradePeerIdentities gives a deployment from before ADR-075 its
+// authority and an identity file for each service of every pair
+// directory with a .env, and for the landing. It keeps every identity
+// file that the authority signed, so a second run changes nothing. It
+// returns the number of identity files it wrote.
+func UpgradePeerIdentities(opts PeerUpgradeOptions) (int, error) {
+	now := time.Now
+	if opts.Now != nil {
+		now = opts.Now
+	}
+	existing, err := ReadPeerAuthority(opts.Deploy)
+	if err != nil {
+		return 0, err
+	}
+	authority, authFiles, err := peerAuthority(existing, opts.Random)
+	if err != nil {
+		return 0, err
+	}
+	for _, f := range authFiles {
+		if err := writePeerFile(opts.Deploy, f); err != nil {
+			return 0, err
+		}
+	}
+	if len(authFiles) > 0 {
+		anyval.DiscardWrite(fmt.Fprintf(opts.Out, "Made the peer authority %s.\n", filepath.Join(opts.Deploy, PeerDir, PeerAuthorityFile)))
+	}
+	trusted := authority.PublicSet()
+	type target struct {
+		owner string
+		dir   string
+		s     Service
+	}
+	var targets []target
+	for _, p := range AllPairs() {
+		dir := OutputDir(opts.Deploy, p)
+		if _, err := os.Stat(filepath.Join(dir, EnvFileName)); err != nil {
+			continue
+		}
+		for _, s := range ServicesFor(p) {
+			targets = append(targets, target{owner: p.Name(), dir: dir, s: s})
+		}
+	}
+	for _, s := range DeploymentServices() {
+		dir := filepath.Join(opts.Deploy, s.Name)
+		if _, err := os.Stat(filepath.Join(dir, EnvFileName)); err == nil {
+			targets = append(targets, target{owner: s.Name, dir: dir, s: s})
+		}
+	}
+	written := 0
+	for _, tg := range targets {
+		path := filepath.Join(tg.dir, PeerFile(tg.s.Name))
+		if current(path, trusted, tg.s) {
+			continue
+		}
+		data, err := peerIdentity(authority, tg.owner, tg.s, opts.Random, now())
+		if err != nil {
+			return written, err
+		}
+		for _, f := range []File{
+			{Name: filepath.Join(PeerDir, ".gitignore"), Data: []byte("*\n"), Mode: 0o600},
+			{Name: PeerFile(tg.s.Name), Data: data, Mode: 0o600},
+		} {
+			if err := writePeerFile(tg.dir, f); err != nil {
+				return written, err
+			}
+		}
+		anyval.DiscardWrite(fmt.Fprintf(opts.Out, "Wrote the identity of %s/%s.\n", tg.owner, tg.s.Name))
+		written++
+	}
+	if written == 0 {
+		anyval.DiscardWrite(fmt.Fprintln(opts.Out, "Every service already holds an identity of the peer authority. Nothing changed."))
+	}
+	return written, nil
+}
+
+// current reports whether the identity file at path holds an identity
+// of the authority with the callers of the catalogue.
+func current(path, trusted string, s Service) bool {
+	raw, err := os.ReadFile(path) // #nosec G304 -- the path comes from the deploy root
+	if err != nil {
+		return false
+	}
+	values, err := ParseDotenv(bytes.NewReader(raw))
+	if err != nil || values[peerauth.AuthorityEnv] != trusted {
+		return false
+	}
+	id, err := peerauth.Load(func(k string) string { return values[k] })
+	return err == nil && id.ID.Service == s.Name && id.Callers.String() == peerauth.Callers(s.Callers).String()
+}
+
+// writePeerFile writes one file under dir with its mode.
+func writePeerFile(dir string, f File) error {
+	path := filepath.Join(dir, f.Name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return fmt.Errorf("make %s: %w", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, f.Data, f.Mode); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if err := os.Chmod(path, f.Mode); err != nil {
+		return fmt.Errorf("set the mode of %s: %w", path, err)
+	}
+	return nil
+}
+
+// PeerHelmOptions holds what one run of HelmPeerSecrets needs.
+type PeerHelmOptions struct {
+	// Deploy is the deploy directory. It keeps the authority.
+	Deploy string
+	// Release is the name of the Helm release.
+	Release string
+	// Namespace is the namespace of the release. Empty leaves it out.
+	Namespace string
+	// Random is the source of the keys.
+	Random io.Reader
+	// Now reads the clock. Nil reads the real clock.
+	Now func() time.Time
+	// Out receives the manifests.
+	Out io.Writer
+}
+
+// HelmPeerSecrets writes one Kubernetes Secret per service chart to
+// opts.Out: <release>-<service>-peer, the Secret that the chart of the
+// service reads (ADR-075 decision 6). Under Helm one copy of each
+// service runs, so the release stands in for the pair. The authority
+// stays in deploy/peer, so a later run vouches for the same release.
+func HelmPeerSecrets(opts PeerHelmOptions) error {
+	if strings.TrimSpace(opts.Release) == "" {
+		return errors.New("the peer secrets need the name of the Helm release")
+	}
+	now := time.Now
+	if opts.Now != nil {
+		now = opts.Now
+	}
+	existing, err := ReadPeerAuthority(opts.Deploy)
+	if err != nil {
+		return err
+	}
+	authority, authFiles, err := peerAuthority(existing, opts.Random)
+	if err != nil {
+		return err
+	}
+	for _, f := range authFiles {
+		if werr := writePeerFile(opts.Deploy, f); werr != nil {
+			return werr
+		}
+	}
+	var b strings.Builder
+	for _, s := range Catalog() {
+		id, ierr := authority.Issue(peerauth.ID{Service: s.Name, Pair: opts.Release}, opts.Random, now())
+		if ierr != nil {
+			return ierr
+		}
+		id.Callers = s.Callers
+		values := id.Env()
+		names := make([]string, 0, len(values))
+		for name := range values {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		b.WriteString("---\n")
+		b.WriteString("# The identity of " + s.Name + " on the cluster network (ADR-075).\n")
+		b.WriteString("apiVersion: v1\nkind: Secret\nmetadata:\n")
+		fmt.Fprintf(&b, "  name: %s-%s-peer\n", opts.Release, s.Name)
+		if opts.Namespace != "" {
+			fmt.Fprintf(&b, "  namespace: %s\n", opts.Namespace)
+		}
+		b.WriteString("type: Opaque\nstringData:\n")
+		for _, name := range names {
+			fmt.Fprintf(&b, "  %s: %q\n", name, values[name])
+		}
+	}
+	_, err = io.WriteString(opts.Out, b.String())
+	return err
+}
+
+// CLIPeerClient returns a copy of c that signs its Connect calls as the
+// vca command. It issues an identity from the authority of the
+// deployment for this run. A deployment with no authority yet gets c
+// back unchanged.
+func CLIPeerClient(deploy string, c *http.Client, random io.Reader) (*http.Client, error) {
+	existing, err := ReadPeerAuthority(deploy)
+	if err != nil || existing == nil {
+		return c, err
+	}
+	authority, err := peerauth.ParseAuthority(existing)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", filepath.Join(deploy, PeerDir, PeerAuthorityFile), err)
+	}
+	id, err := authority.Issue(peerauth.ID{Service: CLIPeer}, random, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	return id.Client(c), nil
+}

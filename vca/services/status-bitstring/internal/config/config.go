@@ -12,6 +12,7 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/statuslist/bitstring"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/status-bitstring/internal/securer"
 )
@@ -50,6 +51,10 @@ type Config struct {
 	SecuringMethod string `env:"SECURING_METHOD" default:"jose"`
 	// PageSizeMax caps the page size of ListLists.
 	PageSizeMax int `env:"PAGE_SIZE_MAX" default:"50"`
+	// Peer is the identity of the service on the compose network and the
+	// callers of its Connect services, from the VCA_PEER_ variables of its
+	// identity file (ADR-075). They carry no service prefix.
+	Peer peerauth.Settings
 }
 
 // Load reads the settings with getenv, for example os.Getenv.
@@ -58,6 +63,11 @@ func Load(getenv func(string) string) (Config, error) {
 	if err := config.Load(Prefix, &c, getenv); err != nil {
 		return Config{}, err
 	}
+	peer, perr := peerauth.Load(getenv)
+	if perr != nil {
+		return Config{}, perr
+	}
+	c.Peer = peer
 	return c, c.Check()
 }
 

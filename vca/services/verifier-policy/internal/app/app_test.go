@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-policy/internal/config"
 )
 
@@ -24,6 +25,8 @@ func base(t *testing.T) config.Config {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Every RPC checks its caller, and the client of peers may call it (ADR-075).
+	cfg.Peer = peers.Open("verifier-policy")
 	return cfg
 }
 
@@ -72,7 +75,7 @@ func TestHandlerServes(t *testing.T) {
 	}
 	srv := httptest.NewServer(a.Mux)
 	defer srv.Close()
-	resp, err := srv.Client().Post(srv.URL+"/vca.policy.v1.PolicyService/ListChecks",
+	resp, err := peers.Client(srv.Client()).Post(srv.URL+"/vca.policy.v1.PolicyService/ListChecks",
 		"application/json", stringReader("{}"))
 	if err != nil {
 		t.Fatal(err)
@@ -101,3 +104,6 @@ func writeFile(path string) error { return os.WriteFile(path, nil, 0o600) }
 
 // stringReader returns a reader over s.
 func stringReader(s string) io.Reader { return strings.NewReader(s) }
+
+// peers is the peer authority of the tests of the package (ADR-075).
+var peers = peertest.Fixed()

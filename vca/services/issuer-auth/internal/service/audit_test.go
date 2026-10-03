@@ -24,7 +24,7 @@ import (
 // auditEvents reads every event of the service with the admin session.
 func (f *fixture) auditEvents(t *testing.T) []*auditv1.AuditEvent {
 	t.Helper()
-	client := auditv1connect.NewAuditServiceClient(f.srv.Client(), f.srv.URL, withBearer(f.adminSigner.Token(t, "kc|root", "super-admin")))
+	client := auditv1connect.NewAuditServiceClient(peers.Client(f.srv.Client()), f.srv.URL, withBearer(f.adminSigner.Token(t, "kc|root", "super-admin")))
 	res, err := client.Query(context.Background(), connect.NewRequest(&auditv1.QueryRequest{}))
 	if err != nil {
 		t.Fatalf("Query: %v", err)
@@ -114,7 +114,7 @@ func TestAuditQueryNeedsAdmin(t *testing.T) {
 		t.Fatalf("the issuer admin session: %v", err)
 	}
 	query := func(token string) error {
-		client := auditv1connect.NewAuditServiceClient(f.srv.Client(), f.srv.URL, withBearer(token))
+		client := auditv1connect.NewAuditServiceClient(peers.Client(f.srv.Client()), f.srv.URL, withBearer(token))
 		_, err := client.Query(ctx, connect.NewRequest(&auditv1.QueryRequest{}))
 		return err
 	}

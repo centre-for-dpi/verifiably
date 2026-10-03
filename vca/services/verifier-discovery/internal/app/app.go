@@ -22,6 +22,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
@@ -100,21 +101,21 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	})
 	trust := deps.Trust
 	if trust == nil && cfg.TrustURL != "" {
-		trust = trustv1connect.NewTrustServiceClient(&http.Client{Timeout: cfg.TrustTimeout}, cfg.TrustURL)
+		trust = trustv1connect.NewTrustServiceClient(cfg.Peer.Client(&http.Client{Timeout: cfg.TrustTimeout}), cfg.TrustURL)
 	}
 	crawler, crawlErr := crawl.New(crawl.Options{Trust: trust, Fetch: fetcher, Store: st, Now: deps.Now})
 	opts := service.Options{Store: st, Crawler: crawler, PageSizeMax: cfg.PageSizeMax, Now: deps.Now, Policy: deps.Policy}
 	if opts.Policy == nil && cfg.PolicyURL != "" {
 		// The policy service stays on the compose network (ADR-047).
-		opts.Policy = policyv1connect.NewPolicyServiceClient(&http.Client{Timeout: cfg.PolicyTimeout}, cfg.PolicyURL)
+		opts.Policy = policyv1connect.NewPolicyServiceClient(cfg.Peer.Client(&http.Client{Timeout: cfg.PolicyTimeout}), cfg.PolicyURL)
 	}
 	svc, serviceErr := service.New(opts)
 	assets, kit, _, assetsErr := uikit.LoadFile(cfg.ThemeFile)
 	shell, signOut := staffshell.Wire(staffshell.Setup{
-		Role: commonv1.Role_ROLE_VERIFIER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.BaseURL,
+		Role: commonv1.Role_ROLE_VERIFIER, Peers: cfg.Peers, Peer: cfg.Peer, Auth: cfg.Auth, PublicURL: cfg.BaseURL,
 		SignOut: cfg.PortalPrefix + "/signout", Prober: deps.Prober, Client: &http.Client{Timeout: cfg.TrustTimeout}, Now: deps.Now,
 	})
-	stackClient := &http.Client{Timeout: cfg.TrustTimeout}
+	stackClient := cfg.Peer.Client(&http.Client{Timeout: cfg.TrustTimeout})
 	pages, portalErr := portal.New(portal.Options{Client: svc, Prefix: cfg.PortalPrefix, Kit: kit, Shell: shell, SignOut: signOut,
 		ProofSchemas: ProofSchemasOf(shell, func(adapterURL string) backendv1connect.VerifierBackendServiceClient {
 			return backendv1connect.NewVerifierBackendServiceClient(stackClient, adapterURL)
@@ -126,7 +127,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.Handle(discoveryv1connect.NewDiscoveryServiceHandler(svc))
+	mux.Handle(discoveryv1connect.NewDiscoveryServiceHandler(svc, peerauth.Require(cfg.Peer)))
 	httpapi.New(httpapi.Options{Reader: svc, MaxAge: cfg.CatalogMaxAge}).Register(mux)
 	// The staff pages sit behind the guard. The catalogue endpoints
 	// above stay open (ADR-036 decision 2).

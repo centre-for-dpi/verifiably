@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/fake"
@@ -114,19 +115,20 @@ func TestBuildReportsABadStoreDirectory(t *testing.T) {
 // TestBuildWiresTheHolderAgent is ADR-062 decision 7: with the agent
 // the adapter serves the holder role, and without it the role is off.
 func TestBuildWiresTheHolderAgent(t *testing.T) {
+	peers := peertest.New(t)
 	f := fake.New(testdata)
 	defer f.Close()
 	agent := fake.NewAgent(testdata)
 	defer agent.Close()
 	cfg := settings(f)
 	cfg.AgentURL, cfg.AgentAPIKey, cfg.HolderLabel = agent.URL(), fake.AgentAPIKey, "Wallet"
-	a, err := app.Build(cfg, app.Deps{HTTP: f.Client()})
+	a, err := buildPeered(peers, cfg, app.Deps{HTTP: f.Client()})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 	srv := httptest.NewServer(a.Mux)
 	defer srv.Close()
-	resp, err := srv.Client().Post(srv.URL+"/vca.backend.v1.HolderBackendService/Register", "application/json",
+	resp, err := peers.Client(srv.Client()).Post(srv.URL+"/vca.backend.v1.HolderBackendService/Register", "application/json",
 		strings.NewReader(`{"pairwiseSubject":"s-1"}`))
 	if err != nil {
 		t.Fatal(err)
@@ -143,17 +145,18 @@ func TestBuildWiresTheHolderAgent(t *testing.T) {
 // TestBuildWiresTheStatusList lists revocation when the settings name
 // the status list host of the stack (P6-C5b).
 func TestBuildWiresTheStatusList(t *testing.T) {
+	peers := peertest.New(t)
 	f := fake.New(testdata)
 	defer f.Close()
 	for _, on := range []bool{false, true} {
 		cfg := settings(f)
 		cfg.StatusList = on
-		a, err := app.Build(cfg, app.Deps{HTTP: f.Client()})
+		a, err := buildPeered(peers, cfg, app.Deps{HTTP: f.Client()})
 		if err != nil {
 			t.Fatalf("Build: %v", err)
 		}
 		srv := httptest.NewServer(a.Mux)
-		resp, err := srv.Client().Post(srv.URL+"/vca.backend.v1.CapabilityService/GetCapabilities", "application/json", strings.NewReader(`{}`))
+		resp, err := peers.Client(srv.Client()).Post(srv.URL+"/vca.backend.v1.CapabilityService/GetCapabilities", "application/json", strings.NewReader(`{}`))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -166,4 +169,11 @@ func TestBuildWiresTheStatusList(t *testing.T) {
 			t.Errorf("status list %v: %s", on, body)
 		}
 	}
+}
+
+// buildPeered builds the service with an identity that lets the client
+// of peers call every RPC (ADR-075).
+func buildPeered(peers *peertest.Kit, cfg config.Config, deps app.Deps) (*app.App, error) {
+	cfg.Peer = peers.Open("dpg-adapter-credebl")
+	return app.Build(cfg, deps)
 }

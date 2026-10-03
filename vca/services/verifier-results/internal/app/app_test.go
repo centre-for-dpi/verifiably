@@ -26,6 +26,7 @@ import (
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession/staffsessiontest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
@@ -43,6 +44,8 @@ func base(t *testing.T) config.Config {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Every RPC checks its caller, and the client of peers may call it (ADR-075).
+	cfg.Peer = peers.Open("verifier-results")
 	return cfg
 }
 
@@ -135,7 +138,7 @@ func TestHandlerServes(t *testing.T) {
 	}
 	srv := httptest.NewServer(a.Mux)
 	defer srv.Close()
-	resp, err := srv.Client().Post(srv.URL+"/vca.results.v1.ResultsService/Query",
+	resp, err := peers.Client(srv.Client()).Post(srv.URL+"/vca.results.v1.ResultsService/Query",
 		"application/json", strings.NewReader("{}"))
 	if err != nil {
 		t.Fatal(err)
@@ -397,3 +400,6 @@ type stubRequests struct{}
 func (stubRequests) ListTransactions(context.Context, *connect.Request[ingestv1.ListTransactionsRequest]) (*connect.Response[ingestv1.ListTransactionsResponse], error) {
 	return connect.NewResponse(&ingestv1.ListTransactionsResponse{Page: &commonv1.PageResult{TotalSize: 4}}), nil
 }
+
+// peers is the peer authority of the tests of the package (ADR-075).
+var peers = peertest.Fixed()

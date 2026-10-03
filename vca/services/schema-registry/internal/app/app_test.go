@@ -23,6 +23,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession/staffsessiontest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
@@ -92,6 +93,8 @@ func settings(t *testing.T) config.Config {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Every RPC checks its caller, and the client of peers may call it (ADR-075).
+	cfg.Peer = peers.Open("schema-registry")
 	return cfg
 }
 
@@ -319,7 +322,7 @@ func writeFile(path, text string) error {
 
 // schemaClient builds a Connect client for the test server.
 func schemaClient(base string) schemav1connect.SchemaServiceClient {
-	return schemav1connect.NewSchemaServiceClient(http.DefaultClient, base)
+	return schemav1connect.NewSchemaServiceClient(peers.Client(nil), base)
 }
 
 // TestAppFailsOnBadThemeFile proves the service stops at start when the
@@ -331,3 +334,6 @@ func TestAppFailsOnBadThemeFile(t *testing.T) {
 	_, err := Build(cfg, Deps{})
 	uikittest.AssertBadThemeError(t, err, path)
 }
+
+// peers is the peer authority of the tests of the package (ADR-075).
+var peers = peertest.Fixed()

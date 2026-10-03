@@ -177,7 +177,13 @@ func BootstrapWaltid(ctx context.Context, opts BootstrapOptions) (BootstrapResul
 	if domain == "" {
 		return result, errors.New("bootstrap: VCA_PUBLIC_URL is not an absolute URL, so the did:web has no host")
 	}
-	adapter := backendv1connect.NewIssuerBackendServiceClient(opts.client(), base)
+	// The adapter checks its callers, so the CLI signs as cli with an
+	// identity of the authority of the deployment (ADR-075).
+	client, err := CLIPeerClient(filepath.Dir(opts.Dir), opts.client(), rand.Reader)
+	if err != nil {
+		return result, err
+	}
+	adapter := backendv1connect.NewIssuerBackendServiceClient(client, base)
 	current, err := adapter.GetIssuerIdentity(ctx, connect.NewRequest(&backendv1.GetIssuerIdentityRequest{}))
 	if err != nil {
 		return result, fmt.Errorf("the issuer adapter at %s: %w", base, err)

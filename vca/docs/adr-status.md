@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-074, one row per decision.
+ADR-075, one row per decision.
 
 The status values are:
 
@@ -36,7 +36,7 @@ A row that is not `Done` carries a note.
 | ADR-002 | 2 Small backend services with a Capabilities RPC | Done | `vca/proto/vca/backend/v1` | |
 | ADR-002 | 3 Each service owns its data | Partial | `vca/services/internal/store` | Each service owns its key space. A PostgreSQL backend and migration files are a follow-up. |
 | ADR-002 | 4 No writes into DPG databases or the Docker socket | Done | `vca/services/dpg-adapter-*` | |
-| ADR-002 | 5 Connect calls with mutual service identity | Partial | `vca/services/internal/dpgclient` | The calls use Connect. No service holds a peer identity check yet. |
+| ADR-002 | 5 Connect calls with mutual service identity | Done | `vca/internal/peerauth`, `vca/internal/cli/peer.go` | ADR-075: each service signs its calls with an identity of the deployment, and each internal Connect service checks its callers. The callee proves itself only by its address on the network. |
 | ADR-002 | 6 Trace Context through the OpenTelemetry SDK | Partial | `vca/services/internal/serve/trace` | The code passes `traceparent` by hand. The build network blocks the SDK module. |
 | ADR-002 | 7 One shared library of pure functions | Done | `vca/core` | |
 
@@ -792,12 +792,24 @@ A row that is not `Done` carries a note.
 | ADR-074 | 3 A service of several roles checks each role | Done | `deploy/vca/helm/dpg-adapter-*` | `TestMultiRoleChartsHonourEveryRole` renders the gate for each role. |
 | ADR-074 | 4 The old switch stops the render | Done | `deploy/vca/helm/vca/templates/roles-moved.yaml` | `TestUmbrellaRefusesTheOldRoleSwitch` pins it. |
 
+## ADR-075: Each internal Connect service checks which service calls it
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-075 | 1 One authority per deployment, kept by the CLI | Done | `vca/internal/cli/peer.go` | `TestSetupGivesEveryServiceAnIdentity` pins it. |
+| ADR-075 | 2 An identity file per service | Done | `vca/internal/cli/peer.go`, `vca/internal/cli/compose.go` | `TestSetupGivesEveryServiceAnIdentity` and `TestComposeGivesEachServiceItsIdentity` pin it. |
+| ADR-075 | 3 A signed token per call and one shared interceptor | Done | `vca/internal/peerauth` | `TestCheck`, `TestAnUnlistedCallerIsRefused` and the peer checks of the walt.id walkthrough pin it. |
+| ADR-075 | 4 The callers next to the routes of the catalogue | Done | `vca/internal/cli/services.go` | `TestEveryInternalConnectServiceListsItsCallers` and `TestEveryServiceLinkIsAListedCaller` pin it. |
+| ADR-075 | 5 The upgrade of an earlier deployment | Done | `vca/internal/cli/peer.go` | `TestUpgradeAddsPeerIdentities` pins it. |
+| ADR-075 | 6 One Secret per Helm chart | Done | `deploy/vca/helm/*/templates/deployment.yaml`, `vca/internal/cli/peer.go` | `TestServiceChartsReadTheirPeerSecret` and `TestHelmPeerSecrets` pin it. |
+| ADR-075 | 7 The guard test of the handlers | Done | `vca/internal/cli/peerguard_test.go` | `TestEveryConnectHandlerChecksItsCaller` pins it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 377 |
-| Partial | 20 |
+| Done | 385 |
+| Partial | 19 |
 | Deferred | 3 |
 | Not started | 5 |
-| Total | 405 |
+| Total | 412 |

@@ -25,6 +25,7 @@ import (
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/login"
@@ -128,6 +129,8 @@ func (f *fakeTrust) SyncRegistry(_ context.Context, req *connect.Request[trustv1
 
 // harness holds the whole service behind an HTTP server.
 type harness struct {
+	// peers is the peer authority of the test (ADR-075).
+	peers  *peertest.Kit
 	app    *app.App
 	server *httptest.Server
 	idp    *oidctest.Provider
@@ -182,6 +185,9 @@ func newHarnessWith(t *testing.T, withTrust bool, more func(*testing.T, *harness
 		// The test providers live on the loopback over plain http.
 		AllowPrivateNetwork: true, AllowPlainHTTP: true,
 	}
+	// The admin checks the callers of its audit store (ADR-075).
+	h.peers = peertest.New(t)
+	cfg.Peer = h.peers.Open("admin")
 	deps := app.Deps{Client: h.server.Client()}
 	if withTrust {
 		deps.Trust = h.trust

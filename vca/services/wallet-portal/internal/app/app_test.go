@@ -31,6 +31,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/walletauth/v1/walletauthv1connect"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1/walletportalv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
@@ -122,6 +123,8 @@ func load(t *testing.T, extra map[string]string) config.Config {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The service checks its callers (ADR-075).
+	cfg.Peer = peers.Open("wallet-portal")
 	return cfg
 }
 
@@ -355,7 +358,7 @@ func TestBuildRejects(t *testing.T) {
 // walletportalv1connectClient returns a Connect client for the server.
 func walletportalv1connectClient(t *testing.T, base string) walletportalv1connect.WalletPortalServiceClient {
 	t.Helper()
-	return walletportalv1connect.NewWalletPortalServiceClient(http.DefaultClient, base)
+	return walletportalv1connect.NewWalletPortalServiceClient(peers.Client(nil), base)
 }
 
 // fakeTrust answers the trust lookup.
@@ -653,3 +656,6 @@ func TestBuildOpensInvitationsWithADidcommStackWallet(t *testing.T) {
 		t.Fatalf("the scan keeps no invitation: %s", raw)
 	}
 }
+
+// peers is the peer authority of the tests of the package (ADR-075).
+var peers = peertest.Fixed()

@@ -17,6 +17,8 @@ import (
 
 	datasourcev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1/datasourcev1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/authz"
 	"github.com/centre-for-dpi/vc-adapters/services/data-source/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/servicetoken"
@@ -62,13 +64,16 @@ func TestBuildServesTheService(t *testing.T) {
 	issuer := staff(t)
 	deps := testDeps()
 	deps.SessionKeys = issuer.Keys()
-	a, err := Build(settings(t, map[string]string{"VCA_DATASOURCE_ALLOW_HOSTS": "api.example.org"}), deps)
+	peers := peertest.New(t)
+	cfg := settings(t, map[string]string{"VCA_DATASOURCE_ALLOW_HOSTS": "api.example.org"})
+	cfg.Peer = peers.Open("data-source")
+	a, err := Build(cfg, deps)
 	if err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(a.Mux)
 	defer srv.Close()
-	client := datasourcev1connect.NewDataSourceServiceClient(srv.Client(), srv.URL)
+	client := datasourcev1connect.NewDataSourceServiceClient(peers.Client(srv.Client()), srv.URL)
 
 	req := connect.NewRequest(&datasourcev1.CreateRequest{Source: &datasourcev1.Source{
 		DisplayName: "Staff list",
@@ -142,7 +147,10 @@ func TestBuildTakesTheServiceTokenOnLookup(t *testing.T) {
 	call := func(values map[string]string) error {
 		deps := testDeps()
 		deps.SessionKeys = staff(t).Keys()
-		a, err := Build(settings(t, values), deps)
+		peers := peertest.New(t)
+		cfg := settings(t, values)
+		cfg.Peer = peers.Open("data-source")
+		a, err := Build(cfg, deps)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -150,7 +158,7 @@ func TestBuildTakesTheServiceTokenOnLookup(t *testing.T) {
 		defer srv.Close()
 		req := connect.NewRequest(&datasourcev1.LookupRequest{SourceId: "absent", Field: "f", Value: "v", SchemaId: "s"})
 		servicetoken.Set(req.Header(), servicetoken.Derive(secret, servicetoken.DataSourceLookup))
-		_, err = datasourcev1connect.NewDataSourceServiceClient(srv.Client(), srv.URL).Lookup(context.Background(), req)
+		_, err = datasourcev1connect.NewDataSourceServiceClient(peers.Client(srv.Client()), srv.URL).Lookup(context.Background(), req)
 		return err
 	}
 	if err := call(map[string]string{"VCA_DATASOURCE_SERVICE_SECRET": secret}); connect.CodeOf(err) != connect.CodeNotFound {
@@ -158,5 +166,31 @@ func TestBuildTakesTheServiceTokenOnLookup(t *testing.T) {
 	}
 	if err := call(map[string]string{}); connect.CodeOf(err) != connect.CodeUnauthenticated {
 		t.Fatalf("without the secret: %v", err)
+	}
+}
+
+// TestTheServiceRefusesAnUnlistedCaller is ADR-075: a caller with an
+// identity of the deployment that the list does not name gets
+// permission_denied, before any session check.
+func TestTheServiceRefusesAnUnlistedCaller(t *testing.T) {
+	peers := peertest.New(t)
+	cfg := settings(t, nil)
+	cfg.Peer = peers.Identity("data-source", peerauth.Callers{"vca.datasource.v1.DataSourceService": {"schema-registry"}})
+	a, err := Build(cfg, testDeps())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(a.Mux)
+	defer srv.Close()
+	call := func(c *http.Client) connect.Code {
+		_, err := datasourcev1connect.NewDataSourceServiceClient(c, srv.URL).
+			List(context.Background(), connect.NewRequest(&datasourcev1.ListRequest{}))
+		return connect.CodeOf(err)
+	}
+	if code := call(peers.Identity("wallet-portal", nil).Client(srv.Client())); code != connect.CodePermissionDenied {
+		t.Errorf("an unlisted caller got %v", code)
+	}
+	if code := call(srv.Client()); code != connect.CodeUnauthenticated {
+		t.Errorf("a caller with no identity got %v", code)
 	}
 }

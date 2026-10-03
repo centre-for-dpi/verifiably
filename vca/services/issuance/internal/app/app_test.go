@@ -21,6 +21,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuancev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1/issuancev1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/config"
 )
@@ -100,8 +101,9 @@ func deps(buf *bytes.Buffer) app.Deps {
 }
 
 func TestBuildServesTheRpcAndTheDocument(t *testing.T) {
+	peers := peertest.New(t)
 	var buf bytes.Buffer
-	a, err := app.Build(settings(t, map[string]string{
+	a, err := buildPeered(peers, settings(t, map[string]string{
 		"VCA_ISSUANCE_PUBLIC_URL": "https://issuance.example.org",
 	}), deps(&buf))
 	if err != nil {
@@ -109,7 +111,7 @@ func TestBuildServesTheRpcAndTheDocument(t *testing.T) {
 	}
 	srv := httptest.NewServer(a.Mux)
 	defer srv.Close()
-	client := issuancev1connect.NewIssuanceServiceClient(srv.Client(), srv.URL)
+	client := issuancev1connect.NewIssuanceServiceClient(peers.Client(srv.Client()), srv.URL)
 	resp, err := client.Issue(context.Background(), connect.NewRequest(&issuancev1.IssueRequest{
 		SchemaId:    "farmer",
 		Delivery:    &issuancev1.Delivery{Channel: backendv1.Channel_CHANNEL_PDF},
@@ -123,7 +125,7 @@ func TestBuildServesTheRpcAndTheDocument(t *testing.T) {
 		t.Fatalf("offer = %v", resp.Msg.GetOffer())
 	}
 	ref := link[strings.LastIndex(link, "/")+1:]
-	doc, derr := srv.Client().Get(srv.URL + "/issuance/pdf/" + ref)
+	doc, derr := peers.Client(srv.Client()).Get(srv.URL + "/issuance/pdf/" + ref)
 	if derr != nil {
 		t.Fatalf("get the document: %v", derr)
 	}
@@ -138,7 +140,7 @@ func TestBuildServesTheRpcAndTheDocument(t *testing.T) {
 	if doc.Header.Get("Content-Type") != "application/pdf" {
 		t.Fatalf("content type = %q", doc.Header.Get("Content-Type"))
 	}
-	missing, merr := srv.Client().Get(srv.URL + "/issuance/pdf/does-not-exist")
+	missing, merr := peers.Client(srv.Client()).Get(srv.URL + "/issuance/pdf/does-not-exist")
 	if merr != nil {
 		t.Fatalf("get the document: %v", merr)
 	}
@@ -255,4 +257,11 @@ func TestBuildFillsTheDefaults(t *testing.T) {
 	if _, err := app.Build(settings(t, nil), app.Deps{}); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
+}
+
+// buildPeered builds the service with an identity that lets the client
+// of peers call every RPC (ADR-075).
+func buildPeered(peers *peertest.Kit, cfg config.Config, deps app.Deps) (*app.App, error) {
+	cfg.Peer = peers.Open("issuance")
+	return app.Build(cfg, deps)
 }

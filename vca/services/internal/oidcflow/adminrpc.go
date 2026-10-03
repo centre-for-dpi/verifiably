@@ -202,9 +202,11 @@ func (a AdminProviders) store(p Provider) (Provider, error) {
 	return stored, nil
 }
 
-// NewAdminHandler returns the Connect path and handler.
-func NewAdminHandler(svc adminv1connect.AdminServiceHandler) (string, http.Handler) {
-	return adminv1connect.NewAdminServiceHandler(svc)
+// NewAdminHandler returns the Connect path and handler. A service that
+// keeps the handler on the compose network passes peerauth.Require in
+// opts (ADR-075).
+func NewAdminHandler(svc adminv1connect.AdminServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	return adminv1connect.NewAdminServiceHandler(svc, opts...)
 }
 
 func (a AdminProviders) auth(ctx context.Context, h http.Header) error {

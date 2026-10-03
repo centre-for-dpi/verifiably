@@ -50,6 +50,13 @@ type Service struct {
 	// Mounts lists the volumes of a DPG stack file that the service
 	// shares with a container of the stack.
 	Mounts []Mount
+	// Callers maps each Connect service that the service serves on the
+	// compose network onto the services that may call it (ADR-075
+	// decision 4). CLIPeer names the vca command. The CLI writes the map
+	// into the identity file of the service, and the shared interceptor
+	// refuses every other caller. A Connect service with no caller still
+	// has an entry, so the table says so.
+	Callers map[string][]string
 }
 
 // Mount is one named volume of a stack file in a VCA service. The stack
@@ -293,7 +300,8 @@ func Catalog() []Service {
 				rpc("vca.admin.v1.AdminService"), jwks, auth,
 				{Match: "/device_authorization"}, {Match: "/token"}, {Match: "/cli/*"},
 				{Match: "/admin/*", Page: "Admin portal"}, assets,
-			}},
+			},
+			Callers: map[string][]string{rpcAudit: auditCallers()}},
 		// The data source service draws the bulk issuance pages at
 		// /sources/ behind the staff guard of issuer-auth (P3-08). Its
 		// RPCs take the same session and stay on the compose network, so
@@ -315,7 +323,10 @@ func Catalog() []Service {
 				{Env: "VCA_DATASOURCE_STORE_FILE", Value: "/data/sources.json"},
 				{Env: "VCA_DATASOURCE_CSV_DIR", Value: "/data/csv"},
 			},
-			Routes: []Route{{Match: "/sources/*", Page: "Data sources"}}},
+			Routes: []Route{{Match: "/sources/*", Page: "Data sources"}},
+			// The holder authorization server of the Inji adapter finds
+			// the subject of a claim, and the schema pages test a source.
+			Callers: map[string][]string{rpcDataSource: {"dpg-adapter-inji", "schema-registry"}}},
 		// The data volume keeps the verifier id and the tenant of each
 		// holder. A holder pair reaches the admin port of the shared agent
 		// for the wallets (ADR-062).
@@ -327,7 +338,8 @@ func Catalog() []Service {
 				// The stack file runs the status list host, so the offers
 				// of an issuer pair are revocable (P6-C5b).
 				{Env: CredeblAdapterStatusListEnv, Value: "true", Roles: issuer},
-			}},
+			},
+			Callers: adapterCallers()},
 		{Name: "dpg-adapter-inji", ListenEnv: "VCA_INJI_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_INJI,
 			Links: []Link{
 				dpgURL("VCA_INJI_CERTIFY_URL", commonv1.Role_ROLE_ISSUER),
@@ -384,7 +396,10 @@ func Catalog() []Service {
 				{Match: "/offers/*"}, {Match: InjiAuthzPath + "/*"},
 				{Match: "/.well-known/oauth-authorization-server" + InjiAuthzPath},
 				{Match: "/.well-known/openid-configuration" + InjiAuthzPath},
-			}},
+			},
+			// The admin portal edits the holder provider of the
+			// authorization server (ADR-056 decision 2).
+			Callers: withCallers(adapterCallers(), rpcAdmin, "admin")},
 		// The walt.id adapter keeps the issuer identity in its data volume
 		// (ADR-046 decision 4).
 		// The verifier pair also reaches verifier-api2 of the stack file,
@@ -402,7 +417,8 @@ func Catalog() []Service {
 				// adapter on the compose network. No public route leads
 				// there (ADR-047, P6-W5).
 				{Env: "VCA_WALTID_CALLBACK_URL", Kind: LinkAdapterURL, Roles: issuer},
-			}},
+			},
+			Callers: adapterCallers()},
 		// The issuance service is the issuer home (ADR-044 decision 1): it
 		// serves the overview, the identity, the issue, the notifications,
 		// and the help pages behind the staff guard, and the shared assets.
@@ -432,7 +448,9 @@ func Catalog() []Service {
 				{Match: "/help/*", Page: "Issuer help"}, assets,
 				// A did:web issuer of the host resolves here (ADR-046).
 				{Match: "/.well-known/did.json"},
-			}},
+			},
+			// A bulk run of the data source service issues each row.
+			Callers: map[string][]string{rpcIssuance: {"data-source"}, rpcAudit: auditCallers()}},
 		{Name: "issued-credentials", ListenEnv: "VCA_ISSUED_LISTEN", ExposedPort: 8084, Roles: issuer, Stateful: true, UI: true,
 			Links: append([]Link{
 				{Env: "VCA_ISSUED_STATUS_URL", Target: "status-bitstring", Kind: LinkURL},
@@ -447,7 +465,10 @@ func Catalog() []Service {
 			// An auditor reads the signed chain head and its key. The
 			// issued credentials pages sit behind the staff guard (P3-10).
 			// The IssuedService stays on the compose network (ADR-047).
-			Routes: []Route{{Match: "/issued/chain-head"}, {Match: "/issued/jwks.json"}, {Match: "/issued/*", Page: "Issued credentials"}}},
+			Routes: []Route{{Match: "/issued/chain-head"}, {Match: "/issued/jwks.json"}, {Match: "/issued/*", Page: "Issued credentials"}},
+			// The issuance service records each credential, and the schema
+			// list counts them.
+			Callers: map[string][]string{rpcIssued: {"issuance", "schema-registry"}, rpcAudit: auditCallers()}},
 		// The auth services draw the sign in chooser (ADR-035), so they
 		// read the theme file like every UI service.
 		{Name: "issuer-auth", ListenEnv: "VCA_ISSUER_AUTH_LISTEN", ExposedPort: 8081, Roles: issuer, Stateful: true, UI: true,
@@ -458,7 +479,8 @@ func Catalog() []Service {
 			Routes: []Route{
 				rpc("vca.issuerauth.v1.IssuerAuthService"), rpc("vca.admin.v1.AdminService"),
 				jwks, {Match: "/token"}, signIn,
-			}},
+			},
+			Callers: map[string][]string{rpcAudit: auditCallers()}},
 		{Name: "schema-builder-ui", ListenEnv: "VCA_SCHEMABUILDER_LISTEN", ExposedPort: 8081, Roles: issuer, UI: true,
 			Links: []Link{
 				{Env: "VCA_SCHEMABUILDER_REGISTRY_URL", Target: "schema-registry", Kind: LinkURL},
@@ -470,7 +492,9 @@ func Catalog() []Service {
 			},
 			// The root of the service redirects to /builder/, but the home
 			// of the issuer takes the root of the pair.
-			Routes: []Route{{Match: "/builder/*", Page: "Schema builder"}, {Match: "/pdf/preview/*"}}},
+			Routes: []Route{{Match: "/builder/*", Page: "Schema builder"}, {Match: "/pdf/preview/*"}},
+			// The builder page calls its service in process.
+			Callers: map[string][]string{rpcSchemaBuilder: {}}},
 		{Name: "schema-registry", ListenEnv: "VCA_SCHEMA_LISTEN", ExposedPort: 8080, Roles: issuer, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_SCHEMA_BASE_URL", Kind: LinkPublicURL},
@@ -492,7 +516,8 @@ func Catalog() []Service {
 				{Match: "/.well-known/openid-credential-issuer"}, {Match: "/.well-known/vct/*"},
 				{Match: "/vct/*"}, {Match: "/schemas/*"}, {Match: "/api/schemas"},
 				{Match: "/portal/*", Page: "Schemas"},
-			}},
+			},
+			Callers: map[string][]string{rpcSchema: {"data-source", "issuance", "schema-builder-ui"}}},
 		{Name: "status-bitstring", ListenEnv: "VCA_STATUS_BITSTRING_LISTEN", ExposedPort: 8084, Roles: issuer, Stateful: true,
 			Links: []Link{
 				{Env: "VCA_STATUS_BITSTRING_BASE_URL", Kind: LinkPublicURL, Path: "/status-bitstring"},
@@ -503,14 +528,16 @@ func Catalog() []Service {
 			// and the same Connect service, so each keeps its own prefix.
 			// The proxy publishes the lists and the key set, never the
 			// Connect service (ADR-047).
-			Routes: statusRoutes("/status-bitstring")},
+			Routes:  statusRoutes("/status-bitstring"),
+			Callers: map[string][]string{rpcStatus: statusCallers()}},
 		{Name: "status-token", ListenEnv: "VCA_STATUS_TOKEN_LISTEN", ExposedPort: 8085, Roles: issuer, Stateful: true,
 			Links: []Link{
 				{Env: "VCA_STATUS_TOKEN_BASE_URL", Kind: LinkPublicURL, Path: "/status-token"},
 				signingKey("VCA_STATUS_TOKEN_SIGNING_KEY_FILE"),
 			},
-			Fixed:  state("VCA_STATUS_TOKEN_STATE_DIR"),
-			Routes: statusRoutes("/status-token")},
+			Fixed:   state("VCA_STATUS_TOKEN_STATE_DIR"),
+			Routes:  statusRoutes("/status-token"),
+			Callers: map[string][]string{rpcStatus: statusCallers()}},
 		{Name: "trust-registry", ListenEnv: "VCA_TRUST_LISTEN", ExposedPort: 8080, Roles: admin, Stateful: true,
 			Links: append([]Link{
 				{Env: "VCA_TRUST_BASE_URL", Kind: LinkPublicURL, Path: "/trust-registry"},
@@ -524,6 +551,10 @@ func Catalog() []Service {
 			Routes: []Route{
 				{Match: "/trust-registry/trust-list/*", Strip: true}, {Match: "/trust-registry/.well-known/*", Strip: true},
 				{Match: "/trust-registry/dedi/*", Strip: true}, {Match: "/trust-registry/trust/*", Strip: true},
+			},
+			Callers: map[string][]string{
+				rpcTrust: {"admin", "issuance", "verifier-discovery", "verifier-policy", "wallet-portal"},
+				rpcAudit: auditCallers(),
 			}},
 		// The verifier staff sign in service (ADR-036 decision 1). It shares
 		// the routes of issuer-auth and draws the same chooser.
@@ -533,15 +564,18 @@ func Catalog() []Service {
 			Routes: []Route{
 				rpc("vca.verifierauth.v1.VerifierAuthService"), rpc("vca.admin.v1.AdminService"),
 				jwks, {Match: "/token"}, signIn,
-			}},
+			},
+			Callers: map[string][]string{rpcAudit: auditCallers()}},
 		{Name: "verifier-combined", ListenEnv: "VCA_VERIFIER_COMBINED_LISTEN", ExposedPort: 8088, Roles: verifier, Stateful: true,
 			Links: []Link{
 				{Env: "VCA_VERIFIER_COMBINED_POLICY_URL", Target: "verifier-policy", Kind: LinkURL},
 				{Env: "VCA_VERIFIER_COMBINED_RESULTS_URL", Target: "verifier-results", Kind: LinkURL},
 				{Env: "VCA_VERIFIER_COMBINED_DISCOVERY_URL", Target: "verifier-discovery", Kind: LinkURL},
 			},
-			// No caller outside the compose network exists (ADR-047).
-			Fixed: state("VCA_VERIFIER_COMBINED_STATE_DIR")},
+			// No caller outside the compose network exists (ADR-047), and
+			// no service calls it.
+			Fixed:   state("VCA_VERIFIER_COMBINED_STATE_DIR"),
+			Callers: map[string][]string{rpcCombined: {}}},
 		{Name: "verifier-discovery", ListenEnv: "VCA_DISCOVERY_LISTEN", ExposedPort: 8090, Roles: verifier, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_DISCOVERY_BASE_URL", Kind: LinkPublicURL},
@@ -564,7 +598,10 @@ func Catalog() []Service {
 				FixedValue{Env: "VCA_DISCOVERY_ALLOW_PRIVATE_NETWORK", Value: "true", Local: true}),
 			// A wallet reads the catalogue over plain HTTP. The pages call
 			// the DiscoveryService in process (ADR-047).
-			Routes: []Route{{Match: "/catalog"}, {Match: "/catalog/*"}, {Match: "/discovery/*", Page: "Issuer discovery"}}},
+			Routes: []Route{{Match: "/catalog"}, {Match: "/catalog/*"}, {Match: "/discovery/*", Page: "Issuer discovery"}},
+			Callers: map[string][]string{
+				rpcDiscovery: {"verifier-combined", "verifier-ingest", "verifier-results", "wallet-portal"},
+			}},
 		{Name: "verifier-ingest", ListenEnv: "VCA_INGEST_LISTEN", ExposedPort: 8091, Roles: verifier, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_INGEST_BASE_URL", Kind: LinkPublicURL},
@@ -583,12 +620,16 @@ func Catalog() []Service {
 			// The wallet reaches the OID4VP endpoints under the base URL,
 			// and the scanner page links with absolute paths, so the
 			// service sits at the root.
-			Routes: []Route{{Match: "/oid4vp/*"}, {Match: "/scan/*", Page: "Scanner"}}},
+			Routes:  []Route{{Match: "/oid4vp/*"}, {Match: "/scan/*", Page: "Scanner"}},
+			Callers: map[string][]string{rpcIngest: {"verifier-results"}}},
 		{Name: "verifier-policy", ListenEnv: "VCA_VERIFIER_POLICY_LISTEN", ExposedPort: 8086, Roles: verifier, Stateful: true,
 			// verifier-results and verifier-combined call it on the compose
 			// network (ADR-047).
 			Links: []Link{{Env: "VCA_VERIFIER_POLICY_TRUST_URL", Target: "trust-registry", Kind: LinkURL}},
-			Fixed: state("VCA_VERIFIER_POLICY_STATE_DIR")},
+			Fixed: state("VCA_VERIFIER_POLICY_STATE_DIR"),
+			Callers: map[string][]string{
+				rpcPolicy: {"verifier-combined", "verifier-discovery", "verifier-ingest", "verifier-results"},
+			}},
 		{Name: "verifier-results", ListenEnv: "VCA_VERIFIER_RESULTS_LISTEN", ExposedPort: 8087, Roles: verifier, Stateful: true, UI: true,
 			Links: append([]Link{
 				{Env: "VCA_VERIFIER_RESULTS_POLICY_URL", Target: "verifier-policy", Kind: LinkURL},
@@ -604,7 +645,8 @@ func Catalog() []Service {
 			Fixed: append(state("VCA_VERIFIER_RESULTS_STATE_DIR"), resultsAuditDir),
 			Routes: []Route{
 				{Match: "/portal/*", Page: "Verification results"}, {Match: "/verify/*", Page: "Citizen check"}, assets,
-			}},
+			},
+			Callers: map[string][]string{rpcResults: {"verifier-combined", "verifier-ingest"}, rpcAudit: auditCallers()}},
 		{Name: "wallet-auth", ListenEnv: "VCA_WALLET_AUTH_LISTEN", ExposedPort: 8083, Roles: holder, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_WALLET_AUTH_HOLDER_BACKEND_URL", Kind: LinkAdapterURL},
@@ -617,7 +659,8 @@ func Catalog() []Service {
 			Routes: []Route{
 				rpc("vca.walletauth.v1.WalletAuthService"), rpc("vca.admin.v1.AdminService"),
 				jwks, {Match: "/auth/*", Strip: true, Page: "Sign in"},
-			}},
+			},
+			Callers: map[string][]string{rpcAudit: auditCallers()}},
 		{Name: "wallet-portal", ListenEnv: "VCA_WALLET_PORTAL_LISTEN", ExposedPort: 8092, Roles: holder, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_WALLET_PORTAL_AUTH_JWKS_URL", Target: "wallet-auth", Path: "/.well-known/jwks.json", Kind: LinkURL},
@@ -637,9 +680,25 @@ func Catalog() []Service {
 			// The pages call the WalletPortalService in process and the
 			// browser reaches /wallet/blobs, so the proxy does not publish
 			// the Connect service (ADR-047).
-			Routes: []Route{{Match: "/wallet/*", Page: "Wallet"}, assets}},
+			Routes: []Route{{Match: "/wallet/*", Page: "Wallet"}, assets},
+			// The pages call the service in process.
+			Callers: map[string][]string{rpcWalletPortal: {}}},
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	// Every service that draws pages probes the capabilities of each
+	// adapter of the deployment (ADR-034 decision 2), so each adapter
+	// lists them all.
+	var pages []string
+	for _, s := range out {
+		if s.UI {
+			pages = append(pages, s.Name)
+		}
+	}
+	for i := range out {
+		if _, ok := out[i].Callers[rpcCapability]; ok {
+			out[i].Callers[rpcCapability] = pages
+		}
+	}
 	return out
 }
 

@@ -22,6 +22,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1/adminv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/auditfed"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/config"
@@ -136,18 +137,21 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	// peer signs the calls of the internal services as the admin
+	// (ADR-075).
+	peer := cfg.Peer.Client(deps.Client)
 	trust := deps.Trust
 	if trust == nil && cfg.TrustURL != "" {
-		trust = trustv1connect.NewTrustServiceClient(deps.Client, cfg.TrustURL)
+		trust = trustv1connect.NewTrustServiceClient(peer, cfg.TrustURL)
 	}
 	prober := deps.Prober
 	if prober == nil && len(cfg.Peers) > 0 {
-		prober = &topology.Prober{Peers: cfg.Peers, Client: deps.Client, Now: deps.Now}
+		prober = &topology.Prober{Peers: cfg.Peers, Client: peer, Now: deps.Now}
 	}
 	var push *fanout.FanOut
 	var dpgs *stacks.Directory
 	if prober != nil {
-		dpgs = stacks.New(prober.Snapshot, deps.Client)
+		dpgs = stacks.New(prober.Snapshot, peer)
 		if push, err = fanout.New(fanout.Options{Snapshot: prober.Snapshot, Client: deps.Client, Timeout: cfg.Timeout}); err != nil {
 			return nil, err
 		}
@@ -166,7 +170,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	fedOpts := auditfed.Options{Local: svc.Audit(), Self: cfg.PublicURL, Client: deps.Client}
+	fedOpts := auditfed.Options{Local: svc.Audit(), Self: cfg.PublicURL, Client: peer}
 	if prober != nil {
 		fedOpts.Snapshot = prober.Snapshot
 	}
@@ -177,7 +181,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	pagesOpts := portal.Options{
 		Client: svc, Login: loginService, Prefix: cfg.PortalPrefix, Kit: kit,
 		Audit: federation, Retention: auditLog.Retention,
-		LandingURL: cfg.LandingURL, PublicURL: cfg.PublicURL, PeerClient: deps.Client,
+		LandingURL: cfg.LandingURL, PublicURL: cfg.PublicURL, PeerClient: peer,
 		Fetcher: fetchguard.New(fetchguard.Options{
 			Guard:  fetchguard.Guard{AllowPrivateNetwork: cfg.AllowPrivateNetwork, AllowPlainHTTP: cfg.AllowPlainHTTP},
 			Client: deps.Client, Timeout: cfg.Timeout,
@@ -205,7 +209,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 func (a *App) mount(assets http.Handler) {
 	path, handler := adminv1connect.NewAdminServiceHandler(a.Service)
 	a.Mux.Handle(path, oidcflow.RejectQueryTokens(handler))
-	auditPath, auditHandler := auditlog.NewHandler(a.Service.Audit())
+	auditPath, auditHandler := auditlog.NewHandler(a.Service.Audit(), peerauth.Require(a.Config.Peer))
 	a.Mux.Handle(auditPath, oidcflow.RejectQueryTokens(auditHandler))
 	a.Mux.Handle("GET /.well-known/jwks.json", a.Login.Signer().JWKSHandler())
 	handlers := a.Login.Handlers()

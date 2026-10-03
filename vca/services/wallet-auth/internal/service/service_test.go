@@ -28,6 +28,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	walletauthv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletauth/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/walletauth/v1/walletauthv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow/oidctest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/serve"
@@ -130,6 +131,8 @@ func newFixture(t *testing.T) *fixture {
 		Salt:           []byte("deployment-salt-0123456789"),
 		GrantType:      config.DefaultGrantType,
 		LogoutRedirect: "/bye",
+		// The audit store checks its callers (ADR-075).
+		Peer: peers.Open("wallet-auth"),
 	}
 	f.svc = service.New(cfg, service.Deps{
 		Flow:      &oidcflow.Flow{Cache: oidcflow.NewCache(nil, 0)},
@@ -748,3 +751,6 @@ func TestSessionNamesTheHolder(t *testing.T) {
 		t.Fatalf("name = %q", body.Claims.Name)
 	}
 }
+
+// peers is the peer authority of the tests of the package (ADR-075).
+var peers = peertest.Fixed()

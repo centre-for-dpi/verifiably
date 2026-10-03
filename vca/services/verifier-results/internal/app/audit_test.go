@@ -26,7 +26,7 @@ func TestAuditServiceNeedsAdmin(t *testing.T) {
 	}
 	srv := httptest.NewServer(a.Mux)
 	defer srv.Close()
-	client := auditv1connect.NewAuditServiceClient(srv.Client(), srv.URL)
+	client := auditv1connect.NewAuditServiceClient(peers.Client(srv.Client()), srv.URL)
 	query := func(token string) error {
 		req := connect.NewRequest(&auditv1.QueryRequest{})
 		if token != "" {

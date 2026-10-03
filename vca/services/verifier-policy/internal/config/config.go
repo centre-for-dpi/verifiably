@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-policy/internal/cache"
 )
@@ -73,6 +74,10 @@ type Config struct {
 	// CacheTick is how often the schedule looks for a due read. Zero
 	// turns the schedule off.
 	CacheTick time.Duration `env:"CACHE_TICK" default:"1m"`
+	// Peer is the identity of the service on the compose network and the
+	// callers of its Connect services, from the VCA_PEER_ variables of its
+	// identity file (ADR-075). They carry no service prefix.
+	Peer peerauth.Settings
 }
 
 // CachePolicy returns the trust cache policy of the settings.
@@ -90,6 +95,11 @@ func Load(getenv func(string) string) (Config, error) {
 	if err := config.Load(Prefix, &c, getenv); err != nil {
 		return Config{}, err
 	}
+	peer, perr := peerauth.Load(getenv)
+	if perr != nil {
+		return Config{}, perr
+	}
+	c.Peer = peer
 	return c, c.Check()
 }
 

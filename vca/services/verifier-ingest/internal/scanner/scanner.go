@@ -46,6 +46,7 @@ import (
 	ingestv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/qrscan"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
@@ -81,6 +82,8 @@ type Options struct {
 	Stack func(adapterURL string) StackVerifier
 	// StackTimeout bounds one call to the adapter. Zero means 30 seconds.
 	StackTimeout time.Duration
+	// Peer signs each call of the adapter (ADR-075).
+	Peer peerauth.Settings
 	// Discovery reads the saved queries of the request pages. Nil offers
 	// no query.
 	Discovery Templates
@@ -143,7 +146,7 @@ func New(opts Options) (*Page, error) {
 	if opts.ResultsPath == "" {
 		opts.ResultsPath = DefaultResultsPath
 	}
-	client := &http.Client{Timeout: opts.StackTimeout}
+	client := opts.Peer.Client(&http.Client{Timeout: opts.StackTimeout})
 	if opts.Stack == nil {
 		opts.Stack = func(adapterURL string) StackVerifier {
 			return backendv1connect.NewVerifierBackendServiceClient(client, adapterURL)

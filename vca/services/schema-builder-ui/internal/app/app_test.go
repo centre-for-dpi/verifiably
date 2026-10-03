@@ -14,6 +14,7 @@ import (
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession/staffsessiontest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
@@ -33,6 +34,8 @@ func settings(t *testing.T, values map[string]string) config.Config {
 	if err != nil {
 		t.Fatalf("config: %v", err)
 	}
+	// Every RPC checks its caller, and the client of peers may call it (ADR-075).
+	cfg.Peer = peers.Open("schema-builder-ui")
 	return cfg
 }
 
@@ -139,6 +142,7 @@ func TestWiring(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/vca.schemabuilder.v1.SchemaBuilderService/SampleData",
 			strings.NewReader(`{"jsonSchema":`+quote(document)+`}`))
 		req.Header.Set("Content-Type", "application/json")
+		peers.Sign(req)
 		a.Mux.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
@@ -288,3 +292,6 @@ func TestCatalogClients(t *testing.T) {
 		t.Fatal("no catalogue client")
 	}
 }
+
+// peers is the peer authority of the tests of the package (ADR-075).
+var peers = peertest.Fixed()

@@ -284,7 +284,15 @@ deploy/keycloak-<dpg>/vca-<role>-realm.json    mode 0644
 deploy/keycloak-<dpg>/.env                     mode 0600
 deploy/<dpg>/.env                              mode 0600
 deploy/<dpg>/.gitignore                        mode 0600
+deploy/<role>-<dpg>/peer/<service>.env         mode 0600
+deploy/landing/peer/landing.env                mode 0600
+deploy/peer/authority.pem                      mode 0600
 ```
+
+Each service gets an identity file of its own (ADR-075).
+The first run makes the authority key of the deployment, and every
+later run keeps it.
+See `docs/deploy.md`, section Service identity.
 
 Every DPG stack ships a Keycloak, and every role has its own realm
 (ADR-035 decision 1). So every pair writes its realm into the
@@ -613,6 +621,32 @@ The first `vca setup` run already does this for a stack with no `.env`.
 Run the command when the `.env` exists, before `vca deploy`.
 `vca doctor` names each volume that needs it.
 Rotate the old passwords later, as `docs/deploy.md` says.
+
+The command first gives each service an identity of the deployment
+(ADR-075).
+A release before it wrote no identity files, and compose stops without
+them.
+The command makes `deploy/peer/authority.pem` when it is missing.
+It then writes `deploy/<pair>/peer/<service>.env` for every service of
+each pair directory, and the file of the landing.
+It keeps each file that the authority signed, so a second run changes
+nothing.
+This step needs no Docker.
+
+## peer secrets
+
+```sh
+vca peer secrets --release <release> [--namespace <namespace>] | kubectl apply -f -
+```
+
+Every internal Connect service checks which service calls it (ADR-075).
+Under Helm, each pod reads its identity from the Secret
+`<release>-<service>-peer`.
+The command prints one such Secret for every service chart.
+It keeps the authority in `deploy/peer/authority.pem`, so a later run
+vouches for the same release.
+A pod does not start without its Secret.
+Set `peer.secret` of a chart to read a Secret of another name.
 
 ## dpg rotate-authz-key
 

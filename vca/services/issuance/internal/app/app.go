@@ -17,6 +17,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
@@ -96,6 +97,8 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: cfg.Timeout}
 	}
+	// The client signs every call of an internal service (ADR-075).
+	httpClient = cfg.Peer.Sign(httpClient)
 	capability := deps.Capability
 	if capability == nil {
 		capability = backendv1connect.NewCapabilityServiceClient(httpClient, cfg.AdapterURL)
@@ -119,7 +122,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	recorder := deps.Recorder
 	if recorder == nil {
 		if cfg.IssuedURL != "" {
-			recorder = clients.NewConnectRecorder(cfg.IssuedURL, &http.Client{Timeout: cfg.Timeout})
+			recorder = clients.NewConnectRecorder(cfg.IssuedURL, cfg.Peer.Client(&http.Client{Timeout: cfg.Timeout}))
 		} else {
 			recorder = clients.LogRecorder(deps.Log)
 		}
@@ -153,10 +156,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.Handle(issuancev1connect.NewIssuanceServiceHandler(svc))
+	mux.Handle(issuancev1connect.NewIssuanceServiceHandler(svc, peerauth.Require(cfg.Peer)))
 	auditPath, auditHandler := auditlog.NewHandler(auditlog.Handler{
 		Log: events, Service: service.Name, Authorize: oidcflow.AuditAuthorizer(cfg.AdminToken, cfg.AdminJWKSURL, nil),
-	})
+	}, peerauth.Require(cfg.Peer))
 	mux.Handle(auditPath, oidcflow.RejectQueryTokens(auditHandler))
 	mux.HandleFunc("GET "+service.DocumentPath+"{ref}", documentHandler(svc))
 	if err := mountPages(mux, wiring{cfg: cfg, deps: deps, client: httpClient, capability: capability, events: events, issuance: svc}); err != nil {
@@ -261,7 +264,7 @@ func mountPages(mux *http.ServeMux, wr wiring) error {
 		return err
 	}
 	shell, signOut := staffshell.Wire(staffshell.Setup{
-		Role: commonv1.Role_ROLE_ISSUER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.PublicURL,
+		Role: commonv1.Role_ROLE_ISSUER, Peers: cfg.Peers, Peer: cfg.Peer, Auth: cfg.Auth, PublicURL: cfg.PublicURL,
 		SignOut: pages.SignOutPath, Prober: deps.Prober, Client: httpClient, Now: deps.Now,
 	})
 	opts := pages.Options{

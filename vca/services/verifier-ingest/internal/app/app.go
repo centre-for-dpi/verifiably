@@ -31,6 +31,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1/resultsv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
@@ -112,14 +113,14 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	}
 	discovery := deps.Discovery
 	if discovery == nil && cfg.DiscoveryURL != "" {
-		discovery = discoveryv1connect.NewDiscoveryServiceClient(&http.Client{Timeout: cfg.DiscoveryTimeout}, cfg.DiscoveryURL)
+		discovery = discoveryv1connect.NewDiscoveryServiceClient(cfg.Peer.Client(&http.Client{Timeout: cfg.DiscoveryTimeout}), cfg.DiscoveryURL)
 	}
 	shell, signOut := staffshell.Wire(staffshell.Setup{
-		Role: commonv1.Role_ROLE_VERIFIER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.BaseURL,
+		Role: commonv1.Role_ROLE_VERIFIER, Peers: cfg.Peers, Peer: cfg.Peer, Auth: cfg.Auth, PublicURL: cfg.BaseURL,
 		SignOut: "/" + strings.Trim(cfg.ScannerPrefix, "/") + "/signout", Prober: deps.Prober,
 		Client: &http.Client{Timeout: cfg.DiscoveryTimeout}, Now: deps.Now,
 	})
-	internal := &http.Client{Timeout: cfg.EvaluateTimeout}
+	internal := cfg.Peer.Client(&http.Client{Timeout: cfg.EvaluateTimeout})
 	var policy service.Evaluator
 	if cfg.PolicyURL != "" {
 		policy = policyv1connect.NewPolicyServiceClient(internal, cfg.PolicyURL)
@@ -130,7 +131,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	}
 	requests := deps.Requests
 	if requests == nil {
-		stackClient := &http.Client{Timeout: cfg.StackTimeout}
+		stackClient := cfg.Peer.Client(&http.Client{Timeout: cfg.StackTimeout})
 		requests = func(adapterURL string) service.StackVerifier {
 			return backendv1connect.NewVerifierBackendServiceClient(stackClient, adapterURL)
 		}
@@ -169,7 +170,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	})
 	page, pageErr := scanner.New(scanner.Options{
 		Client: svc, Prefix: cfg.ScannerPrefix, Kit: kit, Shell: shell, SignOut: signOut,
-		Links: links, Stack: deps.Stack, StackTimeout: cfg.StackTimeout,
+		Links: links, Stack: deps.Stack, StackTimeout: cfg.StackTimeout, Peer: cfg.Peer,
 		Discovery: discovery, Results: resultsReader(results), Stacks: stacks,
 	})
 	guard, guardErr := staffsession.Build(cfg.Auth, staffsession.VerifierRealm(), config.Prefix, staffsession.Deps{
@@ -179,7 +180,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.Handle(ingestv1connect.NewIngestServiceHandler(svc))
+	mux.Handle(ingestv1connect.NewIngestServiceHandler(svc, peerauth.Require(cfg.Peer)))
 	wallet.Register(mux)
 	// The camera page sits behind the guard. The OID4VP endpoints of the
 	// wallet above stay open (ADR-036 decision 2).

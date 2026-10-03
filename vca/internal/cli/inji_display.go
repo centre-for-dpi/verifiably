@@ -4,6 +4,7 @@ package cli
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -147,7 +148,12 @@ func DpgApplyInji(ctx context.Context, opts ApplyOptions) error {
 	if err != nil {
 		return err
 	}
-	res, err := backendv1connect.NewIssuerBackendServiceClient(boot.client(), base).
+	// The adapter checks its callers (ADR-075).
+	client, err := CLIPeerClient(deploy, boot.client(), rand.Reader)
+	if err != nil {
+		return err
+	}
+	res, err := backendv1connect.NewIssuerBackendServiceClient(client, base).
 		GetIssuerIdentity(ctx, connect.NewRequest(&backendv1.GetIssuerIdentityRequest{}))
 	if err != nil {
 		return fmt.Errorf("dpg apply inji: read the issuer identity at %s: %w", base, err)

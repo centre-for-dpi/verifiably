@@ -37,6 +37,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/cli"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow/oidctest"
 )
@@ -167,6 +168,9 @@ type deployment struct {
 	// answers holds the answers of the operator to the questions of
 	// vca setup.
 	answers map[string]string
+	// authority is the peer authority of the deployment, as vca setup
+	// keeps it in deploy/peer (ADR-075).
+	authority []byte
 }
 
 // runningPair is one pair of the deployment.
@@ -180,16 +184,28 @@ type runningPair struct {
 	ports map[string]int
 	// env is the settings of the pair after the rewrite.
 	env map[string]string
+	// identities holds the identity file of each service by service
+	// name (ADR-075).
+	identities map[string]map[string]string
 }
 
 // newDeployment prepares a deployment of the pairs. dpgURLs maps each
 // DPG address of the stack file onto its double.
 func newDeployment(t *testing.T, pairs []cli.Pair, dpgURLs map[string]string) *deployment {
 	t.Helper()
+	authority, err := peerauth.NewAuthority(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorityPEM, err := authority.PEM()
+	if err != nil {
+		t.Fatal(err)
+	}
 	d := &deployment{
 		t: t, pairs: map[string]*runningPair{}, dpgURLs: dpgURLs,
 		providers: map[commonv1.Role]*oidctest.Provider{}, logs: map[string]*logBuffer{},
 		extra: map[string]map[string]string{}, exited: map[string]chan struct{}{}, answers: map[string]string{},
+		authority: authorityPEM,
 	}
 	names := []string{cli.LandingService}
 	for _, p := range pairs {
@@ -267,28 +283,51 @@ func (d *deployment) replacer(t *testing.T) *strings.Replacer {
 // plan returns the .env of a pair as vca setup writes it.
 func (d *deployment) plan(t *testing.T, p cli.Pair) map[string]string {
 	t.Helper()
+	values, _ := d.planWithPeers(t, p)
+	return values
+}
+
+// planWithPeers returns the .env of a pair and the identity file of each
+// service, keyed by the path vca setup writes it to (ADR-075). The
+// landing file sits under its directory, beside the pair files.
+func (d *deployment) planWithPeers(t *testing.T, p cli.Pair) (map[string]string, map[string]map[string]string) {
+	t.Helper()
 	flags := map[string]string{
 		"VCA_OIDC_DISCOVERY_URL": d.providers[p.Role].DiscoveryURL(),
 	}
 	for k, v := range d.answers {
 		flags[k] = v
 	}
-	plan, err := cli.BuildPlan(cli.SetupRequest{Pair: p, Flags: flags, Random: rand.Reader})
+	plan, err := cli.BuildPlan(cli.SetupRequest{Pair: p, Flags: flags, Random: rand.Reader, PeerAuthority: d.authority})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range plan.Files {
-		if f.Name != cli.EnvFileName {
-			continue
-		}
-		values, err := cli.ParseDotenv(bytes.NewReader(f.Data))
+	parse := func(data []byte) map[string]string {
+		values, err := cli.ParseDotenv(bytes.NewReader(data))
 		if err != nil {
 			t.Fatal(err)
 		}
 		return values
 	}
-	t.Fatalf("the plan of %s writes no %s", p.Name(), cli.EnvFileName)
-	return nil
+	var env map[string]string
+	peers := map[string]map[string]string{}
+	for _, f := range plan.Files {
+		switch {
+		case f.Name == cli.EnvFileName:
+			env = parse(f.Data)
+		case strings.HasPrefix(f.Name, cli.PeerDir+string(filepath.Separator)) && strings.HasSuffix(f.Name, cli.EnvFileName):
+			peers[f.Name] = parse(f.Data)
+		}
+	}
+	for _, f := range plan.Shared {
+		if f.Name == filepath.Join(cli.LandingDir, cli.PeerFile(cli.LandingService)) {
+			peers[f.Name] = parse(f.Data)
+		}
+	}
+	if env == nil {
+		t.Fatalf("the plan of %s writes no %s", p.Name(), cli.EnvFileName)
+	}
+	return env, peers
 }
 
 // peers keeps the running pairs of a peer list.
@@ -319,22 +358,33 @@ func (d *deployment) start(ctx context.Context) {
 	}
 	sort.Strings(names)
 	var ready []string
+	var landingPeer map[string]string
 	for _, name := range names {
 		rp := d.pairs[name]
 		env := map[string]string{}
-		for k, v := range d.plan(t, rp.pair) {
+		values, identities := d.planWithPeers(t, rp.pair)
+		for k, v := range values {
 			env[k] = rewrite.Replace(v)
 		}
+		landingPeer = identities[filepath.Join(cli.LandingDir, cli.PeerFile(cli.LandingService))]
 		env[topology.Env] = d.peers(t, env[topology.Env])
 		for k, v := range d.extra[name] {
 			env[k] = v
 		}
 		rp.env = env
+		rp.identities = map[string]map[string]string{}
 		op := d.providers[rp.pair.Role]
 		op.ClientID, op.ClientSecret = env["VCA_OIDC_CLIENT_ID"], env["VCA_OIDC_CLIENT_SECRET"]
 		for _, a := range cli.HostPorts(rp.pair, nil) {
 			addr := "127.0.0.1:" + strconv.Itoa(rp.ports[a.Service.Name])
-			d.run(ctx, name+"/"+a.Service.Name, a.Service.Name, a.Service.ListenEnv, addr, env)
+			// Each process reads its own identity file too, as compose
+			// gives each container its own (ADR-075).
+			identity := identities[cli.PeerFile(a.Service.Name)]
+			if identity == nil {
+				t.Fatalf("setup wrote no identity for %s/%s", name, a.Service.Name)
+			}
+			rp.identities[a.Service.Name] = identity
+			d.run(ctx, name+"/"+a.Service.Name, a.Service.Name, a.Service.ListenEnv, addr, merged(env, identity))
 			ready = append(ready, "http://"+addr+"/readyz")
 		}
 		d.proxy(rp)
@@ -356,9 +406,24 @@ func (d *deployment) start(ctx context.Context) {
 			listenEnv = s.ListenEnv
 		}
 	}
-	d.run(ctx, cli.LandingService, cli.LandingService, listenEnv, addr, env)
+	if landingPeer == nil {
+		t.Fatal("setup wrote no identity for the landing")
+	}
+	d.run(ctx, cli.LandingService, cli.LandingService, listenEnv, addr, merged(env, landingPeer))
 	ready = append(ready, "http://"+addr+"/readyz")
 	d.waitReady(ctx, ready)
+}
+
+// merged returns the values of a and b in one map. b wins.
+func merged(a, b map[string]string) map[string]string {
+	out := make(map[string]string, len(a)+len(b))
+	for k, v := range a {
+		out[k] = v
+	}
+	for k, v := range b {
+		out[k] = v
+	}
+	return out
 }
 
 // run starts one service process with its own data directory.

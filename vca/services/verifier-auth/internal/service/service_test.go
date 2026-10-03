@@ -23,6 +23,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	verifierauthv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/verifierauth/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/verifierauth/v1/verifierauthv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow/oidctest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/serve"
@@ -103,6 +104,8 @@ func newFixture(t *testing.T) *fixture {
 		SessionTTL:      time.Minute,
 		MachineTokenTTL: time.Hour,
 	}
+	// The audit store checks its callers (ADR-075).
+	f.cfg.Peer = peers.Open("verifier-auth")
 	mux := http.NewServeMux()
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
@@ -674,3 +677,6 @@ func TestAdminSessionRegistersProviders(t *testing.T) {
 		t.Fatal("no admin key set: the admin session passed")
 	}
 }
+
+// peers is the peer authority of the tests of the package (ADR-075).
+var peers = peertest.Fixed()

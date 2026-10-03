@@ -15,6 +15,7 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1/datasourcev1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/authz"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/claims"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/config"
@@ -130,14 +131,14 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.Handle(backendv1connect.NewCapabilityServiceHandler(svc))
-	mux.Handle(backendv1connect.NewIssuerBackendServiceHandler(svc))
-	mux.Handle(backendv1connect.NewHolderBackendServiceHandler(svc))
-	mux.Handle(backendv1connect.NewVerifierBackendServiceHandler(svc))
-	mux.Handle(backendv1connect.NewCatalogBackendServiceHandler(svc))
-	mux.Handle(backendv1connect.NewTenantBackendServiceHandler(svc))
-	mux.Handle(backendv1connect.NewNotificationBackendServiceHandler(svc))
-	mux.Handle(backendv1connect.NewBulkImportBackendServiceHandler(svc))
+	mux.Handle(backendv1connect.NewCapabilityServiceHandler(svc, peerauth.Require(cfg.Peer)))
+	mux.Handle(backendv1connect.NewIssuerBackendServiceHandler(svc, peerauth.Require(cfg.Peer)))
+	mux.Handle(backendv1connect.NewHolderBackendServiceHandler(svc, peerauth.Require(cfg.Peer)))
+	mux.Handle(backendv1connect.NewVerifierBackendServiceHandler(svc, peerauth.Require(cfg.Peer)))
+	mux.Handle(backendv1connect.NewCatalogBackendServiceHandler(svc, peerauth.Require(cfg.Peer)))
+	mux.Handle(backendv1connect.NewTenantBackendServiceHandler(svc, peerauth.Require(cfg.Peer)))
+	mux.Handle(backendv1connect.NewNotificationBackendServiceHandler(svc, peerauth.Require(cfg.Peer)))
+	mux.Handle(backendv1connect.NewBulkImportBackendServiceHandler(svc, peerauth.Require(cfg.Peer)))
 	// The credential offer endpoint is standards defined, so it stays a
 	// plain HTTP handler (ADR-003 decision 7).
 	mux.HandleFunc("GET /offers/{id}", offerHandler(svc))
@@ -159,7 +160,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 			mux.Handle(oidcflow.NewAdminHandler(oidcflow.AdminProviders{
 				Registry: registry, Authorize: oidcflow.AdminJWTAuthorizer(cfg.AdminJWKSURL), Roles: []string{"holder"},
 				OneDefault: true,
-			}))
+			}, peerauth.Require(cfg.Peer)))
 		}
 		// The issuer page names the data source of a claim without an
 		// offer through the issuer RPCs of the service (ADR-052
@@ -264,7 +265,7 @@ func buildAuthz(cfg config.Config, deps Deps, backend store.KeyValue, svc *servi
 		// The token opens Lookup of the data source of the same pair,
 		// which holds the same session key (ADR-052 decision 3).
 		lookup = authz.DataSource{
-			Client: datasourcev1connect.NewDataSourceServiceClient(client, cfg.DataSourceURL),
+			Client: datasourcev1connect.NewDataSourceServiceClient(cfg.Peer.Client(client), cfg.DataSourceURL),
 			Token:  servicetoken.Derive(cfg.AuthzKeySecret, servicetoken.DataSourceLookup),
 		}
 	}

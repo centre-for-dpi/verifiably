@@ -20,6 +20,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/statuslist/bitstring"
 	statusv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/status-bitstring/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/status-bitstring/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/status-bitstring/internal/securer"
@@ -70,13 +71,15 @@ func TestPublishAndVerifyAgainstVector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	peers := peertest.New(t)
+	cfg.Peer = peers.Open("status-bitstring")
 	a, err := app.Build(context.Background(), cfg, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(a.Mux)
 	defer srv.Close()
-	client := statusv1connect.NewStatusServiceClient(srv.Client(), srv.URL)
+	client := statusv1connect.NewStatusServiceClient(peers.Client(srv.Client()), srv.URL)
 	ctx := context.Background()
 	alloc, err := client.AllocateIndex(ctx, connect.NewRequest(&statusv1.AllocateIndexRequest{
 		Purpose: statusv1.Purpose_PURPOSE_REVOCATION, Kind: statusv1.Kind_KIND_BITSTRING,

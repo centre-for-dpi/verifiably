@@ -21,6 +21,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/statuslist/token"
 	statusv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/status-token/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/status-token/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/status-token/internal/securer"
@@ -92,13 +93,15 @@ func TestPublishAndVerifyAgainstVector(t *testing.T) {
 		t.Fatal(err)
 	}
 	quiet := app.Deps{Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	peers := peertest.New(t)
+	cfg.Peer = peers.Open("status-token")
 	a, err := app.Build(context.Background(), cfg, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(a.Mux)
 	defer srv.Close()
-	client := statusv1connect.NewStatusServiceClient(srv.Client(), srv.URL)
+	client := statusv1connect.NewStatusServiceClient(peers.Client(srv.Client()), srv.URL)
 	ctx := context.Background()
 	listID := ""
 	indices := make([]int, len(v.Statuses))

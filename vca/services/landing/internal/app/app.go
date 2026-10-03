@@ -37,7 +37,8 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		deps.Log = slog.Default()
 	}
 	if deps.Prober == nil {
-		deps.Prober = &topology.Prober{Peers: cfg.Peers, TTL: cfg.ProbeTTL, Timeout: cfg.ProbeTimeout}
+		// The probe signs its call of each adapter (ADR-075).
+		deps.Prober = &topology.Prober{Peers: cfg.Peers, Client: cfg.Peer.Client(nil), TTL: cfg.ProbeTTL, Timeout: cfg.ProbeTimeout}
 	}
 	assets, kit, _, err := uikit.LoadFile(cfg.ThemeFile)
 	if err != nil {

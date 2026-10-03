@@ -38,9 +38,11 @@ type Handler struct {
 	Authorize func(ctx context.Context, h http.Header) error
 }
 
-// NewHandler returns the Connect path and handler of h.
-func NewHandler(h Handler) (string, http.Handler) {
-	return auditv1connect.NewAuditServiceHandler(h)
+// NewHandler returns the Connect path and handler of h. The service
+// passes peerauth.Require in opts, so only the admin reaches the store
+// (ADR-075).
+func NewHandler(h Handler, opts ...connect.HandlerOption) (string, http.Handler) {
+	return auditv1connect.NewAuditServiceHandler(h, opts...)
 }
 
 // Query implements AuditServiceHandler.

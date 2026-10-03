@@ -21,6 +21,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1/resultsv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
@@ -122,7 +123,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	shell, signOut := staffshell.Wire(staffshell.Setup{
-		Role: commonv1.Role_ROLE_VERIFIER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.PublicURL,
+		Role: commonv1.Role_ROLE_VERIFIER, Peers: cfg.Peers, Peer: cfg.Peer, Auth: cfg.Auth, PublicURL: cfg.PublicURL,
 		SignOut: "/" + strings.Trim(cfg.PortalPrefix, "/") + "/signout", Prober: deps.Prober,
 		Client: &http.Client{Timeout: cfg.Timeout}, Now: deps.Now,
 	})
@@ -151,10 +152,10 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.Handle(resultsv1connect.NewResultsServiceHandler(svc))
+	mux.Handle(resultsv1connect.NewResultsServiceHandler(svc, peerauth.Require(cfg.Peer)))
 	auditPath, auditHandler := auditlog.NewHandler(auditlog.Handler{
 		Log: events, Service: service.Name, Authorize: oidcflow.AuditAuthorizer(cfg.AdminToken, cfg.AdminJWKSURL, nil),
-	})
+	}, peerauth.Require(cfg.Peer))
 	mux.Handle(auditPath, oidcflow.RejectQueryTokens(auditHandler))
 	mux.Handle("GET "+ui.Prefix, assets)
 	// The staff pages sit behind the guard. The citizen check page
@@ -180,7 +181,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 // (ADR-047 decision 2).
 func neighbours(cfg config.Config, deps Deps) (portal.Discovery, portal.Requests) {
 	discovery, requests := deps.Discovery, deps.Requests
-	client := &http.Client{Timeout: cfg.Timeout}
+	client := cfg.Peer.Client(&http.Client{Timeout: cfg.Timeout})
 	if discovery == nil && cfg.DiscoveryURL != "" {
 		discovery = discoveryv1connect.NewDiscoveryServiceClient(client, cfg.DiscoveryURL)
 	}
@@ -202,9 +203,9 @@ func cacheOf(client policyv1connect.PolicyServiceClient) portal.Cache {
 // connectClient returns the client that calls the policy service.
 func connectClient(cfg config.Config, deps Deps) connect.HTTPClient {
 	if deps.ConnectClient != nil {
-		return deps.ConnectClient
+		return cfg.Peer.Sign(deps.ConnectClient)
 	}
-	return &http.Client{Timeout: cfg.PolicyTimeout}
+	return cfg.Peer.Client(&http.Client{Timeout: cfg.PolicyTimeout})
 }
 
 // Purge runs the retention job until ctx ends (ADR-025 decision 3). A

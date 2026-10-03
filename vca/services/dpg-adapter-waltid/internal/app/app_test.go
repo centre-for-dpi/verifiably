@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/fake"
@@ -91,15 +92,16 @@ func writeFile(path string) error {
 }
 
 func TestBuildWiresVerifier2(t *testing.T) {
+	peers := peertest.New(t)
 	f := fake.New("../../testdata")
 	defer f.Close()
-	a, err := app.Build(config.Config{Verifier2URL: f.URL(), DpgVersion: "0.18.2"}, app.Deps{HTTP: f.Client()})
+	a, err := buildPeered(peers, config.Config{Verifier2URL: f.URL(), DpgVersion: "0.18.2"}, app.Deps{HTTP: f.Client()})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 	srv := httptest.NewServer(a.Mux)
 	defer srv.Close()
-	resp, err := srv.Client().Post(srv.URL+"/vca.backend.v1.VerifierBackendService/CreateRequest", "application/json",
+	resp, err := peers.Client(srv.Client()).Post(srv.URL+"/vca.backend.v1.VerifierBackendService/CreateRequest", "application/json",
 		strings.NewReader(`{"dcql":"{\"credentials\":[{\"id\":\"a\",\"format\":\"dc+sd-jwt\"}]}"}`))
 	if err != nil {
 		t.Fatalf("post: %v", err)
@@ -134,4 +136,11 @@ func TestBuildServesTheCallbackRoute(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("an unknown offer: %d", resp.StatusCode)
 	}
+}
+
+// buildPeered builds the service with an identity that lets the client
+// of peers call every RPC (ADR-075).
+func buildPeered(peers *peertest.Kit, cfg config.Config, deps app.Deps) (*app.App, error) {
+	cfg.Peer = peers.Open("dpg-adapter-waltid")
+	return app.Build(cfg, deps)
 }

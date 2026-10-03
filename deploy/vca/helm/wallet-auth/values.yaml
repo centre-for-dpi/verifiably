@@ -23,6 +23,12 @@ runAsUser: 65532
 config: {}
 existingSecret: vca-secrets
 
+# The Secret that holds the identity of the service on the cluster
+# network (ADR-075). Empty names <release>-<chart>-peer, which
+# "vca peer secrets --release <release>" writes.
+peer:
+  secret: ""
+
 persistence:
   enabled: true
   mountPath: /data

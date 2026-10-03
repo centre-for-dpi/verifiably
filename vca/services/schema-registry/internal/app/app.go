@@ -15,6 +15,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1/datasourcev1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
@@ -66,15 +67,15 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	}
 	if deps.Backend == nil && cfg.BackendURL != "" {
 		deps.Backend = backendv1connect.NewIssuerBackendServiceClient(
-			&http.Client{Timeout: cfg.BackendTimeout}, cfg.BackendURL)
+			cfg.Peer.Client(&http.Client{Timeout: cfg.BackendTimeout}), cfg.BackendURL)
 	}
 	if deps.Issued == nil && cfg.IssuedURL != "" {
 		deps.Issued = issuedv1connect.NewIssuedServiceClient(
-			&http.Client{Timeout: cfg.BackendTimeout}, cfg.IssuedURL)
+			cfg.Peer.Client(&http.Client{Timeout: cfg.BackendTimeout}), cfg.IssuedURL)
 	}
 	if deps.Sources == nil && cfg.DataSourceURL != "" {
 		deps.Sources = datasourcev1connect.NewDataSourceServiceClient(
-			&http.Client{Timeout: cfg.BackendTimeout}, cfg.DataSourceURL)
+			cfg.Peer.Client(&http.Client{Timeout: cfg.BackendTimeout}), cfg.DataSourceURL)
 	}
 	backend := sharedstore.MemoryDoc()
 	if cfg.StoreFile != "" {
@@ -96,7 +97,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	shell, signOut := staffshell.Wire(staffshell.Setup{
-		Role: commonv1.Role_ROLE_ISSUER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.BaseURL,
+		Role: commonv1.Role_ROLE_ISSUER, Peers: cfg.Peers, Peer: cfg.Peer, Auth: cfg.Auth, PublicURL: cfg.BaseURL,
 		SignOut: cfg.PortalPrefix + "/signout", Prober: deps.Prober, Now: deps.Now,
 	})
 	popts := portal.Options{
@@ -124,7 +125,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.Handle(schemav1connect.NewSchemaServiceHandler(svc))
+	mux.Handle(schemav1connect.NewSchemaServiceHandler(svc, peerauth.Require(cfg.Peer)))
 	httpapi.New(st, svc.MetadataOptions, cfg.HTTPMaxAge).Register(mux)
 	// The staff pages sit behind the guard. The public documents above
 	// stay open (ADR-036 decision 2).

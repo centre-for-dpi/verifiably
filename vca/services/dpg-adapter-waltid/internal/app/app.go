@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/waltid"
@@ -69,14 +70,14 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.Handle(backendv1connect.NewCapabilityServiceHandler(svc))
-	mux.Handle(backendv1connect.NewIssuerBackendServiceHandler(svc))
-	mux.Handle(backendv1connect.NewHolderBackendServiceHandler(svc))
-	mux.Handle(backendv1connect.NewVerifierBackendServiceHandler(svc))
-	mux.Handle(backendv1connect.NewCatalogBackendServiceHandler(svc))
-	mux.Handle(backendv1connect.NewTenantBackendServiceHandler(svc))
-	mux.Handle(backendv1connect.NewNotificationBackendServiceHandler(svc))
-	mux.Handle(backendv1connect.NewBulkImportBackendServiceHandler(svc))
+	mux.Handle(backendv1connect.NewCapabilityServiceHandler(svc, peerauth.Require(cfg.Peer)))
+	mux.Handle(backendv1connect.NewIssuerBackendServiceHandler(svc, peerauth.Require(cfg.Peer)))
+	mux.Handle(backendv1connect.NewHolderBackendServiceHandler(svc, peerauth.Require(cfg.Peer)))
+	mux.Handle(backendv1connect.NewVerifierBackendServiceHandler(svc, peerauth.Require(cfg.Peer)))
+	mux.Handle(backendv1connect.NewCatalogBackendServiceHandler(svc, peerauth.Require(cfg.Peer)))
+	mux.Handle(backendv1connect.NewTenantBackendServiceHandler(svc, peerauth.Require(cfg.Peer)))
+	mux.Handle(backendv1connect.NewNotificationBackendServiceHandler(svc, peerauth.Require(cfg.Peer)))
+	mux.Handle(backendv1connect.NewBulkImportBackendServiceHandler(svc, peerauth.Require(cfg.Peer)))
 	// walt.id posts session events here on the compose network (P6-W5).
 	mux.Handle("POST "+service.CallbackPrefix, svc.CallbackHandler())
 	deps.Log.Info("walt.id adapter ready",

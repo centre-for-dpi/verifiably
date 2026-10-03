@@ -20,6 +20,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/trust-registry/internal/keys"
 )
@@ -32,6 +33,8 @@ func load(t *testing.T, env map[string]string) config.Config {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Every RPC checks its caller, and the client of peers may call it (ADR-075).
+	cfg.Peer = peers.Open("trust-registry")
 	return cfg
 }
 
@@ -60,7 +63,7 @@ func TestBuildWithGeneratedKey(t *testing.T) {
 			t.Errorf("%s: status %d", path, resp.StatusCode)
 		}
 	}
-	client := trustv1connect.NewTrustServiceClient(srv.Client(), srv.URL)
+	client := trustv1connect.NewTrustServiceClient(peers.Client(srv.Client()), srv.URL)
 	e := &trustv1.TrustEntry{Identifier: &trustv1.TrustEntry_Identifier{Id: &trustv1.TrustEntry_Identifier_Did{Did: "did:web:a.example"}}, Role: commonv1.Role_ROLE_ISSUER, Status: trustv1.Status_STATUS_ACTIVE}
 	if _, serr := client.UpsertEntry(context.Background(), connect.NewRequest(&trustv1.UpsertEntryRequest{Entry: e})); serr != nil {
 		t.Fatal(serr)
@@ -233,3 +236,6 @@ func TestFederationPersistsAndSyncsOnATick(t *testing.T) {
 		t.Fatal("a registries file that is a directory loaded")
 	}
 }
+
+// peers is the peer authority of the tests of the package (ADR-075).
+var peers = peertest.Fixed()

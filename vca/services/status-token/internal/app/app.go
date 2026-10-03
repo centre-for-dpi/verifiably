@@ -15,6 +15,7 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/status/httpapi"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/status/keys"
@@ -88,7 +89,7 @@ func Build(ctx context.Context, cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.Handle(statusv1connect.NewStatusServiceHandler(svc))
+	mux.Handle(statusv1connect.NewStatusServiceHandler(svc, peerauth.Require(cfg.Peer)))
 	httpapi.New(manager, cfg.HTTPMaxAge).Register(mux)
 	deps.Log.Info("status-token ready",
 		"base_url", cfg.BaseURL, "bits", cfg.DefaultBits,

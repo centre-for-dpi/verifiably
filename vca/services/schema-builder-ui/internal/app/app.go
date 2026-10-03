@@ -15,6 +15,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schemabuilder/v1/schemabuilderv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
@@ -62,14 +63,14 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 			return nil, errors.New("app: the configuration names no schema registry")
 		}
 		deps.Registry = schemav1connect.NewSchemaServiceClient(
-			&http.Client{Timeout: cfg.RegistryTimeout}, cfg.RegistryURL)
+			cfg.Peer.Client(&http.Client{Timeout: cfg.RegistryTimeout}), cfg.RegistryURL)
 	}
 	if deps.Catalog == nil && cfg.CatalogURL != "" {
 		deps.Catalog = backendv1connect.NewCatalogBackendServiceClient(
-			&http.Client{Timeout: cfg.CatalogTimeout}, cfg.CatalogURL)
+			cfg.Peer.Client(&http.Client{Timeout: cfg.CatalogTimeout}), cfg.CatalogURL)
 	}
 	if deps.Catalogs == nil {
-		deps.Catalogs = CatalogClients(&http.Client{Timeout: cfg.CatalogTimeout})
+		deps.Catalogs = CatalogClients(cfg.Peer.Client(&http.Client{Timeout: cfg.CatalogTimeout}))
 	}
 	svc, svcErr := service.New(service.Options{
 		Registry: deps.Registry, Catalog: deps.Catalog,
@@ -80,7 +81,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	// portal URL is under the public URL of the pair, so its scheme
 	// tells whether the cookie that clears the session is Secure.
 	shell, signOut := staffshell.Wire(staffshell.Setup{
-		Role: commonv1.Role_ROLE_ISSUER, Peers: cfg.Peers, Auth: cfg.Auth, PublicURL: cfg.PortalURL,
+		Role: commonv1.Role_ROLE_ISSUER, Peers: cfg.Peers, Peer: cfg.Peer, Auth: cfg.Auth, PublicURL: cfg.PortalURL,
 		SignOut: "/" + strings.Trim(cfg.Prefix, "/") + "/signout", Prober: deps.Prober,
 	})
 	builder, pagesErr := pages.New(pages.Options{
@@ -95,7 +96,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.Handle(schemabuilderv1connect.NewSchemaBuilderServiceHandler(svc))
+	mux.Handle(schemabuilderv1connect.NewSchemaBuilderServiceHandler(svc, peerauth.Require(cfg.Peer)))
 	// The builder pages sit behind the guard (ADR-036 decision 3). The
 	// preview documents stay where the pages link them.
 	staff := http.NewServeMux()

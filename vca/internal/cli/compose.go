@@ -4,6 +4,7 @@ package cli
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -131,6 +132,9 @@ func renderComposeService(b *strings.Builder, p Pair, a PortAssignment) []string
 	b.WriteString("    env_file:\n")
 	fmt.Fprintf(b, "      - path: ../%s/%s\n", p.Name(), EnvFileName)
 	b.WriteString("        required: true\n")
+	// The identity of the service on the compose network (ADR-075).
+	fmt.Fprintf(b, "      - path: ../%s/%s\n", p.Name(), filepath.ToSlash(PeerFile(a.Service.Name)))
+	b.WriteString("        required: true\n")
 	b.WriteString("    ports:\n")
 	// A public host sets VCA_BIND to the loopback address, so only the
 	// reverse proxy of the host reaches the port.
@@ -179,6 +183,8 @@ func renderDeploymentService(b *strings.Builder, s Service) {
 	fmt.Fprintf(b, "    container_name: %s\n", name)
 	b.WriteString("    env_file:\n")
 	fmt.Fprintf(b, "      - path: ../%s/%s\n", s.Name, EnvFileName)
+	b.WriteString("        required: true\n")
+	fmt.Fprintf(b, "      - path: ../%s/%s\n", s.Name, filepath.ToSlash(PeerFile(s.Name)))
 	b.WriteString("        required: true\n")
 	b.WriteString("    ports:\n")
 	fmt.Fprintf(b, "      - \"${%s:-0.0.0.0}:${VCA_HOST_PORT_%s:-%d}:${VCA_PORTS_%s:-%d}\"\n",

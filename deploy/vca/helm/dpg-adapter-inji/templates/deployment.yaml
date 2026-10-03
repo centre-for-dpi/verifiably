@@ -49,6 +49,11 @@ spec:
             - secretRef:
                 name: {{ .Values.existingSecret }}
             {{- end }}
+            # The identity of the service on the cluster network (ADR-075).
+            # vca peer secrets writes the Secret. The pod does not start
+            # without it.
+            - secretRef:
+                name: {{ .Values.peer.secret | default (printf "%s-%s-peer" .Release.Name .Chart.Name) }}
           livenessProbe:
             httpGet:
               path: /healthz

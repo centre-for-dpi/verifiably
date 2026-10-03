@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
@@ -111,6 +112,10 @@ type Config struct {
 	// The frame of the pages lists the holder pairs that run, and the
 	// wallet finds its own pair by the key set of its auth service.
 	Peers []topology.Peer
+	// Peer is the identity of the service on the compose network and the
+	// callers of its Connect services, from the VCA_PEER_ variables of its
+	// identity file (ADR-075). They carry no service prefix.
+	Peer peerauth.Settings
 }
 
 // Load reads the settings with getenv, for example os.Getenv.
@@ -119,6 +124,11 @@ func Load(getenv func(string) string) (Config, error) {
 	if err := config.Load(Prefix, &c, getenv); err != nil {
 		return Config{}, err
 	}
+	peer, perr := peerauth.Load(getenv)
+	if perr != nil {
+		return Config{}, perr
+	}
+	c.Peer = peer
 	c.ThemeFile = strings.TrimSpace(getenv(uikit.ThemeFileEnv))
 	peers, err := topology.Parse(getenv(topology.Env))
 	if err != nil {

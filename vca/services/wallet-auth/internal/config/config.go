@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
 )
@@ -117,6 +118,10 @@ type Config struct {
 	// LandingURL is the public URL of the landing, without a trailing
 	// slash. Empty hides the way back on the sign in chooser.
 	LandingURL string
+	// Peer is the identity of the service on the compose network and the
+	// callers of its Connect services, from the VCA_PEER_ variables of its
+	// identity file (ADR-075). They carry no service prefix.
+	Peer peerauth.Settings
 }
 
 // SeedProvider is the provider that the setup CLI writes to the
@@ -179,6 +184,11 @@ func FromEnv(get Lookup) (Config, error) {
 	if c.GrantKey, err = secretBytes(s.GrantKeyValue, 32, 32); err != nil {
 		return Config{}, fmt.Errorf("config: %sGRANT_KEY: %w", Prefix, err)
 	}
+	peer, perr := peerauth.Load(get)
+	if perr != nil {
+		return Config{}, perr
+	}
+	c.Peer = peer
 	return c.normalize()
 }
 

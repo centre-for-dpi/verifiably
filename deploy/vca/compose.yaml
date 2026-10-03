@@ -47,6 +47,8 @@ services:
     env_file:
       - path: ../issuer-waltid/.env
         required: true
+      - path: ../issuer-waltid/peer/data-source.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DATA_SOURCE:-18000}:${VCA_PORTS_DATA_SOURCE:-8100}"
     environment:
@@ -62,6 +64,8 @@ services:
     env_file:
       - path: ../issuer-waltid/.env
         required: true
+      - path: ../issuer-waltid/peer/dpg-adapter-waltid.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_WALTID:-18001}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
@@ -73,6 +77,8 @@ services:
     container_name: issuer-waltid-issuance
     env_file:
       - path: ../issuer-waltid/.env
+        required: true
+      - path: ../issuer-waltid/peer/issuance.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUANCE:-18002}:${VCA_PORTS_PORTAL:-8080}"
@@ -89,6 +95,8 @@ services:
     env_file:
       - path: ../issuer-waltid/.env
         required: true
+      - path: ../issuer-waltid/peer/issued-credentials.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUED_CREDENTIALS:-18003}:${VCA_PORTS_ISSUED_CREDENTIALS:-8101}"
     environment:
@@ -103,6 +111,8 @@ services:
     container_name: issuer-waltid-issuer-auth
     env_file:
       - path: ../issuer-waltid/.env
+        required: true
+      - path: ../issuer-waltid/peer/issuer-auth.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUER_AUTH:-18004}:${VCA_PORTS_AUTH:-8081}"
@@ -119,6 +129,8 @@ services:
     env_file:
       - path: ../issuer-waltid/.env
         required: true
+      - path: ../issuer-waltid/peer/schema-builder-ui.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_SCHEMA_BUILDER_UI:-18005}:${VCA_PORTS_SCHEMA_BUILDER_UI:-8102}"
     environment:
@@ -132,6 +144,8 @@ services:
     container_name: issuer-waltid-schema-registry
     env_file:
       - path: ../issuer-waltid/.env
+        required: true
+      - path: ../issuer-waltid/peer/schema-registry.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_SCHEMA_REGISTRY:-18006}:${VCA_PORTS_SCHEMA_REGISTRY:-8103}"
@@ -148,6 +162,8 @@ services:
     env_file:
       - path: ../issuer-waltid/.env
         required: true
+      - path: ../issuer-waltid/peer/status-bitstring.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_BITSTRING:-18007}:${VCA_PORTS_STATUS_BITSTRING:-8104}"
     volumes:
@@ -159,6 +175,8 @@ services:
     container_name: issuer-waltid-status-token
     env_file:
       - path: ../issuer-waltid/.env
+        required: true
+      - path: ../issuer-waltid/peer/status-token.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_TOKEN:-18008}:${VCA_PORTS_STATUS_TOKEN:-8105}"
@@ -173,6 +191,8 @@ services:
     container_name: issuer-inji-data-source
     env_file:
       - path: ../issuer-inji/.env
+        required: true
+      - path: ../issuer-inji/peer/data-source.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DATA_SOURCE:-18100}:${VCA_PORTS_DATA_SOURCE:-8100}"
@@ -189,6 +209,8 @@ services:
     env_file:
       - path: ../issuer-inji/.env
         required: true
+      - path: ../issuer-inji/peer/dpg-adapter-inji.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18101}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
@@ -201,6 +223,8 @@ services:
     container_name: issuer-inji-issuance
     env_file:
       - path: ../issuer-inji/.env
+        required: true
+      - path: ../issuer-inji/peer/issuance.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUANCE:-18102}:${VCA_PORTS_PORTAL:-8080}"
@@ -217,6 +241,8 @@ services:
     env_file:
       - path: ../issuer-inji/.env
         required: true
+      - path: ../issuer-inji/peer/issued-credentials.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUED_CREDENTIALS:-18103}:${VCA_PORTS_ISSUED_CREDENTIALS:-8101}"
     environment:
@@ -231,6 +257,8 @@ services:
     container_name: issuer-inji-issuer-auth
     env_file:
       - path: ../issuer-inji/.env
+        required: true
+      - path: ../issuer-inji/peer/issuer-auth.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUER_AUTH:-18104}:${VCA_PORTS_AUTH:-8081}"
@@ -247,6 +275,8 @@ services:
     env_file:
       - path: ../issuer-inji/.env
         required: true
+      - path: ../issuer-inji/peer/schema-builder-ui.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_SCHEMA_BUILDER_UI:-18105}:${VCA_PORTS_SCHEMA_BUILDER_UI:-8102}"
     environment:
@@ -260,6 +290,8 @@ services:
     container_name: issuer-inji-schema-registry
     env_file:
       - path: ../issuer-inji/.env
+        required: true
+      - path: ../issuer-inji/peer/schema-registry.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_SCHEMA_REGISTRY:-18106}:${VCA_PORTS_SCHEMA_REGISTRY:-8103}"
@@ -276,6 +308,8 @@ services:
     env_file:
       - path: ../issuer-inji/.env
         required: true
+      - path: ../issuer-inji/peer/status-bitstring.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_BITSTRING:-18107}:${VCA_PORTS_STATUS_BITSTRING:-8104}"
     volumes:
@@ -287,6 +321,8 @@ services:
     container_name: issuer-inji-status-token
     env_file:
       - path: ../issuer-inji/.env
+        required: true
+      - path: ../issuer-inji/peer/status-token.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_TOKEN:-18108}:${VCA_PORTS_STATUS_TOKEN:-8105}"
@@ -301,6 +337,8 @@ services:
     container_name: issuer-credebl-data-source
     env_file:
       - path: ../issuer-credebl/.env
+        required: true
+      - path: ../issuer-credebl/peer/data-source.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DATA_SOURCE:-18200}:${VCA_PORTS_DATA_SOURCE:-8100}"
@@ -317,6 +355,8 @@ services:
     env_file:
       - path: ../issuer-credebl/.env
         required: true
+      - path: ../issuer-credebl/peer/dpg-adapter-credebl.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_CREDEBL:-18201}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
@@ -328,6 +368,8 @@ services:
     container_name: issuer-credebl-issuance
     env_file:
       - path: ../issuer-credebl/.env
+        required: true
+      - path: ../issuer-credebl/peer/issuance.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUANCE:-18202}:${VCA_PORTS_PORTAL:-8080}"
@@ -344,6 +386,8 @@ services:
     env_file:
       - path: ../issuer-credebl/.env
         required: true
+      - path: ../issuer-credebl/peer/issued-credentials.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUED_CREDENTIALS:-18203}:${VCA_PORTS_ISSUED_CREDENTIALS:-8101}"
     environment:
@@ -358,6 +402,8 @@ services:
     container_name: issuer-credebl-issuer-auth
     env_file:
       - path: ../issuer-credebl/.env
+        required: true
+      - path: ../issuer-credebl/peer/issuer-auth.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ISSUER_AUTH:-18204}:${VCA_PORTS_AUTH:-8081}"
@@ -374,6 +420,8 @@ services:
     env_file:
       - path: ../issuer-credebl/.env
         required: true
+      - path: ../issuer-credebl/peer/schema-builder-ui.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_SCHEMA_BUILDER_UI:-18205}:${VCA_PORTS_SCHEMA_BUILDER_UI:-8102}"
     environment:
@@ -387,6 +435,8 @@ services:
     container_name: issuer-credebl-schema-registry
     env_file:
       - path: ../issuer-credebl/.env
+        required: true
+      - path: ../issuer-credebl/peer/schema-registry.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_SCHEMA_REGISTRY:-18206}:${VCA_PORTS_SCHEMA_REGISTRY:-8103}"
@@ -403,6 +453,8 @@ services:
     env_file:
       - path: ../issuer-credebl/.env
         required: true
+      - path: ../issuer-credebl/peer/status-bitstring.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_BITSTRING:-18207}:${VCA_PORTS_STATUS_BITSTRING:-8104}"
     volumes:
@@ -414,6 +466,8 @@ services:
     container_name: issuer-credebl-status-token
     env_file:
       - path: ../issuer-credebl/.env
+        required: true
+      - path: ../issuer-credebl/peer/status-token.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_STATUS_TOKEN:-18208}:${VCA_PORTS_STATUS_TOKEN:-8105}"
@@ -429,6 +483,8 @@ services:
     env_file:
       - path: ../holder-waltid/.env
         required: true
+      - path: ../holder-waltid/peer/dpg-adapter-waltid.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_WALTID:-18300}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
@@ -440,6 +496,8 @@ services:
     container_name: holder-waltid-wallet-auth
     env_file:
       - path: ../holder-waltid/.env
+        required: true
+      - path: ../holder-waltid/peer/wallet-auth.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_WALLET_AUTH:-18301}:${VCA_PORTS_AUTH:-8081}"
@@ -455,6 +513,8 @@ services:
     container_name: holder-waltid-wallet-portal
     env_file:
       - path: ../holder-waltid/.env
+        required: true
+      - path: ../holder-waltid/peer/wallet-portal.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_WALLET_PORTAL:-18302}:${VCA_PORTS_PORTAL:-8080}"
@@ -473,6 +533,8 @@ services:
     env_file:
       - path: ../holder-inji/.env
         required: true
+      - path: ../holder-inji/peer/dpg-adapter-inji.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18400}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
@@ -484,6 +546,8 @@ services:
     container_name: holder-inji-wallet-auth
     env_file:
       - path: ../holder-inji/.env
+        required: true
+      - path: ../holder-inji/peer/wallet-auth.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_WALLET_AUTH:-18401}:${VCA_PORTS_AUTH:-8081}"
@@ -499,6 +563,8 @@ services:
     container_name: holder-inji-wallet-portal
     env_file:
       - path: ../holder-inji/.env
+        required: true
+      - path: ../holder-inji/peer/wallet-portal.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_WALLET_PORTAL:-18402}:${VCA_PORTS_PORTAL:-8080}"
@@ -517,6 +583,8 @@ services:
     env_file:
       - path: ../holder-credebl/.env
         required: true
+      - path: ../holder-credebl/peer/dpg-adapter-credebl.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_CREDEBL:-18500}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
@@ -528,6 +596,8 @@ services:
     container_name: holder-credebl-wallet-auth
     env_file:
       - path: ../holder-credebl/.env
+        required: true
+      - path: ../holder-credebl/peer/wallet-auth.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_WALLET_AUTH:-18501}:${VCA_PORTS_AUTH:-8081}"
@@ -543,6 +613,8 @@ services:
     container_name: holder-credebl-wallet-portal
     env_file:
       - path: ../holder-credebl/.env
+        required: true
+      - path: ../holder-credebl/peer/wallet-portal.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_WALLET_PORTAL:-18502}:${VCA_PORTS_PORTAL:-8080}"
@@ -561,6 +633,8 @@ services:
     env_file:
       - path: ../verifier-waltid/.env
         required: true
+      - path: ../verifier-waltid/peer/dpg-adapter-waltid.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_WALTID:-18600}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
@@ -572,6 +646,8 @@ services:
     container_name: verifier-waltid-verifier-auth
     env_file:
       - path: ../verifier-waltid/.env
+        required: true
+      - path: ../verifier-waltid/peer/verifier-auth.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_AUTH:-18601}:${VCA_PORTS_AUTH:-8081}"
@@ -588,6 +664,8 @@ services:
     env_file:
       - path: ../verifier-waltid/.env
         required: true
+      - path: ../verifier-waltid/peer/verifier-combined.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_COMBINED:-18602}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
     volumes:
@@ -599,6 +677,8 @@ services:
     container_name: verifier-waltid-verifier-discovery
     env_file:
       - path: ../verifier-waltid/.env
+        required: true
+      - path: ../verifier-waltid/peer/verifier-discovery.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_DISCOVERY:-18603}:${VCA_PORTS_VERIFIER_DISCOVERY:-8101}"
@@ -615,6 +695,8 @@ services:
     env_file:
       - path: ../verifier-waltid/.env
         required: true
+      - path: ../verifier-waltid/peer/verifier-ingest.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_INGEST:-18604}:${VCA_PORTS_VERIFIER_INGEST:-8102}"
     environment:
@@ -630,6 +712,8 @@ services:
     env_file:
       - path: ../verifier-waltid/.env
         required: true
+      - path: ../verifier-waltid/peer/verifier-policy.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_POLICY:-18605}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
     volumes:
@@ -641,6 +725,8 @@ services:
     container_name: verifier-waltid-verifier-results
     env_file:
       - path: ../verifier-waltid/.env
+        required: true
+      - path: ../verifier-waltid/peer/verifier-results.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_RESULTS:-18606}:${VCA_PORTS_PORTAL:-8080}"
@@ -659,6 +745,8 @@ services:
     env_file:
       - path: ../verifier-inji/.env
         required: true
+      - path: ../verifier-inji/peer/dpg-adapter-inji.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_INJI:-18700}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
@@ -670,6 +758,8 @@ services:
     container_name: verifier-inji-verifier-auth
     env_file:
       - path: ../verifier-inji/.env
+        required: true
+      - path: ../verifier-inji/peer/verifier-auth.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_AUTH:-18701}:${VCA_PORTS_AUTH:-8081}"
@@ -686,6 +776,8 @@ services:
     env_file:
       - path: ../verifier-inji/.env
         required: true
+      - path: ../verifier-inji/peer/verifier-combined.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_COMBINED:-18702}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
     volumes:
@@ -697,6 +789,8 @@ services:
     container_name: verifier-inji-verifier-discovery
     env_file:
       - path: ../verifier-inji/.env
+        required: true
+      - path: ../verifier-inji/peer/verifier-discovery.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_DISCOVERY:-18703}:${VCA_PORTS_VERIFIER_DISCOVERY:-8101}"
@@ -713,6 +807,8 @@ services:
     env_file:
       - path: ../verifier-inji/.env
         required: true
+      - path: ../verifier-inji/peer/verifier-ingest.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_INGEST:-18704}:${VCA_PORTS_VERIFIER_INGEST:-8102}"
     environment:
@@ -728,6 +824,8 @@ services:
     env_file:
       - path: ../verifier-inji/.env
         required: true
+      - path: ../verifier-inji/peer/verifier-policy.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_POLICY:-18705}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
     volumes:
@@ -739,6 +837,8 @@ services:
     container_name: verifier-inji-verifier-results
     env_file:
       - path: ../verifier-inji/.env
+        required: true
+      - path: ../verifier-inji/peer/verifier-results.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_RESULTS:-18706}:${VCA_PORTS_PORTAL:-8080}"
@@ -757,6 +857,8 @@ services:
     env_file:
       - path: ../verifier-credebl/.env
         required: true
+      - path: ../verifier-credebl/peer/dpg-adapter-credebl.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_DPG_ADAPTER_CREDEBL:-18800}:${VCA_PORTS_ADAPTER:-8090}"
     volumes:
@@ -768,6 +870,8 @@ services:
     container_name: verifier-credebl-verifier-auth
     env_file:
       - path: ../verifier-credebl/.env
+        required: true
+      - path: ../verifier-credebl/peer/verifier-auth.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_AUTH:-18801}:${VCA_PORTS_AUTH:-8081}"
@@ -784,6 +888,8 @@ services:
     env_file:
       - path: ../verifier-credebl/.env
         required: true
+      - path: ../verifier-credebl/peer/verifier-combined.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_COMBINED:-18802}:${VCA_PORTS_VERIFIER_COMBINED:-8100}"
     volumes:
@@ -795,6 +901,8 @@ services:
     container_name: verifier-credebl-verifier-discovery
     env_file:
       - path: ../verifier-credebl/.env
+        required: true
+      - path: ../verifier-credebl/peer/verifier-discovery.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_DISCOVERY:-18803}:${VCA_PORTS_VERIFIER_DISCOVERY:-8101}"
@@ -811,6 +919,8 @@ services:
     env_file:
       - path: ../verifier-credebl/.env
         required: true
+      - path: ../verifier-credebl/peer/verifier-ingest.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_INGEST:-18804}:${VCA_PORTS_VERIFIER_INGEST:-8102}"
     environment:
@@ -826,6 +936,8 @@ services:
     env_file:
       - path: ../verifier-credebl/.env
         required: true
+      - path: ../verifier-credebl/peer/verifier-policy.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_POLICY:-18805}:${VCA_PORTS_VERIFIER_POLICY:-8103}"
     volumes:
@@ -837,6 +949,8 @@ services:
     container_name: verifier-credebl-verifier-results
     env_file:
       - path: ../verifier-credebl/.env
+        required: true
+      - path: ../verifier-credebl/peer/verifier-results.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_VERIFIER_RESULTS:-18806}:${VCA_PORTS_PORTAL:-8080}"
@@ -855,6 +969,8 @@ services:
     env_file:
       - path: ../admin-waltid/.env
         required: true
+      - path: ../admin-waltid/peer/admin.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ADMIN:-18900}:${VCA_PORTS_PORTAL:-8080}"
     environment:
@@ -870,6 +986,8 @@ services:
     env_file:
       - path: ../admin-waltid/.env
         required: true
+      - path: ../admin-waltid/peer/trust-registry.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_TRUST_REGISTRY:-18901}:${VCA_PORTS_TRUST_REGISTRY:-8100}"
     volumes:
@@ -883,6 +1001,8 @@ services:
     container_name: admin-inji-admin
     env_file:
       - path: ../admin-inji/.env
+        required: true
+      - path: ../admin-inji/peer/admin.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ADMIN:-19000}:${VCA_PORTS_PORTAL:-8080}"
@@ -899,6 +1019,8 @@ services:
     env_file:
       - path: ../admin-inji/.env
         required: true
+      - path: ../admin-inji/peer/trust-registry.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_TRUST_REGISTRY:-19001}:${VCA_PORTS_TRUST_REGISTRY:-8100}"
     volumes:
@@ -912,6 +1034,8 @@ services:
     container_name: admin-credebl-admin
     env_file:
       - path: ../admin-credebl/.env
+        required: true
+      - path: ../admin-credebl/peer/admin.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_ADMIN:-19100}:${VCA_PORTS_PORTAL:-8080}"
@@ -928,6 +1052,8 @@ services:
     env_file:
       - path: ../admin-credebl/.env
         required: true
+      - path: ../admin-credebl/peer/trust-registry.env
+        required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_TRUST_REGISTRY:-19101}:${VCA_PORTS_TRUST_REGISTRY:-8100}"
     volumes:
@@ -941,6 +1067,8 @@ services:
     container_name: vca-landing
     env_file:
       - path: ../landing/.env
+        required: true
+      - path: ../landing/peer/landing.env
         required: true
     ports:
       - "${VCA_BIND:-0.0.0.0}:${VCA_HOST_PORT_LANDING:-17900}:${VCA_PORTS_LANDING:-8080}"

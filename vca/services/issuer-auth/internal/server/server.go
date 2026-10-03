@@ -14,6 +14,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issuerauth/v1/issuerauthv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
 	sharedconfig "github.com/centre-for-dpi/vc-adapters/services/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
@@ -162,7 +163,7 @@ func Handler(svc *service.Service) http.Handler {
 	mux.Handle(path, oidcflow.RejectQueryTokens(h))
 	adminPath, adminH := oidcflow.NewAdminHandler(svc.Admin())
 	mux.Handle(adminPath, oidcflow.RejectQueryTokens(adminH))
-	auditPath, auditH := auditlog.NewHandler(svc.Audit())
+	auditPath, auditH := auditlog.NewHandler(svc.Audit(), peerauth.Require(svc.Config().Peer))
 	mux.Handle(auditPath, oidcflow.RejectQueryTokens(auditH))
 	mux.Handle("/.well-known/jwks.json", svc.Signer().JWKSHandler())
 	mux.Handle("/token", svc.TokenHandler())

@@ -21,6 +21,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1/issuedv1connect"
 	statusv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/head"
@@ -39,6 +40,8 @@ func load(t *testing.T, env map[string]string) config.Config {
 	if err != nil {
 		t.Fatalf("config: %v", err)
 	}
+	// Every RPC checks its caller, and the client of peers may call it (ADR-075).
+	cfg.Peer = peers.Open("issued-credentials")
 	return cfg
 }
 
@@ -116,7 +119,7 @@ func TestBuildServesTheConnectAPI(t *testing.T) {
 	}
 	srv := httptest.NewServer(a.Mux)
 	defer srv.Close()
-	client := issuedv1connect.NewIssuedServiceClient(srv.Client(), srv.URL)
+	client := issuedv1connect.NewIssuedServiceClient(peers.Client(srv.Client()), srv.URL)
 	ctx := context.Background()
 	list, err := client.List(ctx, connect.NewRequest(&issuedv1.ListRequest{}))
 	if err != nil {
@@ -322,3 +325,6 @@ func TestPruneJobLogsAFailure(t *testing.T) {
 		t.Error("nothing has a retention time, so nothing goes")
 	}
 }
+
+// peers is the peer authority of the tests of the package (ADR-075).
+var peers = peertest.Fixed()

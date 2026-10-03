@@ -14,14 +14,16 @@ import (
 
 	auditv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/audit/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/audit/v1/auditv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/issuance/internal/app"
 )
 
 // TestAuditServiceNeedsAdmin serves the audit store to the admin
 // service token only.
 func TestAuditServiceNeedsAdmin(t *testing.T) {
+	peers := peertest.New(t)
 	var buf bytes.Buffer
-	a, err := app.Build(settings(t, map[string]string{
+	a, err := buildPeered(peers, settings(t, map[string]string{
 		"VCA_ISSUANCE_ADMIN_TOKEN": "admin-token", "VCA_ISSUANCE_AUDIT_DIR": filepath.Join(t.TempDir(), "audit"),
 	}), deps(&buf))
 	if err != nil {
@@ -29,7 +31,7 @@ func TestAuditServiceNeedsAdmin(t *testing.T) {
 	}
 	srv := httptest.NewServer(a.Mux)
 	defer srv.Close()
-	client := auditv1connect.NewAuditServiceClient(srv.Client(), srv.URL)
+	client := auditv1connect.NewAuditServiceClient(peers.Client(srv.Client()), srv.URL)
 	query := func(token string) error {
 		req := connect.NewRequest(&auditv1.QueryRequest{})
 		if token != "" {

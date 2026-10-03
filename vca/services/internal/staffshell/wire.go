@@ -15,6 +15,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/issuerauth/v1/issuerauthv1connect"
 	verifierauthv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/verifierauth/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/verifierauth/v1/verifierauthv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 )
@@ -39,6 +40,8 @@ type Setup struct {
 	Prober *topology.Prober
 	// Client calls the auth service. Nil means a client with a 10 s timeout.
 	Client connect.HTTPClient
+	// Peer signs the capability probe of each adapter (ADR-075).
+	Peer peerauth.Settings
 	// Now returns the current time. Nil means time.Now.
 	Now func() time.Time
 }
@@ -48,7 +51,7 @@ type Setup struct {
 func Wire(s Setup) (*Shell, http.Handler) {
 	prober := s.Prober
 	if prober == nil && len(s.Peers) > 0 {
-		prober = &topology.Prober{Peers: s.Peers, Now: s.Now}
+		prober = &topology.Prober{Peers: s.Peers, Client: s.Peer.Client(nil), Now: s.Now}
 	}
 	var snapshot func(context.Context) topology.Snapshot
 	if prober != nil {

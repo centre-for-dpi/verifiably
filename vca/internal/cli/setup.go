@@ -81,6 +81,10 @@ type SetupRequest struct {
 	// ReadFile reads a file that a setting names, such as the plugin
 	// properties of eSignet. Nil means os.ReadFile.
 	ReadFile func(string) ([]byte, error)
+	// PeerAuthority is the authority key of the deployment from an
+	// earlier run, from ReadPeerAuthority. Without one, the run makes
+	// the key and writes it under deploy/peer (ADR-075 decision 1).
+	PeerAuthority []byte
 }
 
 // Plan is the result of a setup run before anything reaches the disk.
@@ -285,6 +289,18 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	}
 	shared = append(shared, stacks...)
 	shared = append(shared, esignetFiles...)
+	// Every service of the pair, and the landing, gets an identity of
+	// the authority of the deployment (ADR-075 decisions 1 and 2).
+	authority, authFiles, err := peerAuthority(req.PeerAuthority, req.Random)
+	if err != nil {
+		return Plan{}, err
+	}
+	pairPeers, sharedPeers, err := peerFiles(req.Pair, authority, req.Random, now())
+	if err != nil {
+		return Plan{}, err
+	}
+	files = append(files, pairPeers...)
+	shared = append(append(shared, authFiles...), sharedPeers...)
 	return Plan{Pair: req.Pair, Resolutions: list, Ports: plan, Files: files, Shared: shared}, nil
 }
 

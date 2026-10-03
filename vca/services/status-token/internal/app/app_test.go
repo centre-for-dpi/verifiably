@@ -24,6 +24,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/statuslist/token"
 	statusv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/status/v1/statusv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/status/lists"
 	"github.com/centre-for-dpi/vc-adapters/services/status-token/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/status-token/internal/securer"
@@ -37,6 +38,8 @@ func load(t *testing.T, env map[string]string) config.Config {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Every RPC checks its caller, and the client of peers may call it (ADR-075).
+	cfg.Peer = peers.Open("status-token")
 	return cfg
 }
 
@@ -100,7 +103,7 @@ func TestBuildServesJWTAndCWTFromOneBitArray(t *testing.T) {
 	}
 	srv := httptest.NewServer(app.Mux)
 	defer srv.Close()
-	client := statusv1connect.NewStatusServiceClient(srv.Client(), srv.URL)
+	client := statusv1connect.NewStatusServiceClient(peers.Client(srv.Client()), srv.URL)
 	alloc, err := client.AllocateIndex(context.Background(), connect.NewRequest(&statusv1.AllocateIndexRequest{
 		Purpose: statusv1.Purpose_PURPOSE_SUSPENSION, Kind: statusv1.Kind_KIND_TOKEN,
 	}))
@@ -270,3 +273,6 @@ func TestBuildFillsDefaultDeps(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// peers is the peer authority of the tests of the package (ADR-075).
+var peers = peertest.Fixed()

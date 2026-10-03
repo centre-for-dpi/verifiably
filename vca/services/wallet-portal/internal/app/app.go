@@ -30,6 +30,7 @@ import (
 	walletauthv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletauth/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/walletauth/v1/walletauthv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1/walletportalv1connect"
+	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit"
@@ -179,7 +180,8 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.Handle(walletportalv1connect.NewWalletPortalServiceHandler(svc,
+	// The caller check of the deployment runs first (ADR-075).
+	mux.Handle(walletportalv1connect.NewWalletPortalServiceHandler(svc, peerauth.Require(cfg.Peer),
 		connect.WithInterceptors(session.Interceptor(verify))))
 	mux.Handle("GET "+ui.Prefix, assets)
 	app := &App{Mux: mux, Service: svc, Portal: pages}
@@ -250,7 +252,7 @@ func probe(cfg config.Config, deps Deps) func(context.Context) topology.Snapshot
 	if len(cfg.Peers) == 0 {
 		return nil
 	}
-	return (&topology.Prober{Peers: cfg.Peers, Now: deps.Now}).Snapshot
+	return (&topology.Prober{Peers: cfg.Peers, Client: cfg.Peer.Client(nil), Now: deps.Now}).Snapshot
 }
 
 // registryService is the service of an issuer pair that serves the
@@ -326,6 +328,8 @@ func (d Deps) withDefaults(cfg config.Config) Deps {
 	if d.ConnectClient == nil {
 		d.ConnectClient = &http.Client{Timeout: cfg.DPGTimeout}
 	}
+	// The client signs every call of an internal service (ADR-075).
+	d.ConnectClient = cfg.Peer.Sign(d.ConnectClient)
 	return d
 }
 

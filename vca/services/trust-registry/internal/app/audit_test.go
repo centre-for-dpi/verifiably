@@ -38,7 +38,7 @@ func TestAuditServiceNeedsAdmin(t *testing.T) {
 		DisplayName: "Ministry of Health", Role: commonv1.Role_ROLE_ISSUER, Status: trustv1.Status_STATUS_ACTIVE,
 	}})
 	req.Header().Set(auditlog.ActorHeader, "kc|root")
-	if _, uerr := trustv1connect.NewTrustServiceClient(srv.Client(), srv.URL).UpsertEntry(ctx, req); uerr != nil {
+	if _, uerr := trustv1connect.NewTrustServiceClient(peers.Client(srv.Client()), srv.URL).UpsertEntry(ctx, req); uerr != nil {
 		t.Fatal(err)
 	}
 	query := func(token string) (*connect.Response[auditv1.QueryResponse], error) {
@@ -46,7 +46,7 @@ func TestAuditServiceNeedsAdmin(t *testing.T) {
 		if token != "" {
 			r.Header().Set("Authorization", "Bearer "+token)
 		}
-		return auditv1connect.NewAuditServiceClient(srv.Client(), srv.URL).Query(ctx, r)
+		return auditv1connect.NewAuditServiceClient(peers.Client(srv.Client()), srv.URL).Query(ctx, r)
 	}
 	for _, token := range []string{"", "someone"} {
 		if _, qerr := query(token); connect.CodeOf(qerr) != connect.CodeUnauthenticated {
