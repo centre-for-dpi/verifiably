@@ -187,3 +187,35 @@ jobs:
           exit-code: '1'
           ignore-unfixed: true
           scanners: vuln,secret,misconfig
+
+  browser:
+    name: wallet.js in Chromium (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache-dependency-path: vca/go.mod
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Download modules
+        run: go mod download
+
+      # The test loads Playwright through NODE_PATH, so the job needs no
+      # package.json in the tree.
+      - name: Install Playwright and Chromium
+        working-directory: ${{ runner.temp }}
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.56.1
+          npx playwright install --with-deps chromium
+          echo "NODE_PATH=${{ runner.temp }}/node_modules" >> "$GITHUB_ENV"
+
+      - name: Claim and present with wallet.js (ADR-004 decision 6)
+        env:
+          VCA_PLAYWRIGHT: '1'
+        run: go test -count=1 -run TestWalletScriptInChromium -v ./services/walkthrough/

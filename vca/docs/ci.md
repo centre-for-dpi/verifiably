@@ -30,6 +30,7 @@ Each job runs alone. A failure in one job blocks the merge.
 | go test + coverage gate | Unit tests with the race detector; each package at 90 percent or more, `vca/core/...` at 100 | `go test`, `vca/hack/coverage.sh` |
 | secret scan (blocking) | No key store, PEM private key, 64 hex API key, or literal password in the tracked tree | `vca/hack/secret-scan.sh` |
 | trivy fs (blocking) | No HIGH or CRITICAL vulnerability, secret, or misconfiguration under `vca/` | Trivy |
+| wallet.js in Chromium (Playwright) | `TestWalletScriptInChromium` drives the wallet pages in a headless Chromium against the walt.id walkthrough | Playwright 1.56.1, Chromium |
 
 Notes:
 
@@ -84,10 +85,27 @@ fills each form, and checks every page with `a11ytest.AssertPage`.
 | --- | --- |
 | `TestWalkthroughWaltid` | The staff makes a walt.id identity, publishes a schema, and issues. The holder loads the credential into the browser store. A check names the issuer untrusted. The admin approves the issuer, and a DCQL request gets a valid verdict. |
 | `TestWalkthroughCredebl` | The same path on CREDEBL. The operator made the DID, and the admin adds the trust entry. A revocation through the platform turns the verdict to invalid. |
+| `TestWalletScriptInChromium` | The walt.id path in a real browser. Chromium claims the offer, and `wallet.js` makes its key in IndexedDB and signs the proof. Chromium answers the request, `wallet.js` signs the key binding, and the verifier reads a valid answer. |
 
 The package runs in about ten seconds with the race detector. The first
 run builds the commands, so it takes longer. The test runs on Linux and
 macOS.
+
+`TestWalletScriptInChromium` runs when the environment names `VCA_PLAYWRIGHT`. It runs
+`testdata/wallet_e2e.cjs` with node, once to claim and once to present.
+Both runs share one browser profile, so the key of the browser stays.
+The job of vca-ci installs Playwright with Chromium and sets the
+variable. To run it on a machine that has both:
+
+```sh
+cd vca
+NODE_PATH=<the node_modules that hold playwright> \
+  VCA_PLAYWRIGHT=1 go test -run TestWalletScriptInChromium ./services/walkthrough/
+```
+
+No axe-core check runs yet. The package is not in the offline
+toolchain of the build machine. Each page of the walkthroughs passes
+`a11ytest.AssertPage` instead.
 
 The time limit of a walk starts after the build. A loaded machine can
 spend most of a minute on the build. A limit that counted the build
@@ -134,8 +152,10 @@ The team must fix it before the next release.
 
 ## Pinned actions
 
-Pin every third party action to a version tag. Pin Trivy to an
-exact release. Do not use `@master` or `@main`.
+Pin every action that a new job uses to a full commit SHA, with its
+version in a comment. `TestTheBrowserJobDrivesWalletJS` checks each such
+line. The older jobs still pin a version tag. Do not use `@master` or
+`@main`.
 
 ## Scripts in `vca/hack/`
 
