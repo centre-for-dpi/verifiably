@@ -572,10 +572,11 @@ func Catalog() []Service {
 				{Env: "VCA_VERIFIER_COMBINED_RESULTS_URL", Target: "verifier-results", Kind: LinkURL},
 				{Env: "VCA_VERIFIER_COMBINED_DISCOVERY_URL", Target: "verifier-discovery", Kind: LinkURL},
 			},
-			// No caller outside the compose network exists (ADR-047), and
-			// no service calls it.
+			// No caller outside the host exists (ADR-047). The vca
+			// command manages the combined templates on the host port of
+			// the pair (ADR-078).
 			Fixed:   state("VCA_VERIFIER_COMBINED_STATE_DIR"),
-			Callers: map[string][]string{rpcCombined: {}}},
+			Callers: map[string][]string{rpcCombined: {CLIPeer}}},
 		{Name: "verifier-discovery", ListenEnv: "VCA_DISCOVERY_LISTEN", ExposedPort: 8090, Roles: verifier, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_DISCOVERY_BASE_URL", Kind: LinkPublicURL},

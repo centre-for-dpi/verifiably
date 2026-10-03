@@ -5,6 +5,13 @@ service README at
 [`services/verifier-combined/README.md`](../services/verifier-combined/README.md)
 says how to run it. This page says how it works.
 
+## Who calls it
+
+The vca command stores, lists and removes the combined templates with
+`vca combined` (ADR-078). It is the only caller of the service. The
+ingestion service is the planned caller of `BuildDcql` and
+`EvaluateCombined`.
+
 ## Combined template
 
 A combined template holds a list of members and a list of cross rules.

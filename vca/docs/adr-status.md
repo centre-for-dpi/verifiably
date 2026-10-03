@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-077, one row per decision.
+ADR-078, one row per decision.
 
 The status values are:
 
@@ -820,12 +820,19 @@ A row that is not `Done` carries a note.
 | ADR-077 | 2 A second registration answers as the first | Done | `vca/services/dpg-adapter-waltid/internal/service/service.go`, `vca/services/dpg-adapter-credebl/internal/service/schemas.go` | `TestARegistrationAgainReplacesTheRetiredVct` pins the walt.id adapter. `TestARegistrationAgainFindsTheSchemaOfThePlatform`, `TestARegistrationAgainWritesOnlyTheMissingCredDef` and `TestARegistrationAgainOfATemplateWritesOneSchema` pin the CREDEBL adapter. Until the amendment of 2026-10-04 this row claimed the CREDEBL adapter, which found only the template of an SD-JWT configuration. |
 | ADR-077 | 3 The registry tries again while the stack refuses | Done | `vca/services/schema-registry/internal/app/app.go`, `vca/services/schema-registry/internal/service/republish.go`, `vca/services/schema-registry/internal/portal/portal.go` | `TestRepublishWaitsForTheStack`, `TestRepublishBacksOffAndStopsOnARefusal`, `TestRepublishSortsTheRefusals` and `TestDetailPageShowsAStoppedRegistration` pin it, as the amendment of 2026-10-04 changed it. |
 
+## ADR-078: The vca command manages the combined templates of a verifier pair
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-078 | 1 `vca combined list`, `create` and `delete` | Done | `vca/internal/cli/combined.go`, `vca/internal/cli/command.go` | `TestCombinedCommandsManageTheTemplatesOfThePair` pins it. |
+| ADR-078 | 2 The caller `cli` of the combined service | Done | `vca/internal/cli/services.go` | `TestCombinedCommandsManageTheTemplatesOfThePair` calls a service that takes the callers of the catalogue. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 391 |
+| Done | 393 |
 | Partial | 19 |
 | Deferred | 3 |
 | Not started | 5 |
-| Total | 418 |
+| Total | 420 |

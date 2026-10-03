@@ -661,6 +661,23 @@ A pod does not start without its Secrets.
 Set `peer.secret` and `peer.keySecret` of a chart to read Secrets of
 other names.
 
+## combined
+
+```sh
+vca combined list --dpg <dpg>
+vca combined create --dpg <dpg> <file>
+vca combined delete --dpg <dpg> <id>
+```
+
+A combined template asks for several credentials in one request and
+checks them together (ADR-026).
+The command manages the combined templates of the verifier pair of the
+DPG (ADR-078).
+It calls the combined service of the pair on its host port, with the
+identity of the vca command (ADR-075).
+`create` reads one `CombinedTemplate` in the JSON form of the proto API.
+The service gives the template its id.
+
 ## dpg rotate-authz-key
 
 ```sh

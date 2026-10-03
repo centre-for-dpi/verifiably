@@ -315,6 +315,7 @@ func NewRootCommand(env Environment) *cobra.Command {
 		newMigrateCommand(shared),
 		newThemeCommand(shared),
 		newPeerCommand(shared),
+		newCombinedCommand(shared),
 		newManCommand(shared),
 	)
 	return root
@@ -1409,6 +1410,74 @@ func newManCommand(env *Environment) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&dir, "dir", "", "The directory that receives the man pages.")
 	return cmd
+}
+
+// newCombinedCommand builds vca combined, the combined templates of a
+// verifier pair (ADR-078).
+func newCombinedCommand(env *Environment) *cobra.Command {
+	var dpg string
+	combined := &cobra.Command{
+		Use:   "combined",
+		Short: "Manage the combined templates of a verifier pair.",
+		Long: "A combined template asks for several credentials in one request and " +
+			"checks them together (ADR-026). The subcommands call the combined service " +
+			"of the verifier pair on its host port, with the identity of the vca " +
+			"command.",
+	}
+	combined.PersistentFlags().StringVar(&dpg, "dpg", "", "The DPG of the verifier pair.")
+	opts := func(cmd *cobra.Command) (CombinedOptions, error) {
+		d, err := ParseDpg(dpg)
+		if err != nil {
+			return CombinedOptions{}, err
+		}
+		pair := Pair{Role: commonv1.Role_ROLE_VERIFIER, Dpg: d}
+		values, err := ReadExisting(filepath.Join(env.Root, "deploy"), pair)
+		if err != nil {
+			return CombinedOptions{}, err
+		}
+		return CombinedOptions{Root: env.Root, Pair: pair, Values: values, Client: env.HTTP, Out: cmd.OutOrStdout()}, nil
+	}
+	combined.AddCommand(&cobra.Command{
+		Use:     "list --dpg <dpg>",
+		Short:   "List the combined templates of the pair.",
+		Example: "  vca combined list --dpg waltid",
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			o, err := opts(cmd)
+			if err != nil {
+				return err
+			}
+			return CombinedList(cmd.Context(), o)
+		},
+	}, &cobra.Command{
+		Use:   "create --dpg <dpg> <file>",
+		Short: "Store the combined template of a JSON file.",
+		Long: "create reads one CombinedTemplate in the JSON form of the proto API " +
+			"and stores it in the combined service of the pair. The service gives " +
+			"the template its id.",
+		Example: "  vca combined create --dpg waltid guardian-check.json",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			o, err := opts(cmd)
+			if err != nil {
+				return err
+			}
+			return CombinedCreate(cmd.Context(), o, args[0])
+		},
+	}, &cobra.Command{
+		Use:     "delete --dpg <dpg> <id>",
+		Short:   "Remove one combined template of the pair.",
+		Example: "  vca combined delete --dpg waltid guardian-check",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			o, err := opts(cmd)
+			if err != nil {
+				return err
+			}
+			return CombinedDelete(cmd.Context(), o, args[0])
+		},
+	})
+	return combined
 }
 
 // newPeerCommand builds vca peer, the identities of the services on the
