@@ -154,19 +154,38 @@ type Fetcher func(ctx context.Context, url string) ([]byte, error)
 // Fetch reads the request object of r.RequestURI and returns the full
 // request. The host must be on the allowlist.
 func Fetch(ctx context.Context, r Request, hosts []string, fetch Fetcher) (Request, error) {
+	got, _, err := FetchObject(ctx, r, hosts, fetch)
+	return got, err
+}
+
+// FetchObject is Fetch that also returns the request object it read. A
+// Request with no request_uri reads nothing and returns no object. The
+// wallet keeps the object, so a later step reads the same nonce
+// (OID4VP 1.0 section 5.10: a verifier may answer each read anew).
+func FetchObject(ctx context.Context, r Request, hosts []string, fetch Fetcher) (Request, []byte, error) {
 	if r.RequestURI == "" {
-		return r, nil
+		return r, nil, nil
 	}
 	if err := AllowHost(ctx, r.RequestURI, hosts); err != nil {
-		return Request{}, err
+		return Request{}, nil, err
 	}
 	if fetch == nil {
-		return Request{}, fmt.Errorf("%w: the service has no fetcher", ErrNotSupported)
+		return Request{}, nil, fmt.Errorf("%w: the service has no fetcher", ErrNotSupported)
 	}
 	raw, err := fetch(ctx, r.RequestURI)
 	if err != nil {
-		return Request{}, fmt.Errorf("present: read the request object: %w", err)
+		return Request{}, nil, fmt.Errorf("present: read the request object: %w", err)
 	}
+	got, err := FromObject(r, raw)
+	if err != nil {
+		return Request{}, nil, err
+	}
+	return got, raw, nil
+}
+
+// FromObject reads a request object that the wallet read for r: the
+// address and the client id of r fill what the object leaves out.
+func FromObject(r Request, raw []byte) (Request, error) {
 	got, err := ParseObject(raw)
 	if err != nil {
 		return Request{}, err

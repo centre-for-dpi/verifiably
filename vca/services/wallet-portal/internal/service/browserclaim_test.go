@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -88,6 +89,11 @@ type claimStack struct {
 	answer string
 	// posted is the direct_post answer of a presentation.
 	posted url.Values
+	// freshNonce makes the verifier hand each read of its request a new
+	// nonce, as a verifier that signs the request at each read does.
+	freshNonce bool
+	// fetches counts the reads of the request of the verifier.
+	fetches int
 }
 
 func newClaimStack(t *testing.T) *claimStack {
@@ -114,6 +120,10 @@ func (c *claimStack) fetch(_ context.Context, address string) ([]byte, error) {
 	case claimIssuer + "/.well-known/oauth-authorization-server":
 		return []byte(`{"issuer":"` + claimIssuer + `","token_endpoint":"` + claimToken + `"}`), nil
 	case "https://verifier.example/r/1":
+		c.fetches++
+		if c.freshNonce {
+			return requestObjectWith("n-" + strconv.Itoa(c.fetches)), nil
+		}
 		return requestObject(), nil
 	}
 	return nil, errors.New("unknown address " + address)

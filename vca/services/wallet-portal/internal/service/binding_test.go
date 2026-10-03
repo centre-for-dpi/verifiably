@@ -136,3 +136,36 @@ func TestAnUnboundCredentialNeedsNoBinding(t *testing.T) {
 		t.Fatal("a request with no presentation gave an input")
 	}
 }
+
+// TestTheBindingAndTheAnswerShareOneRequest: a verifier that hands each
+// read of its request a new nonce still gets an answer whose key binding
+// names the nonce of the consent page. The wallet reads the request
+// once and keeps it until the answer goes, so the nonce that the browser
+// signs is the nonce of the answer.
+func TestTheBindingAndTheAnswerShareOneRequest(t *testing.T) {
+	stack := newClaimStack(t)
+	stack.freshNonce = true
+	svc, browser := claimed(t, stack)
+	req := consent(t, svc)
+	input, err := svc.BindingInput(ctx(), req)
+	if err != nil || input == "" {
+		t.Fatalf("BindingInput = %q, %v", input, err)
+	}
+	req.KeyBinding = input + "." + browser.sign(t, input)
+	if _, err := svc.PresentConfirm(ctx(), connect.NewRequest(req)); err != nil {
+		t.Fatalf("PresentConfirm: %v", err)
+	}
+	signer, ok := stack.issuer.(*ecdsa.PrivateKey)
+	if !ok {
+		t.Fatalf("issuer key %T", stack.issuer)
+	}
+	if _, err := sdjwt.Verify(stack.posted.Get("vp_token"), sdjwt.VerifyOptions{
+		IssuerKey:         func(jose.Header, map[string]any) (crypto.PublicKey, error) { return signer.Public(), nil },
+		RequireKeyBinding: true, Audience: "https://verifier.example", Nonce: "n-1", Now: clock.Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("the answer does not carry the nonce of the consent page: %v", err)
+	}
+	if stack.fetches != 1 {
+		t.Errorf("the wallet read the request %d times, want once", stack.fetches)
+	}
+}

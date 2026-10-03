@@ -356,6 +356,11 @@ and the nonce of the request, and the `sd_hash` of the disclosed token.
 The browser signs it with its key. The portal checks the JWT against
 `cnf.jwk`, the token, the audience, and the nonce before it posts the
 answer. Without the binding, the portal refuses the answer and says why.
+The portal reads the request object from its `request_uri` once, when
+the consent page opens. It keeps that copy with the request. The
+binding step and the answer read the copy, so the nonce stays the one
+the citizen saw. A verifier that signs a new request at each read gets
+the nonce of the first read.
 
 Some stack wallets pick the claims themselves. Such an adapter lists
 `FEATURE_WALLET_WHOLE_QUERY` (ADR-063). The CREDEBL agent is one. It

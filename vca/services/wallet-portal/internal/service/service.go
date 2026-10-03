@@ -780,12 +780,21 @@ func (s *Service) request(ctx context.Context, citizen session.Citizen, idOrURI 
 	if err != nil {
 		return "", present.Request{}, record{}, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	full, err := present.Fetch(ctx, parsed, s.opts.RequestHosts, s.opts.Fetch)
+	if rec.Object != "" {
+		// The request object of the first read keeps the nonce of the
+		// consent page through the key binding and the answer.
+		full, perr := present.FromObject(parsed, []byte(rec.Object))
+		if perr != nil {
+			return "", present.Request{}, record{}, connect.NewError(connect.CodeInvalidArgument, perr)
+		}
+		return id, full, rec, nil
+	}
+	full, object, err := present.FetchObject(ctx, parsed, s.opts.RequestHosts, s.opts.Fetch)
 	if err != nil {
 		return "", present.Request{}, record{}, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if rec.ID == "" {
-		rec = record{ID: id, URI: uri}
+	if rec.ID == "" || len(object) > 0 {
+		rec.ID, rec.URI, rec.Object = id, uri, string(object)
 		if err := s.put(ctx, KindPresentation, citizen.WalletKey(), rec); err != nil {
 			return "", present.Request{}, record{}, connect.NewError(connect.CodeInternal, err)
 		}

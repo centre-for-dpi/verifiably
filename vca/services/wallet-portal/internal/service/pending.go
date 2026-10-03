@@ -64,6 +64,10 @@ type record struct {
 	AuthSession string `json:"auth_session,omitempty"`
 	// Request is the OpenID4VP request of that endpoint, as JSON.
 	Request string `json:"request,omitempty"`
+	// Object is the request object of a presentation request, as the
+	// wallet first read it from its request_uri. Every later step reads
+	// this copy, so the nonce stays the one the citizen saw.
+	Object string `json:"object,omitempty"`
 	// Offer is the credential offer the wallet claims after the
 	// presentation.
 	Offer string `json:"offer,omitempty"`

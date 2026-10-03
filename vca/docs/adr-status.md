@@ -781,7 +781,7 @@ A row that is not `Done` carries a note.
 | ADR-073 | 3 The portal runs the protocol calls | Done | `vca/services/wallet-portal/internal/service/browserclaim.go` | `TestClaimIntoTheBrowserStoreSignsWithTheBrowserKey` and `TestClaimRefusals` pin it. |
 | ADR-073 | 4 The portal checks each signature | Done | `vca/services/wallet-portal/internal/holderkey` | `TestCheckBindingCoversTheAnswer` and `TestClaimRefusals` pin it. |
 | ADR-073 | 5 The browser seals a claimed credential | Done | `vca/services/wallet-portal/internal/static/wallet.js`, `vca/services/wallet-portal/internal/portal/browser.go` | `TestTheBrowserStoreClaimsWithTheKeyOfTheBrowser` and both walkthroughs pin it. |
-| ADR-073 | 6 A bound answer needs the key binding | Done | `vca/services/wallet-portal/internal/service/binding.go` | `TestAnswerOfABoundCredentialCarriesTheBrowserKeyBinding`, `TestABoundAnswerNeedsTheBrowserKeyBinding` and both walkthroughs pin it. |
+| ADR-073 | 6 A bound answer needs the key binding | Done | `vca/services/wallet-portal/internal/service/binding.go` | `TestAnswerOfABoundCredentialCarriesTheBrowserKeyBinding`, `TestABoundAnswerNeedsTheBrowserKeyBinding`, `TestTheBindingAndTheAnswerShareOneRequest` and both walkthroughs pin it. The portal keeps the request object of the first read, so the nonce of the binding holds. |
 
 ## ADR-074: The role switches of the umbrella chart sit under global
 

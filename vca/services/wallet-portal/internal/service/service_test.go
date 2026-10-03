@@ -621,10 +621,13 @@ func sdjwtFixture(t *testing.T) (string, map[string]string) {
 }
 
 // requestObject returns one OID4VP request object.
-func requestObject() []byte {
+func requestObject() []byte { return requestObjectWith("n-1") }
+
+// requestObjectWith is the request of the verifier with a nonce.
+func requestObjectWith(nonce string) []byte {
 	doc := map[string]any{
 		"client_id":    "https://verifier.example",
-		"nonce":        "n-1",
+		"nonce":        nonce,
 		"response_uri": "https://verifier.example/direct_post",
 		"state":        "s-1",
 		"dcql_query": map[string]any{"credentials": []any{map[string]any{
