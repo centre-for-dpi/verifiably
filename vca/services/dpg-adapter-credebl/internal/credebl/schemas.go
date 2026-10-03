@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+
+	"github.com/centre-for-dpi/vc-adapters/services/internal/dpgclient"
 )
 
 // The schema calls of the api gateway beyond the SD-JWT templates
@@ -111,6 +114,101 @@ func (c *Client) CreateCredentialDefinition(ctx context.Context, schemaLedgerID,
 		return "", errors.New("credebl: the credential definition answer has no id")
 	}
 	return out.Data.CredentialDefinitionID, nil
+}
+
+// OrgSchema is one schema of the organisation of the adapter, as the
+// schema list of the platform answers it.
+type OrgSchema struct {
+	// Name is the name of the schema.
+	Name string `json:"name"`
+	// Version is the version of the schema.
+	Version string `json:"version"`
+	// LedgerID is the id of an AnonCreds schema on its ledger, or the
+	// address of a W3C schema on the schema file server.
+	LedgerID string `json:"schemaLedgerId"`
+	// IssuerID is the DID that wrote the schema.
+	IssuerID string `json:"issuerId"`
+	// Alias is the alias of a W3C schema.
+	Alias string `json:"alias"`
+}
+
+// NoLedger reports whether the schema has no ledger: a W3C schema that
+// the schema file server keeps at an address.
+func (s OrgSchema) NoLedger() bool {
+	return strings.HasPrefix(s.LedgerID, "http://") || strings.HasPrefix(s.LedgerID, "https://")
+}
+
+// schemaPageSize is the page size the adapter lists schemas and
+// credential definitions with.
+const schemaPageSize = 100
+
+// OrgSchemas reads every schema of the organisation whose name, version,
+// ledger id or DID carries the text, as the schema list of the platform
+// filters it. The platform answers the status not found for none. The
+// source is getSchemas of the schema controller and repository at the
+// tag v2.2.1-alpha.4 (testdata/doc/SOURCE.md).
+func (c *Client) OrgSchemas(ctx context.Context, text string) ([]OrgSchema, error) {
+	if c == nil {
+		return nil, ErrNoPlatform
+	}
+	var all []OrgSchema
+	for page := 1; ; page++ {
+		q := url.Values{
+			"searchByText": {text}, "pageNumber": {strconv.Itoa(page)}, "pageSize": {strconv.Itoa(schemaPageSize)},
+			"sortField": {"createDateTime"}, "sortBy": {"asc"},
+		}
+		var out envelope[listPage[OrgSchema]]
+		if err := c.call(ctx, http.MethodGet, "/v1/orgs/"+url.PathEscape(c.orgID)+"/schemas?"+q.Encode(), nil, &out); err != nil {
+			if dpgclient.IsStatus(err, http.StatusNotFound) {
+				return all, nil
+			}
+			return nil, err
+		}
+		all = append(all, out.Data.Data...)
+		if !out.Data.HasNextPage || len(out.Data.Data) == 0 {
+			return all, nil
+		}
+	}
+}
+
+// CredDef is one credential definition of a schema.
+type CredDef struct {
+	// Tag is the tag of the definition.
+	Tag string `json:"tag"`
+	// ID is the id of the definition on the ledger.
+	ID string `json:"credentialDefinitionId"`
+}
+
+// SchemaCredDefs reads the credential definitions that the organisation
+// wrote for one AnonCreds schema. The platform answers the status not
+// found for none. The source is getcredDeffListBySchemaId of the schema
+// controller at the tag v2.2.1-alpha.4.
+func (c *Client) SchemaCredDefs(ctx context.Context, schemaLedgerID string) ([]CredDef, error) {
+	if c == nil {
+		return nil, ErrNoPlatform
+	}
+	var all []CredDef
+	for page := 1; ; page++ {
+		q := url.Values{"pageNumber": {strconv.Itoa(page)}, "pageSize": {strconv.Itoa(schemaPageSize)}}
+		path := "/v1/orgs/" + url.PathEscape(c.orgID) + "/schemas/" + url.PathEscape(schemaLedgerID) + "/cred-defs?" + q.Encode()
+		var out envelope[listPage[CredDef]]
+		if err := c.call(ctx, http.MethodGet, path, nil, &out); err != nil {
+			if dpgclient.IsStatus(err, http.StatusNotFound) {
+				return all, nil
+			}
+			return nil, err
+		}
+		all = append(all, out.Data.Data...)
+		if !out.Data.HasNextPage || len(out.Data.Data) == 0 {
+			return all, nil
+		}
+	}
+}
+
+// listPage is one page of a list answer that says whether more follow.
+type listPage[T any] struct {
+	HasNextPage bool `json:"hasNextPage"`
+	Data        []T  `json:"data"`
 }
 
 // Ledgers reads the ledgers of the platform.

@@ -89,6 +89,17 @@ type Options struct {
 	// SourcesURL is the data source pages of the pair. Empty means
 	// DefaultSourcesURL.
 	SourcesURL string
+	// Registrations knows the published versions whose registration at
+	// start the stack refused for good (ADR-077). The detail page shows
+	// the reason and an action that tries again. Nil shows neither.
+	Registrations Registrations
+}
+
+// Registrations is the part of the service that keeps the refused
+// registrations. The service satisfies it in process.
+type Registrations interface {
+	RegistrationFailure(id string, version int32) string
+	RetryRegistration(ctx context.Context, id string, version int32) error
 }
 
 // Catalog is the part of the issuer backend the detail page calls. The
@@ -145,6 +156,9 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/schemas/{id}/versions", p.handle(p.versions))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/schemas/{id}/publish", p.handle(p.publish))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/schemas/{id}/retire", p.handle(p.retire))
+	if p.opts.Registrations != nil {
+		mux.HandleFunc("POST "+p.opts.Prefix+"/schemas/{id}/register", p.handle(p.registerAgain))
+	}
 	mux.HandleFunc("GET "+p.opts.Prefix+"/schemas/{id}/signin", p.handle(p.signInPage))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/schemas/{id}/signin", p.handle(p.saveSignIn))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/schemas/{id}/signin/test", p.handle(p.testSignIn))
@@ -301,6 +315,9 @@ var Notices = map[string]components.Toast{
 	"deleted":   {Level: "ok", Text: msg.T("issuer.schemas.deleted")},
 	"uploaded":  {Level: "ok", Text: msg.T("issuer.schemas.uploaded")},
 	"mapped":    {Level: "ok", Text: msg.T("issuer.mapping.saved")},
+	// The answers of the action that registers a version again (ADR-077).
+	"registered":   {Level: "ok", Text: msg.T("issuer.schemas.registration.done")},
+	"unregistered": {Level: "warn", Text: msg.T("issuer.schemas.registration.refused")},
 }
 
 // notice returns the toast of the notice query value, when the code is known.
@@ -525,11 +542,15 @@ func (p *Portal) detail(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	registration, err := p.registrationCard(m, staffsession.HiddenField(r.Context()))
+	if err != nil {
+		return err
+	}
 	return p.renderFrame(w, r, f, components.Page{
 		Title:       Name(m) + ", version " + strconv.Itoa(int(m.GetVersion())),
 		Heading:     Name(m),
 		Description: "The detail of one schema version.",
-		Content:     components.Join(tabs, summary, claims, display, document, actions),
+		Content:     components.Join(tabs, summary, registration, claims, display, document, actions),
 		Toasts:      notice(r.URL.Query().Get("notice")),
 	})
 }
@@ -784,6 +805,58 @@ func (p *Portal) retire(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	p.redirect(w, r, id, v, "retired")
+	return nil
+}
+
+// registrationCard shows why the stack refused the registration of a
+// published version at start, with an action that tries again. A
+// version the stack took shows nothing.
+func (p *Portal) registrationCard(m *schemav1.Schema, csrf template.HTML) (template.HTML, error) {
+	if p.opts.Registrations == nil || m.GetState() != schemav1.State_STATE_PUBLISHED {
+		return "", nil
+	}
+	reason := p.opts.Registrations.RegistrationFailure(m.GetId(), m.GetVersion())
+	if reason == "" {
+		return "", nil
+	}
+	button, err := p.opts.Kit.HTML("button", components.Button{
+		Text: msg.T("issuer.schemas.registration.retry.label"), Type: "submit", Variant: "primary",
+	})
+	if err != nil {
+		return "", err
+	}
+	badge, err := p.opts.Kit.HTML("badge", components.Badge{Status: "bad", Text: msg.T("issuer.schemas.registration.failed.label", reason)})
+	if err != nil {
+		return "", err
+	}
+	action := p.opts.Prefix + "/schemas/" + url.PathEscape(m.GetId()) + "/register"
+	body := components.Join(
+		badge,
+		template.HTML(`<form action="`+template.HTMLEscapeString(action)+`" method="post">`), //nolint:gosec // the action is escaped
+		csrf,
+		template.HTML(`<input type="hidden" name="version" value="`+strconv.Itoa(int(m.GetVersion()))+`">`), //nolint:gosec // the value is a number
+		button, template.HTML(`</form>`))
+	return p.opts.Kit.HTML("card", components.Card{
+		ID: "registration", Title: msg.T("issuer.schemas.registration.title.label"),
+		Text: msg.T("issuer.schemas.registration.text"), Body: body,
+	})
+}
+
+// registerAgain answers the action of the registration card: it
+// registers the version with the stack again and comes back to the
+// detail page.
+func (p *Portal) registerAgain(w http.ResponseWriter, r *http.Request) error {
+	id := r.PathValue("id")
+	v, err := formVersion(r)
+	if err != nil {
+		return err
+	}
+	code := "registered"
+	if err := p.opts.Registrations.RetryRegistration(r.Context(), id, v); err != nil {
+		// The card shows the new reason.
+		code = "unregistered"
+	}
+	p.redirect(w, r, id, v, code)
 	return nil
 }
 

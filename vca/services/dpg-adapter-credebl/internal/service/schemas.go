@@ -64,15 +64,77 @@ func (s *Service) registerAnonCreds(
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("the organisation holds no DID on the ledger %s; add one in the platform", ledger))
 	}
-	schemaID, err := s.client.CreateIndySchema(ctx, cfg.GetType(), schemaVersion, did, attributes)
+	// A registration again finds what the first one wrote, so the
+	// ledger sees one write of each (ADR-077 decision 2).
+	schemaID, err := s.findIndySchema(ctx, cfg.GetType(), ledger)
 	if err != nil {
-		return nil, failed("write the schema on the ledger", err)
+		return nil, failed("read the schemas of the organisation", err)
 	}
-	credDef, err := s.client.CreateCredentialDefinition(ctx, schemaID, did, credDefTag)
+	if schemaID == "" {
+		schemaID, err = s.client.CreateIndySchema(ctx, cfg.GetType(), schemaVersion, did, attributes)
+		if err != nil {
+			return nil, failed("write the schema on the ledger", err)
+		}
+	}
+	credDef, err := s.findCredDef(ctx, schemaID)
 	if err != nil {
-		return nil, failed("write the credential definition on the ledger", err)
+		return nil, failed("read the credential definitions of the schema", err)
+	}
+	if credDef == "" {
+		credDef, err = s.client.CreateCredentialDefinition(ctx, schemaID, did, credDefTag)
+		if err != nil {
+			return nil, failed("write the credential definition on the ledger", err)
+		}
 	}
 	return connect.NewResponse(&backendv1.RegisterCredentialConfigurationResponse{Id: credDef}), nil
+}
+
+// findIndySchema returns the ledger id of the AnonCreds schema of the
+// name and of schemaVersion that the organisation wrote on the ledger,
+// or the empty string.
+func (s *Service) findIndySchema(ctx context.Context, name, ledger string) (string, error) {
+	schemas, err := s.client.OrgSchemas(ctx, name)
+	if err != nil {
+		return "", err
+	}
+	for _, sc := range schemas {
+		ns, ok := credebl.IndyNamespace(sc.IssuerID)
+		if sc.Name == name && sc.Version == schemaVersion && !sc.NoLedger() && ok && ns == ledger {
+			return sc.LedgerID, nil
+		}
+	}
+	return "", nil
+}
+
+// findCredDef returns the id of the credential definition with the tag
+// credDefTag of one schema, or the empty string.
+func (s *Service) findCredDef(ctx context.Context, schemaID string) (string, error) {
+	defs, err := s.client.SchemaCredDefs(ctx, schemaID)
+	if err != nil {
+		return "", err
+	}
+	for _, d := range defs {
+		if d.Tag == credDefTag && d.ID != "" {
+			return d.ID, nil
+		}
+	}
+	return "", nil
+}
+
+// findW3CSchema returns the address of the W3C schema with no ledger of
+// the name and the alias, or the empty string. A JSON-LD schema carries
+// its type as the alias. The schema of a template carries none.
+func (s *Service) findW3CSchema(ctx context.Context, name, alias string) (string, error) {
+	schemas, err := s.client.OrgSchemas(ctx, name)
+	if err != nil {
+		return "", err
+	}
+	for _, sc := range schemas {
+		if sc.Name == name && sc.Alias == alias && sc.NoLedger() {
+			return sc.LedgerID, nil
+		}
+	}
+	return "", nil
 }
 
 // registerJSONLD writes one W3C JSON-LD schema with no ledger and
@@ -87,7 +149,16 @@ func (s *Service) registerJSONLD(
 	if err != nil {
 		return nil, err
 	}
-	id, err := s.client.CreateW3CSchema(ctx, cfg.GetType(), cfg.GetType(), attributes)
+	// The platform keeps a second W3C schema of the same name, so the
+	// adapter looks for the first (ADR-077 decision 2).
+	id, err := s.findW3CSchema(ctx, cfg.GetType(), cfg.GetType())
+	if err != nil {
+		return nil, failed("read the schemas of the organisation", err)
+	}
+	if id != "" {
+		return connect.NewResponse(&backendv1.RegisterCredentialConfigurationResponse{Id: id}), nil
+	}
+	id, err = s.client.CreateW3CSchema(ctx, cfg.GetType(), cfg.GetType(), attributes)
 	if err != nil {
 		return nil, failed("store the W3C schema", err)
 	}

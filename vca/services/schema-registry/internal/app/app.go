@@ -107,6 +107,11 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Shell: shell, SignOut: signOut, Issued: deps.Issued,
 	}
 	if deps.Backend != nil {
+		// A registration at start that the stack refused for good shows
+		// on the detail page with an action that tries again (ADR-077).
+		popts.Registrations = svc
+	}
+	if deps.Backend != nil {
 		// The detail page shows the card templates of the stack, and the
 		// tab "Claims by sign in" stores the source of a claim without an
 		// offer on the adapter (ADR-052 decision 3).
@@ -142,23 +147,66 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	return &App{Mux: mux, Service: svc, Portal: pages, log: deps.Log}, nil
 }
 
+// Backoff paces the runs of Republish while the stack refuses.
+type Backoff struct {
+	// First is the wait after the first refused run.
+	First time.Duration
+	// Max caps the wait, which doubles after each refused run. A value
+	// below First keeps First.
+	Max time.Duration
+	// Wait waits d or until ctx ends. Nil uses a timer.
+	Wait func(ctx context.Context, d time.Duration) error
+}
+
+// next returns the wait after d: twice d, up to the cap.
+func (b Backoff) next(d time.Duration) time.Duration {
+	return max(min(2*d, b.Max), b.First)
+}
+
+// wait waits d, or until ctx ends.
+func (b Backoff) wait(ctx context.Context, d time.Duration) error {
+	if b.Wait != nil {
+		return b.Wait(ctx, d)
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
 // Republish registers every published version with the stack again,
 // once at the start of the registry (ADR-077). The adapter can start
-// after the registry, so a run that the stack refuses waits every and
-// tries again. It returns when every version went, or when ctx ends.
-func (a *App) Republish(ctx context.Context, every time.Duration) error {
+// after the registry, so the versions that the stack could take later
+// go again after a wait that doubles up to its cap. A version that the
+// stack refuses with any other code stops: the registry logs it once,
+// and its detail page shows the reason with an action that tries again.
+// It returns when no version waits, or when ctx ends.
+func (a *App) Republish(ctx context.Context, b Backoff) error {
+	var only []service.Key
+	wait := b.First
 	for {
-		n, err := a.Service.Republish(ctx)
-		if err == nil {
-			a.log.Info("registered every published version with the stack again", "versions", n)
+		out := a.Service.Republish(ctx, only)
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		for _, f := range out.Failed {
+			a.log.Warn("the stack refused a registration for good, so the registry stops trying it",
+				"version", f.Key.String(), "error", f.Err)
+		}
+		if len(out.Retry) == 0 {
+			a.log.Info("registered the published versions with the stack again", "versions", out.Done, "refused", len(out.Failed))
 			return nil
 		}
-		a.log.Warn("the stack refused a registration, so the registry tries again", "error", err, "wait", every.String())
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(every):
+		a.log.Warn("the stack is not ready for a registration, so the registry tries again",
+			"versions", len(out.Retry), "wait", wait.String())
+		if err := b.wait(ctx, wait); err != nil {
+			return err
 		}
+		only, wait = out.Retry, b.next(wait)
 	}
 }
 

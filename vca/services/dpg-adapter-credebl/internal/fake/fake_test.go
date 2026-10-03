@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -564,5 +565,57 @@ func TestFakeKeepsTheCertificates(t *testing.T) {
 	}
 	if body := get(t, f, older); !strings.Contains(body, `"status": "In Active"`) {
 		t.Errorf("older = %s", body)
+	}
+}
+
+// TestFakeKeepsTheSchemasItWrites: the fake keeps each schema and
+// credential definition it writes, lists them by organisation and
+// search text, and answers the status conflict where the platform does.
+func TestFakeKeepsTheSchemasItWrites(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	if code := status(t, f, "/v1/orgs/org-1/schemas"); code != http.StatusNotFound {
+		t.Errorf("an empty list answered %d", code)
+	}
+	indy := `{"type":"indy","schemaPayload":{"schemaName":"Degree","schemaVersion":"1.0","orgDid":"did:indy:a:b:C"}}`
+	if got := post(t, f, "/v1/orgs/org-1/schemas", indy); !strings.Contains(got, "did:indy:a:b:C/anoncreds/v0/SCHEMA/Degree/1.0") {
+		t.Errorf("the schema answer = %s", got)
+	}
+	if got := post(t, f, "/v1/orgs/org-1/schemas", indy); !strings.Contains(got, "Conflict") {
+		t.Errorf("a second schema of the same name = %s", got)
+	}
+	f.AddForeignSchema("Permit", "2.0")
+	if got := post(t, f, "/v1/orgs/org-1/schemas", strings.Replace(strings.Replace(indy, "Degree", "Permit", 1), "1.0", "2.0", 1)); !strings.Contains(got, "Conflict") {
+		t.Errorf("a name of another organisation = %s", got)
+	}
+	w3c := `{"type":"json","alias":"Card","schemaPayload":{"schemaName":"Card","schemaType":"no_ledger","attributes":[]}}`
+	one, two := post(t, f, "/v1/orgs/org-1/schemas", w3c), post(t, f, "/v1/orgs/org-1/schemas", w3c)
+	if one == two || !strings.Contains(two, `"alias":"Card"`) {
+		t.Errorf("two W3C schemas = %s and %s, want two addresses", one, two)
+	}
+	if got := get(t, f, "/v1/orgs/org-1/schemas?searchByText=card&pageSize=1&pageNumber=2"); !strings.Contains(got, `"hasPreviousPage":true`) ||
+		strings.Count(got, `"name":"Card"`) != 1 || strings.Contains(got, "Degree") {
+		t.Errorf("page 2 of the W3C schemas = %s", got)
+	}
+	if got := get(t, f, "/v1/orgs/org-1/schemas?searchByText=zzz"); !strings.Contains(got, `"data":[]`) {
+		t.Errorf("a search with no match = %s", got)
+	}
+	schemaID := "did:indy:a:b:C/anoncreds/v0/SCHEMA/Degree/1.0"
+	defs := "/v1/orgs/org-1/schemas/" + url.PathEscape(schemaID) + "/cred-defs"
+	if code := status(t, f, defs); code != http.StatusNotFound {
+		t.Errorf("a schema with no credential definition answered %d", code)
+	}
+	credDef := `{"tag":"default","schemaLedgerId":"` + schemaID + `","orgDid":"did:indy:a:b:C"}`
+	if got := post(t, f, "/v1/orgs/org-1/cred-defs", credDef); !strings.Contains(got, "did:indy:a:b:C/anoncreds/v0/CLAIM_DEF/2107/default") {
+		t.Errorf("the credential definition answer = %s", got)
+	}
+	if got := post(t, f, "/v1/orgs/org-1/cred-defs", credDef); !strings.Contains(got, "Conflict") {
+		t.Errorf("a second credential definition = %s", got)
+	}
+	if got := get(t, f, defs); !strings.Contains(got, `"tag":"default"`) {
+		t.Errorf("the credential definitions = %s", got)
+	}
+	if got := post(t, f, "/v1/orgs/org-1/cred-defs", "not json"); !strings.Contains(got, "CLAIM_DEF") {
+		t.Errorf("a body that is not JSON = %s", got)
 	}
 }

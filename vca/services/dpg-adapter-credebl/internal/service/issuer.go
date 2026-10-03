@@ -52,8 +52,16 @@ func (s *Service) RegisterCredentialConfiguration(
 	if found, ok := credebl.FindTemplate(templates, cfg.GetId()); ok {
 		return connect.NewResponse(&backendv1.RegisterCredentialConfigurationResponse{Id: found.ID}), nil
 	}
-	if _, serr := s.client.CreateSchema(ctx, cfg.GetId(), cfg.GetType(), attributes); serr != nil {
-		return nil, failed("store the schema", serr)
+	// A run that stored the schema and failed on the template stores no
+	// second schema (ADR-077 decision 2).
+	stored, ferr := s.findW3CSchema(ctx, cfg.GetId(), "")
+	if ferr != nil {
+		return nil, failed("read the schemas of the organisation", ferr)
+	}
+	if stored == "" {
+		if _, serr := s.client.CreateSchema(ctx, cfg.GetId(), cfg.GetType(), attributes); serr != nil {
+			return nil, failed("store the schema", serr)
+		}
 	}
 	vct := cfg.GetType()
 	id, cerr := s.client.CreateTemplate(ctx, cfg.GetId(), format, vct, attributes)

@@ -36,7 +36,7 @@ import (
 //	POST /v1/auth/signin
 //	GET  /v1/orgs/{org}  and  /v1/orgs/{org}/dids
 //	GET  POST /v1/orgs/{org}/oid4vc/{issuer}/template
-//	POST /v1/orgs/{org}/schemas
+//	GET  POST /v1/orgs/{org}/schemas
 //	POST /v1/orgs/{org}/oid4vc/{issuer}/create-offer
 //	GET  /v1/orgs/{org}/oid4vc/credential-offer  and  .../{id}
 //	POST /v1/orgs/{org}/openid4vc/issuance-sessions/{id}/revoke
@@ -53,11 +53,13 @@ type credeblStack struct {
 
 	mu        sync.Mutex
 	templates []credeblTemplate
-	sessions  map[string]*credeblSession
-	codes     map[string]string
-	tokens    map[string]string
-	list      *token.List
-	next      int
+	// schemas holds the W3C schemas of the templates, by name.
+	schemas  []string
+	sessions map[string]*credeblSession
+	codes    map[string]string
+	tokens   map[string]string
+	list     *token.List
+	next     int
 	// unknown records the paths the double does not serve.
 	unknown []string
 }
@@ -158,7 +160,9 @@ func (c *credeblStack) serve(rw http.ResponseWriter, r *http.Request) {
 	case path == orgs+"/oid4vc/"+c.issuer+"/template" && r.Method == http.MethodPost:
 		c.createTemplate(rw, body)
 	case path == orgs+"/schemas" && r.Method == http.MethodPost:
-		envelope(rw, http.StatusCreated, "Schema created", map[string]any{"id": randomID()})
+		c.createSchema(rw, body)
+	case path == orgs+"/schemas" && r.Method == http.MethodGet:
+		c.listSchemas(rw, r.URL.Query().Get("searchByText"))
 	case path == orgs+"/oid4vc/"+c.issuer+"/create-offer" && r.Method == http.MethodPost:
 		c.createOffer(rw, body)
 	case path == orgs+"/oid4vc/credential-offer" && r.Method == http.MethodGet:
@@ -210,6 +214,47 @@ func (c *credeblStack) serve(rw http.ResponseWriter, r *http.Request) {
 		c.mu.Unlock()
 		envelope(rw, http.StatusNotFound, "Cannot "+r.Method+" "+path, nil)
 	}
+}
+
+// createSchema stores the W3C schema of a template as the platform
+// does: the name, and an address on the schema file server.
+func (c *credeblStack) createSchema(rw http.ResponseWriter, body []byte) {
+	var req struct {
+		Payload struct {
+			Name string `json:"schemaName"`
+		} `json:"schemaPayload"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil || req.Payload.Name == "" {
+		envelope(rw, http.StatusBadRequest, "The schema is not valid", nil)
+		return
+	}
+	c.mu.Lock()
+	c.schemas = append(c.schemas, req.Payload.Name)
+	c.mu.Unlock()
+	envelope(rw, http.StatusCreated, "Schema created", map[string]any{"id": randomID()})
+}
+
+// listSchemas answers the schemas of the organisation whose name holds
+// the text. The platform answers not found when the organisation has no
+// schema.
+func (c *credeblStack) listSchemas(rw http.ResponseWriter, text string) {
+	c.mu.Lock()
+	names := append([]string(nil), c.schemas...)
+	c.mu.Unlock()
+	if len(names) == 0 {
+		envelope(rw, http.StatusNotFound, "Schema not found", nil)
+		return
+	}
+	rows := []map[string]any{}
+	for _, n := range names {
+		if strings.Contains(strings.ToLower(n), strings.ToLower(text)) {
+			rows = append(rows, map[string]any{
+				"name": n, "version": "1.0", "alias": nil, "issuerId": c.did,
+				"schemaLedgerId": "http://credebl-schema-file-server:4000/schemas/" + n,
+			})
+		}
+	}
+	envelope(rw, http.StatusOK, "Schemas fetched successfully", map[string]any{"totalItems": len(rows), "hasNextPage": false, "data": rows})
 }
 
 // createTemplate stores one template as the platform does.

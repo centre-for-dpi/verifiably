@@ -62,9 +62,15 @@ At each start the registry registers every published version again
 (ADR-077). A stack can keep a registration of an earlier release, such
 as a walt.id configuration with a retired `vct`. The registration of the
 registry then replaces it. Every adapter takes the same registration
-twice without harm. A draft and a retired version stay out. While the
-stack refuses, the registry tries again every 15 seconds and logs each
-refusal.
+twice and writes nothing new. A draft and a retired version stay out.
+
+While the stack answers `unavailable` or `deadline_exceeded`, the
+registry tries again the versions that failed, and only those. The
+wait starts at 15 seconds and doubles after each run, up to 5 minutes.
+Any other code stops that version. The registry logs it once. The
+detail page of the version shows "registration failed" with the reason
+of the stack. A button on the page registers it again. The registry keeps
+the reason in memory, so the next start tries again.
 
 `Retire` with version zero retires every published version of the schema.
 Issuance with a retired version stops. Verifiers can still read it.

@@ -48,6 +48,8 @@ DIDComm wallet for each holder in the shared agent of the stack.
 | `POST /v1/orgs/{org}/schemas` with the type `indy` | Writes an AnonCreds schema on a ledger. |
 | `POST /v1/orgs/{org}/cred-defs` | Writes the credential definition of an AnonCreds schema. |
 | `POST /v1/orgs/{org}/schemas` with the schema type `no_ledger` | Stores a W3C JSON-LD schema in the schema file server. |
+| `GET /v1/orgs/{org}/schemas` | Finds a schema that an earlier registration wrote, by name. The platform answers not found for none. |
+| `GET /v1/orgs/{org}/schemas/{schema}/cred-defs` | Finds the credential definition of an AnonCreds schema. The platform answers not found for none. |
 | `GET /v1/platform/ledgers` | Reads the names of the ledgers. |
 | `GET /v1/orgs/{org}/oid4vc/credential-offer/{id}` | Reads the issuance session of one offer. |
 | `GET /v1/orgs/{org}/oid4vc/credential-offer` | Lists the issuance sessions, for the issued list. |
@@ -380,6 +382,17 @@ most. A platform that does not answer lists no ledger.
 **A W3C JSON-LD schema goes on no ledger.** The adapter stores it with
 the schema type `no_ledger`. The schema file server of the stack keeps
 the document, and the configuration id is its address.
+
+**A second registration writes nothing new (ADR-077).** The schema
+registry registers every published version again at each start. Before
+each write the adapter lists the schemas of its organisation by name.
+It reuses an AnonCreds schema of the same name, version and ledger. It
+reuses the credential definition of that schema with the tag `default`.
+It reuses a W3C schema of the same name and alias. It reuses the schema
+of a template of the same name. So the ledger sees one write of each. The
+platform keeps one AnonCreds name and version across every organisation.
+A name that another organisation holds answers `already_exists`, and
+the registry stops trying it.
 
 **The state of an offer is the state of its session.** The offer id
 is the id of the issuance session of the agent. A session in the state

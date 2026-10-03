@@ -817,8 +817,8 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-077 | 1 Every published version again at start | Done | `vca/services/schema-registry/internal/service/service.go`, `vca/services/schema-registry/main.go` | `TestRepublishRegistersEveryPublishedVersionAgain` pins it. |
-| ADR-077 | 2 A second registration answers as the first | Done | `vca/services/dpg-adapter-waltid/internal/service/service.go` | `TestARegistrationAgainReplacesTheRetiredVct` pins the walt.id adapter. The CREDEBL adapter finds the template of the same name. |
-| ADR-077 | 3 The registry tries again while the stack refuses | Done | `vca/services/schema-registry/internal/app/app.go` | `TestRepublishWaitsForTheStack` pins it. |
+| ADR-077 | 2 A second registration answers as the first | Done | `vca/services/dpg-adapter-waltid/internal/service/service.go`, `vca/services/dpg-adapter-credebl/internal/service/schemas.go` | `TestARegistrationAgainReplacesTheRetiredVct` pins the walt.id adapter. `TestARegistrationAgainFindsTheSchemaOfThePlatform`, `TestARegistrationAgainWritesOnlyTheMissingCredDef` and `TestARegistrationAgainOfATemplateWritesOneSchema` pin the CREDEBL adapter. Until the amendment of 2026-10-04 this row claimed the CREDEBL adapter, which found only the template of an SD-JWT configuration. |
+| ADR-077 | 3 The registry tries again while the stack refuses | Done | `vca/services/schema-registry/internal/app/app.go`, `vca/services/schema-registry/internal/service/republish.go`, `vca/services/schema-registry/internal/portal/portal.go` | `TestRepublishWaitsForTheStack`, `TestRepublishBacksOffAndStopsOnARefusal`, `TestRepublishSortsTheRefusals` and `TestDetailPageShowsAStoppedRegistration` pin it, as the amendment of 2026-10-04 changed it. |
 
 ## Counts
 

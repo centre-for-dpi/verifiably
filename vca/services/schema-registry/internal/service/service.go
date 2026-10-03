@@ -15,6 +15,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -55,6 +56,11 @@ type Options struct {
 type Service struct {
 	schemav1connect.UnimplementedSchemaServiceHandler
 	opts Options
+	// mu guards failures.
+	mu sync.Mutex
+	// failures holds the reason of each published version whose
+	// registration the stack refused for good (ADR-077).
+	failures map[Key]string
 }
 
 var _ schemav1connect.SchemaServiceClient = (*Service)(nil)
@@ -70,7 +76,7 @@ func New(opts Options) (*Service, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	return &Service{opts: opts}, nil
+	return &Service{opts: opts, failures: map[Key]string{}}, nil
 }
 
 // Ready reports whether the service can take traffic.
@@ -141,7 +147,8 @@ func (s *Service) Publish(ctx context.Context, req *connect.Request[schemav1.Pub
 	}
 	ids, err := s.register(ctx, r)
 	if err != nil {
-		return nil, err
+		// The issuer can publish again later, whatever the stack said.
+		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
 	now := s.opts.Now()
 	stored, err := s.opts.Store.Transition(r.ID, r.Version, func(cur record.Record) (record.Record, error) {
@@ -157,35 +164,10 @@ func (s *Service) Publish(ctx context.Context, req *connect.Request[schemav1.Pub
 	return connect.NewResponse(resp), nil
 }
 
-// Republish registers every published version with the DPG again
-// (ADR-077). A stack can keep a registration of an earlier release,
-// such as a walt.id configuration with the retired vct. The
-// registration of the registry then replaces it. Every adapter takes
-// the same registration twice without harm, so the registry runs this
-// at each start. A draft and a retired version stay out. It returns the
-// number of versions it registered, and one error that names each
-// version that failed.
-func (s *Service) Republish(ctx context.Context) (int, error) {
-	if s.opts.Backend == nil {
-		return 0, nil
-	}
-	done := 0
-	var errs []error
-	for _, r := range s.opts.Store.All() {
-		if r.State != record.StatePublished {
-			continue
-		}
-		if _, err := s.register(ctx, r); err != nil {
-			errs = append(errs, fmt.Errorf("%s version %d: %w", r.ID, r.Version, err))
-			continue
-		}
-		done++
-	}
-	return done, errors.Join(errs...)
-}
-
 // register calls the issuer backend once per format and returns the
-// configuration id of each format.
+// configuration id of each format. An error keeps the code of the
+// backend, so a caller can tell a refusal that time heals from one it
+// does not.
 func (s *Service) register(ctx context.Context, r record.Record) (map[string]string, error) {
 	ids := map[string]string{}
 	display, ignored := json.Marshal(metadata.Display(r.Display))
@@ -213,7 +195,7 @@ func (s *Service) register(ctx context.Context, r record.Record) (map[string]str
 				},
 			}))
 			if err != nil {
-				return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("service: the issuer backend did not register %s: %w", id, err))
+				return nil, fmt.Errorf("service: the issuer backend did not register %s: %w", id, err)
 			}
 			if got := resp.Msg.GetId(); got != "" {
 				id = got

@@ -156,6 +156,10 @@ type Server struct {
 	// certs holds the certificate rows of P6-C9 by id, loaded from the
 	// recorded list at the first call.
 	certs map[string]map[string]any
+	// schemaRows and credDefRows hold the schemas and the credential
+	// definitions the fake wrote, in order.
+	schemaRows  []schemaRow
+	credDefRows []credDefRow
 }
 
 // The certificate rows of the recorded list: the imported certificate,
@@ -377,7 +381,9 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	body, ignored := io.ReadAll(r.Body)
 	_ = ignored
 	f.mu.Lock()
-	f.requests[r.URL.Path] = body
+	if r.Method != http.MethodGet {
+		f.requests[r.URL.Path] = body
+	}
 	f.queries[r.URL.Path] = r.URL.RawQuery
 	f.types[r.URL.Path] = r.Header.Get("Content-Type")
 	f.calls = append(f.calls, r.Method+" "+r.URL.Path)
@@ -394,6 +400,9 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := r.URL.Path
+	if f.serveSchemas(w, r, body) {
+		return
+	}
 	if f.serveDidcomm(w, r, connections, record) {
 		return
 	}
@@ -422,10 +431,6 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		f.send(w, string(templates))
 	case strings.HasSuffix(path, "/template"):
 		f.send(w, "template-created.json")
-	case strings.HasSuffix(path, "/schemas"):
-		f.send(w, schemaAnswer(body))
-	case strings.HasSuffix(path, "/cred-defs") && r.Method == http.MethodPost:
-		f.sendStatus(w, http.StatusCreated, "doc/cred-def-created.json")
 	case strings.HasSuffix(path, "/oid4vc/credential-offer") && r.Method == http.MethodGet:
 		f.send(w, "doc/offer-sessions.json")
 	case strings.Contains(path, "/oid4vc/credential-offer/") && r.Method == http.MethodGet:

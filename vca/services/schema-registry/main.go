@@ -64,7 +64,7 @@ func serveOrProbe(ctx context.Context, healthcheck bool, getenv func(string) str
 	// (ADR-077). The run ends with the service at the latest.
 	go func() {
 		// The run logs each refusal itself, and it ends with the context.
-		anyval.Discard(a.Republish(ctx, republishEvery))
+		anyval.Discard(a.Republish(ctx, app.Backoff{First: republishFirst, Max: republishMax}))
 	}()
 	return serve.Run(ctx, serve.Options{
 		Listen:  cfg.Listen,
@@ -74,9 +74,13 @@ func serveOrProbe(ctx context.Context, healthcheck bool, getenv func(string) str
 	})
 }
 
-// republishEvery is the wait between two runs of the registration at
-// start, while the stack refuses it.
-const republishEvery = 15 * time.Second
+// republishFirst and republishMax pace the registration at start while
+// the stack is not ready: 15 seconds, doubling after each refused run
+// up to 5 minutes.
+const (
+	republishFirst = 15 * time.Second
+	republishMax   = 5 * time.Minute
+)
 
 // printLine writes one line to w. It returns the process exit status.
 func printLine(w io.Writer, v any) int {
