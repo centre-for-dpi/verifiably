@@ -3,7 +3,9 @@
 package portal_test
 
 import (
+	"bytes"
 	"context"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -217,4 +219,30 @@ func TestScanReadAnswersTheScanner(t *testing.T) {
 	if empty.Code != http.StatusOK || !strings.Contains(empty.Body.String(), "could not read") {
 		t.Fatalf("empty: %d %s", empty.Code, empty.Body.String())
 	}
+}
+
+// TestScanReadTakesTheMultipartPostOfTheScanner posts the decoded text as
+// scanner.js does: a FormData body, which the browser sends as
+// multipart/form-data, with the form token in the header and in a field.
+func TestScanReadTakesTheMultipartPostOfTheScanner(t *testing.T) {
+	h := setupShell(t, nil, holderDeployment())
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	for name, value := range map[string]string{"csrf_token": h.guard.Token(citizen()), "payload": pinOffer} {
+		if err := mw.WriteField(name, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/wallet/scan/read", &body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("X-CSRF-Token", h.guard.Token(citizen()))
+	rec := httptest.NewRecorder()
+	h.handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Add to my wallet") {
+		t.Fatalf("a multipart scan: %d %s", rec.Code, rec.Body.String())
+	}
+	a11ytest.AssertFragment(t, rec.Body.String())
 }

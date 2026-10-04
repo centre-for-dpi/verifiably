@@ -46,6 +46,7 @@ import (
 	"context"
 	"errors"
 	"html/template"
+	"mime"
 	"net/http"
 	"sort"
 	"strings"
@@ -362,7 +363,7 @@ func (p *Portal) writer(w http.ResponseWriter, r *http.Request) (session.Citizen
 		http.Error(w, "log in first", http.StatusUnauthorized)
 		return session.Citizen{}, false
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := readForm(r); err != nil {
 		http.Error(w, "the form could not be read", http.StatusBadRequest)
 		return session.Citizen{}, false
 	}
@@ -371,6 +372,24 @@ func (p *Portal) writer(w http.ResponseWriter, r *http.Request) (session.Citizen
 		return session.Citizen{}, false
 	}
 	return citizen, true
+}
+
+// maxFormMemory caps the part of a multipart form that the portal keeps
+// in memory. A handler that takes a file caps the body itself first.
+const maxFormMemory = 1 << 20
+
+// readForm parses the form of a POST. A FormData body of a script, such
+// as the camera scanner sends, comes as multipart/form-data. ParseForm
+// leaves such a body unread, so the portal parses it as multipart.
+func readForm(r *http.Request) error {
+	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err == nil && media == "multipart/form-data" {
+		if r.MultipartForm != nil {
+			return nil
+		}
+		return r.ParseMultipartForm(maxFormMemory)
+	}
+	return r.ParseForm()
 }
 
 // message returns the sentence of a Connect error, without the code.
