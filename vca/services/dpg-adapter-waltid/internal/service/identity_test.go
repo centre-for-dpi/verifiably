@@ -287,8 +287,9 @@ func TestImportDidWithKeyReference(t *testing.T) {
 	}
 }
 
-// selfSigned returns one self signed certificate in PEM.
-func selfSigned(t *testing.T) string {
+// selfSigned returns one self signed certificate in PEM and the walt.id
+// jwk key object of its key.
+func selfSigned(t *testing.T) (string, string) {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -302,13 +303,13 @@ func selfSigned(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), jwkRef(t, key)
 }
 
 func TestImportX509ChainSignsWithTheChain(t *testing.T) {
 	svc, f := identityService(t, filepath.Join(t.TempDir(), "issuer.json"), "", "")
-	chain := selfSigned(t)
-	ref := `{"type":"tse","server":"http://vault:8200/v1/transit","accessKey":"s.token","id":"issuer-key"}`
+	// The leaf holds the key of the reference (TestImportX509ChecksTheChain).
+	chain, ref := selfSigned(t)
 	id, err := importIdentity(svc, &backendv1.ImportIssuerIdentityRequest{
 		Subject: &backendv1.ImportIssuerIdentityRequest_X509ChainPem{X509ChainPem: chain}, KeyReference: ref,
 		LegalIdentifier: "KE-GOV-017",

@@ -244,6 +244,17 @@ transit engine makes no `secp256k1` key, so the answer lists the three
 other key types. A request can still name `jwk` for a local key.
 
 An import checks that a jwk key belongs to a `did:key` or a `did:jwk`.
+An X.509 import checks three things, as the CREDEBL adapter does:
+
+| Check | Answer when it fails |
+| --- | --- |
+| The leaf certificate holds the key of the key reference | `invalid_argument` |
+| The next certificate of the chain signs each certificate | `invalid_argument` |
+| The leaf certificate is valid now | `failed_precondition` |
+
+A jwk key carries its public key. A key of an external key store
+carries it in `_publicKey` once walt.id read it, as the onboarding
+answer shows. A reference without a public key fails the import.
 An X.509 import sends the chain as `x5Chain` in each issuance request.
 `VCA_WALTID_ISSUER_KEY` and `VCA_WALTID_ISSUER_DID` pin the identity.
 With a pinned identity, provision and import answer

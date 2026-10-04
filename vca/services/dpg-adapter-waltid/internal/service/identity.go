@@ -4,6 +4,8 @@ package service
 
 import (
 	"context"
+	"crypto"
+	"crypto/ed25519"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -18,6 +20,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/centre-for-dpi/vc-adapters/core/did"
+	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/waltid"
 )
@@ -117,6 +120,11 @@ func saveIdentity(path string, st identityState) error {
 type keyObject struct {
 	Type string         `json:"type"`
 	JWK  map[string]any `json:"jwk"`
+	// PublicKey is the public key that walt.id keeps with a key of an
+	// external key store once it read it, as signed bytes.
+	PublicKey []int8 `json:"_publicKey"`
+	// KeyType names the type of such a key, for example Ed25519.
+	KeyType string `json:"_keyType"`
 }
 
 // parseKeyReference reads a walt.id key object: a jwk key, or a
@@ -391,9 +399,13 @@ func (s *Service) ImportIssuerIdentity(
 	if err := s.identityGuard(); err != nil {
 		return nil, err
 	}
-	st, err := importState(req.Msg)
+	st, leaf, err := importState(req.Msg)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if now := s.now(); leaf != nil && (now.Before(leaf.NotBefore) || now.After(leaf.NotAfter)) {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("the leaf certificate is valid from %s to %s only",
+			leaf.NotBefore.UTC().Format("2006-01-02"), leaf.NotAfter.UTC().Format("2006-01-02")))
 	}
 	if err := s.keep(st); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -401,11 +413,13 @@ func (s *Service) ImportIssuerIdentity(
 	return connect.NewResponse(&backendv1.ImportIssuerIdentityResponse{Identity: identityOf(st)}), nil
 }
 
-// importState checks an import request and builds the state.
-func importState(m *backendv1.ImportIssuerIdentityRequest) (identityState, error) {
+// importState checks an import request and builds the state. It also
+// returns the leaf certificate of an X.509 import, whose dates the
+// caller checks against the clock.
+func importState(m *backendv1.ImportIssuerIdentityRequest) (identityState, *x509.Certificate, error) {
 	raw, key, err := parseKeyReference(strings.TrimSpace(m.GetKeyReference()))
 	if err != nil {
-		return identityState{}, err
+		return identityState{}, nil, err
 	}
 	st := identityState{
 		IssuerKey: raw, KeyType: keyTypeOf(key.JWK), KeyBackend: key.Type,
@@ -415,25 +429,82 @@ func importState(m *backendv1.ImportIssuerIdentityRequest) (identityState, error
 	case *backendv1.ImportIssuerIdentityRequest_Did:
 		id := strings.TrimSpace(subject.Did)
 		if _, err := did.Method(id); err != nil {
-			return identityState{}, fmt.Errorf("%q is not a DID: %w", id, err)
+			return identityState{}, nil, fmt.Errorf("%q is not a DID: %w", id, err)
 		}
 		if err := matchKey(id, key); err != nil {
-			return identityState{}, err
+			return identityState{}, nil, err
 		}
 		st.IssuerDid = id
+		return st, nil, nil
 	case *backendv1.ImportIssuerIdentityRequest_X509ChainPem:
 		chain, err := parseChain(subject.X509ChainPem)
 		if err != nil {
-			return identityState{}, err
+			return identityState{}, nil, err
+		}
+		if err := leafHoldsKey(chain[0], key); err != nil {
+			return identityState{}, nil, err
 		}
 		st.X509Subject = chain[0].Subject.String()
 		for _, c := range chain {
 			st.X5c = append(st.X5c, base64.StdEncoding.EncodeToString(c.Raw))
 		}
-	default:
-		return identityState{}, errors.New("the request needs a DID or an X.509 chain")
+		return st, chain[0], nil
 	}
-	return st, nil
+	return identityState{}, nil, errors.New("the request needs a DID or an X.509 chain")
+}
+
+// leafHoldsKey checks that the leaf certificate carries the public key
+// of the key reference, so walt.id signs with the key the chain names.
+// A jwk key carries its public key. A key of an external key store
+// carries it in _publicKey once walt.id read it: the raw key of an
+// Ed25519 key, else the DER public key.
+func leafHoldsKey(leaf *x509.Certificate, key keyObject) error {
+	leafJWK, err := jose.PublicJWK(leaf.PublicKey, "")
+	if err != nil {
+		return fmt.Errorf("the leaf certificate holds a key the adapter cannot read: %w", err)
+	}
+	want, err := jose.JWKToMap(leafJWK)
+	if err != nil {
+		return err
+	}
+	got, err := referencedJWK(key)
+	if err != nil {
+		return err
+	}
+	for _, member := range []string{"kty", "crv", "x", "y", "n", "e"} {
+		if fmt.Sprint(got[member]) != fmt.Sprint(want[member]) {
+			return errors.New("the leaf certificate does not hold the key of the key reference")
+		}
+	}
+	return nil
+}
+
+// referencedJWK returns the public JWK of a key reference.
+func referencedJWK(key keyObject) (map[string]any, error) {
+	if len(key.JWK) > 0 {
+		return key.JWK, nil
+	}
+	if len(key.PublicKey) == 0 {
+		return nil, errors.New("the key reference carries no public key, so the adapter cannot check that the leaf certificate holds it; " +
+			"name a jwk key, or a key store key with its _publicKey")
+	}
+	raw := make([]byte, len(key.PublicKey))
+	for i, b := range key.PublicKey {
+		raw[i] = byte(b)
+	}
+	var pub crypto.PublicKey = ed25519.PublicKey(raw)
+	if key.KeyType != "Ed25519" {
+		parsed, err := x509.ParsePKIXPublicKey(raw)
+		if err != nil {
+			return nil, fmt.Errorf("the _publicKey of the key reference does not parse: %w", err)
+		}
+		pub = parsed
+	}
+	jwk, err := jose.PublicJWK(pub, "")
+	if err != nil {
+		return nil, fmt.Errorf("the _publicKey of the key reference does not parse: %w", err)
+	}
+	return jose.JWKToMap(jwk)
 }
 
 // matchKey checks that a jwk key belongs to a did:key or a did:jwk. The
@@ -482,6 +553,11 @@ func parseChain(text string) ([]*x509.Certificate, error) {
 	}
 	if len(out) == 0 {
 		return nil, errors.New("the chain holds no PEM certificate")
+	}
+	for i := 0; i+1 < len(out); i++ {
+		if err := out[i].CheckSignatureFrom(out[i+1]); err != nil {
+			return nil, fmt.Errorf("the chain does not verify: certificate %d is not signed by certificate %d: %w", i+1, i+2, err)
+		}
 	}
 	return out, nil
 }
