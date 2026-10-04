@@ -73,6 +73,9 @@ const (
 	// Oid4vpResolvedClaimSets is an OID4VP request whose claim sets make
 	// one claim optional. The agent discloses both claims.
 	Oid4vpResolvedClaimSets Answer = "doc/agent-oid4vp-request-resolved-claim-sets.json"
+	// Oid4vpResolvedPlainClaims is an OID4VP request for one claim of an
+	// SD-JWT that carries two more claims outside any disclosure.
+	Oid4vpResolvedPlainClaims Answer = "doc/agent-oid4vp-request-resolved-plain-claims.json"
 )
 
 // SdJwtRecord is the stored SD-JWT VC of the agent answers.
@@ -117,6 +120,8 @@ type Agent struct {
 	offer, vpEnd Answer
 	// resolved is the OID4VP request the agent reads.
 	resolved Answer
+	// presented reports an OID4VP answer the agent sent.
+	presented bool
 	// inbox reports that an offer and a request wait over a connection.
 	inbox bool
 	// calls records the method and path of every call, in order.
@@ -390,11 +395,121 @@ func (a *Agent) serveOid4vc(w http.ResponseWriter, key string) bool {
 	case "POST /openid4vc/holder/resolve-proof-request":
 		a.send(w, string(a.resolved))
 	case "POST /openid4vc/holder/accept-proof-request":
+		a.presented = true
 		a.send(w, string(a.vpEnd))
 	default:
 		return false
 	}
 	return true
+}
+
+// Presented returns the claim names of the last OID4VP answer, or none
+// when the agent sent no answer since the last Forget. The agent answers
+// with the first valid credential of each query. Credo discloses the
+// output of its first valid claim set, and an SD-JWT shows each claim
+// outside a disclosure as well (DcqlService.ts of Credo, see SOURCE.md).
+func (a *Agent) Presented() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.presented {
+		return nil
+	}
+	raw, err := os.ReadFile(filepath.Join(a.dir, string(a.resolved))) //nolint:gosec // G304: one of the fixed answers
+	if err != nil {
+		return nil
+	}
+	var doc struct {
+		Dcql struct {
+			QueryResult struct {
+				Matches map[string]struct {
+					Valid []struct {
+						Record struct {
+							Instances []struct {
+								Compact string `json:"compactSdJwtVc"`
+							} `json:"credentialInstances"`
+						} `json:"record"`
+						Claims struct {
+							Sets []struct {
+								Output map[string]json.RawMessage `json:"output"`
+							} `json:"valid_claim_sets"`
+							Claims []struct {
+								Output map[string]json.RawMessage `json:"output"`
+							} `json:"valid_claims"`
+						} `json:"claims"`
+					} `json:"valid_credentials"`
+				} `json:"credential_matches"`
+			} `json:"queryResult"`
+		} `json:"dcql"`
+	}
+	if json.Unmarshal(raw, &doc) != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	for _, m := range doc.Dcql.QueryResult.Matches {
+		if len(m.Valid) == 0 {
+			continue
+		}
+		v := m.Valid[0]
+		outputs := []map[string]json.RawMessage{}
+		if len(v.Claims.Sets) > 0 {
+			outputs = append(outputs, v.Claims.Sets[0].Output)
+		}
+		for _, c := range v.Claims.Claims {
+			outputs = append(outputs, c.Output)
+		}
+		for _, o := range outputs {
+			for name := range o {
+				seen[name] = true
+			}
+		}
+		if len(v.Record.Instances) > 0 {
+			for _, name := range plainClaims(v.Record.Instances[0].Compact) {
+				seen[name] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	return out
+}
+
+// Forget drops the record of the last OID4VP answer.
+func (a *Agent) Forget() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.presented = false
+}
+
+// envelope names the SD-JWT VC claims that say nothing of the holder.
+var envelope = map[string]bool{
+	"iss": true, "iat": true, "nbf": true, "exp": true, "cnf": true, "vct": true,
+	"status": true, "_sd": true, "_sd_alg": true, "sub": true,
+}
+
+// plainClaims returns the payload claims of a compact SD-JWT that no
+// disclosure hides.
+func plainClaims(compact string) []string {
+	parts := strings.Split(strings.SplitN(compact, "~", 2)[0], ".")
+	if len(parts) != 3 {
+		return nil
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil
+	}
+	var payload map[string]json.RawMessage
+	if json.Unmarshal(raw, &payload) != nil {
+		return nil
+	}
+	var out []string
+	for name := range payload {
+		if !envelope[name] {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // sendList writes a recorded list when on is true, and an empty list

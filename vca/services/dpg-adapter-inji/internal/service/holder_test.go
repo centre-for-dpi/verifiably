@@ -288,7 +288,7 @@ func TestPresentThroughMimoto(t *testing.T) {
 	wallet := openWallet(t, svc)
 	resp, err := svc.Present(context.Background(), connect.NewRequest(&backendv1.PresentRequest{
 		WalletId: wallet, RequestUri: "https://verify.inji.example/v1/verify/vp-request/r1",
-		CredentialIds: []string{"c9d27f40-6a1e-4b95-8f3c-2e7d1a5b9c04"}, DisclosedClaims: []string{"fullName"},
+		CredentialIds: []string{"c9d27f40-6a1e-4b95-8f3c-2e7d1a5b9c04"}, DisclosedClaims: []string{"fullName", "*"},
 	}))
 	if err != nil {
 		t.Fatalf("Present: %v", err)
@@ -317,6 +317,7 @@ func TestPresentTakesThePortalRequestShape(t *testing.T) {
 	wallet := openWallet(t, svc)
 	resp, err := svc.Present(context.Background(), connect.NewRequest(&backendv1.PresentRequest{
 		WalletId: wallet, RequestUri: request, CredentialIds: []string{"c9d27f40-6a1e-4b95-8f3c-2e7d1a5b9c04"},
+		DisclosedClaims: []string{"*"},
 	}))
 	if err != nil || !resp.Msg.GetAccepted() {
 		t.Fatalf("Present = %v, %v", resp, err)

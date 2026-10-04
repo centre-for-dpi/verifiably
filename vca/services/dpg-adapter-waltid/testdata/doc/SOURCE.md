@@ -71,3 +71,14 @@ Nonce notes (release 0.18.2):
   `authorizationRequest.nonce` (`Verification2Session.kt` and
   https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/protocols/waltid-openid4vp/src/commonMain/kotlin/id/walt/verifier/openid/models/authorization/AuthorizationRequest.kt).
   The session files above carry that member, read on 2026-10-04.
+
+Wallet presentation notes (release 0.18.2):
+
+- `../wallet-credentials-sd-jwt.json` follows `WalletCredential`, which
+  keeps the encoded disclosures of an SD-JWT in `disclosures`, joined by
+  tildes, apart from `document`:
+  https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-services/waltid-wallet-api/src/main/kotlin/id/walt/webwallet/db/models/WalletCredentials.kt
+- `usePresentationRequest` appends the strings of the `disclosures` map
+  to the document of each selected SD-JWT, in
+  `generatePresentationForVPToken` of
+  https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-services/waltid-wallet-api/src/main/kotlin/id/walt/webwallet/service/oidc4vc/TestCredentialWallet.kt

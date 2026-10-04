@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -319,5 +320,38 @@ func TestFakeServesTheWalletKeys(t *testing.T) {
 	defer missing.Close()
 	if code, body := postBody(t, missing, "/wallet-api/wallet/w/keys/generate", `{}`); code != http.StatusCreated || body != "" {
 		t.Errorf("a missing recording: %d %q", code, body)
+	}
+}
+
+// TestFakePresentsAsWaltidDoes records what usePresentationRequest
+// shows the verifier: an SD-JWT shows its plain claims and the decoded
+// disclosures of the map, and a JWT credential goes whole.
+func TestFakePresentsAsWaltidDoes(t *testing.T) {
+	f := fake.New(testdata)
+	defer f.Close()
+	const path = "/wallet-api/wallet/w/exchange/usePresentationRequest"
+	postBody(t, f, path, `{"selectedCredentials":["urn:uuid:2b0c8a51-9c1d-4a77-9f3e-5c2f1d7b6a90"]}`)
+	if got := strings.Join(f.Presented(), ","); got != "degree" {
+		t.Fatalf("a JWT credential showed %q", got)
+	}
+	f.Forget()
+	if got := f.Presented(); len(got) != 0 {
+		t.Fatalf("after Forget: %v", got)
+	}
+	f.SetHeld("wallet-credentials-sd-jwt.json")
+	postBody(t, f, path, `{"selectedCredentials":["urn:uuid:7a1c2d3e-4f5a-4b6c-8d7e-9f0a1b2c3d4e"],`+
+		`"disclosures":{"urn:uuid:7a1c2d3e-4f5a-4b6c-8d7e-9f0a1b2c3d4e":["fullName","WyJzYWx0LW9uZSIsImZ1bGxOYW1lIiwiSm9yZGFuIEV4YW1wbGUiXQ"]}}`)
+	got := f.Presented()
+	slices.Sort(got)
+	if strings.Join(got, ",") != "fullName,residentSince" {
+		t.Fatalf("an SD-JWT showed %v", got)
+	}
+	f.Forget()
+	postBody(t, f, path, `not json`)
+	if got := f.Presented(); len(got) != 0 {
+		t.Fatalf("a broken body showed %v", got)
+	}
+	if !strings.Contains(get(t, f, "/wallet-api/wallet/w/credentials"), "residentSince") {
+		t.Fatal("SetHeld did not change the list")
 	}
 }

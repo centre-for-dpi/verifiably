@@ -850,19 +850,19 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-081 | 1 Consent equals disclosure on every holder path | Partial | `vca/services/wallet-portal/internal/service/service.go` | The browser store holds the rule. The stack wallets follow in decision 5. |
+| ADR-081 | 1 Consent equals disclosure on every holder path | Done | `vca/services/wallet-portal/internal/service/service.go`, `vca/services/internal/disclosure` | The browser store and the three stack wallets hold the rule. |
 | ADR-081 | 2 Fixed claims on the card and the consent screen | Done | `vca/core/vc/fixed.go`, `vca/services/wallet-portal/internal/present/present.go` | `TestConsentEqualsDisclosure` and `TestConsentListsAlwaysSentClaims` pin it. |
 | ADR-081 | 3 The browser store records what its tokens reveal | Done | `vca/services/wallet-portal/internal/service/service.go` | `TestConsentEqualsDisclosure` pins it. |
 | ADR-081 | 4 Inji `sdClaim` paths and `$.identityQR` | Done | `vca/services/dpg-adapter-inji/internal/inji/configs.go` | `TestIdentityQRIsSelectivelyDisclosable` pins it. |
-| ADR-081 | 5 A stack wallet adapter refuses an unconsented claim | Not started | | |
-| ADR-081 | 6 A guard test across the adapters | Not started | | |
+| ADR-081 | 5 A stack wallet adapter refuses an unconsented claim | Done | `vca/services/dpg-adapter-credebl/internal/credebl/agent_oid4vc.go`, `vca/services/dpg-adapter-waltid/internal/service/holder.go`, `vca/services/dpg-adapter-inji/internal/service/holder.go` | `TestStackWalletConsentEqualsDisclosure` of each adapter pins it. |
+| ADR-081 | 6 A guard test across the adapters | Done | `vca/services/internal/consenttest` | `TestEveryHolderAdapterRunsTheContract` pins it. |
 
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 405 |
-| Partial | 20 |
+| Done | 408 |
+| Partial | 19 |
 | Deferred | 3 |
-| Not started | 7 |
+| Not started | 5 |
 | Total | 435 |

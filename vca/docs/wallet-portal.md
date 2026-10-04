@@ -420,9 +420,20 @@ Some stack wallets pick the claims themselves. Such an adapter lists
 `FEATURE_WALLET_WHOLE_QUERY` (ADR-063). The CREDEBL agent is one. It
 sends every claim of the claim set it picks. The consent screen then
 ticks and locks every claim, so the holder shares each claim or
-declines. The adapter refuses an answer that leaves a claim out, and
-the page shows its reason. The record names the claims the stack
-reports as shared.
+declines. A query with no claim lists each claim of the credential. The
+card says that the wallet refuses to send a claim the screen does not
+list. The adapter refuses an answer that leaves a claim out, and the
+page shows its reason. The record names the claims the stack reports
+as shared.
+
+A stack wallet that sends each credential whole lists
+`FEATURE_WALLET_WHOLE_CREDENTIAL`. The Mimoto wallet of Inji is one.
+The consent screen then lists "Every claim", ticked and locked, with
+the path `*`. The record names "Every claim" too.
+
+Every holder adapter runs the same contract test,
+`consenttest.Run` of `services/internal/consenttest`. A meta test fails
+when an adapter package does not run it (ADR-081 decision 6).
 
 A stack wallet fetches the request itself, so it takes a request link
 only. Every stack wallet gets the same shape:

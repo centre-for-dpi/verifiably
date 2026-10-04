@@ -171,20 +171,42 @@ func TestPresentSharesTheNamedClaims(t *testing.T) {
 		WalletId:        walletID,
 		RequestUri:      "openid4vp://authorize?request_uri=https%3A%2F%2Fverifier",
 		CredentialIds:   []string{"urn:uuid:2b0c8a51-9c1d-4a77-9f3e-5c2f1d7b6a90"},
-		DisclosedClaims: []string{"age_over_18"},
+		DisclosedClaims: []string{"degree"},
 	}))
 	if err != nil {
 		t.Fatalf("Present: %v", err)
 	}
-	if !resp.Msg.GetAccepted() {
-		t.Fatal("the presentation was not accepted")
+	if !resp.Msg.GetAccepted() || strings.Join(resp.Msg.GetSharedClaims(), ",") != "degree" {
+		t.Fatalf("Present = %+v", resp.Msg)
 	}
 	if resp.Msg.GetRedirectUri() == "" {
 		t.Fatal("the redirect URI is missing")
 	}
+	// A JWT credential goes whole, so walt.id takes no disclosure map.
 	body := string(f.Request("/wallet-api/wallet/" + walletID + "/exchange/usePresentationRequest"))
-	if !strings.Contains(body, `"disclosures"`) || !strings.Contains(body, "age_over_18") {
-		t.Fatalf("the wallet body %q does not limit the disclosures", body)
+	if strings.Contains(body, `"disclosures"`) {
+		t.Fatalf("the wallet body %q names disclosures of a JWT credential", body)
+	}
+	// The JWT credential sends degree whole, so a holder who did not tick
+	// it gets a refusal that names it (ADR-081).
+	_, err = svc.Present(context.Background(), connect.NewRequest(&backendv1.PresentRequest{
+		WalletId: walletID, RequestUri: "openid4vp://authorize?request_uri=https%3A%2F%2Fverifier",
+		CredentialIds: []string{"urn:uuid:2b0c8a51-9c1d-4a77-9f3e-5c2f1d7b6a90"}, DisclosedClaims: []string{"age_over_18"},
+	}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "degree") {
+		t.Fatalf("an unticked claim: %v", err)
+	}
+	f.SetHeld("wallet-credentials-sd-jwt.json")
+	if _, err = svc.Present(context.Background(), connect.NewRequest(&backendv1.PresentRequest{
+		WalletId: walletID, RequestUri: "openid4vp://x", CredentialIds: []string{"urn:uuid:missing"},
+	})); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("an unknown credential: %v", err)
+	}
+	f.SetStatus("/wallet-api/wallet/"+walletID+"/credentials", http.StatusBadRequest)
+	if _, err = svc.Present(context.Background(), connect.NewRequest(&backendv1.PresentRequest{
+		WalletId: walletID, RequestUri: "openid4vp://x", CredentialIds: []string{sdJwtHeld},
+	})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("a wallet that cannot list: %v", err)
 	}
 }
 
@@ -197,7 +219,7 @@ func TestPresentTakesThePortalRequestShape(t *testing.T) {
 	walletID := registerWallet(t, svc)
 	if _, err := svc.Present(context.Background(), connect.NewRequest(&backendv1.PresentRequest{
 		WalletId: walletID, RequestUri: request,
-		CredentialIds: []string{"urn:uuid:2b0c8a51-9c1d-4a77-9f3e-5c2f1d7b6a90"},
+		CredentialIds: []string{"urn:uuid:2b0c8a51-9c1d-4a77-9f3e-5c2f1d7b6a90"}, DisclosedClaims: []string{"degree"},
 	})); err != nil {
 		t.Fatalf("Present: %v", err)
 	}
@@ -225,7 +247,8 @@ func TestPresentReportsAFailure(t *testing.T) {
 	walletID := registerWallet(t, svc)
 	f.SetStatus("/wallet-api/wallet/"+walletID+"/exchange/usePresentationRequest", http.StatusBadRequest)
 	_, err := svc.Present(context.Background(), connect.NewRequest(&backendv1.PresentRequest{
-		WalletId: walletID, RequestUri: "openid4vp://x", CredentialIds: []string{"a"},
+		WalletId: walletID, RequestUri: "openid4vp://x", CredentialIds: []string{"urn:uuid:2b0c8a51-9c1d-4a77-9f3e-5c2f1d7b6a90"},
+		DisclosedClaims: []string{"degree"},
 	}))
 	wantCode(t, err, connect.CodeInvalidArgument)
 }

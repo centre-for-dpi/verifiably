@@ -9,14 +9,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
+	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/waltid"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/disclosure"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
@@ -162,7 +166,7 @@ func walletCredential(h waltid.HeldCredential) *backendv1.WalletCredential {
 		Id: h.ID,
 		Credential: &commonv1.Credential{
 			Format:  contractFormat(h.Format),
-			Payload: []byte(h.Document),
+			Payload: []byte(h.Full()),
 		},
 	}
 	if t, err := time.Parse(time.RFC3339, h.AddedOn); err == nil {
@@ -310,11 +314,16 @@ func (s *Service) Present(
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("the request needs at least one credential id"))
 	}
-	disclosures := map[string][]string{}
-	if claims := req.Msg.GetDisclosedClaims(); len(claims) > 0 {
-		for _, id := range ids {
-			disclosures[id] = claims
-		}
+	held, lerr := s.client.ListCredentials(ctx, session)
+	if lerr != nil {
+		return nil, failed("list the credentials", lerr)
+	}
+	disclosures, sent, err := presentation(held, ids, req.Msg.GetDisclosedClaims())
+	if err != nil {
+		return nil, err
+	}
+	if missing := disclosure.Missing(sent, req.Msg.GetDisclosedClaims()); len(missing) > 0 {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(disclosure.Refusal(missing)))
 	}
 	result, perr := s.client.Present(ctx, session, req.Msg.GetRequestUri(), ids, disclosures)
 	if perr != nil {
@@ -322,9 +331,99 @@ func (s *Service) Present(
 	}
 	return connect.NewResponse(&backendv1.PresentResponse{
 		Accepted:     true,
-		SharedClaims: req.Msg.GetDisclosedClaims(),
+		SharedClaims: sent,
 		RedirectUri:  result.RedirectURI,
 	}), nil
+}
+
+// presentation returns the disclosure map of usePresentationRequest and
+// the claim names the verifier then reads (ADR-081 decision 5). walt.id
+// 0.18.2 appends the strings of the map to the SD-JWT document, so the
+// map holds the encoded disclosures of the ticked claims. An SD-JWT
+// still shows each claim outside a disclosure. Any other format goes
+// whole.
+func presentation(held []waltid.HeldCredential, ids, ticked []string) (map[string][]string, []string, error) {
+	byID := map[string]waltid.HeldCredential{}
+	for _, h := range held {
+		byID[h.ID] = h
+	}
+	disclosures := map[string][]string{}
+	var sent []string
+	add := func(names ...string) {
+		for _, n := range names {
+			if !slices.Contains(sent, n) {
+				sent = append(sent, n)
+			}
+		}
+	}
+	for _, id := range ids {
+		h, ok := byID[id]
+		if !ok {
+			return nil, nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("the wallet holds no credential %q", id))
+		}
+		if !sdJwtFormat(h.Format) {
+			add(wholeClaims(h)...)
+			continue
+		}
+		parsed, err := sdjwt.Parse(h.Full())
+		if err != nil {
+			return nil, nil, connect.NewError(connect.CodeInternal, fmt.Errorf("the wallet holds a broken SD-JWT %q: %w", id, err))
+		}
+		add(plainClaims(parsed.IssuerJWT)...)
+		keep := []string{}
+		for _, d := range parsed.Disclosures {
+			if d.Name != "" && len(disclosure.Missing([]string{d.Name}, ticked)) == 0 {
+				keep = append(keep, d.Encoded)
+				add(d.Name)
+			}
+		}
+		disclosures[id] = keep
+	}
+	if len(disclosures) == 0 {
+		disclosures = nil
+	}
+	slices.Sort(sent)
+	return disclosures, sent, nil
+}
+
+// sdJwtFormat reports a format whose claims a holder discloses one by
+// one.
+func sdJwtFormat(f string) bool {
+	switch waltid.Format(f) {
+	case waltid.FormatVcSdJwt, waltid.FormatDcSdJwt:
+		return true
+	}
+	return false
+}
+
+// plainClaims returns the payload claims of an SD-JWT that no
+// disclosure hides.
+func plainClaims(jwt string) []string {
+	parsed, err := vc.FixedClaims([]byte(jwt + "~"))
+	if err != nil {
+		return nil
+	}
+	return parsed
+}
+
+// wholeClaims returns the subject claims of a credential that goes
+// whole, or the path for the whole credential when the wallet names
+// none.
+func wholeClaims(h waltid.HeldCredential) []string {
+	var doc map[string]any
+	if json.Unmarshal(h.ParsedDocument, &doc) == nil {
+		if claims := vc.FromObject(doc).Claims; len(claims) > 0 {
+			out := make([]string, 0, len(claims))
+			for name := range claims {
+				out = append(out, name)
+			}
+			return out
+		}
+	}
+	if parsed, err := vc.FixedClaims([]byte(h.Document)); err == nil && len(parsed) > 0 {
+		return parsed
+	}
+	return []string{disclosure.Whole}
 }
 
 // DeleteCredential removes one credential from the wallet.

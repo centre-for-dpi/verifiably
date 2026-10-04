@@ -310,7 +310,8 @@ func (s *Service) GetCapabilities(
 			out.Protocols = append(out.Protocols, backendv1.Protocol_PROTOCOL_OID4VP)
 		}
 		out.Features = append(out.Features, backendv1.Feature_FEATURE_WALLET_DOCUMENT,
-			backendv1.Feature_FEATURE_WALLET_CLAIM_IN_STACK, backendv1.Feature_FEATURE_WALLET_PIN)
+			backendv1.Feature_FEATURE_WALLET_CLAIM_IN_STACK, backendv1.Feature_FEATURE_WALLET_PIN,
+			backendv1.Feature_FEATURE_WALLET_WHOLE_CREDENTIAL)
 	}
 	out.DpgInfo = s.dpgInfo()
 	return connect.NewResponse(out), nil

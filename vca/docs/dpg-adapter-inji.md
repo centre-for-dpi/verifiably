@@ -695,7 +695,12 @@ that P6-I7b builds.
    below (P6-I7c).
 3. `ListCredentials`, `Present`, and `DeleteCredential` call Mimoto
    with that session. A listed credential carries the names only,
-   because Mimoto returns no credential bytes.
+   because Mimoto returns no credential bytes. Mimoto takes the
+   selected credentials and no choice of claims, so each credential
+   goes whole. The adapter lists `FEATURE_WALLET_WHOLE_CREDENTIAL`.
+   `Present` refuses with `FailedPrecondition` unless the holder
+   consented to the path `*`, every claim of the credential. It names
+   `*` in `shared_claims` (ADR-081 decision 5).
 4. The PDF of Mimoto reaches the wallet portal through a holder RPC
    for the document of a credential.
 5. `AcceptOffer` answers `unimplemented`. Mimoto downloads only through

@@ -94,7 +94,15 @@ func (f *Server) SeedMimotoWallet(pin string) {
 	f.mimoto.wallet, f.mimoto.pin = f.walletID(), pin
 }
 
-// MimotoPresented returns the credential ids of the last presentation.
+// MimotoForget drops the record of the presentations.
+func (f *Server) MimotoForget() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.mimoto.presented = nil
+}
+
+// MimotoPresented returns the selection of the last presentation, or
+// none.
 func (f *Server) MimotoPresented() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()

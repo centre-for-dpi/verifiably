@@ -74,6 +74,10 @@ type Options struct {
 	// (FEATURE_WALLET_WHOLE_QUERY). The consent screen then marks every
 	// claim as required. Nil means false.
 	WholeQuery func(ctx context.Context) bool
+	// WholeCredential reports true when the wallet of the stack sends
+	// each credential whole (FEATURE_WALLET_WHOLE_CREDENTIAL). The
+	// consent screen then lists the whole credential as always sent.
+	WholeCredential func(ctx context.Context) bool
 	// Catalogue reads the published credential types from the verifier
 	// discovery service. Nil, or a catalogue that does not answer, hands
 	// the pages to Fallback.
@@ -203,6 +207,12 @@ func (s *Service) hybrid(ctx context.Context) bool {
 // of a query.
 func (s *Service) wholeQuery(ctx context.Context) bool {
 	return s.opts.Holder != nil && s.opts.WholeQuery != nil && s.opts.WholeQuery(ctx)
+}
+
+// wholeCredential reports whether the stack wallet sends each
+// credential whole.
+func (s *Service) wholeCredential(ctx context.Context) bool {
+	return s.opts.Holder != nil && s.opts.WholeCredential != nil && s.opts.WholeCredential(ctx)
 }
 
 // inBrowser reports whether the browser store keeps the credential id,
@@ -744,11 +754,21 @@ func (s *Service) PresentStart(ctx context.Context,
 	requested := present.Consent(parsed, held)
 	if s.wholeQuery(ctx) && rec.Interactive == "" {
 		// The stack wallet sends every claim of a query, so the holder
-		// consents to each or declines.
+		// consents to each or declines. A query that names no claim
+		// gets the whole credential, so the screen lists each claim.
 		for _, entry := range requested {
 			for _, c := range entry.GetClaims() {
 				c.Mandatory = true
 			}
+			if len(entry.GetClaims()) == 0 {
+				present.ListEveryClaim(entry)
+			}
+		}
+	}
+	if s.wholeCredential(ctx) && rec.Interactive == "" {
+		// The stack wallet sends each credential whole (ADR-081).
+		for _, entry := range requested {
+			present.ListWholeCredential(entry)
 		}
 	}
 	return connect.NewResponse(&walletportalv1.PresentStartResponse{

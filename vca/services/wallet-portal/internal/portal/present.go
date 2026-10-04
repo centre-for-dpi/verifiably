@@ -12,9 +12,11 @@ import (
 
 	"connectrpc.com/connect"
 
+	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/disclosure"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/present"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/session"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
@@ -137,6 +139,10 @@ func (p *Portal) requestCard(b *pen, start *walletportalv1.PresentStartResponse)
 	text := present.Summary(start.GetRequested())
 	if start.GetDuringIssuance() {
 		text = msg.T("holder.present.issuer.text") + " " + text
+	} else if b.frame.Has(backendv1.Feature_FEATURE_WALLET_WHOLE_QUERY) && !p.opts.Service.BrowserStorage() {
+		// The stack wallet picks the claims itself, so the card says
+		// what it does with a claim the screen does not list (ADR-081).
+		text += " " + msg.T("holder.present.wholequery")
 	}
 	return b.part("card", components.Card{
 		ID: "request", Title: msg.T("holder.present.from.label", verifierName(start)),
@@ -179,6 +185,9 @@ func (p *Portal) asked(b *pen, index int, entry *walletportalv1.PresentStartResp
 	var hidden []template.HTML
 	for _, c := range entry.GetClaims() {
 		o := components.ChoiceOption{Value: c.GetPath(), Title: c.GetPath(), Text: valueText(c.GetValue())}
+		if c.GetPath() == disclosure.Whole {
+			o.Title, o.Text = msg.T("holder.present.whole.label"), msg.T("holder.present.whole")
+		}
 		switch {
 		case c.GetAlwaysSent():
 			o.Meta, o.Checked, o.Disabled = msg.T("holder.present.always"), true, true
@@ -356,7 +365,7 @@ func (p *Portal) recent(b *pen, r *http.Request) template.HTML {
 			if verifier == "" {
 				verifier = rec.GetVerifier()
 			}
-			shared := strings.Join(rec.GetClaims(), ", ")
+			shared := strings.Join(sharedNames(rec.GetClaims()), ", ")
 			if rec.GetResult() == walletportalv1.PresentationRecord_RESULT_DECLINED {
 				shared = msg.T("holder.recent.declined.label")
 			}
@@ -367,6 +376,19 @@ func (p *Portal) recent(b *pen, r *http.Request) template.HTML {
 		}
 	}
 	return b.part("table", table)
+}
+
+// sharedNames names the shared claims of a record. The path for a
+// whole credential reads as words.
+func sharedNames(claims []string) []string {
+	out := make([]string, 0, len(claims))
+	for _, c := range claims {
+		if c == disclosure.Whole {
+			c = msg.T("holder.present.whole.label")
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 // recentRows is the number of records the home page shows.

@@ -193,6 +193,18 @@ No declined credential reaches the wallet.
 The wallet offers `did:key`, `did:jwk`, and `did:cheqd`. A `did:web`
 needs a host that the holder serves, so the adapter does not offer it.
 
+`Present` answers only what the holder consented to (ADR-081). walt.id
+0.18.2 appends the strings of the `disclosures` map to the SD-JWT
+document, in `TestCredentialWallet.kt`. So the adapter reads the held
+credential and sends the encoded disclosures of the ticked claims. The
+list of the wallet keeps them in `disclosures`, apart from the document.
+A claim outside a disclosure travels with every answer. A JWT or
+JSON-LD credential travels whole. The adapter refuses with
+`FailedPrecondition` when the ticks leave out such a claim, and names
+it. `shared_claims` names what the verifier then reads. The listed
+credential carries the document with every disclosure, so the consent
+screen shows each claim.
+
 `AcceptOffer` sends the transaction code as `pinOrTxCode`. The wallet
 API of 0.18.2 redeems a pre-authorized code only. It takes no access
 token of the issuer. A request with an `authorization_grant` for an

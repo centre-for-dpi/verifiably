@@ -283,3 +283,28 @@ func plainToken(t *testing.T) string {
 	}
 	return token + "~"
 }
+
+// TestConsentOfAStackWalletThatPicksTheClaims names the whole
+// credential, says that a whole query wallet refuses an unlisted claim,
+// and words the whole credential in the history (ADR-081).
+func TestConsentOfAStackWalletThatPicksTheClaims(t *testing.T) {
+	h := setupShell(t, func(o *serviceOptions) {
+		o.WholeCredential = func(context.Context) bool { return true }
+	}, holderDeployment(backendv1.Feature_FEATURE_WALLET_WHOLE_QUERY))
+	page := h.get(t, "/wallet/present?id="+url.QueryEscape(requestURI)).Body.String()
+	for _, want := range []string{
+		"Every claim", "This wallet sends the whole credential.",
+		`<input type="hidden" name="claim.licence" value="*">`,
+		"It refuses to answer when it would send a claim this screen does not list.",
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("page misses %q\n%s", want, page)
+		}
+	}
+	h.post(t, "/wallet/present", url.Values{
+		"id": {requestURI}, "card.licence": {"c1"}, "claim.licence": {"given_name", "*"},
+	})
+	if home := h.get(t, "/wallet/").Body.String(); !strings.Contains(home, "given_name, Every claim") {
+		t.Fatalf("the history does not word the whole credential\n%s", home)
+	}
+}

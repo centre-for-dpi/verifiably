@@ -280,6 +280,11 @@ const (
 	// The stack resolves a DID of a method that VCA does not resolve, such
 	// as did:indy. ResolveDid works.
 	Feature_FEATURE_DID_RESOLVE Feature = 32
+	// The wallet of the DPG sends each credential whole and takes no
+	// choice of claims. The consent screen lists the whole credential.
+	// Present refuses a request whose disclosed_claims leave out the path
+	// "*". That path stands for every claim of the credential (ADR-081).
+	Feature_FEATURE_WALLET_WHOLE_CREDENTIAL Feature = 33
 )
 
 // Enum value maps for Feature.
@@ -318,6 +323,7 @@ var (
 		30: "FEATURE_HOLDER_NOTIFICATIONS",
 		31: "FEATURE_TENANT_PRIMARY_DID",
 		32: "FEATURE_DID_RESOLVE",
+		33: "FEATURE_WALLET_WHOLE_CREDENTIAL",
 	}
 	Feature_value = map[string]int32{
 		"FEATURE_UNSPECIFIED":                  0,
@@ -353,6 +359,7 @@ var (
 		"FEATURE_HOLDER_NOTIFICATIONS":         30,
 		"FEATURE_TENANT_PRIMARY_DID":           31,
 		"FEATURE_DID_RESOLVE":                  32,
+		"FEATURE_WALLET_WHOLE_CREDENTIAL":      33,
 	}
 )
 
@@ -5771,7 +5778,10 @@ type PresentRequest struct {
 	RequestUri string `protobuf:"bytes,2,opt,name=request_uri,json=requestUri,proto3" json:"request_uri,omitempty"`
 	// The ids of the credentials to present, in request order.
 	CredentialIds []string `protobuf:"bytes,3,rep,name=credential_ids,json=credentialIds,proto3" json:"credential_ids,omitempty"`
-	// The claim names to disclose. Empty discloses every requested claim.
+	// The claim names the holder consented to on the consent screen. The
+	// path "*" consents to every claim of a credential. The adapter refuses
+	// with FailedPrecondition when its wallet would send a claim outside
+	// them (ADR-081).
 	DisclosedClaims []string `protobuf:"bytes,4,rep,name=disclosed_claims,json=disclosedClaims,proto3" json:"disclosed_claims,omitempty"`
 	// The id of a proof request from ListInbox, in place of request_uri.
 	InboxId       string `protobuf:"bytes,5,opt,name=inbox_id,json=inboxId,proto3" json:"inbox_id,omitempty"`
@@ -5849,7 +5859,8 @@ type PresentResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// True when the verifier accepted the presentation.
 	Accepted bool `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
-	// The claim names the wallet disclosed.
+	// The claim names the wallet disclosed, read from what the wallet
+	// sends. The path "*" stands for a whole credential.
 	SharedClaims []string `protobuf:"bytes,2,rep,name=shared_claims,json=sharedClaims,proto3" json:"shared_claims,omitempty"`
 	// The verifier state or transaction id, when the verifier returned one.
 	VerifierState string `protobuf:"bytes,3,opt,name=verifier_state,json=verifierState,proto3" json:"verifier_state,omitempty"`
@@ -12400,7 +12411,7 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\x19PROTOCOL_OID4VCI_DEFERRED\x10\x06\x12\x1d\n" +
 	"\x19PROTOCOL_DIDCOMM_ISSUE_V2\x10\a\x12\x1f\n" +
 	"\x1bPROTOCOL_DIDCOMM_PRESENT_V2\x10\b\x12\x13\n" +
-	"\x0fPROTOCOL_DC_API\x10\t*\xea\a\n" +
+	"\x0fPROTOCOL_DC_API\x10\t*\x8f\b\n" +
 	"\aFeature\x12\x17\n" +
 	"\x13FEATURE_UNSPECIFIED\x10\x00\x12%\n" +
 	"!FEATURE_ISSUER_IDENTITY_PROVISION\x10\x01\x12&\n" +
@@ -12435,7 +12446,8 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\x1aFEATURE_WALLET_WHOLE_QUERY\x10\x1d\x12 \n" +
 	"\x1cFEATURE_HOLDER_NOTIFICATIONS\x10\x1e\x12\x1e\n" +
 	"\x1aFEATURE_TENANT_PRIMARY_DID\x10\x1f\x12\x17\n" +
-	"\x13FEATURE_DID_RESOLVE\x10 *\x95\x01\n" +
+	"\x13FEATURE_DID_RESOLVE\x10 \x12#\n" +
+	"\x1fFEATURE_WALLET_WHOLE_CREDENTIAL\x10!*\x95\x01\n" +
 	"\n" +
 	"WalletLock\x12\x1b\n" +
 	"\x17WALLET_LOCK_UNSPECIFIED\x10\x00\x12\x14\n" +

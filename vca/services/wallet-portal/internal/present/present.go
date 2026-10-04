@@ -34,6 +34,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/disclosure"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/cards"
 )
 
@@ -463,6 +464,50 @@ func Consent(r Request, held []*walletportalv1.Card) []*walletportalv1.PresentSt
 		out = append(out, entry)
 	}
 	return out
+}
+
+// ListEveryClaim lists each claim of each stack match of an entry as
+// always sent. A stack wallet that sends a query whole sends every claim
+// of a credential for a query that names none.
+func ListEveryClaim(entry *walletportalv1.PresentStartResponse_RequestedCredential) {
+	var names []string
+	for _, m := range entry.GetMatches() {
+		if m.GetInBrowser() {
+			continue
+		}
+		for name := range m.GetClaims() {
+			if !slices.Contains(names, name) {
+				names = append(names, name)
+			}
+		}
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		if !listed(entry, name) {
+			entry.Claims = append(entry.Claims, &walletportalv1.PresentStartResponse_RequestedCredential_Claim{
+				Path: name, Value: valueIn(entry.GetMatches(), name), Mandatory: true, AlwaysSent: true,
+			})
+		}
+	}
+}
+
+// ListWholeCredential lists the whole credential as always sent when a
+// match lives in a stack wallet that sends each credential whole. The
+// path disclosure.Whole stands for every claim of it.
+func ListWholeCredential(entry *walletportalv1.PresentStartResponse_RequestedCredential) {
+	stack := false
+	for _, m := range entry.GetMatches() {
+		stack = stack || !m.GetInBrowser()
+	}
+	if !stack || listed(entry, disclosure.Whole) {
+		return
+	}
+	for _, c := range entry.GetClaims() {
+		c.Mandatory = true
+	}
+	entry.Claims = append(entry.Claims, &walletportalv1.PresentStartResponse_RequestedCredential_Claim{
+		Path: disclosure.Whole, Mandatory: true, AlwaysSent: true,
+	})
 }
 
 // fixedClaims returns the claims that any of the matched cards sends in

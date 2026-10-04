@@ -161,19 +161,25 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	whole := func(ctx context.Context) bool {
 		return pages != nil && pages.Has(ctx, backendv1.Feature_FEATURE_WALLET_WHOLE_QUERY)
 	}
+	// The stack wallet sends each credential whole, so the consent
+	// screen lists the whole credential (FEATURE_WALLET_WHOLE_CREDENTIAL).
+	wholeCredential := func(ctx context.Context) bool {
+		return pages != nil && pages.Has(ctx, backendv1.Feature_FEATURE_WALLET_WHOLE_CREDENTIAL)
+	}
 	svc, err := service.New(service.Options{
-		Holder:     holder,
-		Hybrid:     hybrid,
-		Didcomm:    didcomm,
-		WholeQuery: whole,
-		Catalogue:  catalogue,
-		Fallback:   ports.Cached(crawl, cfg.CrawlTTL, deps.Now),
-		Methods:    crawl.Methods,
-		Endpoints:  crawl.Endpoints,
-		Servers:    crawl.Server,
-		ClientID:   cfg.ClientID,
-		Eligible:   eligible,
-		Salt:       cfg.EligibilitySalt,
+		Holder:          holder,
+		Hybrid:          hybrid,
+		Didcomm:         didcomm,
+		WholeQuery:      whole,
+		WholeCredential: wholeCredential,
+		Catalogue:       catalogue,
+		Fallback:        ports.Cached(crawl, cfg.CrawlTTL, deps.Now),
+		Methods:         crawl.Methods,
+		Endpoints:       crawl.Endpoints,
+		Servers:         crawl.Server,
+		ClientID:        cfg.ClientID,
+		Eligible:        eligible,
+		Salt:            cfg.EligibilitySalt,
 		Cards: cards.New(cards.Options{
 			Trust: trustLookup, Status: cards.Fetcher(fetch),
 			Display: ports.DisplayOf(catalogue), Now: deps.Now,

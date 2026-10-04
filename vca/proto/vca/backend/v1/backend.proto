@@ -563,6 +563,11 @@ enum Feature {
   // The stack resolves a DID of a method that VCA does not resolve, such
   // as did:indy. ResolveDid works.
   FEATURE_DID_RESOLVE = 32;
+  // The wallet of the DPG sends each credential whole and takes no
+  // choice of claims. The consent screen lists the whole credential.
+  // Present refuses a request whose disclosed_claims leave out the path
+  // "*". That path stands for every claim of the credential (ADR-081).
+  FEATURE_WALLET_WHOLE_CREDENTIAL = 33;
 }
 
 // GetCapabilitiesRequest has no fields.
@@ -1346,7 +1351,10 @@ message PresentRequest {
   string request_uri = 2;
   // The ids of the credentials to present, in request order.
   repeated string credential_ids = 3;
-  // The claim names to disclose. Empty discloses every requested claim.
+  // The claim names the holder consented to on the consent screen. The
+  // path "*" consents to every claim of a credential. The adapter refuses
+  // with FailedPrecondition when its wallet would send a claim outside
+  // them (ADR-081).
   repeated string disclosed_claims = 4;
   // The id of a proof request from ListInbox, in place of request_uri.
   string inbox_id = 5;
@@ -1356,7 +1364,8 @@ message PresentRequest {
 message PresentResponse {
   // True when the verifier accepted the presentation.
   bool accepted = 1;
-  // The claim names the wallet disclosed.
+  // The claim names the wallet disclosed, read from what the wallet
+  // sends. The path "*" stands for a whole credential.
   repeated string shared_claims = 2;
   // The verifier state or transaction id, when the verifier returned one.
   string verifier_state = 3;

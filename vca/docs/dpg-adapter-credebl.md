@@ -531,11 +531,17 @@ agent. It answers an OID4VP request there too. The agent picks the first
 credential that matches each query. The adapter reads that pick first
 and refuses an answer when the holder picked another credential.
 The agent takes no choice of claims. It discloses every claim of the
-first claim set that the credential satisfies. So the adapter lists
+first claim set that the credential satisfies. It also sends the top
+level claims of the `output` of that set. A stored SD-JWT shows each
+claim outside a disclosure as well. So the adapter lists
 `FEATURE_WALLET_WHOLE_QUERY`, and the consent screen marks every claim as
-required. `Present` refuses with `FailedPrecondition` when the ticked
-claims leave out a claim the agent sends. `shared_claims` name the claims
-the agent sends (ADR-063 decision 1).
+required. It lists the claims outside a disclosure as always sent.
+`Present` reads all of these from the resolved request and the stored
+credential. It refuses with `FailedPrecondition` when the ticked claims
+leave out a claim the agent sends, and it names the claim.
+`shared_claims` name the claims the agent sends (ADR-063 decision 1,
+ADR-081 decision 5). A query with no claim sends the whole credential,
+so the holder consents to each claim of it.
 
 **The agent fetches an OID4VP request once more to answer it.** The
 consent screen of the portal reads the `request_uri` first. The adapter

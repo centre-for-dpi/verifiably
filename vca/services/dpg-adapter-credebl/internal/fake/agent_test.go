@@ -5,6 +5,7 @@ package fake_test
 import (
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -131,5 +132,36 @@ func TestFakeAgentServesTheHolderCalls(t *testing.T) {
 	}
 	if code, _ := agentCall(t, broken, http.MethodPost, "/multi-tenancy/create-tenant", "", bearer); code != http.StatusInternalServerError {
 		t.Errorf("a missing tenant answer: %d", code)
+	}
+}
+
+// TestFakeAgentReportsWhatItPresented names the claims of an OID4VP
+// answer: the output of the claim set or of the claims, and the plain
+// claims of the stored SD-JWT.
+func TestFakeAgentReportsWhatItPresented(t *testing.T) {
+	a := fake.NewAgent("../../testdata")
+	defer a.Close()
+	const bearer = "Bearer [tenant token]" //nolint:gosec // G101: the placeholder token of the recorded answer.
+	if got := a.Presented(); len(got) != 0 {
+		t.Fatalf("before an answer: %v", got)
+	}
+	for resolved, want := range map[fake.Answer]string{
+		fake.Oid4vpResolvedPlainClaims: "contactEmail,fullName,residentSince",
+		fake.Oid4vpResolved:            "fullName",
+		fake.Oid4vpResolvedClaimSets:   "fullName,hectares",
+	} {
+		a.SetResolved(resolved)
+		agentCall(t, a, http.MethodPost, "/openid4vc/holder/accept-proof-request", "{}", bearer)
+		got := a.Presented()
+		slices.Sort(got)
+		if strings.Join(got, ",") != want {
+			t.Errorf("%s: presented %v, want %s", resolved, got, want)
+		}
+		a.Forget()
+	}
+	a.SetResolved("doc/missing.json")
+	agentCall(t, a, http.MethodPost, "/openid4vc/holder/accept-proof-request", "{}", bearer)
+	if got := a.Presented(); len(got) != 0 {
+		t.Errorf("a missing answer presented %v", got)
 	}
 }

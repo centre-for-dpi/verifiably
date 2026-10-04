@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -18,6 +19,7 @@ import (
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/inji"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/disclosure"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
@@ -277,8 +279,16 @@ func (s *Service) AcceptOffer(
 		", and it shows in this wallet")
 }
 
+// errWholeCredential refuses an answer whose holder did not consent to
+// every claim of the credential (ADR-081 decision 5).
+var errWholeCredential = connect.NewError(connect.CodeFailedPrecondition, errors.New(
+	"the Mimoto wallet sends each credential whole and takes no choice of claims; agree to share every claim of it or decline"))
+
 // Present answers an OID4VP request with credentials of the Mimoto
 // wallet. Mimoto builds the presentation and posts it to the verifier.
+// It takes the selected credentials and no choice of claims, so each
+// credential goes whole: the holder must consent to disclosure.Whole,
+// and the answer names it as shared.
 func (s *Service) Present(
 	ctx context.Context, req *connect.Request[backendv1.PresentRequest],
 ) (*connect.Response[backendv1.PresentResponse], error) {
@@ -290,13 +300,16 @@ func (s *Service) Present(
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("the request needs a request_uri and at least one credential id"))
 	}
+	if !slices.Contains(req.Msg.GetDisclosedClaims(), disclosure.Whole) {
+		return nil, errWholeCredential
+	}
 	sent, err := s.mimoto.Present(ctx, h.Cookie, h.WalletID,
 		inji.AuthorizationRequestURL(req.Msg.GetRequestUri()), req.Msg.GetCredentialIds())
 	if err != nil {
 		return nil, s.walletFailed(ctx, h, "present through Mimoto", err)
 	}
 	return connect.NewResponse(&backendv1.PresentResponse{
-		Accepted: true, SharedClaims: req.Msg.GetDisclosedClaims(),
+		Accepted: true, SharedClaims: []string{disclosure.Whole},
 		VerifierState: sent.PresentationID, RedirectUri: sent.RedirectURI,
 	}), nil
 }

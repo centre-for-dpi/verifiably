@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -16,6 +17,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/disclosure"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/service"
 )
 
@@ -108,5 +110,57 @@ func TestConsentEqualsDisclosure(t *testing.T) {
 	sort.Strings(recorded)
 	if !slices.Equal(recorded, received) {
 		t.Fatalf("the history names %v, the verifier received %v", recorded, received)
+	}
+}
+
+// TestConsentOfAStackWalletThatSendsCredentialsWhole lists the whole
+// credential as always sent when the stack wallet takes no choice of
+// claims (FEATURE_WALLET_WHOLE_CREDENTIAL).
+func TestConsentOfAStackWalletThatSendsCredentialsWhole(t *testing.T) {
+	svc := build(t, func(o *service.Options) {
+		o.Holder = &fakeHolder{credential: credential(t), accepted: true}
+		o.Fetch = fetchRequest
+		o.WholeCredential = func(context.Context) bool { return true }
+	})
+	start, err := svc.PresentStart(ctx(), connect.NewRequest(&walletportalv1.PresentStartRequest{
+		PresentationId: "openid4vp://?request_uri=https://verifier.example/r/1",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims := start.Msg.GetRequested()[0].GetClaims()
+	last := claims[len(claims)-1]
+	if last.GetPath() != disclosure.Whole || !last.GetAlwaysSent() || !claims[0].GetMandatory() {
+		t.Fatalf("claims = %+v, want the whole credential last and each claim locked", claims)
+	}
+}
+
+// TestConsentOfAWholeQueryWithNoClaim lists each claim of the stack
+// credential when the query names none, as the stack wallet sends them
+// all (FEATURE_WALLET_WHOLE_QUERY).
+func TestConsentOfAWholeQueryWithNoClaim(t *testing.T) {
+	svc := build(t, func(o *service.Options) {
+		o.Holder = &fakeHolder{credential: credential(t), accepted: true}
+		o.WholeQuery = func(context.Context) bool { return true }
+		o.Fetch = func(context.Context, string) ([]byte, error) {
+			return []byte(`{"client_id":"https://verifier.example","nonce":"n","response_uri":"https://verifier.example/p",` +
+				`"dcql_query":{"credentials":[{"id":"licence","format":"dc+sd-jwt","meta":{"vct_values":["DriverLicence"]}}]}}`), nil
+		}
+	})
+	start, err := svc.PresentStart(ctx(), connect.NewRequest(&walletportalv1.PresentStartRequest{
+		PresentationId: "openid4vp://?request_uri=https://verifier.example/r/1",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, c := range start.Msg.GetRequested()[0].GetClaims() {
+		if !c.GetAlwaysSent() {
+			t.Errorf("%s is not marked always sent", c.GetPath())
+		}
+		names = append(names, c.GetPath())
+	}
+	if strings.Join(names, ",") != "birth_date,given_name" {
+		t.Fatalf("claims = %v, want each claim of the credential", names)
 	}
 }

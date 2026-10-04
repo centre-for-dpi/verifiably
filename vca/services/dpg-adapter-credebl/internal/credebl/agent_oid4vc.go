@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/dcql"
+	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/dpgclient"
 )
 
@@ -198,6 +200,12 @@ type dcqlValid struct {
 	Record struct {
 		// ID is the record id.
 		ID string `json:"id"`
+		// Instances hold the stored credential. An SD-JWT record keeps
+		// the compact form with every disclosure.
+		Instances []struct {
+			// Compact is the compact SD-JWT VC.
+			Compact string `json:"compactSdJwtVc"`
+		} `json:"credentialInstances"`
 	} `json:"record"`
 	// Claims is the claims result of the DCQL library.
 	Claims struct {
@@ -269,14 +277,66 @@ func (r ResolvedRequest) Disclosures() []Disclosure {
 	return out
 }
 
-// disclosureOf returns what the agent sends of one valid credential.
+// disclosureOf returns what the agent sends of one valid credential:
+// the claims of the first valid claim set, each top level claim of its
+// output, and each claim of the stored SD-JWT outside a disclosure. The
+// agent cannot leave those out (ADR-081 decision 5).
 func disclosureOf(q dcql.CredentialQuery, v dcqlValid) Disclosure {
+	d := disclosedClaims(q, v)
+	if len(v.Claims.Sets) > 0 {
+		d.Claims = withTopLevel(d.Claims, sortedIDs(v.Claims.Sets[0].Output))
+	}
+	if len(v.Record.Instances) > 0 {
+		d.Claims = withTopLevel(d.Claims, PlainClaims(v.Record.Instances[0].Compact))
+	}
+	return d
+}
+
+// withTopLevel adds each top level claim name that no claim path of
+// claims already covers.
+func withTopLevel(claims, names []string) []string {
+	for _, n := range names {
+		covered := false
+		for _, c := range claims {
+			covered = covered || c == n || strings.HasPrefix(c, n+".")
+		}
+		if !covered {
+			claims = append(claims, n)
+		}
+	}
+	return claims
+}
+
+// sdJwtEnvelope names the SD-JWT VC claims that say nothing of the holder.
+var sdJwtEnvelope = map[string]bool{
+	"iss": true, "iat": true, "nbf": true, "exp": true, "cnf": true, "vct": true,
+	"vct#integrity": true, "status": true, "_sd": true, "_sd_alg": true, "sub": true,
+}
+
+// PlainClaims returns the payload claims of a compact SD-JWT that no
+// disclosure hides, in name order. Every presentation shows them.
+func PlainClaims(compact string) []string {
+	jwt, _, _ := strings.Cut(compact, "~")
+	payload, err := jose.PeekPayload(jwt)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for name := range payload {
+		if !sdJwtEnvelope[name] {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// disclosedClaims returns the claims of the query that the first valid
+// claim set of the credential names.
+func disclosedClaims(q dcql.CredentialQuery, v dcqlValid) Disclosure {
 	d := Disclosure{}
 	if len(q.Claims) == 0 {
 		d.Whole = true
-		if len(v.Claims.Sets) > 0 {
-			d.Claims = sortedIDs(v.Claims.Sets[0].Output)
-		}
 		return d
 	}
 	if len(v.Claims.Sets) > 0 {

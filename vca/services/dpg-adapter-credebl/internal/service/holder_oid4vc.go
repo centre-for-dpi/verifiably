@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"slices"
 	"sort"
 	"strings"
 
@@ -18,6 +17,7 @@ import (
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/credebl"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/disclosure"
 )
 
 // The OID4VC side of the holder wallet (ADR-062 decision 8). The same
@@ -119,23 +119,18 @@ func (s *Service) presentOid4vp(ctx context.Context, tenant, uri string, msg *ba
 	}), nil
 }
 
-// consented checks that the holder ticked every claim the agent sends,
-// and returns those claims. A query that names no claim sends the whole
-// credential, which the consent screen shows as such.
+// consented checks that the holder consented to every claim the agent
+// sends, and returns those claims. The agent takes no choice of claims:
+// it sends the claim set it picks and each claim the stored credential
+// shows in the clear. So a claim the holder left out stops the answer,
+// and the refusal names it (ADR-081 decision 5).
 func consented(sent []credebl.Disclosure, ticked []string) ([]string, error) {
-	var shared, missing []string
+	var shared []string
 	for _, d := range sent {
-		for _, c := range d.Claims {
-			shared = append(shared, c)
-			if !d.Whole && !slices.Contains(ticked, c) {
-				missing = append(missing, c)
-			}
-		}
+		shared = append(shared, d.Claims...)
 	}
-	if len(missing) > 0 {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
-			"this wallet shares every claim the verifier asks for (%s); tick them all or decline",
-			strings.Join(missing, ", ")))
+	if missing := disclosure.Missing(shared, ticked); len(missing) > 0 {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(disclosure.Refusal(missing)))
 	}
 	return shared, nil
 }

@@ -96,6 +96,18 @@ type HeldCredential struct {
 	AddedOn string `json:"addedOn"`
 	// ParsedDocument holds the decoded claims.
 	ParsedDocument json.RawMessage `json:"parsedDocument"`
+	// Disclosures holds the encoded disclosures of an SD-JWT, joined by
+	// tildes. The wallet keeps them apart from the document.
+	Disclosures string `json:"disclosures,omitempty"`
+}
+
+// Full returns the credential as a holder presents it in full: an
+// SD-JWT document with every disclosure, or the document as it is.
+func (h HeldCredential) Full() string {
+	if h.Disclosures == "" {
+		return h.Document
+	}
+	return strings.TrimSuffix(h.Document, "~") + "~" + strings.Trim(h.Disclosures, "~") + "~"
 }
 
 // ListCredentials reads the credentials of one wallet.

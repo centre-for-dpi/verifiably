@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -84,6 +85,10 @@ type Server struct {
 	history map[string][][]byte
 	// status forces a status code for one path.
 	status map[string]int
+	// held is the answer of the credential list, when a test set one.
+	held string
+	// presented holds the claim names of the last presentation.
+	presented []string
 }
 
 // New starts a fake walt.id stack. The testdata directory holds the
@@ -212,6 +217,139 @@ func (f *Server) RequestJSON(path string, out any) error {
 	return json.Unmarshal(f.Request(path), out)
 }
 
+// SetHeld makes the wallet list the credentials of one recorded file.
+func (f *Server) SetHeld(name string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.held = name
+}
+
+// Presented returns the claim names the last presentation showed the
+// verifier, or none when the wallet presented nothing since Forget.
+func (f *Server) Presented() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.presented...)
+}
+
+// Forget drops the record of the last presentation.
+func (f *Server) Forget() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.presented = nil
+}
+
+// heldList names the file of the credential list.
+func heldList(held string, claimed bool) string {
+	switch {
+	case held != "":
+		return held
+	case claimed:
+		return "wallet-credentials-after.json"
+	}
+	return "wallet-credentials.json"
+}
+
+// present records what usePresentationRequest shows the verifier, as
+// walt.id 0.18.2 builds it. An SD-JWT goes as its document with the
+// selected disclosure strings appended (TestCredentialWallet.kt), so it
+// shows its plain claims and the claims of the disclosures that decode.
+// Any other format goes whole and shows each claim of its subject.
+func (f *Server) present(body []byte, held string, claimed bool) {
+	var req struct {
+		Selected    []string            `json:"selectedCredentials"`
+		Disclosures map[string][]string `json:"disclosures"`
+	}
+	raw, err := f.file(heldList(held, claimed))
+	var list []struct {
+		ID       string          `json:"id"`
+		Format   string          `json:"format"`
+		Document string          `json:"document"`
+		Parsed   json.RawMessage `json:"parsedDocument"`
+	}
+	if json.Unmarshal(body, &req) != nil || err != nil || json.Unmarshal(raw, &list) != nil {
+		return
+	}
+	seen := map[string]bool{}
+	for _, c := range list {
+		if !slices.Contains(req.Selected, c.ID) {
+			continue
+		}
+		if strings.Contains(c.Format, "sd-jwt") {
+			for _, name := range sdJwtShown(c.Document, req.Disclosures[c.ID]) {
+				seen[name] = true
+			}
+			continue
+		}
+		for _, name := range subjectClaims(c.Parsed) {
+			seen[name] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	f.mu.Lock()
+	f.presented = out
+	f.mu.Unlock()
+}
+
+// sdJwtShown returns the plain claims of an SD-JWT document and the
+// names of the selected strings that decode as disclosures.
+func sdJwtShown(document string, selected []string) []string {
+	var out []string
+	parts := strings.Split(document, ".")
+	if len(parts) == 3 {
+		if raw, err := base64.RawURLEncoding.DecodeString(parts[1]); err == nil {
+			var payload map[string]json.RawMessage
+			if json.Unmarshal(raw, &payload) == nil {
+				for name := range payload {
+					if !map[string]bool{"iss": true, "iat": true, "nbf": true, "exp": true, "cnf": true,
+						"vct": true, "status": true, "sub": true, "_sd": true, "_sd_alg": true}[name] {
+						out = append(out, name)
+					}
+				}
+			}
+		}
+	}
+	for _, d := range selected {
+		raw, err := base64.RawURLEncoding.DecodeString(d)
+		var triple []json.RawMessage
+		if err != nil || json.Unmarshal(raw, &triple) != nil || len(triple) != 3 {
+			continue
+		}
+		var name string
+		if json.Unmarshal(triple[1], &name) == nil {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// subjectClaims returns the subject claims of a parsed W3C document.
+func subjectClaims(parsed json.RawMessage) []string {
+	var doc struct {
+		VC struct {
+			Subject map[string]json.RawMessage `json:"credentialSubject"`
+		} `json:"vc"`
+		Subject map[string]json.RawMessage `json:"credentialSubject"`
+	}
+	if json.Unmarshal(parsed, &doc) != nil {
+		return nil
+	}
+	subject := doc.VC.Subject
+	if subject == nil {
+		subject = doc.Subject
+	}
+	var out []string
+	for name := range subject {
+		if name != "id" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 // file returns one recorded answer.
 func (f *Server) file(name string) ([]byte, error) {
 	return os.ReadFile(filepath.Join(f.dir, name)) //nolint:gosec // G304: the name is one of the fixed answers
@@ -231,6 +369,7 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	session := f.session
 	session2 := f.session2
 	claimed := f.claimed
+	held := f.held
 	f.mu.Unlock()
 	if forced != 0 {
 		w.WriteHeader(forced)
@@ -293,15 +432,12 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(path, "/reject"):
 		w.WriteHeader(http.StatusAccepted)
 	case strings.HasSuffix(path, "/exchange/usePresentationRequest"):
+		f.present(body, held, claimed)
 		f.send(w, "present-result.json", "application/json")
 	case strings.Contains(path, "/credentials/"):
 		w.WriteHeader(http.StatusOK)
 	case strings.HasSuffix(path, "/credentials"):
-		name := "wallet-credentials.json"
-		if claimed {
-			name = "wallet-credentials-after.json"
-		}
-		f.send(w, name, "application/json")
+		f.send(w, heldList(held, claimed), "application/json")
 	default:
 		http.NotFound(w, r)
 	}
