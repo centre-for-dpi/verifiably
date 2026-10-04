@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -24,9 +25,70 @@ import (
 // test sets it (ADR-004 decision 6).
 const playwrightEnv = "VCA_PLAYWRIGHT"
 
+// browsersEnv names the directory of the browsers of Playwright, as
+// Playwright itself reads it.
+const browsersEnv = "PLAYWRIGHT_BROWSERS_PATH"
+
+// browserDir returns the directory that holds a Chromium of Playwright:
+// the directory that PLAYWRIGHT_BROWSERS_PATH names, else the default
+// cache of Playwright under home. It also returns the directory it
+// looked in last, for the skip message. ok is false when no Chromium
+// sits there.
+func browserDir(getenv func(string) string, home, goos string) (dir, looked string, ok bool) {
+	candidates := []string{}
+	if named := strings.TrimSpace(getenv(browsersEnv)); named != "" && named != "0" {
+		candidates = append(candidates, named)
+	}
+	cache := filepath.Join(home, ".cache", "ms-playwright")
+	if goos == "darwin" {
+		cache = filepath.Join(home, "Library", "Caches", "ms-playwright")
+	}
+	candidates = append(candidates, cache)
+	for _, c := range candidates {
+		looked = c
+		entries, err := os.ReadDir(c)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() && strings.HasPrefix(e.Name(), "chromium") {
+				return c, c, true
+			}
+		}
+	}
+	return "", looked, false
+}
+
+// TestBrowserDirFindsChromium checks where the browser test looks for
+// Chromium: the directory of PLAYWRIGHT_BROWSERS_PATH first, then the
+// default cache of Playwright.
+func TestBrowserDirFindsChromium(t *testing.T) {
+	named, home := t.TempDir(), t.TempDir()
+	env := map[string]string{browsersEnv: named}
+	getenv := func(k string) string { return env[k] }
+	if _, looked, ok := browserDir(getenv, home, "linux"); ok || looked != filepath.Join(home, ".cache", "ms-playwright") {
+		t.Fatalf("an empty directory holds a browser, or the search stopped at %s", looked)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".cache", "ms-playwright", "chromium-1194"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if dir, _, ok := browserDir(getenv, home, "linux"); !ok || dir != filepath.Join(home, ".cache", "ms-playwright") {
+		t.Fatalf("the default cache: %s, %v", dir, ok)
+	}
+	if err := os.MkdirAll(filepath.Join(named, "chromium_headless_shell-1194"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if dir, _, ok := browserDir(getenv, home, "linux"); !ok || dir != named {
+		t.Fatalf("%s: %s, %v", browsersEnv, dir, ok)
+	}
+	if _, looked, _ := browserDir(func(string) string { return "" }, home, "darwin"); looked != filepath.Join(home, "Library", "Caches", "ms-playwright") {
+		t.Errorf("on darwin the search ends at %s", looked)
+	}
+}
+
 // chromium runs one phase of testdata/wallet_e2e.cjs in a headless
 // Chromium and returns the JSON line it prints.
-func chromium(ctx context.Context, t *testing.T, input map[string]string) map[string]any {
+func chromium(ctx context.Context, t *testing.T, browsers string, input map[string]string) map[string]any {
 	t.Helper()
 	raw, err := json.Marshal(input)
 	if err != nil {
@@ -37,6 +99,8 @@ func chromium(ctx context.Context, t *testing.T, input map[string]string) map[st
 		t.Fatal(err)
 	}
 	cmd := exec.CommandContext(ctx, "node", script, string(raw)) // #nosec G204 -- a fixed script of the test
+	// Playwright reads the browsers from the directory the test found.
+	cmd.Env = append(os.Environ(), browsersEnv+"="+browsers)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -58,10 +122,24 @@ func chromium(ctx context.Context, t *testing.T, input map[string]string) map[st
 // proof. Chromium then answers the request of the verifier: wallet.js
 // signs the key binding, and the verifier reads a valid answer. The
 // test runs when VCA_PLAYWRIGHT is set; the CI job of the browser test
-// sets it and installs Playwright with Chromium.
+// sets it and installs Playwright with Chromium. The test finds the
+// browser through PLAYWRIGHT_BROWSERS_PATH, or in the default cache of
+// Playwright, and a skip names the variable that is missing.
 func TestWalletScriptInChromium(t *testing.T) {
 	if os.Getenv(playwrightEnv) == "" {
-		t.Skip("set " + playwrightEnv + "=1, with node and Playwright on the path, to drive wallet.js in Chromium")
+		t.Skip(playwrightEnv + " is not set: set " + playwrightEnv + "=1 to drive wallet.js in Chromium")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
+	}
+	browsers, looked, ok := browserDir(os.Getenv, home, runtime.GOOS)
+	if !ok {
+		t.Skip(playwrightEnv + " is set, but " + looked + " holds no Chromium of Playwright: set " + browsersEnv +
+			" to the directory of the browsers")
+	}
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip(playwrightEnv + " is set, but node is not on PATH: add the directory of node to PATH")
 	}
 	api := newWaltidIssuer(t)
 	w := newWalk(t, configv1.Dpg_DPG_WALTID, "walt.id Community Stack", map[string]string{"http://waltid-issuer-api:7002": api.srv.URL})
@@ -75,7 +153,7 @@ func TestWalletScriptInChromium(t *testing.T) {
 	offer, pin := w.issue()
 
 	profile := t.TempDir()
-	claimed := chromium(ctx, t, map[string]string{
+	claimed := chromium(ctx, t, browsers, map[string]string{
 		"phase": "claim", "holder": w.holder.public, "link": offer, "pin": pin, "profile": profile,
 	})
 	if claimed["key"] != "EC/P-256" {
@@ -102,7 +180,7 @@ func TestWalletScriptInChromium(t *testing.T) {
 	if link == "" {
 		t.Fatal("the request page shows no link")
 	}
-	chromium(ctx, t, map[string]string{"phase": "present", "holder": w.holder.public, "link": link, "profile": profile})
+	chromium(ctx, t, browsers, map[string]string{"phase": "present", "holder": w.holder.public, "link": link, "profile": profile})
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		result := w.checker.get(sent.url.String()).must(t)

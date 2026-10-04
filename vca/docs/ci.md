@@ -95,11 +95,18 @@ macOS.
 `testdata/wallet_e2e.cjs` with node, once to claim and once to present.
 Both runs share one browser profile, so the key of the browser stays.
 The job of vca-ci installs Playwright with Chromium and sets the
-variable. To run it on a machine that has both:
+variable.
+The test finds Chromium in the directory of `PLAYWRIGHT_BROWSERS_PATH`,
+else in the default cache of Playwright, `~/.cache/ms-playwright`.
+It hands that directory to node.
+A skip names the variable that is missing: `VCA_PLAYWRIGHT`,
+`PLAYWRIGHT_BROWSERS_PATH`, or `PATH` for node.
+To run it on a machine that has both:
 
 ```sh
 cd vca
 NODE_PATH=<the node_modules that hold playwright> \
+  PLAYWRIGHT_BROWSERS_PATH=<the directory of the browsers> \
   VCA_PLAYWRIGHT=1 go test -run TestWalletScriptInChromium ./services/walkthrough/
 ```
 
