@@ -382,3 +382,32 @@ func TestNewRejectsMissingParts(t *testing.T) {
 		t.Errorf("empty kit: status %d", rec.Code)
 	}
 }
+
+// TestFailureRendersAPage is the page of a sign in that did not finish:
+// a kit page with the status, a sentence for the reader, and the
+// providers to start again. It names no internal detail.
+func TestFailureRendersAPage(t *testing.T) {
+	idp := oidctest.New()
+	defer idp.Close()
+	reg := registry(t, keycloak(idp))
+	c := chooser(t, signin.Options{Role: commonv1.Role_ROLE_ISSUER, Providers: reg})
+	for status, want := range map[int]string{
+		http.StatusBadRequest:          "This sign in link no longer works. Start the sign in again.",
+		http.StatusForbidden:           "The provider did not let you in. Ask an admin for access.",
+		http.StatusBadGateway:          "The sign in provider did not answer. Try again later.",
+		http.StatusInternalServerError: "The sign in did not finish. Try again.",
+	} {
+		rec := httptest.NewRecorder()
+		c.Failure(rec, httptest.NewRequest(http.MethodGet, "/auth/callback?state=x", nil), status)
+		doc := rec.Body.String()
+		if rec.Code != status || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/html") {
+			t.Errorf("%d: status %d, type %q", status, rec.Code, rec.Header().Get("Content-Type"))
+		}
+		a11ytest.AssertPage(t, doc)
+		for _, text := range []string{"The sign in did not finish.", want, `href="/auth/login?provider=default`} {
+			if !strings.Contains(doc, text) {
+				t.Errorf("%d: page misses %q\n%s", status, text, doc)
+			}
+		}
+	}
+}

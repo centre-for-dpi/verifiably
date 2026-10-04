@@ -219,6 +219,8 @@ func Handler(svc *service.Service) http.Handler {
 			LandingURL: svc.Config().LandingURL,
 		}))
 		mux.Handle("GET "+ui.Prefix, svc.Assets())
+		// A browser login that did not finish reads the kit page.
+		handlers.FailPage = chooser.Failure
 	}
 	for _, prefix := range Prefixes {
 		// Login and register starts are rate limited per client address.

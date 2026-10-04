@@ -306,6 +306,11 @@ the sign out form. The pages of the side navigation come from
 console that a provider record of kind `keycloak` names. A deployment
 with another provider shows no such link (ADR-035 decision 2).
 
+An action that does not finish shows a page of the kit with the HTTP
+status. A refusal that the admin can fix shows the sentence of the
+service. A DID that does not resolve is one example. A fault inside the
+service shows a plain sentence and no detail.
+
 The overview shows six cards. The trust card counts the active issuers.
 The other cards cover the trust registry, the providers with their realms, the tenants, and the API keys.
 The sixth card counts the audit events of the day. The first run checklist sits

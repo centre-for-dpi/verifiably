@@ -197,6 +197,18 @@ func (s *Service) SchemaIDs() []string {
 	return out
 }
 
+// SchemaNames maps a schema id onto the display name its newest named
+// record carries. The pages show it in place of the id.
+func (s *Service) SchemaNames() map[string]string {
+	out := map[string]string{}
+	for _, r := range s.opts.Store.All() {
+		if r.SchemaName != "" {
+			out[r.SchemaID] = r.SchemaName
+		}
+	}
+	return out
+}
+
 // Ready reports whether the service can take traffic.
 func (s *Service) Ready() bool { return true }
 

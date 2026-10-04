@@ -167,7 +167,7 @@ func (p *Pages) renderDetail(pg page, id string, v view) error {
 	}
 	return p.render(pg, components.Page{
 		Title: msg.T("issuer.issued.detail.label", shortID(id)),
-		Lead: msg.T("issuer.issued.detail.lead", r.GetSchemaId(), strconv.Itoa(int(r.GetSchemaVersion())),
+		Lead: msg.T("issuer.issued.detail.lead", schemaTitle(r.GetSchemaId(), r.GetSchemaName()), strconv.Itoa(int(r.GetSchemaVersion())),
 			r.GetIssuedAt().AsTime().UTC().Format(dateText)),
 		Actions: components.Join(buttons...), Content: components.Join(parts...), Toasts: v.toasts,
 	})

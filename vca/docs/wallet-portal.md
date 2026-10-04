@@ -37,6 +37,9 @@ The own pair is the holder pair whose `wallet-auth` serves the key set
 in `AUTH_JWKS_URL`. The page "Keys and identifiers" shows only when the
 adapter of the own pair lists `FEATURE_WALLET_DIDS` (ADR-062 decision
 6). The page shows the holder identifier and where the holder key sits.
+A stack wallet binds a new credential to its default identifier, with
+a key the stack keeps. A browser store binds it to the key of the
+browser.
 It lists the identifiers of the wallet of the stack and makes an
 identifier of a method the adapter lists. With `FEATURE_WALLET_KEYS` it
 lists the keys and makes a key of a type the adapter lists. It then

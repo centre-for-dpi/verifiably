@@ -223,6 +223,11 @@ func (s *Service) startFromQuery(w http.ResponseWriter, r *http.Request, registe
 	q := r.URL.Query()
 	_, u, err := s.begin(r.Context(), q.Get("provider"), q.Get("return_to"), q.Get(BootstrapField), "", register)
 	if err != nil {
+		if s.failPage != nil {
+			w.Header().Set("Cache-Control", "no-store")
+			s.failPage(w, r, oidcflow.HTTPStatus(err))
+			return
+		}
 		s.failOAuth(w, err)
 		return
 	}

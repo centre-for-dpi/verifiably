@@ -17,6 +17,11 @@ This implements ADR-012 decisions 1 to 6 and ADR-010 decisions 2 and 7.
 5. The service maps the claims to issuer roles and signs a session JWT.
 6. The browser gets the cookie `HttpOnly; Secure; SameSite=Lax` and a JSON body with the token and a CSRF token, or a redirect to `return_to`.
 
+A login that does not finish shows a page of the kit with the HTTP
+status: the sign in chooser, a sentence for the reader, and the
+providers to start again. The page names no internal detail. The
+wallet, verifier, and admin services show the same page.
+
 The same steps run through the RPCs `LoginStart` and `LoginCallback` for
 a portal that wants to drive the flow itself.
 

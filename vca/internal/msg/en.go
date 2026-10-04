@@ -206,6 +206,11 @@ var en = map[string]string{
 	"signin.back.label":                "Choose another role",
 	"signin.continue.label":            "Continue with",
 	"signin.none":                      "This deployment has no login provider yet. Ask the admin to add one.",
+	"signin.failed.title":              "The sign in did not finish.",
+	"signin.failed.state":              "This sign in link no longer works. Start the sign in again.",
+	"signin.failed.denied":             "The provider did not let you in. Ask an admin for access.",
+	"signin.failed.provider":           "The sign in provider did not answer. Try again later.",
+	"signin.failed.other":              "The sign in did not finish. Try again.",
 	"signin.admin.none":                "This deployment has no login provider yet. Run vca admin onboard to add one.",
 	"signin.register.label":            "Register a new account",
 	"signin.register.with.label":       "Register with {1}",
@@ -227,6 +232,8 @@ var en = map[string]string{
 
 	// Admin portal.
 	"admin.nav.trust_lists.label":               "Trust lists",
+	"admin.action.failed.title":                 "The action did not finish.",
+	"admin.action.failed.text":                  "The service did not finish the action. Try again, or ask the operator to read the service log.",
 	"admin.nav.trust_registries.label":          "Trust registries",
 	"admin.nav.providers.label":                 "Login providers",
 	"admin.nav.tenants.label":                   "Tenants",
@@ -1856,6 +1863,7 @@ var en = map[string]string{
 	"holder.keys.none":                        "The wallet names no identifier yet.",
 	"holder.keys.key.browser":                 "Your browser holds a key for this wallet.",
 	"holder.keys.key.stack":                   "The wallet of the stack keeps the key.",
+	"holder.keys.key.browser_first":           "Your browser makes its key at your first claim and keeps it.",
 	"holder.keys.keys.label":                  "Keys",
 	"holder.keys.keys.lead":                   "The wallet of the stack keeps these keys. No key leaves it.",
 	"holder.keys.keys.caption.label":          "Keys of the wallet",

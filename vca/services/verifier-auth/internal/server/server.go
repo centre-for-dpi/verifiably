@@ -170,9 +170,9 @@ func Handler(svc *service.Service) http.Handler {
 	mux.Handle("/.well-known/jwks.json", svc.Signer().JWKSHandler())
 	mux.Handle("/token", svc.TokenHandler())
 	handlers := svc.Handlers()
-	handlers.Mount(mux, "")
-	handlers.Mount(mux, "/auth")
 	if svc.Kit() == nil {
+		handlers.Mount(mux, "")
+		handlers.Mount(mux, "/auth")
 		return mux
 	}
 	// The options are complete, so New cannot fail here.
@@ -180,6 +180,10 @@ func Handler(svc *service.Service) http.Handler {
 		Kit: svc.Kit(), Role: commonv1.Role_ROLE_VERIFIER, Providers: svc.Providers(), Registrar: svc, Metadata: svc.Flow(),
 		LandingURL: svc.Config().LandingURL,
 	}))
+	// A browser login that did not finish reads the kit page.
+	handlers.FailPage = chooser.Failure
+	handlers.Mount(mux, "")
+	handlers.Mount(mux, "/auth")
 	chooser.Mount(mux, "")
 	chooser.Mount(mux, "/auth")
 	if svc.Assets() != nil {

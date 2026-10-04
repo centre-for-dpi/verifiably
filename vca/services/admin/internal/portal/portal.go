@@ -245,9 +245,95 @@ func (p *Portal) posted(fn func(http.ResponseWriter, *http.Request, session) err
 			return
 		}
 		if err := fn(w, r, s); err != nil {
-			http.Error(w, "the action failed", statusOf(err))
+			p.failed(w, r, s, err)
 		}
 	}
+}
+
+// failed renders the page of an action that did not finish. A refusal
+// the admin can act on shows the sentence of the service. A fault inside
+// the service shows a plain sentence and no detail (ADR-027 decision 7).
+func (p *Portal) failed(w http.ResponseWriter, r *http.Request, s session, err error) {
+	status := statusOf(err)
+	b := p.blocks()
+	card := b.add("card", components.Card{ID: "failed", Title: msg.T("admin.action.failed.title"), Text: safeMessage(err)})
+	if b.err != nil {
+		http.Error(w, msg.T("admin.action.failed.text"), status)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	page := components.Page{Title: msg.T("admin.action.failed.title"), Description: msg.T("admin.action.failed.text"), Content: card}
+	if rerr := p.render(&statusWriter{ResponseWriter: w, status: status}, r, s, page); rerr != nil {
+		http.Error(w, msg.T("admin.action.failed.text"), status)
+	}
+}
+
+// safeMessage returns the sentence a page may show for an error. The
+// Connect message of a refusal reads as a sentence once the package
+// prefixes go. Any other error gives the plain sentence of the catalogue.
+func safeMessage(err error) string {
+	var cerr *connect.Error
+	if !errors.As(err, &cerr) || cerr.Message() == "" {
+		return msg.T("admin.action.failed.text")
+	}
+	switch cerr.Code() {
+	case connect.CodeInvalidArgument, connect.CodeFailedPrecondition, connect.CodeNotFound, connect.CodeAlreadyExists,
+		connect.CodePermissionDenied, connect.CodeOutOfRange:
+	default:
+		return msg.T("admin.action.failed.text")
+	}
+	text := strings.TrimSpace(cerr.Message())
+	for {
+		head, rest, ok := strings.Cut(text, ": ")
+		if !ok || !packagePrefix(head) {
+			break
+		}
+		text = strings.TrimSpace(rest)
+	}
+	if text == "" {
+		return msg.T("admin.action.failed.text")
+	}
+	text = strings.ToUpper(text[:1]) + text[1:]
+	if !strings.HasSuffix(text, ".") {
+		text += "."
+	}
+	return text
+}
+
+// packagePrefix reports whether a head of an error text is the name of a
+// Go package, such as service or store, which the reader has no use for.
+func packagePrefix(head string) bool {
+	if head == "" {
+		return false
+	}
+	for _, c := range head {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') {
+			return false
+		}
+	}
+	return true
+}
+
+// statusWriter writes a status before the first byte of the body.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+	wrote  bool
+}
+
+// WriteHeader sends the status of the writer once, whatever the caller
+// names.
+func (s *statusWriter) WriteHeader(int) {
+	if !s.wrote {
+		s.wrote = true
+		s.ResponseWriter.WriteHeader(s.status)
+	}
+}
+
+// Write sends the status once, then the bytes.
+func (s *statusWriter) Write(b []byte) (int, error) {
+	s.WriteHeader(s.status)
+	return s.ResponseWriter.Write(b)
 }
 
 // session reads the session of a request.

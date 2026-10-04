@@ -39,3 +39,14 @@ func TestRecordWithoutASubjectNamesTheOffer(t *testing.T) {
 		t.Errorf("subject reference = %q, want offer-%s", got, offer.GetId())
 	}
 }
+
+// TestRecordNamesTheSchema: the issued record carries the display name
+// of the schema, so the issued credentials pages show a name and not
+// the schema id.
+func TestRecordNamesTheSchema(t *testing.T) {
+	h := newHarness(t, nil)
+	h.issue(t, backendv1.Channel_CHANNEL_OID4VCI_PREAUTH, nil)
+	if got := h.recorder.last().GetSchemaName(); got != "Farmer Credential" {
+		t.Errorf("schema name = %q, want the display name of the schema", got)
+	}
+}

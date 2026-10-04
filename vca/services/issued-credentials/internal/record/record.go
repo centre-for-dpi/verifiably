@@ -67,9 +67,12 @@ func (b Binding) IsZero() bool { return b.ListID == "" }
 
 // Record is one entry of the log.
 type Record struct {
-	ID               string            `json:"id"`
-	SchemaID         string            `json:"schema_id"`
-	SchemaVersion    int               `json:"schema_version"`
+	ID            string `json:"id"`
+	SchemaID      string `json:"schema_id"`
+	SchemaVersion int    `json:"schema_version"`
+	// SchemaName is the display name of the schema at issuance. The field
+	// is new, so an older record leaves it out and keeps its hash.
+	SchemaName       string            `json:"schema_name,omitempty"`
 	SubjectRef       string            `json:"subject_ref"`
 	Format           string            `json:"format,omitempty"`
 	Binding          Binding           `json:"binding,omitempty"`

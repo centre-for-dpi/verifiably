@@ -45,6 +45,8 @@ type fakeTrust struct {
 	syncErr string
 	// listErr, when set, makes ListEntries fail.
 	listErr error
+	// upsertErr, when set, makes UpsertEntry fail.
+	upsertErr error
 }
 
 func keyOf(id *trustv1.TrustEntry_Identifier) string {
@@ -55,6 +57,9 @@ func keyOf(id *trustv1.TrustEntry_Identifier) string {
 }
 
 func (f *fakeTrust) UpsertEntry(_ context.Context, req *connect.Request[trustv1.UpsertEntryRequest]) (*connect.Response[trustv1.UpsertEntryResponse], error) {
+	if f.upsertErr != nil {
+		return nil, f.upsertErr
+	}
 	entry := req.Msg.GetEntry()
 	f.entries[keyOf(entry.GetIdentifier())] = entry
 	return connect.NewResponse(&trustv1.UpsertEntryResponse{Entry: entry}), nil
@@ -563,6 +568,28 @@ func TestTrustPagesAddAndRemove(t *testing.T) {
 	if page := h.page(t, "/admin/trust?role=issuer"); !strings.Contains(page, "CN=Issuer") {
 		t.Fatal("the x509 entry is not on the page")
 	}
+}
+
+// TestPostFailureShowsTheServiceMessage shows the sentence of the
+// service when the action fails for a reason the admin can fix, on a kit
+// page. A fault inside the service shows a plain sentence and no detail.
+func TestPostFailureShowsTheServiceMessage(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	form := url.Values{"identifier": {"did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS"}, "display_name": {"Ledger issuer"}, "role": {"issuer"}, "status": {"active"}}
+	h.trust.upsertErr = connect.NewError(connect.CodeInvalidArgument, errors.New("service: the DID did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS does not resolve"))
+	status, body := h.post(t, "/admin/trust", form)
+	if status != http.StatusBadRequest || !strings.Contains(body, "The DID did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS does not resolve.") ||
+		strings.Contains(body, "service:") || strings.Contains(body, "the action failed") {
+		t.Fatalf("a refused entry: %d\n%s", status, body)
+	}
+	a11ytest.AssertPage(t, body)
+	h.trust.upsertErr = connect.NewError(connect.CodeInternal, errors.New("store: write /var/lib/vca/trust.json: permission denied"))
+	status, body = h.post(t, "/admin/trust", form)
+	if status != http.StatusInternalServerError || strings.Contains(body, "/var/lib") || !strings.Contains(body, "The action did not finish.") {
+		t.Fatalf("a fault inside the service: %d\n%s", status, body)
+	}
+	a11ytest.AssertPage(t, body)
 }
 
 func TestTrustPageWithoutARegistryExplainsIt(t *testing.T) {

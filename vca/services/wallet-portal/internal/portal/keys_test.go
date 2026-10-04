@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/service"
 )
 
 // walletCaps lists the wallet features and the choices of the stack.
@@ -72,6 +73,40 @@ func TestListKeysAndDids(t *testing.T) {
 	}
 	if rec := h.post(t, "/wallet/keys/default", url.Values{}); rec.Code != http.StatusBadRequest {
 		t.Errorf("no DID: %d", rec.Code)
+	}
+}
+
+// summaryOf returns the table of the identifier and the key of a page.
+func summaryOf(t *testing.T, body string) string {
+	t.Helper()
+	start := strings.Index(body, `<table id="holder-keys">`)
+	if start < 0 {
+		t.Fatalf("the page has no summary\n%s", body)
+	}
+	end := strings.Index(body[start:], "</table>")
+	if end < 0 {
+		t.Fatal("the summary has no end")
+	}
+	return body[start : start+end]
+}
+
+// TestKeysSummaryNamesTheDefaultIdentifier names the default DID of the
+// stack wallet when the session carries none, and the browser key in a
+// browser store wallet.
+func TestKeysSummaryNamesTheDefaultIdentifier(t *testing.T) {
+	h := walletKeysDeployment(backendv1.Feature_FEATURE_WALLET_DIDS, backendv1.Feature_FEATURE_WALLET_DEFAULT_DID)(t)
+	summary := summaryOf(t, h.get(t, "/wallet/keys").Body.String())
+	if !strings.Contains(summary, "did:key:z6MkjoRhq1jSNJdLiruSXrFFxagqrztZaXHqHGUTKJbcNywp") || strings.Contains(summary, "no identifier yet") {
+		t.Errorf("the summary misses the default identifier of the stack\n%s", summary)
+	}
+	if !strings.Contains(summary, "The wallet of the stack keeps the key.") {
+		t.Errorf("a stack wallet: %s", summary)
+	}
+	topo := holderDeployment(backendv1.Feature_FEATURE_WALLET_DIDS)
+	browser := setupShell(t, func(o *service.Options) { o.Holder = nil }, topo)
+	summary = summaryOf(t, browser.get(t, "/wallet/keys").Body.String())
+	if strings.Contains(summary, "stack keeps the key") || !strings.Contains(summary, "Your browser") {
+		t.Errorf("a browser store wallet: %s", summary)
 	}
 }
 

@@ -24,6 +24,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession/staffsessiontest"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/pages"
+	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/record"
 	"github.com/centre-for-dpi/vc-adapters/services/issued-credentials/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
 )
@@ -525,6 +526,31 @@ func TestIssuedListSchemaReadsAsWords(t *testing.T) {
 	}
 	if strings.Contains(doc, ">farmer v2<") {
 		t.Error("the list shows the schema id")
+	}
+}
+
+// TestIssuedPagesShowTheSchemaName: a record that names the display name
+// of its schema shows that name in the list, in the filter, and on its
+// page, not the schema id.
+func TestIssuedPagesShowTheSchemaName(t *testing.T) {
+	h := newHarness(t)
+	rec, err := h.svc.AppendRecord(record.Record{ID: "rec-residence", SchemaID: "proofofresidence-80940cd1", SchemaVersion: 2,
+		SchemaName: "Proof of residence", SubjectRef: h.svc.SubjectRef("rec-residence"), Format: "dc+sd-jwt", DPG: "dpg-adapter",
+		IssuedAt: fixedNow.AddDate(0, 0, -1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := body(t, h.get(t, "/issued/"))
+	for _, want := range []string{">Proof of residence v2<", `<option value="proofofresidence-80940cd1">Proof of residence</option>`} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("the list lacks %q", want)
+		}
+	}
+	if strings.Contains(doc, "80940cd1 v2") {
+		t.Error("the list shows the schema id")
+	}
+	if page := body(t, h.get(t, "/issued/"+rec.ID)); !strings.Contains(page, "Schema Proof of residence version 2.") {
+		t.Errorf("the record page lacks the schema name\n%s", page)
 	}
 }
 

@@ -227,6 +227,58 @@ func (c *Chooser) Page(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Failure serves the page of a browser sign in that did not finish. It
+// is the chooser with the status and a sentence for the reader, so the
+// reader can start again. The page names no internal detail.
+func (c *Chooser) Failure(w http.ResponseWriter, r *http.Request, status int) {
+	page, err := c.page(r)
+	if err != nil {
+		http.Error(w, msg.T("common.render_failed"), http.StatusInternalServerError)
+		return
+	}
+	page.SignIn.Title = msg.T("signin.failed.title")
+	page.SignIn.Lead = failureText(status)
+	w.Header().Set("Cache-Control", "no-store")
+	if err := c.opts.Kit.RenderPage(&statusWriter{ResponseWriter: w, status: status}, r, page); err != nil {
+		http.Error(w, msg.T("common.render_failed"), http.StatusInternalServerError)
+	}
+}
+
+// failureText returns the sentence of a failed sign in by its status.
+func failureText(status int) string {
+	switch status {
+	case http.StatusBadRequest, http.StatusNotFound:
+		return msg.T("signin.failed.state")
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return msg.T("signin.failed.denied")
+	case http.StatusBadGateway:
+		return msg.T("signin.failed.provider")
+	}
+	return msg.T("signin.failed.other")
+}
+
+// statusWriter writes a status before the first byte of the body.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+	wrote  bool
+}
+
+// WriteHeader sends the status of the writer once, whatever the caller
+// names.
+func (s *statusWriter) WriteHeader(int) {
+	if !s.wrote {
+		s.wrote = true
+		s.ResponseWriter.WriteHeader(s.status)
+	}
+}
+
+// Write sends the status once, then the bytes.
+func (s *statusWriter) Write(b []byte) (int, error) {
+	s.WriteHeader(s.status)
+	return s.ResponseWriter.Write(b)
+}
+
 // page composes the chooser page of a request.
 func (c *Chooser) page(r *http.Request) (components.Page, error) {
 	returnTo := c.returnTo(r)

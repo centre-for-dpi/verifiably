@@ -190,8 +190,12 @@ type IssuedRecord struct {
 	// came from the ledger carries it. The DPG adapter changes the status
 	// of such a record when it lists the feature of the change.
 	DpgCredentialId string `protobuf:"bytes,20,opt,name=dpg_credential_id,json=dpgCredentialId,proto3" json:"dpg_credential_id,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// The display name of the schema at issuance, such as Proof of
+	// residence. The pages show it in place of the schema id. A record
+	// that the issuance service did not write can leave it empty.
+	SchemaName    string `protobuf:"bytes,21,opt,name=schema_name,json=schemaName,proto3" json:"schema_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *IssuedRecord) Reset() {
@@ -360,6 +364,13 @@ func (x *IssuedRecord) GetDpgOfferId() string {
 func (x *IssuedRecord) GetDpgCredentialId() string {
 	if x != nil {
 		return x.DpgCredentialId
+	}
+	return ""
+}
+
+func (x *IssuedRecord) GetSchemaName() string {
+	if x != nil {
+		return x.SchemaName
 	}
 	return ""
 }
@@ -1617,7 +1628,7 @@ var File_vca_issued_v1_issued_proto protoreflect.FileDescriptor
 
 const file_vca_issued_v1_issued_proto_rawDesc = "" +
 	"\n" +
-	"\x1avca/issued/v1/issued.proto\x12\rvca.issued.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cvca/backend/v1/backend.proto\x1a\x1avca/common/v1/common.proto\"\xd6\a\n" +
+	"\x1avca/issued/v1/issued.proto\x12\rvca.issued.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cvca/backend/v1/backend.proto\x1a\x1avca/common/v1/common.proto\"\xf7\a\n" +
 	"\fIssuedRecord\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tschema_id\x18\x02 \x01(\tR\bschemaId\x12%\n" +
@@ -1641,7 +1652,9 @@ const file_vca_issued_v1_issued_proto_rawDesc = "" +
 	"\fretain_until\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\vretainUntil\x12 \n" +
 	"\fdpg_offer_id\x18\x13 \x01(\tR\n" +
 	"dpgOfferId\x12*\n" +
-	"\x11dpg_credential_id\x18\x14 \x01(\tR\x0fdpgCredentialId\x1aC\n" +
+	"\x11dpg_credential_id\x18\x14 \x01(\tR\x0fdpgCredentialId\x12\x1f\n" +
+	"\vschema_name\x18\x15 \x01(\tR\n" +
+	"schemaName\x1aC\n" +
 	"\x15SearchableClaimsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"D\n" +

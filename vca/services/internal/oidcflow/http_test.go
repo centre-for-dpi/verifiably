@@ -255,3 +255,27 @@ func TestCookieAndTokenFromRequest(t *testing.T) {
 		t.Fatal(rec.Body.String())
 	}
 }
+
+// TestHandlersFailPage hands a browser login that did not finish to the
+// page of the service, so the browser never reads raw JSON. Without a
+// page the handlers answer JSON as before.
+func TestHandlersFailPage(t *testing.T) {
+	fl, h, _ := newHandlers(t)
+	var got []int
+	h.FailPage = func(w http.ResponseWriter, _ *http.Request, status int) {
+		got = append(got, status)
+		w.WriteHeader(status)
+	}
+	mux := http.NewServeMux()
+	h.Mount(mux, "/auth/")
+	if rec := do(mux, httptest.NewRequest(http.MethodGet, "/auth/callback?state=old&code=c", nil)); rec.Code != http.StatusBadRequest || rec.Body.Len() != 0 {
+		t.Errorf("callback: %d %s", rec.Code, rec.Body.String())
+	}
+	fl.startErr = oidcflow.ErrUpstream
+	if rec := do(mux, httptest.NewRequest(http.MethodGet, "/auth/login?provider=idp", nil)); rec.Code != http.StatusBadGateway {
+		t.Errorf("login: %d %s", rec.Code, rec.Body.String())
+	}
+	if len(got) != 2 || got[0] != http.StatusBadRequest || got[1] != http.StatusBadGateway {
+		t.Errorf("the page got %v", got)
+	}
+}

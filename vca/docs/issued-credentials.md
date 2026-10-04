@@ -14,6 +14,7 @@ the credential without holding it.
 |---|---|
 | `id` | The record id. The issuance service assigns it. |
 | `schema_id`, `schema_version` | The schema the credential follows. |
+| `schema_name` | The display name of the schema at issuance. The pages show it in place of the schema id. A record without it shows the words of the id. |
 | `subject` | The salted, one way reference of the subject. |
 | `format` | The wire format, for example `dc+sd-jwt`. |
 | `status_binding` | The status list kind, list id, and index. Empty when the credential is not revocable. |

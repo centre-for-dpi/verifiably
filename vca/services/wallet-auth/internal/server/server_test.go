@@ -281,3 +281,22 @@ func TestAppFailsOnBadThemeFile(t *testing.T) {
 	_, err := server.Build(cfg, quiet)
 	uikittest.AssertBadThemeError(t, err, path)
 }
+
+// TestCallbackFailureRendersAPage: a browser that returns to the
+// callback with an old state reads a kit page, not raw JSON.
+func TestCallbackFailureRendersAPage(t *testing.T) {
+	svc, err := server.Build(baseConfig(t), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	server.Handler(svc).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/auth/callback?state=old&code=c", nil))
+	doc := rec.Body.String()
+	if rec.Code != http.StatusBadRequest || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/html") || strings.Contains(doc, `"error"`) {
+		t.Fatalf("callback: %d %q\n%s", rec.Code, rec.Header().Get("Content-Type"), doc)
+	}
+	a11ytest.AssertPage(t, doc)
+	if !strings.Contains(doc, "The sign in did not finish.") {
+		t.Errorf("the page misses the sentence\n%s", doc)
+	}
+}

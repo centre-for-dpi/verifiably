@@ -117,6 +117,10 @@ type Handlers struct {
 	// LogoutRedirect is where the browser goes after logout when the
 	// provider has no end session endpoint. Empty returns JSON instead.
 	LogoutRedirect string
+	// FailPage renders the page of a browser login that did not finish,
+	// with the HTTP status. The browser then reads a page, not JSON. Nil
+	// answers JSON, as an API client expects.
+	FailPage func(w http.ResponseWriter, r *http.Request, status int)
 }
 
 // Mount registers the endpoints on mux under prefix, for example
@@ -135,7 +139,7 @@ func (h Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	u, err := h.Logins.Start(r.Context(), q.Get("provider"), q.Get("return_to"))
 	if err != nil {
-		h.fail(w, err)
+		h.failBrowser(w, r, err)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
@@ -149,7 +153,7 @@ func (h Handlers) Callback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	token, claims, returnTo, err := h.Logins.Complete(r.Context(), q.Get("state"), q.Get("code"), q.Get("error"))
 	if err != nil {
-		h.fail(w, err)
+		h.failBrowser(w, r, err)
 		return
 	}
 	h.Cookie.Set(w, token, claims.Expiry())
@@ -211,6 +215,17 @@ func (h Handlers) sessionBody(token string, claims Claims) map[string]any {
 		"claims":        claims,
 		"expires_at":    claims.Expiry().UTC().Format(time.RFC3339),
 	}
+}
+
+// failBrowser answers a failed step of a browser login: the page of the
+// service when it has one, else JSON.
+func (h Handlers) failBrowser(w http.ResponseWriter, r *http.Request, err error) {
+	if h.FailPage != nil {
+		w.Header().Set("Cache-Control", "no-store")
+		h.FailPage(w, r, HTTPStatus(err))
+		return
+	}
+	h.fail(w, err)
 }
 
 func (h Handlers) fail(w http.ResponseWriter, err error) {

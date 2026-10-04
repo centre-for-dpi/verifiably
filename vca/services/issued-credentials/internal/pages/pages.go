@@ -75,6 +75,9 @@ type Records interface {
 	History(ctx context.Context, id string) ([]auditlog.Record, error)
 	// SchemaIDs returns the schema of every record, once each.
 	SchemaIDs() []string
+	// SchemaNames maps a schema id onto its display name, when a record
+	// names it.
+	SchemaNames() map[string]string
 	// Sync adds the entries of the stack ledger that the log lacks.
 	Sync(ctx context.Context, q service.SyncQuery) ([]service.SyncRow, error)
 }
@@ -307,9 +310,19 @@ func shortID(id string) string {
 	return id
 }
 
-// schemaText names a schema version, for example "residence v2".
-func schemaText(id string, version int32) string {
-	return msg.T("issuer.issued.schema.value.label", vc.TypeTitle(id), strconv.Itoa(int(version)))
+// schemaText names a schema version, for example "residence v2". The
+// display name of the record wins over the words of the id.
+func schemaText(id, name string, version int32) string {
+	return msg.T("issuer.issued.schema.value.label", schemaTitle(id, name), strconv.Itoa(int(version)))
+}
+
+// schemaTitle is the display name of a schema, or the words of its id
+// when no record names it.
+func schemaTitle(id, name string) string {
+	if name != "" {
+		return name
+	}
+	return vc.TypeTitle(id)
 }
 
 // subjectText is the searchable claim values of a record: a claim whose

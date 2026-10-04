@@ -219,6 +219,8 @@ func (a *App) mount(assets http.Handler) {
 	// The chooser and its listing answer at /auth/ like every auth
 	// service, so the landing reaches them the same way (ADR-035).
 	chooser := a.Portal.Chooser()
+	// A browser login that did not finish reads the kit page.
+	a.Login.SetFailPage(chooser.Failure)
 	a.Mux.Handle("GET /auth/{$}", oidcflow.RejectQueryTokens(http.HandlerFunc(chooser.Page)))
 	a.Mux.HandleFunc("GET /auth/providers.json", chooser.ProvidersJSON)
 	a.Mux.Handle("POST /auth/logout", oidcflow.RejectQueryTokens(http.HandlerFunc(handlers.Logout)))

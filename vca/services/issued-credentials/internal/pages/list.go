@@ -13,7 +13,6 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
@@ -141,8 +140,9 @@ func (p *Pages) exportButtons(b *blocks, q listQuery) template.HTML {
 // filters is the GET form of the search and the filters.
 func (p *Pages) filters(b *blocks, q listQuery) template.HTML {
 	schemas := []components.Option{{Value: "", Text: msg.T("issuer.issued.schema.any.label")}}
+	names := p.opts.Records.SchemaNames()
 	for _, id := range p.opts.Records.SchemaIDs() {
-		schemas = append(schemas, components.Option{Value: id, Text: vc.TypeTitle(id), Selected: id == q.values.Get("schema")})
+		schemas = append(schemas, components.Option{Value: id, Text: schemaTitle(id, names[id]), Selected: id == q.values.Get("schema")})
 	}
 	states := []components.Option{{Value: "", Text: msg.T("issuer.issued.status.any.label")}}
 	for _, s := range statuses {
@@ -178,7 +178,7 @@ func (p *Pages) table(ctx context.Context, b *blocks, q listQuery, records []*is
 		rows = append(rows, components.Row{
 			{HTML: link(recordPath(r.GetId(), nil), shortID(r.GetId()))},
 			{Text: subjectText(r)},
-			{Text: schemaText(r.GetSchemaId(), r.GetSchemaVersion())},
+			{Text: schemaText(r.GetSchemaId(), r.GetSchemaName(), r.GetSchemaVersion())},
 			{Text: r.GetIssuedAt().AsTime().UTC().Format(dateText)},
 			{HTML: p.statusBadge(ctx, b, r, offered)},
 		})

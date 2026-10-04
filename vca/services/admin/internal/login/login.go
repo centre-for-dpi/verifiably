@@ -91,6 +91,16 @@ type Service struct {
 	codes map[string]issuedCode
 	// hints holds the provider ID token of a session, for logout.
 	hints map[string]issuedHint
+	// failPage renders a browser login that did not finish. The wiring
+	// sets it once, before the service takes traffic.
+	failPage func(w http.ResponseWriter, r *http.Request, status int)
+}
+
+// SetFailPage names the page of a browser login that did not finish, so
+// the browser reads a page and not JSON. Call it before the service
+// takes traffic.
+func (s *Service) SetFailPage(page func(w http.ResponseWriter, r *http.Request, status int)) {
+	s.failPage = page
 }
 
 type pendingToken struct {
@@ -160,6 +170,7 @@ func (s *Service) Handlers() oidcflow.Handlers {
 		Cookie:         oidcflow.Cookie{Name: s.d.Cfg.CookieName, Secure: !s.d.Cfg.InsecureCookie},
 		CSRF:           s.d.CSRF,
 		LogoutRedirect: s.d.Cfg.LogoutRedirect,
+		FailPage:       s.failPage,
 	}
 }
 

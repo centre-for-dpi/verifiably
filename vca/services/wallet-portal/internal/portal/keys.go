@@ -53,8 +53,8 @@ func (p *Portal) keys(w http.ResponseWriter, r *http.Request) error {
 		Keys: b.frame.Has(backendv1.Feature_FEATURE_WALLET_KEYS), Dids: true,
 		Events: b.frame.Has(backendv1.Feature_FEATURE_WALLET_EVENTS),
 	}
-	content := p.summary(b)
 	wallet, err := p.opts.Service.ReadWalletKeys(r.Context(), parts)
+	content := p.summary(b, wallet.Dids)
 	if err != nil {
 		content += b.part("card", components.Card{ID: "keys-problem", Title: msg.T("holder.keys.problem.title"), Text: msg.T("holder.keys.problem.text") + " " + message(err)})
 	} else {
@@ -72,15 +72,23 @@ func (p *Portal) keys(w http.ResponseWriter, r *http.Request) error {
 	})
 }
 
-// summary is the identifier and the key of the session.
-func (p *Portal) summary(b *pen) template.HTML {
-	did := b.who.HolderDID
+// summary is the identifier and the key that bind a new credential. A
+// stack wallet binds to its default DID with a key it keeps. A browser
+// store binds to the key of the browser.
+func (p *Portal) summary(b *pen, dids []*backendv1.WalletDid) template.HTML {
+	did, key := b.who.HolderDID, msg.T("holder.keys.key.stack")
+	switch {
+	case p.opts.Service.BrowserStorage() && b.who.HasHolderKey:
+		key = msg.T("holder.keys.key.browser")
+	case p.opts.Service.BrowserStorage():
+		key = msg.T("holder.keys.key.browser_first")
+	default:
+		if stack := defaultDid(dids); stack != "" {
+			did = stack
+		}
+	}
 	if did == "" {
 		did = msg.T("holder.keys.none")
-	}
-	key := msg.T("holder.keys.key.stack")
-	if b.who.HasHolderKey {
-		key = msg.T("holder.keys.key.browser")
 	}
 	return b.part("table", components.Table{
 		ID: "holder-keys", Caption: msg.T("holder.keys.caption.label"),
@@ -90,6 +98,20 @@ func (p *Portal) summary(b *pen) template.HTML {
 			{{Text: msg.T("holder.keys.key.label")}, {Text: key}},
 		},
 	})
+}
+
+// defaultDid returns the default DID of the stack wallet, or its first
+// DID when the stack marks none.
+func defaultDid(dids []*backendv1.WalletDid) string {
+	for _, d := range dids {
+		if d.GetDefault() {
+			return d.GetDid()
+		}
+	}
+	if len(dids) > 0 {
+		return dids[0].GetDid()
+	}
+	return ""
 }
 
 // mono renders a value in the monospace style.

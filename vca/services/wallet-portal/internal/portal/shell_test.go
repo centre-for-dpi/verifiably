@@ -94,7 +94,8 @@ func TestWalletUsesShell(t *testing.T) {
 		t.Fatalf("keys: status = %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{`<a href="/wallet/keys" aria-current="page"`, `>Keys and identifiers</a>`, "did:jwk:holder-1"} {
+	// A stack wallet binds to its default DID (TestKeysSummaryNamesTheDefaultIdentifier).
+	for _, want := range []string{`<a href="/wallet/keys" aria-current="page"`, `>Keys and identifiers</a>`, "did:key:z6MkjoRhq1jSNJdLiruSXrFFxagqrztZaXHqHGUTKJbcNywp"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("keys page misses %s\n%s", want, body)
 		}

@@ -23,6 +23,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/uikit/uikittest"
+	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
 )
 
 // quiet returns a logger that writes nothing to the test output.
@@ -96,6 +97,31 @@ func TestBuildWiresEveryRoute(t *testing.T) {
 	}()
 	if rpc.StatusCode != http.StatusOK {
 		t.Fatalf("rpc status = %d", rpc.StatusCode)
+	}
+}
+
+// TestCallbackFailureRendersAPage: a browser that returns to the
+// callback with an old state, or starts a login with an unknown
+// provider, reads a kit page, not raw JSON.
+func TestCallbackFailureRendersAPage(t *testing.T) {
+	a, err := app.Build(baseConfig(), app.Deps{Log: quiet()})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	for path, status := range map[string]int{
+		"/auth/callback?state=old&code=c": http.StatusBadRequest,
+		"/auth/login?provider=missing":    http.StatusNotFound,
+	} {
+		rec := httptest.NewRecorder()
+		a.Mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		doc := rec.Body.String()
+		if rec.Code != status || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/html") || strings.Contains(doc, `"error"`) {
+			t.Fatalf("%s: %d %q\n%s", path, rec.Code, rec.Header().Get("Content-Type"), doc)
+		}
+		a11ytest.AssertPage(t, doc)
+		if !strings.Contains(doc, "The sign in did not finish.") {
+			t.Errorf("%s: the page misses the sentence\n%s", path, doc)
+		}
 	}
 }
 
