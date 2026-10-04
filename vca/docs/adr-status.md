@@ -283,8 +283,8 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-024 | 1 Named checks as pure functions | Done | `vca/core/policy` | |
-| ADR-024 | 2 VCA runs the mandatory checks itself | Done | `vca/core/policy` | |
-| ADR-024 | 3 Status checks with a cached fetcher | Done | `vca/services/verifier-policy/internal/ports` | |
+| ADR-024 | 2 VCA runs the mandatory checks itself | Done | `vca/core/policy`, `vca/services/verifier-ingest/internal/service` | A stack that picks its own nonce returns it in `CreateRequestResponse.nonce`, and `GetResultResponse.nonce` names the nonce of the answered session. The nonce check reads it. `TestStackNonceDecidesTheCheck` pins it. |
+| ADR-024 | 3 Status checks with a cached fetcher | Done | `vca/services/verifier-policy/internal/ports` | The fetcher goes through `core/fetchguard` with `ALLOWED_HOSTS`, `ALLOW_PRIVATE_NETWORK`, and `ALLOW_PLAIN_HTTP`. `TestBuildGuardsTheFetcher` pins it. |
 | ADR-024 | 4 Trust chain check | Done | `vca/services/verifier-policy/internal/ports` | |
 | ADR-024 | 5 Schema check | Done | `vca/core/jsonschema` | |
 | ADR-024 | 6 Named policy sets with a version | Done | `vca/services/verifier-policy/internal/service` | |
@@ -304,7 +304,7 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-026 | 1 DCQL requests with credential sets | Done | `vca/core/dcql` | |
+| ADR-026 | 1 DCQL requests with credential sets | Done | `vca/core/dcql`, `vca/services/verifier-combined/internal/rules` | The check `REQUIRED_MEMBERS` fails a presentation that leaves a required set unanswered. `TestEvaluateCombinedNeedsEveryRequiredMember` pins it. |
 | ADR-026 | 2 Combined template with cross rules | Done | `vca/services/verifier-combined/internal/rules` | |
 | ADR-026 | 3 Policy per credential, then cross rules | Done | `vca/services/verifier-combined/internal/service` | |
 | ADR-026 | 4 Result cards plus a summary card | Done | `vca/services/verifier-results/internal/cards` | |
@@ -507,7 +507,7 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-046 | 1 Issuer identity RPCs | Done | `vca/proto/vca/backend/v1` | `GetIssuerIdentity`, `ProvisionIssuerIdentity`, and `ImportIssuerIdentity`. The Inji and CREDEBL adapters answer `unimplemented` until P6-I9 and P6-C1. |
-| ADR-046 | 2 One click provision or an import | Done | `vca/services/issuance/internal/pages`, `vca/services/dpg-adapter-*` | walt.id provisions and imports a DID or an X.509 chain. Inji provisions and imports a chain (P6-I9). CREDEBL imports a chain; ADR-070 records why its pinned release makes no DID in one click. |
+| ADR-046 | 2 One click provision or an import | Done | `vca/services/issuance/internal/pages`, `vca/services/dpg-adapter-*` | walt.id provisions and imports a DID or an X.509 chain. Inji provisions and imports a chain (P6-I9). CREDEBL imports a chain; ADR-070 records why its pinned release makes no DID in one click. The walt.id import checks the key, the chain, and the dates of the leaf as CREDEBL does. `TestImportX509ChecksTheChain` pins it. |
 | ADR-046 | 3 Trust registry entry in state pending | Done | `vca/services/issuance/internal/pages/identity.go` | The identity page writes a pending entry in the trust registry of the first live admin pair. |
 | ADR-046 | 4 No issuer private key in VCA | Done | `vca/services/dpg-adapter-waltid` | The walt.id key stays in the adapter state file with mode 0600, as the decision records. |
 
@@ -681,7 +681,7 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-063 | 1 The whole query feature, the consent check and the shared claims | Done | `vca/services/dpg-adapter-credebl/internal/service/holder_oid4vc.go`, `vca/services/wallet-portal/internal/service/service.go` | `TestPresentOid4vpRefusesAnUntickedClaim`, `TestResolvedRequestDisclosures`, `TestConsentMarksEveryClaimWhenTheStackSharesTheWholeQuery` and `TestHistoryNamesWhatTheStackShared` pin it. |
-| ADR-063 | 2 A request by value stays with the browser store | Done | `vca/services/wallet-portal/internal/service/service.go` | `TestStackWalletRefusesARequestByValue` and `TestPresentFromUploadedRequestFile` pin it. |
+| ADR-063 | 2 A request by value stays with the browser store | Done | `vca/services/wallet-portal/internal/service/service.go` | `TestStackWalletRefusesARequestByValue` and `TestPresentFromUploadedRequestFile` pin it. A stack wallet gets one request shape, `openid4vp://authorize` with `client_id` and `request_uri`. `TestStackWalletGetsOneRequestShape` and `TestPresentTakesThePortalRequestShape` of each adapter pin it. |
 | ADR-063 | 3 The two fetches of a request URI | Done | `vca/docs/dpg-adapter-credebl.md` | The adapter document names the fetches and the allowlist that bounds them. |
 
 ## ADR-064: The issuer of an AnonCreds proof over DIDComm
@@ -777,7 +777,7 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-073 | 1 A signing key that no script exports | Done | `vca/services/wallet-portal/internal/static/wallet.js` | `TestTheBrowserSigningKeyStaysInTheBrowser` runs the script in node when node is on the path. |
-| ADR-073 | 2 The proof and the key binding with ES256 | Done | `vca/services/wallet-portal/internal/holderkey` | `TestProofSignedInTheBrowserPassesTheIssuerCheck` and `TestBindingSignedInTheBrowserPassesTheVerifierCheck` pin it. An issuer with a nonce endpoint gets `proofs` of OID4VCI 1.0. Any other issuer gets `proof` of draft 13. `TestClaimReadsTheAnswerOfOid4vci10` and `TestClaimSendsTheProofOfDraft13` pin that. |
+| ADR-073 | 2 The proof and the key binding with ES256 | Done | `vca/services/wallet-portal/internal/holderkey` | `TestProofSignedInTheBrowserPassesTheIssuerCheck` and `TestBindingSignedInTheBrowserPassesTheVerifierCheck` pin it. An issuer with a nonce endpoint gets `proofs` of OID4VCI 1.0. Any other issuer gets `proof` of draft 13. `TestClaimReadsTheAnswerOfOid4vci10` and `TestClaimSendsTheProofOfDraft13` pin that. An answer with several bound credentials carries one key binding per query. `TestBrowserStoreSendsEveryChosenCredential` pins it. |
 | ADR-073 | 3 The portal runs the protocol calls | Done | `vca/services/wallet-portal/internal/service/browserclaim.go` | `TestClaimIntoTheBrowserStoreSignsWithTheBrowserKey` and `TestClaimRefusals` pin it. |
 | ADR-073 | 4 The portal checks each signature | Done | `vca/services/wallet-portal/internal/holderkey` | `TestCheckBindingCoversTheAnswer` and `TestClaimRefusals` pin it. |
 | ADR-073 | 5 The browser seals a claimed credential | Done | `vca/services/wallet-portal/internal/static/wallet.js`, `vca/services/wallet-portal/internal/portal/browser.go` | `TestTheBrowserStoreClaimsWithTheKeyOfTheBrowser` and both walkthroughs pin it. |
