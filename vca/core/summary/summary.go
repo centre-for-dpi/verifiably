@@ -73,7 +73,12 @@ func Build(cred *commonv1.Credential, checks []*policyv1.CheckResult, opts Optio
 		}
 		out.Checks = append(out.Checks, c)
 		if c.GetName() == policy.NameTrustChain {
-			out.Trust = TrustWord(c)
+			// A credential can carry several trust chain checks: the trust
+			// list and the x5c chain. The word follows the strongest one,
+			// so the badge agrees with the check table.
+			if word := TrustWord(c); trustRank(word) > trustRank(out.Trust) {
+				out.Trust = word
+			}
 			if name := c.GetEvidence()["issuer_name"]; name != "" {
 				out.IssuerName = name
 			}
@@ -89,6 +94,20 @@ func Title(c vc.Credential, fallback string) string {
 		return t
 	}
 	return fallback
+}
+
+// trustRank orders the trust words. A failed check outranks a check that
+// could not run, which outranks a pass, which outranks a skip.
+func trustRank(word string) int {
+	switch word {
+	case TrustUntrusted:
+		return 3
+	case TrustUnavailable:
+		return 2
+	case TrustTrusted:
+		return 1
+	}
+	return 0
 }
 
 // TrustWord maps the trust chain outcome to a plain word.

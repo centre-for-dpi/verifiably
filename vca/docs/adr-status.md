@@ -294,7 +294,7 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-025 | 1 A stored result per verification | Done | `vca/proto/vca/results/v1` | |
-| ADR-025 | 2 One card per credential with a check list | Done | `vca/services/verifier-results/internal/portal` | |
+| ADR-025 | 2 One card per credential with a check list | Done | `vca/services/verifier-results/internal/portal`, `vca/core/summary` | `TestTrustAgreesWithEveryTrustChainCheck` pins the trust badge to every trust chain check. |
 | ADR-025 | 3 Retention window, raw data first | Done | `vca/services/verifier-results/internal/results` | |
 | ADR-025 | 4 Queries and CSV or JSON export | Done | `vca/services/verifier-results/internal/export` | |
 | ADR-025 | 5 A public check page without storage | Done | `vca/services/verifier-results/internal/portal` | |

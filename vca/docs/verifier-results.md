@@ -67,6 +67,12 @@ The card shows one of four words. The `check` package reads them from the
 | `unavailable` | The trust chain check could not run. |
 | `unknown` | No trust chain check ran. |
 
+A credential can carry two trust chain checks. One reads the trust
+list, and one reads the x5c chain of the header. The word follows the
+strongest outcome. A failed check wins over a check that could not run.
+That one wins over a pass, and a pass wins over a skip. So the badge
+agrees with the check table of the same card.
+
 ## Retention
 
 The purge runs on a schedule and on request (ADR-025 decision 3). It

@@ -131,3 +131,37 @@ func TestValidityAndDecoded(t *testing.T) {
 		t.Fatalf("decoded = %q", got)
 	}
 }
+
+// TestTrustAgreesWithEveryTrustChainCheck pins the trust word to all the
+// trust_chain checks of a credential, in any order. A skipped chain check
+// of an x5c header does not hide a trust list pass, and a failed check
+// always wins.
+func TestTrustAgreesWithEveryTrustChainCheck(t *testing.T) {
+	chain := func(o policyv1.Outcome) *policyv1.CheckResult {
+		return &policyv1.CheckResult{Name: policy.NameTrustChain, Outcome: o, CredentialIndex: 0}
+	}
+	pass, fail, skip, fault := policyv1.Outcome_OUTCOME_PASS, policyv1.Outcome_OUTCOME_FAIL,
+		policyv1.Outcome_OUTCOME_SKIP, policyv1.Outcome_OUTCOME_ERROR
+	cases := []struct {
+		outcomes []policyv1.Outcome
+		want     string
+	}{
+		{[]policyv1.Outcome{pass, skip}, summary.TrustTrusted},
+		{[]policyv1.Outcome{skip, pass}, summary.TrustTrusted},
+		{[]policyv1.Outcome{pass, fail}, summary.TrustUntrusted},
+		{[]policyv1.Outcome{fail, pass}, summary.TrustUntrusted},
+		{[]policyv1.Outcome{fault, pass}, summary.TrustUnavailable},
+		{[]policyv1.Outcome{pass, fault, skip}, summary.TrustUnavailable},
+		{[]policyv1.Outcome{fault, fail}, summary.TrustUntrusted},
+		{[]policyv1.Outcome{skip, skip}, summary.TrustUnknown},
+	}
+	for _, c := range cases {
+		var checks []*policyv1.CheckResult
+		for _, o := range c.outcomes {
+			checks = append(checks, chain(o))
+		}
+		if got := summary.Build(credential(), checks, summary.Options{Index: 0}).GetTrust(); got != c.want {
+			t.Errorf("trust chain checks %v: trust %q, want %q", c.outcomes, got, c.want)
+		}
+	}
+}
