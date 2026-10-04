@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -15,6 +16,9 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
+	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
+	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/metadata"
+	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/store"
 )
 
 // TestRepublishRegistersEveryPublishedVersionAgain is ADR-077: a stack
@@ -193,5 +197,57 @@ func TestPublishStillAnswersUnavailable(t *testing.T) {
 	m := create(t, s, "Degree")
 	if _, err := s.Publish(context.Background(), connect.NewRequest(&schemav1.PublishRequest{Id: m.GetId()})); code(err) != connect.CodeUnavailable {
 		t.Fatalf("Publish = %v, want unavailable", err)
+	}
+}
+
+// TestAStoppedRegistrationOutlivesARestart keeps the reason of a refusal
+// in the store: a new service over the same state still names it, and
+// the list of stopped registrations holds only published versions. A
+// retire takes the version off the list, and a success clears it.
+func TestAStoppedRegistrationOutlivesARestart(t *testing.T) {
+	doc := sharedstore.MemoryDoc()
+	fb := &fakeBackend{}
+	open := func() *Service {
+		st, err := store.Open(doc, store.Options{NewID: func(typ string) string { return strings.ToLower(typ) }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, err := New(Options{Store: st, Backend: fb, Metadata: metadata.Options{BaseURL: "https://r"}, Now: func() time.Time { return now }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	ctx := context.Background()
+	s := open()
+	for _, typ := range []string{"Card", "Permit"} {
+		m := create(t, s, typ)
+		if _, err := s.Publish(ctx, connect.NewRequest(&schemav1.PublishRequest{Id: m.GetId()})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fb.err = connect.NewError(connect.CodeAlreadyExists, errors.New("the platform holds the name"))
+	if out := s.Republish(ctx, nil); len(out.Failed) != 2 {
+		t.Fatalf("Republish = %+v", out)
+	}
+	restarted := open()
+	if got := restarted.RegistrationFailure("card", 1); got != "the platform holds the name" {
+		t.Errorf("after a restart the reason is %q", got)
+	}
+	if got := restarted.StoppedRegistrations(); len(got) != 2 || got[0].ID != "card" || got[1].ID != "permit" {
+		t.Fatalf("stopped %+v", got)
+	}
+	if _, err := restarted.Retire(ctx, connect.NewRequest(&schemav1.RetireRequest{Id: "permit"})); err != nil {
+		t.Fatal(err)
+	}
+	if got := restarted.StoppedRegistrations(); len(got) != 1 || got[0].ID != "card" || got[0].Reason == "" {
+		t.Errorf("after a retire the stopped list is %+v", got)
+	}
+	fb.err = nil
+	if err := restarted.RetryRegistration(ctx, "card", 1); err != nil {
+		t.Fatal(err)
+	}
+	if got := open().StoppedRegistrations(); len(got) != 0 {
+		t.Errorf("a success left %+v", got)
 	}
 }

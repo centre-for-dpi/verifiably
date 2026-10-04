@@ -44,6 +44,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
+	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
 
@@ -100,7 +101,15 @@ type Options struct {
 type Registrations interface {
 	RegistrationFailure(id string, version int32) string
 	RetryRegistration(ctx context.Context, id string, version int32) error
+	// StoppedRegistrations lists the published versions whose
+	// registration the stack refused for good. The list page counts
+	// them and flags their schemas.
+	StoppedRegistrations() []store.Stop
 }
+
+// RegistrationStopped is the value of the registration filter of the
+// list page that keeps the schemas with a stopped registration.
+const RegistrationStopped = "stopped"
 
 // Catalog is the part of the issuer backend the detail page calls. The
 // generated Connect client fits it.
@@ -401,6 +410,8 @@ func (p *Portal) list(w http.ResponseWriter, r *http.Request) error {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	state := ParseState(r.URL.Query().Get("state"))
 	format := ParseFormat(r.URL.Query().Get("format"))
+	stopped := p.stoppedBySchema()
+	onlyStopped := len(stopped) > 0 && r.URL.Query().Get("registration") == RegistrationStopped
 	var found []*schemav1.Schema
 	if q != "" {
 		resp, err := p.opts.Client.Search(r.Context(), connect.NewRequest(&schemav1.SearchRequest{Query: q}))
@@ -419,8 +430,17 @@ func (p *Portal) list(w http.ResponseWriter, r *http.Request) error {
 	csrf := staffsession.HiddenField(r.Context())
 	rows := make([]components.Row, 0, len(found))
 	for _, m := range found {
+		if onlyStopped && stopped[m.GetId()] == 0 {
+			continue
+		}
+		cell := p.schemaCell(m)
+		if stopped[m.GetId()] > 0 {
+			// The schema holds a published version that the stack
+			// refused for good (ADR-077).
+			cell += template.HTML(" ") + b.add("badge", components.Badge{Status: "bad", Text: msg.T("issuer.schemas.stopped.badge.label")})
+		}
 		rows = append(rows, components.Row{
-			{HTML: p.schemaCell(m)},
+			{HTML: cell},
 			{Text: "v" + strconv.Itoa(int(m.GetVersion()))},
 			{Text: FormatLabels(m)},
 			{HTML: b.add("badge", components.Badge{Status: StateStatus(m.GetState()), Text: StateText(m.GetState())})},
@@ -429,16 +449,22 @@ func (p *Portal) list(w http.ResponseWriter, r *http.Request) error {
 			{HTML: p.rowActions(b, m, csrf)},
 		})
 	}
-	filters, err := p.filterForm(q, state, format)
+	filters, err := p.filterForm(q, state, format, onlyStopped)
 	if err != nil {
 		return err
 	}
 	var body template.HTML
-	if len(rows) == 0 && q == "" && state == schemav1.State_STATE_UNSPECIFIED && format == commonv1.Format_FORMAT_UNSPECIFIED {
-		body = b.add("empty", components.Empty{Title: msg.T("issuer.schemas.empty.title"), Text: msg.T("issuer.schemas.empty.text"),
+	if count := stoppedCount(stopped); count > 0 {
+		filter := p.opts.Prefix + "/?registration=" + RegistrationStopped
+		body = b.add("card", components.Card{ID: "stopped-registrations", Title: msg.T("issuer.schemas.stopped.title.label"),
+			Body: template.HTML(`<p role="status">`+template.HTMLEscapeString(msg.T("issuer.schemas.stopped.count", strconv.Itoa(count)))+`</p>`) + //nolint:gosec // the text is escaped
+				link(filter, msg.T("issuer.schemas.stopped.show.label"))})
+	}
+	if len(rows) == 0 && q == "" && !onlyStopped && state == schemav1.State_STATE_UNSPECIFIED && format == commonv1.Format_FORMAT_UNSPECIFIED {
+		body += b.add("empty", components.Empty{Title: msg.T("issuer.schemas.empty.title"), Text: msg.T("issuer.schemas.empty.text"),
 			Action: components.Button{Text: msg.T("issuer.schemas.publish.label"), Href: p.opts.Prefix + "/publish", Variant: "primary"}})
 	} else {
-		body = components.Join(b.add("table", components.Table{
+		body += components.Join(b.add("table", components.Table{
 			ID: "schemas", Caption: msg.T("issuer.schemas.caption.label", strconv.Itoa(len(rows))),
 			Columns: []string{
 				msg.T("issuer.schemas.column.schema.label"), msg.T("issuer.schemas.column.version.label"),
@@ -467,8 +493,32 @@ func (p *Portal) list(w http.ResponseWriter, r *http.Request) error {
 	})
 }
 
-// filterForm renders the search and filter form of the list page.
-func (p *Portal) filterForm(q string, state schemav1.State, format commonv1.Format) (template.HTML, error) {
+// stoppedBySchema counts the stopped registrations of each schema. A
+// portal with no registrations counts none.
+func (p *Portal) stoppedBySchema() map[string]int {
+	out := map[string]int{}
+	if p.opts.Registrations == nil {
+		return out
+	}
+	for _, stop := range p.opts.Registrations.StoppedRegistrations() {
+		out[stop.ID]++
+	}
+	return out
+}
+
+// stoppedCount adds the counts of stoppedBySchema.
+func stoppedCount(counts map[string]int) int {
+	total := 0
+	for _, n := range counts {
+		total += n
+	}
+	return total
+}
+
+// filterForm renders the search and filter form of the list page. The
+// registration filter shows only beside the registrations of the
+// service.
+func (p *Portal) filterForm(q string, state schemav1.State, format commonv1.Format, onlyStopped bool) (template.HTML, error) {
 	stateOptions := []components.Option{{Value: "", Text: msg.T("issuer.schemas.status.any.label"), Selected: state == schemav1.State_STATE_UNSPECIFIED}}
 	for _, s := range States {
 		stateOptions = append(stateOptions, components.Option{Value: StateValue(s), Text: StateText(s), Selected: s == state})
@@ -484,8 +534,20 @@ func (p *Portal) filterForm(q string, state schemav1.State, format commonv1.Form
 		{"field", components.Field{ID: "q", Label: msg.T("issuer.schemas.search.label"), Value: q, Type: "search", Attrs: map[string]string{"autocomplete": "off"}}},
 		{"field", components.Field{ID: "state", Label: msg.T("issuer.schemas.status.label"), Type: "select", Options: stateOptions}},
 		{"field", components.Field{ID: "format", Label: msg.T("issuer.schemas.format.label"), Type: "select", Options: formatOptions}},
-		{"button", components.Button{Text: msg.T("issuer.schemas.apply.label"), Type: "submit"}},
 	}
+	if p.opts.Registrations != nil {
+		parts = append(parts, struct {
+			name string
+			data any
+		}{"field", components.Field{ID: "registration", Label: msg.T("issuer.schemas.registration.filter.label"), Type: "select", Options: []components.Option{
+			{Value: "", Text: msg.T("issuer.schemas.registration.any.label"), Selected: !onlyStopped},
+			{Value: RegistrationStopped, Text: msg.T("issuer.schemas.registration.stopped.label"), Selected: onlyStopped},
+		}}})
+	}
+	parts = append(parts, struct {
+		name string
+		data any
+	}{"button", components.Button{Text: msg.T("issuer.schemas.apply.label"), Type: "submit"}})
 	out := []template.HTML{template.HTML(`<form class="filters" action="` + template.HTMLEscapeString(p.opts.Prefix) + `/" method="get">`)} //nolint:gosec // the prefix is escaped
 	for _, part := range parts {
 		h, err := p.opts.Kit.HTML(part.name, part.data)

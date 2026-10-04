@@ -208,3 +208,44 @@ func TestRemove(t *testing.T) {
 		t.Fatal("the id stays after its last version")
 	}
 }
+
+// TestStoppedRegistrationsSurviveAReopen keeps the reason of each
+// registration that the stack refused for good in the state document,
+// so a restart of the registry still shows it (ADR-077 follow-up). A
+// stop changes no schema, so the revision stays.
+func TestStoppedRegistrationsSurviveAReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "schemas.json")
+	s := open(t, sharedstore.FileDoc(path), Options{NewID: fixedID("card")})
+	if _, err := s.Create(sample("Card"), now); err != nil {
+		t.Fatal(err)
+	}
+	rev := s.Revision()
+	if err := s.SetStopped("card", 1, "the platform holds the name Card"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStopped("card", 1, "the platform holds the name Card"); err != nil {
+		t.Fatal(err)
+	}
+	if s.Revision() != rev {
+		t.Errorf("a stop raised the revision to %d", s.Revision())
+	}
+	again := open(t, sharedstore.FileDoc(path), Options{})
+	want := []Stop{{ID: "card", Version: 1, Reason: "the platform holds the name Card"}}
+	if got := again.Stopped(); len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("after a reopen: %+v", got)
+	}
+	if err := again.ClearStopped("card", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := again.ClearStopped("card", 2); err != nil {
+		t.Fatal(err)
+	}
+	if got := open(t, sharedstore.FileDoc(path), Options{}).Stopped(); len(got) != 0 {
+		t.Errorf("a cleared stop came back: %+v", got)
+	}
+	boom := errors.New("boom")
+	broken := &Store{backend: failing{boom}, doc: document{Schemas: map[string][]record.Record{}}}
+	if err := broken.SetStopped("card", 1, "x"); !errors.Is(err, boom) || len(broken.Stopped()) != 0 {
+		t.Errorf("a failed save: %v, %+v", err, broken.Stopped())
+	}
+}

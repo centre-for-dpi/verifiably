@@ -70,7 +70,14 @@ wait starts at 15 seconds and doubles after each run, up to 5 minutes.
 Any other code stops that version. The registry logs it once. The
 detail page of the version shows "registration failed" with the reason
 of the stack. A button on the page registers it again. The registry keeps
-the reason in memory, so the next start tries again.
+the reason in its state file, so a restart still shows it. The next
+start tries every published version again, and a success clears the
+reason.
+
+The list page counts the stopped registrations of the published
+versions. Each schema with one carries the badge "Registration stopped".
+The filter "Registration" with the value "Stopped" keeps only those
+schemas. A retired version leaves the count.
 
 `Retire` with version zero retires every published version of the schema.
 Issuance with a retired version stops. Verifiers can still read it.

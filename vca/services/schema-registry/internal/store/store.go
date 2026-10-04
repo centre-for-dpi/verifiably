@@ -14,6 +14,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +32,10 @@ var ErrNotFound = errors.New("store: no such schema version")
 type document struct {
 	Revision uint64                     `json:"revision"`
 	Schemas  map[string][]record.Record `json:"schemas"`
+	// Stopped holds the reason of each published version whose
+	// registration the stack refused for good, keyed by stopKey
+	// (ADR-077). A restart keeps it.
+	Stopped map[string]string `json:"stopped,omitempty"`
 }
 
 // Options configure a store.
@@ -207,7 +214,7 @@ func (s *Store) Remove(id string, version int, check func(record.Record) error) 
 
 // write saves the versions of id. An empty list removes the id.
 func (s *Store) write(id string, versions []record.Record) error {
-	next := document{Revision: s.doc.Revision + 1, Schemas: make(map[string][]record.Record, len(s.doc.Schemas)+1)}
+	next := document{Revision: s.doc.Revision + 1, Schemas: make(map[string][]record.Record, len(s.doc.Schemas)+1), Stopped: s.doc.Stopped}
 	for k, v := range s.doc.Schemas {
 		next.Schemas[k] = v
 	}
@@ -297,4 +304,89 @@ func (s *Store) LatestPublished() []record.Record {
 		out = append(out, r)
 	}
 	return record.Sorted(out)
+}
+
+// Stop is one version whose registration the stack refused for good,
+// with the reason the stack gave (ADR-077).
+type Stop struct {
+	// ID is the schema id.
+	ID string
+	// Version is the version number.
+	Version int
+	// Reason is the message of the stack.
+	Reason string
+}
+
+// stopKey is the key of a stop in the document: the id, a slash, and
+// the version. An id holds no slash.
+func stopKey(id string, version int) string { return id + "/" + strconv.Itoa(version) }
+
+// SetStopped keeps the reason of a refused registration. A stop changes
+// no schema, so the revision stays. The same reason again writes
+// nothing.
+func (s *Store) SetStopped(id string, version int, reason string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := stopKey(id, version)
+	if old, ok := s.doc.Stopped[key]; ok && old == reason {
+		return nil
+	}
+	stopped := maps.Clone(s.doc.Stopped)
+	if stopped == nil {
+		stopped = map[string]string{}
+	}
+	stopped[key] = reason
+	return s.saveStopped(stopped)
+}
+
+// ClearStopped forgets the reason of a version. A version with no
+// reason writes nothing.
+func (s *Store) ClearStopped(id string, version int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := stopKey(id, version)
+	if _, ok := s.doc.Stopped[key]; !ok {
+		return nil
+	}
+	stopped := maps.Clone(s.doc.Stopped)
+	delete(stopped, key)
+	return s.saveStopped(stopped)
+}
+
+// saveStopped saves the document with another set of stops and the same
+// revision. The caller holds the lock.
+func (s *Store) saveStopped(stopped map[string]string) error {
+	next := s.doc
+	next.Stopped = stopped
+	data, err := json.Marshal(next)
+	if err != nil {
+		return fmt.Errorf("store: encode state: %w", err)
+	}
+	if err := s.backend.Save(data); err != nil {
+		return err
+	}
+	s.doc = next
+	return nil
+}
+
+// Stopped returns every kept stop, ordered by id and version.
+func (s *Store) Stopped() []Stop {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Stop, 0, len(s.doc.Stopped))
+	for key, reason := range s.doc.Stopped {
+		i := strings.LastIndex(key, "/")
+		version, err := strconv.Atoi(key[i+1:])
+		if i < 0 || err != nil {
+			continue
+		}
+		out = append(out, Stop{ID: key[:i], Version: version, Reason: reason})
+	}
+	sort.Slice(out, func(a, b int) bool {
+		if out[a].ID != out[b].ID {
+			return out[a].ID < out[b].ID
+		}
+		return out[a].Version < out[b].Version
+	})
+	return out
 }

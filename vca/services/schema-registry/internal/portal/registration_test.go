@@ -20,6 +20,7 @@ import (
 	sharedstore "github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/store"
+	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
 )
 
 // refusingBackend refuses every registration with err, when set.
@@ -98,4 +99,61 @@ func TestDetailPageShowsAStoppedRegistration(t *testing.T) {
 	if rec := do(t, plain, http.MethodPost, detail+"/register", url.Values{"version": {"1"}}, nil); rec.Code != http.StatusMethodNotAllowed && rec.Code != http.StatusNotFound {
 		t.Errorf("a portal with no registrations answered %d", rec.Code)
 	}
+}
+
+// TestListPageFlagsStoppedRegistrations is the follow-up of ADR-077:
+// the list page counts the published versions whose registration the
+// stack refused for good, flags each schema that holds one, and a
+// filter shows only those schemas.
+func TestListPageFlagsStoppedRegistrations(t *testing.T) {
+	backend := &refusingBackend{}
+	st, err := store.Open(sharedstore.MemoryDoc(), store.Options{NewID: func(typ string) string { return strings.ToLower(typ) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := service.New(service.Options{Store: st, Backend: backend})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	for _, typ := range []string{"Card", "Permit"} {
+		if _, cerr := svc.Create(ctx, connect.NewRequest(&schemav1.CreateRequest{Schema: &schemav1.Schema{
+			Type: typ, JsonSchema: doc, Formats: []commonv1.Format{commonv1.Format_FORMAT_LDP_VC},
+		}})); cerr != nil {
+			t.Fatal(cerr)
+		}
+		if _, perr := svc.Publish(ctx, connect.NewRequest(&schemav1.PublishRequest{Id: strings.ToLower(typ)})); perr != nil {
+			t.Fatal(perr)
+		}
+	}
+	p, err := New(Options{Client: svc, Registrations: svc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	p.Register(mux)
+	list := DefaultPrefix + "/"
+	if body := page(t, do(t, mux, http.MethodGet, list, nil, nil)); strings.Contains(body, msg.T("issuer.schemas.stopped.badge.label")) {
+		t.Fatal("a list with no refusal flags a schema")
+	}
+	backend.err = connect.NewError(connect.CodeAlreadyExists, errors.New("the platform holds the name Card"))
+	svc.Republish(ctx, []service.Key{{ID: "card", Version: 1}})
+	body := page(t, do(t, mux, http.MethodGet, list, nil, nil))
+	for _, want := range []string{
+		msg.T("issuer.schemas.stopped.count", "1"), `href="` + list + `?registration=stopped"`,
+		msg.T("issuer.schemas.stopped.badge.label"), `name="registration"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the list page has no %q", want)
+		}
+	}
+	filtered := page(t, do(t, mux, http.MethodGet, list+"?registration=stopped", nil, nil))
+	if !strings.Contains(filtered, `href="`+DefaultPrefix+`/schemas/card?`) || strings.Contains(filtered, DefaultPrefix+`/schemas/permit`) {
+		t.Errorf("the filter does not keep only the stopped schema: %s", filtered)
+	}
+	if !strings.Contains(filtered, `<option value="stopped" selected>`) {
+		t.Error("the filter does not show its choice")
+	}
+	a11ytest.AssertPage(t, body)
+	a11ytest.AssertPage(t, filtered)
 }

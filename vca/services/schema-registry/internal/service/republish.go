@@ -11,6 +11,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/record"
+	"github.com/centre-for-dpi/vc-adapters/services/schema-registry/internal/store"
 )
 
 // Key names one version of a schema.
@@ -65,13 +66,14 @@ func (s *Service) Republish(ctx context.Context, only []Key) Outcome {
 		_, err := s.register(ctx, r)
 		switch {
 		case err == nil:
-			s.forget(k)
 			out.Done++
+			if ferr := s.forget(k); ferr != nil {
+				out.Failed = append(out.Failed, Failure{Key: k, Err: ferr})
+			}
 		case Transient(err):
 			out.Retry = append(out.Retry, k)
 		default:
-			s.remember(k, err)
-			out.Failed = append(out.Failed, Failure{Key: k, Err: err})
+			out.Failed = append(out.Failed, Failure{Key: k, Err: errors.Join(err, s.remember(k, err))})
 		}
 	}
 	return out
@@ -110,11 +112,15 @@ func (s *Service) targets(only []Key) []record.Record {
 }
 
 // RegistrationFailure returns the reason the stack gave for a published
-// version it refused for good, or the empty string.
+// version it refused for good, or the empty string. The store keeps
+// the reason, so a restart keeps it too.
 func (s *Service) RegistrationFailure(id string, version int32) string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.failures[Key{ID: id, Version: int(version)}]
+	for _, stop := range s.opts.Store.Stopped() {
+		if stop.ID == id && stop.Version == int(version) {
+			return stop.Reason
+		}
+	}
+	return ""
 }
 
 // RetryRegistration registers one published version again, from the
@@ -130,16 +136,20 @@ func (s *Service) RetryRegistration(ctx context.Context, id string, version int3
 	}
 	k := Key{ID: r.ID, Version: r.Version}
 	if _, err := s.register(ctx, r); err != nil {
-		s.remember(k, err)
+		if rerr := s.remember(k, err); rerr != nil {
+			return connect.NewError(connect.CodeInternal, rerr)
+		}
 		return connect.NewError(connect.CodeOf(err), err)
 	}
-	s.forget(k)
+	if ferr := s.forget(k); ferr != nil {
+		return connect.NewError(connect.CodeInternal, ferr)
+	}
 	return nil
 }
 
-// remember keeps the reason of a refusal for the detail page: the
-// message of the stack on one line, cut to maxReason bytes.
-func (s *Service) remember(k Key, err error) {
+// remember keeps the reason of a refusal in the store for the pages:
+// the message of the stack on one line, cut to maxReason bytes.
+func (s *Service) remember(k Key, err error) error {
 	reason := err.Error()
 	var cerr *connect.Error
 	if errors.As(err, &cerr) {
@@ -149,14 +159,23 @@ func (s *Service) remember(k Key, err error) {
 	if len(reason) > maxReason {
 		reason = reason[:maxReason]
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.failures[k] = reason
+	return s.opts.Store.SetStopped(k.ID, k.Version, reason)
 }
 
 // forget clears the reason of a version the stack took.
-func (s *Service) forget(k Key) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.failures, k)
+func (s *Service) forget(k Key) error {
+	return s.opts.Store.ClearStopped(k.ID, k.Version)
+}
+
+// StoppedRegistrations lists the published versions whose registration
+// the stack refused for good, with the reason of each, ordered by id and
+// version. A version that is no longer published stays out.
+func (s *Service) StoppedRegistrations() []store.Stop {
+	var out []store.Stop
+	for _, stop := range s.opts.Store.Stopped() {
+		if r, ok := s.opts.Store.Get(stop.ID, stop.Version); ok && r.State == record.StatePublished {
+			out = append(out, stop)
+		}
+	}
+	return out
 }

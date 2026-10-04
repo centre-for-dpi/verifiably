@@ -15,7 +15,6 @@ import (
 	"math"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -56,11 +55,6 @@ type Options struct {
 type Service struct {
 	schemav1connect.UnimplementedSchemaServiceHandler
 	opts Options
-	// mu guards failures.
-	mu sync.Mutex
-	// failures holds the reason of each published version whose
-	// registration the stack refused for good (ADR-077).
-	failures map[Key]string
 }
 
 var _ schemav1connect.SchemaServiceClient = (*Service)(nil)
@@ -76,7 +70,7 @@ func New(opts Options) (*Service, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	return &Service{opts: opts, failures: map[Key]string{}}, nil
+	return &Service{opts: opts}, nil
 }
 
 // Ready reports whether the service can take traffic.
