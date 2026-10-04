@@ -14,6 +14,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/centre-for-dpi/vc-adapters/core/did"
+	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
@@ -28,7 +29,8 @@ func TestHTTPFetcher(t *testing.T) {
 		mustWrite(t, w, []byte("hello"))
 	}))
 	defer srv.Close()
-	fetch := HTTPFetcher(srv.Client(), 16)
+	local := fetchguard.Guard{AllowPrivateNetwork: true, AllowPlainHTTP: true}
+	fetch := HTTPFetcher(srv.Client(), local, 16)
 	body, err := fetch(context.Background(), srv.URL+"/ok")
 	if err != nil || string(body) != "hello" {
 		t.Fatalf("want the body, got %q %v", body, err)
@@ -42,12 +44,36 @@ func TestHTTPFetcher(t *testing.T) {
 	if _, err := fetch(context.Background(), "http://127.0.0.1:1/x"); err == nil {
 		t.Fatal("want an error for a closed port")
 	}
-	small := HTTPFetcher(nil, 2)
+	small := HTTPFetcher(nil, local, 2)
 	if _, err := small(context.Background(), srv.URL+"/ok"); !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("want a size error, got %v", err)
 	}
 	if _, err := fetch(context.Background(), "http://[::1]:x/"); err == nil {
 		t.Fatal("want an error for a broken URL")
+	}
+}
+
+// TestHTTPFetcherUsesTheGuard reads a DID document or a status list only
+// through the guard of core/fetchguard. A private address and plain http
+// stay out unless the deployment allows them, and the host allowlist
+// holds.
+func TestHTTPFetcherUsesTheGuard(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		mustWrite(t, w, []byte("{}"))
+	}))
+	defer srv.Close()
+	for name, g := range map[string]fetchguard.Guard{
+		"strict":      {},
+		"plain only":  {AllowPlainHTTP: true},
+		"other hosts": {AllowPrivateNetwork: true, AllowPlainHTTP: true, AllowedHosts: []string{"issuer.example"}},
+	} {
+		if _, err := HTTPFetcher(srv.Client(), g, 1<<10)(context.Background(), srv.URL+"/did.json"); !errors.Is(err, fetchguard.ErrRefused) {
+			t.Errorf("%s: the fetcher read a guarded URL: %v", name, err)
+		}
+	}
+	open := fetchguard.Guard{AllowPrivateNetwork: true, AllowPlainHTTP: true, AllowedHosts: []string{"127.0.0.1"}}
+	if body, err := HTTPFetcher(srv.Client(), open, 1<<10)(context.Background(), srv.URL+"/did.json"); err != nil || string(body) != "{}" {
+		t.Errorf("an allowed host: %q %v", body, err)
 	}
 }
 
@@ -162,7 +188,7 @@ func TestKeysFromJWKS(t *testing.T) {
 		mustWrite(t, w, raw)
 	}))
 	defer srv.Close()
-	fetch := HTTPFetcher(srv.Client(), 1<<20)
+	fetch := HTTPFetcher(srv.Client(), fetchguard.Guard{AllowPrivateNetwork: true, AllowPlainHTTP: true}, 1<<20)
 	set, err := Keys(did.NewResolver(nil, nil), fetch)(context.Background(), srv.URL+"/", "")
 	if err != nil || len(set.Keys) != 1 {
 		t.Fatalf("want one key, got %d %v", len(set.Keys), err)
@@ -238,7 +264,7 @@ func TestTrustLookup(t *testing.T) {
 }
 
 func TestPolicyFetcherType(t *testing.T) {
-	var f = HTTPFetcher(nil, 1)
+	var f = HTTPFetcher(nil, fetchguard.Guard{}, 1)
 	if f == nil {
 		t.Fatal("want a fetcher")
 	}

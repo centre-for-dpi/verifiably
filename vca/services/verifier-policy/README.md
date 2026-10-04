@@ -37,6 +37,9 @@ Configuration comes from environment variables. The table lists each one.
 | `VCA_VERIFIER_POLICY_CACHE_TTL` | How long a fetched document stays in the cache. A status list token with a shorter `ttl` stays for its `ttl`. | `5m` |
 | `VCA_VERIFIER_POLICY_CACHE_ENTRIES` | The maximum number of cached documents. | `256` |
 | `VCA_VERIFIER_POLICY_FETCH_MAX_BYTES` | The maximum size of one fetched document. | `4194304` |
+| `VCA_VERIFIER_POLICY_ALLOWED_HOSTS` | The hosts the fetcher may reach, comma separated. Empty allows every public host. | empty |
+| `VCA_VERIFIER_POLICY_ALLOW_PRIVATE_NETWORK` | Let the fetcher reach private and loopback addresses. Development only. | `false` |
+| `VCA_VERIFIER_POLICY_ALLOW_PLAIN_HTTP` | Let the fetcher use http as well as https. Development only. | `false` |
 | `VCA_VERIFIER_POLICY_STATUS_FAIL_MODE` | `open` or `closed` for an unreachable status list. | `closed` |
 | `VCA_VERIFIER_POLICY_LEEWAY` | The clock skew the temporal checks accept. | `60s` |
 | `VCA_VERIFIER_POLICY_PAGE_SIZE_MAX` | The maximum page size of `ListPolicySets`. | `50` |

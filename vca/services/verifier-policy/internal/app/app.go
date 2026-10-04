@@ -14,6 +14,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/centre-for-dpi/vc-adapters/core/did"
+	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
@@ -37,6 +38,9 @@ type App struct {
 	// CacheTick is how often the schedule of the cache looks for a due
 	// read. Zero turns the schedule off.
 	CacheTick time.Duration
+	// Fetch reads a DID document, a status list, or a schema through the
+	// guard of core/fetchguard.
+	Fetch policy.Fetcher
 }
 
 // Deps are the side effects the wiring needs. Tests inject fakes.
@@ -77,7 +81,11 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	}
 	setStore := sets.New(kv, nil)
 
-	raw := ports.HTTPFetcher(deps.HTTPClient, cfg.FetchMaxBytes)
+	raw := ports.HTTPFetcher(deps.HTTPClient, fetchguard.Guard{
+		AllowedHosts:        cfg.AllowedHosts,
+		AllowPrivateNetwork: cfg.AllowPrivateNetwork,
+		AllowPlainHTTP:      cfg.AllowPlainHTTP,
+	}, cfg.FetchMaxBytes)
 	online := ports.NewCache(cfg.CacheTTL, cfg.CacheEntries, deps.Now)
 	fetch := online.Wrap(raw)
 	resolver := did.NewResolver(did.Fetcher(fetch), ports.NewDIDCache(cfg.CacheTTL, deps.Now))
@@ -131,7 +139,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	deps.Log.Info("verifier policy ready",
 		"state_dir", cfg.StateDir, "default_policy_set", cfg.DefaultPolicySet,
 		"status_fail_mode", cfg.StatusFailMode, "checks", len(policy.Checks()))
-	return &App{Mux: mux, Service: svc, Sets: setStore, Cache: trustCache, CacheTick: cfg.CacheTick}, nil
+	return &App{Mux: mux, Service: svc, Sets: setStore, Cache: trustCache, CacheTick: cfg.CacheTick, Fetch: raw}, nil
 }
 
 // snapshot returns the reader of the signed trust snapshot, or nil

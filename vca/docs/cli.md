@@ -202,7 +202,7 @@ A localhost answer does not carry over, because each pair has its own
 host port.
 
 On a laptop every pair answers on the loopback address over plain http.
-So setup of a localhost pair writes three settings that a public host
+So setup of a localhost pair writes five settings that a public host
 leaves out:
 
 | Pair | Setting | Value |
@@ -210,6 +210,8 @@ leaves out:
 | Holder | `VCA_WALLET_PORTAL_REQUEST_HOSTS` | `localhost,127.0.0.1`, so the wallet reads the request links of the local verifier |
 | Verifier | `VCA_DISCOVERY_ALLOW_PLAIN_HTTP` | `true`, so the crawl reads the local issuer pairs over http |
 | Verifier | `VCA_DISCOVERY_ALLOW_PRIVATE_NETWORK` | `true`, so the crawl reads the loopback address |
+| Verifier | `VCA_VERIFIER_POLICY_ALLOW_PLAIN_HTTP` | `true`, so the checks read DID documents and status lists over http |
+| Verifier | `VCA_VERIFIER_POLICY_ALLOW_PRIVATE_NETWORK` | `true`, so the checks read the loopback address |
 
 A public host keeps both guards strict. Its operator names the request
 hosts of the wallet with `--set`.

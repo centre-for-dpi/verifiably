@@ -31,6 +31,9 @@ import (
 // ErrRefused reports that the guard refused the URL.
 var ErrRefused = errors.New("fetchguard: the guard refused the URL")
 
+// ErrTooLarge reports a document over the size cap.
+var ErrTooLarge = errors.New("fetchguard: the document is too large")
+
 // DefaultMaxBytes caps one document when the caller sets no limit.
 const DefaultMaxBytes = 1 << 20
 
@@ -257,7 +260,7 @@ func (f *Fetcher) Get(ctx context.Context, raw string) (Doc, error) {
 		return Doc{}, fmt.Errorf("fetchguard: read %s: %w", key, err)
 	}
 	if len(body) > f.opts.MaxBytes {
-		return Doc{}, fmt.Errorf("fetchguard: %s is larger than %d bytes", key, f.opts.MaxBytes)
+		return Doc{}, fmt.Errorf("%w: %s is larger than %d bytes", ErrTooLarge, key, f.opts.MaxBytes)
 	}
 	doc := Doc{URL: key, Body: body, ETag: resp.Header.Get("ETag"), FetchedAt: now}
 	f.store(key, doc)

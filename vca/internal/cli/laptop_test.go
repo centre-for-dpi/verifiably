@@ -17,6 +17,10 @@ var laptopReads = map[string]commonv1.Role{
 	"VCA_WALLET_PORTAL_REQUEST_HOSTS":     commonv1.Role_ROLE_HOLDER,
 	"VCA_DISCOVERY_ALLOW_PLAIN_HTTP":      commonv1.Role_ROLE_VERIFIER,
 	"VCA_DISCOVERY_ALLOW_PRIVATE_NETWORK": commonv1.Role_ROLE_VERIFIER,
+	// The policy service reads DID documents and status lists through
+	// core/fetchguard.
+	"VCA_VERIFIER_POLICY_ALLOW_PLAIN_HTTP":      commonv1.Role_ROLE_VERIFIER,
+	"VCA_VERIFIER_POLICY_ALLOW_PRIVATE_NETWORK": commonv1.Role_ROLE_VERIFIER,
 }
 
 // TestLaptopSetupOpensTheLocalReads: a deployment on localhost runs
@@ -25,9 +29,11 @@ var laptopReads = map[string]commonv1.Role{
 // pairs over plain http. A public host keeps both guards strict.
 func TestLaptopSetupOpensTheLocalReads(t *testing.T) {
 	want := map[string]string{
-		"VCA_WALLET_PORTAL_REQUEST_HOSTS":     "localhost,127.0.0.1",
-		"VCA_DISCOVERY_ALLOW_PLAIN_HTTP":      "true",
-		"VCA_DISCOVERY_ALLOW_PRIVATE_NETWORK": "true",
+		"VCA_WALLET_PORTAL_REQUEST_HOSTS":           "localhost,127.0.0.1",
+		"VCA_DISCOVERY_ALLOW_PLAIN_HTTP":            "true",
+		"VCA_DISCOVERY_ALLOW_PRIVATE_NETWORK":       "true",
+		"VCA_VERIFIER_POLICY_ALLOW_PLAIN_HTTP":      "true",
+		"VCA_VERIFIER_POLICY_ALLOW_PRIVATE_NETWORK": "true",
 	}
 	for name, role := range laptopReads {
 		pair := Pair{Role: role, Dpg: configv1.Dpg_DPG_WALTID}

@@ -3,6 +3,8 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/internal/peerauth/peertest"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-policy/internal/config"
 )
@@ -107,3 +110,39 @@ func stringReader(s string) io.Reader { return strings.NewReader(s) }
 
 // peers is the peer authority of the tests of the package (ADR-075).
 var peers = peertest.Fixed()
+
+// TestBuildGuardsTheFetcher reads DID documents and status lists through
+// core/fetchguard, with the allowlist settings the other services have.
+// A local deployment allows private addresses and plain http.
+func TestBuildGuardsTheFetcher(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if _, err := w.Write([]byte("{}")); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer srv.Close()
+	strict, err := Build(base(t), Deps{Log: quiet(), HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ferr := strict.Fetch(context.Background(), srv.URL+"/status"); !errors.Is(ferr, fetchguard.ErrRefused) {
+		t.Errorf("a strict deployment read a private address over http: %v", ferr)
+	}
+	cfg := base(t)
+	cfg.AllowPrivateNetwork, cfg.AllowPlainHTTP = true, true
+	local, err := Build(cfg, Deps{Log: quiet(), HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body, ferr := local.Fetch(context.Background(), srv.URL+"/status"); ferr != nil || string(body) != "{}" {
+		t.Errorf("a local deployment: %q %v", body, ferr)
+	}
+	cfg.AllowedHosts = []string{"issuer.example"}
+	listed, err := Build(cfg, Deps{Log: quiet(), HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ferr := listed.Fetch(context.Background(), srv.URL+"/status"); !errors.Is(ferr, fetchguard.ErrRefused) {
+		t.Errorf("a host off the allowlist: %v", ferr)
+	}
+}

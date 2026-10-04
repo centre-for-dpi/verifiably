@@ -43,6 +43,16 @@ type Config struct {
 	CacheTTL time.Duration `env:"CACHE_TTL" default:"5m"`
 	// CacheEntries caps the number of documents in the cache.
 	CacheEntries int `env:"CACHE_ENTRIES" default:"256"`
+	// AllowedHosts lists the hosts the fetcher may reach for a DID
+	// document, a status list, or a schema. Empty allows every host the
+	// address rules accept.
+	AllowedHosts []string `env:"ALLOWED_HOSTS"`
+	// AllowPrivateNetwork lets the fetcher reach private and loopback
+	// addresses. Turn it on for a local deployment only.
+	AllowPrivateNetwork bool `env:"ALLOW_PRIVATE_NETWORK" default:"false"`
+	// AllowPlainHTTP lets the fetcher use http as well as https. Turn it
+	// on for a local deployment only.
+	AllowPlainHTTP bool `env:"ALLOW_PLAIN_HTTP" default:"false"`
 	// FetchMaxBytes caps the size of one fetched document.
 	FetchMaxBytes int64 `env:"FETCH_MAX_BYTES" default:"4194304"`
 	// StatusFailMode is open or closed. It is the default of the status

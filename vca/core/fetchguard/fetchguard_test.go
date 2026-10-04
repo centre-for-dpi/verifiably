@@ -217,8 +217,8 @@ func TestGetSizeLimit(t *testing.T) {
 		Guard:    fetchguard.Guard{AllowPlainHTTP: true, AllowPrivateNetwork: true},
 		MaxBytes: 10,
 	})
-	if _, err := f.Get(context.Background(), s.URL); err == nil {
-		t.Error("a document over the limit wants an error")
+	if _, err := f.Get(context.Background(), s.URL); !errors.Is(err, fetchguard.ErrTooLarge) {
+		t.Errorf("a document over the limit wants ErrTooLarge, got %v", err)
 	}
 }
 

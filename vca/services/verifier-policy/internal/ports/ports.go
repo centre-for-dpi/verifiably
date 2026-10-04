@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -22,6 +21,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/centre-for-dpi/vc-adapters/core/did"
+	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -33,39 +33,21 @@ import (
 const JWKSPath = "/.well-known/jwks.json"
 
 // ErrTooLarge reports a document over the size cap.
-var ErrTooLarge = errors.New("ports: the document is too large")
+var ErrTooLarge = fetchguard.ErrTooLarge
 
-// HTTPFetcher returns a fetcher that does one GET with a size cap.
-// It accepts http and https URLs only.
-func HTTPFetcher(client *http.Client, maxBytes int64) policy.Fetcher {
-	if client == nil {
-		client = http.DefaultClient
-	}
+// HTTPFetcher returns a fetcher that does one GET with a size cap,
+// through the guard of core/fetchguard (ADR-002 decision 7). The guard
+// refuses a host off the allowlist, a private address, and plain http
+// unless the deployment allows them. The policy service keeps its own
+// cache, so the fetcher keeps no fresh copy.
+func HTTPFetcher(client *http.Client, guard fetchguard.Guard, maxBytes int64) policy.Fetcher {
+	f := fetchguard.New(fetchguard.Options{Guard: guard, Client: client, MaxBytes: int(maxBytes), Accept: "*/*"})
 	return func(ctx context.Context, url string) ([]byte, error) {
-		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-			return nil, fmt.Errorf("ports: %q is not an http URL", url)
-		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		doc, err := f.Get(ctx, url)
 		if err != nil {
 			return nil, fmt.Errorf("ports: %w", err)
 		}
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("ports: %w", err)
-		}
-		// Nothing can act on a close fault of a response body.
-		defer func() { ignored := resp.Body.Close(); _ = ignored }()
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("ports: %s returned %d", url, resp.StatusCode)
-		}
-		body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
-		if err != nil {
-			return nil, fmt.Errorf("ports: %w", err)
-		}
-		if int64(len(body)) > maxBytes {
-			return nil, ErrTooLarge
-		}
-		return body, nil
+		return doc.Body, nil
 	}
 }
 

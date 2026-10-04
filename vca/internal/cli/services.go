@@ -635,7 +635,12 @@ func Catalog() []Service {
 			// verifier-results and verifier-combined call it on the compose
 			// network (ADR-047).
 			Links: []Link{{Env: "VCA_VERIFIER_POLICY_TRUST_URL", Target: "trust-registry", Kind: LinkURL}},
-			Fixed: state("VCA_VERIFIER_POLICY_STATE_DIR"),
+			// The service reads DID documents and status lists through
+			// core/fetchguard. On a laptop the issuers answer on the
+			// loopback address over plain http.
+			Fixed: append(state("VCA_VERIFIER_POLICY_STATE_DIR"),
+				FixedValue{Env: "VCA_VERIFIER_POLICY_ALLOW_PLAIN_HTTP", Value: "true", Local: true},
+				FixedValue{Env: "VCA_VERIFIER_POLICY_ALLOW_PRIVATE_NETWORK", Value: "true", Local: true}),
 			Callers: map[string][]string{
 				rpcPolicy: {"verifier-combined", "verifier-discovery", "verifier-ingest", "verifier-results"},
 			}},
