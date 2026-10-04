@@ -542,3 +542,70 @@ func TestRenderFailuresAnswer500(t *testing.T) {
 
 // backendPDF is the paper channel, named here so the role tests read.
 func backendPDF() backendv1.Channel { return backendv1.Channel_CHANNEL_PDF }
+
+// TestLandingMergesComponentsOfEveryLivePair renders the card of a stack
+// whose four roles run. Each adapter reports the components of its own
+// role, so the card lists the components of every live pair. A component
+// with the same name and version shows once, with its links. The page
+// and the descriptor list the same components in the same order.
+func TestLandingMergesComponentsOfEveryLivePair(t *testing.T) {
+	first := dpgs()[0]
+	own := map[commonv1.Role][]*backendv1.Component{
+		commonv1.Role_ROLE_ISSUER:   {{Name: "issuer-api", Version: "0.18.2", RepositoryUrl: "https://example.org/issuer", DocsUrl: "https://docs.example.org/issuer"}},
+		commonv1.Role_ROLE_HOLDER:   {{Name: "wallet-api", Version: "0.18.2", RepositoryUrl: "https://example.org/wallet", DocsUrl: "https://docs.example.org/wallet"}},
+		commonv1.Role_ROLE_VERIFIER: {{Name: "verifier-api", Version: "0.18.2", RepositoryUrl: "https://example.org/verifier", DocsUrl: "https://docs.example.org/verifier"}},
+	}
+	snap := snapshot(func(_ commonv1.Role, d configv1.Dpg) topology.State {
+		if d == first {
+			return topology.Live
+		}
+		return topology.Absent
+	})
+	for i, st := range snap.Peers {
+		if comps, ok := own[st.Peer.Role]; ok && st.Peer.Dpg == first {
+			shared := &backendv1.Component{Name: "keycloak", Version: "25.0", RepositoryUrl: "https://example.org/keycloak", DocsUrl: "https://docs.example.org/keycloak"}
+			snap.Peers[i].Capabilities.DpgInfo.Components = append([]*backendv1.Component{shared}, comps...)
+		}
+	}
+	h := newPages(t, snap)
+	doc := get(t, h, "/", false).Body.String()
+	a11ytest.AssertPage(t, doc)
+	for _, name := range []string{"keycloak", "issuer-api", "wallet-api", "verifier-api"} {
+		if n := strings.Count(doc, `<span class="stack-component-name">`+name+`</span>`); n != 1 {
+			t.Errorf("component %s shows %d times, want once", name, n)
+		}
+	}
+	for _, link := range []string{"wallet", "verifier", "keycloak"} {
+		for _, want := range []string{
+			`<a href="https://example.org/` + link + `" rel="noopener">GitHub</a>`,
+			`<a href="https://docs.example.org/` + link + `" rel="noopener">Documentation</a>`,
+		} {
+			if !strings.Contains(doc, want) {
+				t.Errorf("landing missing %q", want)
+			}
+		}
+	}
+	// The descriptor lists the same components in the same order.
+	var desc struct {
+		Stacks []struct {
+			Components []struct {
+				Name string `json:"name"`
+			} `json:"components"`
+		} `json:"stacks"`
+	}
+	if err := json.Unmarshal(get(t, h, "/.well-known/vca.json", false).Body.Bytes(), &desc); err != nil {
+		t.Fatal(err)
+	}
+	re := regexp.MustCompile(`<span class="stack-component-name">([^<]+)</span>`)
+	var onPage []string
+	for _, m := range re.FindAllStringSubmatch(doc, -1) {
+		onPage = append(onPage, m[1])
+	}
+	var inDesc []string
+	for _, c := range desc.Stacks[0].Components {
+		inDesc = append(inDesc, c.Name)
+	}
+	if strings.Join(onPage, ",") != strings.Join(inDesc, ",") {
+		t.Errorf("page lists %v, descriptor lists %v", onPage, inDesc)
+	}
+}

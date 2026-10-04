@@ -33,6 +33,8 @@ type Descriptor struct {
 
 // Stack is one DPG stack of the deployment.
 type Stack struct {
+	// Dpg is the DPG of the stack. The document names it by ID.
+	Dpg configv1.Dpg `json:"-"`
 	// ID is the short name of the stack, from the DPG enum.
 	ID string `json:"id"`
 	// Name is the display name the adapter reports, or the ID until a
@@ -65,7 +67,25 @@ type Pair struct {
 
 // Build makes the descriptor of one snapshot.
 func Build(version, publicURL string, snap topology.Snapshot) Descriptor {
-	out := Descriptor{Version: version, PublicURL: publicURL, Taken: snap.Taken.UTC(), Stacks: []Stack{}, Pairs: []Pair{}}
+	out := Descriptor{Version: version, PublicURL: publicURL, Taken: snap.Taken.UTC(), Stacks: Stacks(snap), Pairs: []Pair{}}
+	for _, st := range snap.Peers {
+		if st.State == topology.Absent {
+			continue
+		}
+		out.Pairs = append(out.Pairs, Pair{
+			Pair: st.Peer.Pair, Role: RoleID(st.Peer.Role), Stack: DpgID(st.Peer.Dpg), State: st.State.String(), PublicURL: st.Peer.PublicURL,
+		})
+	}
+	return out
+}
+
+// Stacks returns every stack with at least one present pair, in the
+// order of the snapshot. It is the one view of a stack that the page
+// and the document share. The name and the version come from the first
+// pair that reports them. Each live pair reports the components of its
+// own role, so a stack lists the components of every live pair.
+func Stacks(snap topology.Snapshot) []Stack {
+	out := []Stack{}
 	index := map[configv1.Dpg]int{}
 	for _, st := range snap.Peers {
 		if st.State == topology.Absent {
@@ -74,24 +94,21 @@ func Build(version, publicURL string, snap topology.Snapshot) Descriptor {
 		id := DpgID(st.Peer.Dpg)
 		i, ok := index[st.Peer.Dpg]
 		if !ok {
-			index[st.Peer.Dpg] = len(out.Stacks)
-			i = len(out.Stacks)
-			out.Stacks = append(out.Stacks, Stack{ID: id, Name: id, Components: []Component{}})
+			index[st.Peer.Dpg] = len(out)
+			i = len(out)
+			out = append(out, Stack{Dpg: st.Peer.Dpg, ID: id, Name: id, Components: []Component{}})
 		}
-		if info := st.Capabilities.GetDpgInfo(); info != nil {
-			if out.Stacks[i].Version == "" {
-				out.Stacks[i].Name = info.GetDisplayName()
-				out.Stacks[i].Version = info.GetVersion()
-			}
-			// Each live pair reports the components of its own role, so
-			// the stack lists the components of every live pair.
-			if st.State == topology.Live {
-				out.Stacks[i].Components = merge(out.Stacks[i].Components, components(info.GetComponents()))
-			}
+		info := st.Capabilities.GetDpgInfo()
+		if info == nil {
+			continue
 		}
-		out.Pairs = append(out.Pairs, Pair{
-			Pair: st.Peer.Pair, Role: RoleID(st.Peer.Role), Stack: id, State: st.State.String(), PublicURL: st.Peer.PublicURL,
-		})
+		if out[i].Version == "" && info.GetDisplayName() != "" {
+			out[i].Name = info.GetDisplayName()
+			out[i].Version = info.GetVersion()
+		}
+		if st.State == topology.Live {
+			out[i].Components = merge(out[i].Components, components(info.GetComponents()))
+		}
 	}
 	return out
 }

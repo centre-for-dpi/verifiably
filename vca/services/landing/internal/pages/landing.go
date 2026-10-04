@@ -175,19 +175,19 @@ func (p *Pages) stacksBlock(view Overview) (template.HTML, error) {
 // stackCard turns one stack into its card.
 func stackCard(s Stack) components.StackCard {
 	card := components.StackCard{ID: "stack-" + s.ID, Name: s.Name()}
-	if v := s.Info.GetVersion(); v != "" {
+	if v := s.Summary.Version; v != "" {
 		card.Version = msg.T("landing.stacks.pinned.label", v)
 	}
-	for _, c := range s.Info.GetComponents() {
-		row := components.Component{Name: c.GetName()}
-		if c.GetVersion() != "" {
-			row.Version = msg.T("landing.stacks.component.label", c.GetVersion())
+	for _, c := range s.Summary.Components {
+		row := components.Component{Name: c.Name}
+		if c.Version != "" {
+			row.Version = msg.T("landing.stacks.component.label", c.Version)
 		}
-		if c.GetRepositoryUrl() != "" {
-			row.RepoHref, row.RepoText = c.GetRepositoryUrl(), msg.T("common.github.label")
+		if c.RepositoryURL != "" {
+			row.RepoHref, row.RepoText = c.RepositoryURL, msg.T("common.github.label")
 		}
-		if c.GetDocsUrl() != "" {
-			row.DocsHref, row.DocsText = c.GetDocsUrl(), msg.T("common.documentation.label")
+		if c.DocsURL != "" {
+			row.DocsHref, row.DocsText = c.DocsURL, msg.T("common.documentation.label")
 		}
 		card.Components = append(card.Components, row)
 	}

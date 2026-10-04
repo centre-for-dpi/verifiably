@@ -5,7 +5,6 @@ package pages
 import (
 	"sort"
 
-	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
@@ -46,9 +45,9 @@ type Stack struct {
 	Dpg configv1.Dpg
 	// ID is the short name of the DPG, from the enum.
 	ID string
-	// Info is the DPG information of the first live adapter of the
-	// stack, or nil while no pair of the stack is live.
-	Info *backendv1.DpgInfo
+	// Summary is the name, the version and the merged components of
+	// the stack, the same view the descriptor serves.
+	Summary descriptor.Stack
 	// Pairs lists the present pairs of the stack in role order.
 	Pairs []topology.Status
 }
@@ -56,8 +55,8 @@ type Stack struct {
 // Name returns the display name of the stack: the name the adapter
 // reports, or the ID until an adapter answers.
 func (s Stack) Name() string {
-	if name := s.Info.GetDisplayName(); name != "" {
-		return name
+	if s.Summary.Name != "" {
+		return s.Summary.Name
 	}
 	return s.ID
 }
@@ -101,6 +100,10 @@ func roleLabel(r commonv1.Role) string { return msg.T("role." + descriptor.RoleI
 
 // NewOverview reads one snapshot.
 func NewOverview(snap topology.Snapshot) Overview {
+	summaries := map[configv1.Dpg]descriptor.Stack{}
+	for _, s := range descriptor.Stacks(snap) {
+		summaries[s.Dpg] = s
+	}
 	byDpg := map[configv1.Dpg]*Stack{}
 	byRole := map[commonv1.Role]*Role{}
 	for _, role := range roleOrder {
@@ -111,11 +114,8 @@ func NewOverview(snap topology.Snapshot) Overview {
 			}
 			stack := byDpg[d]
 			if stack == nil {
-				stack = &Stack{Dpg: d, ID: descriptor.DpgID(d)}
+				stack = &Stack{Dpg: d, ID: descriptor.DpgID(d), Summary: summaries[d]}
 				byDpg[d] = stack
-			}
-			if stack.Info == nil {
-				stack.Info = st.Capabilities.GetDpgInfo()
 			}
 			stack.Pairs = append(stack.Pairs, st)
 			r := byRole[role]
