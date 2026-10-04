@@ -420,10 +420,11 @@ func TestAppFailsOnBadThemeFile(t *testing.T) {
 	uikittest.AssertBadThemeError(t, err, path)
 }
 
-// fakeAuth answers the logout RPC of wallet-auth.
+// fakeAuth answers the logout and the key binding RPCs of wallet-auth.
 type fakeAuth struct {
 	walletauthv1connect.UnimplementedWalletAuthServiceHandler
 	token string
+	bound *walletauthv1.RegisterHolderKeyRequest
 }
 
 func (f *fakeAuth) Logout(_ context.Context, req *connect.Request[walletauthv1.LogoutRequest],
@@ -503,6 +504,69 @@ func TestBuildWiresTheHolderFrame(t *testing.T) {
 	}
 	if done.StatusCode != http.StatusSeeOther || done.Header.Get("Location") != "https://idp.example/logout" || auth.token == "" {
 		t.Fatalf("sign out = %d %q token %q", done.StatusCode, done.Header.Get("Location"), auth.token)
+	}
+}
+
+// RegisterHolderKey records the binding and answers a renewed session.
+func (f *fakeAuth) RegisterHolderKey(_ context.Context, req *connect.Request[walletauthv1.RegisterHolderKeyRequest],
+) (*connect.Response[walletauthv1.RegisterHolderKeyResponse], error) {
+	f.token, f.bound = req.Msg.GetSessionToken(), req.Msg
+	return connect.NewResponse(&walletauthv1.RegisterHolderKeyResponse{Thumbprint: "thumbprint-1", HolderDid: "did:jwk:e30", SessionToken: "renewed"}), nil
+}
+
+// TestBuildWiresTheKeyBinding: a browser store wallet binds the browser
+// key at the wallet-auth service of the own pair, and the answer renews
+// the session cookie.
+func TestBuildWiresTheKeyBinding(t *testing.T) {
+	k := newKeys(t)
+	auth := &fakeAuth{}
+	mux := http.NewServeMux()
+	mux.Handle(walletauthv1connect.NewWalletAuthServiceHandler(auth))
+	authSrv := httptest.NewServer(mux)
+	defer authSrv.Close()
+	cfg := load(t, map[string]string{
+		"VCA_WALLET_PORTAL_AUTH_JWKS_FILE": k.file(t),
+		"VCA_WALLET_PORTAL_AUTH_JWKS_URL":  authSrv.URL + "/.well-known/jwks.json",
+		"VCA_PEERS":                        "holder-waltid|https://holder-waltid.example|wallet-auth=" + authSrv.URL + ",wallet-portal=http://portal:8092",
+	})
+	a, err := app.Build(cfg, app.Deps{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(a.Mux)
+	defer srv.Close()
+	get, err := http.NewRequest(http.MethodGet, srv.URL+"/wallet/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	get.AddCookie(&http.Cookie{Name: session.CookieName, Value: k.token(t)})
+	resp, err := http.DefaultClient.Do(get)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := io.ReadAll(resp.Body)
+	if cerr := resp.Body.Close(); cerr != nil || err != nil {
+		t.Fatal(err, cerr)
+	}
+	csrf := between(string(raw), `name="csrf_token" value="`, `"`)
+	form := strings.NewReader("csrf_token=" + csrf + "&jwk=%7B%7D&signature=sig")
+	post, err := http.NewRequest(http.MethodPost, srv.URL+"/wallet/holder-key", form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	post.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	post.AddCookie(&http.Cookie{Name: session.CookieName, Value: k.token(t)})
+	done, err := http.DefaultClient.Do(post)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cerr := done.Body.Close(); cerr != nil {
+		t.Fatal(cerr)
+	}
+	cookies := done.Cookies()
+	if done.StatusCode != http.StatusOK || len(cookies) != 1 || cookies[0].Value != "renewed" ||
+		auth.bound.GetPublicJwk() != "{}" || !strings.HasSuffix(auth.bound.GetProof(), ".sig") || auth.token == "" {
+		t.Fatalf("binding = %d %+v %+v", done.StatusCode, cookies, auth.bound)
 	}
 }
 

@@ -158,6 +158,10 @@ message RegisterHolderKeyResponse {
   string thumbprint = 1;
   // The holder DID the service derived from the key, for example did:jwk.
   string holder_did = 2;
+  // A session JWT of the same session that names the key and the holder
+  // DID. The caller replaces the session cookie with it, so the next page
+  // knows the browser holds a key.
+  string session_token = 3;
 }
 
 // GetAuthorizationGrantRequest selects a session.

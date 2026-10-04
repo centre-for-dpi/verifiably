@@ -39,9 +39,11 @@ adapter of the own pair lists `FEATURE_WALLET_DIDS` (ADR-062 decision
 6). The page shows the holder identifier and where the holder key sits.
 A stack wallet binds a new credential to its default identifier, with
 a key the stack keeps. A browser store binds it to the key of the
-browser.
-It lists the identifiers of the wallet of the stack and makes an
-identifier of a method the adapter lists. With `FEATURE_WALLET_KEYS` it
+browser. A browser store asks no wallet of the stack on this page.
+After the binding below it names the `did:jwk` of the browser key and
+the thumbprint of the key.
+For a stack wallet the page lists the identifiers of the wallet. It
+makes an identifier of a method the adapter lists. With `FEATURE_WALLET_KEYS` it
 lists the keys and makes a key of a type the adapter lists. It then
 also makes an identifier with a key of the wallet. With `FEATURE_WALLET_DEFAULT_DID`
 it marks the default identifier and picks a new default. With
@@ -298,6 +300,23 @@ carries both.
 A step runs once. The two answers are JSON. A refusal carries its
 sentence in `error`. With no script, the claim form reaches the accept
 address, and the page says that the browser signs the claim.
+
+### The binding of the browser key
+
+After the browser makes its signing key, `wallet.js` binds it to the
+wallet once (ADR-020 decision 4). A page with the signing script marks
+its status line with `data-holder-key="register"` while the session
+names no key.
+
+1. `POST /wallet/holder-key/proof` answers the signing input of a JWS
+   over the session id.
+2. `POST /wallet/holder-key` sends the public key and the signature.
+   The portal hands both to `RegisterHolderKey` of the `wallet-auth`
+   service of its pair. That service answers a session token that names
+   the key, and the portal sets it as the session cookie.
+
+Both steps need the page token. Only a browser store offers them. A
+failed binding waits for the next page with the signing script.
 
 ### A stack wallet beside the browser store
 

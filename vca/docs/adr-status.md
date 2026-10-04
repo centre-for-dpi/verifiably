@@ -242,7 +242,7 @@ A row that is not `Done` carries a note.
 | ADR-020 | 1 Citizen login with OIDC and PKCE | Done | `vca/services/wallet-auth/internal/service` | |
 | ADR-020 | 2 Short-lived session tokens, no personal data | Done | `vca/services/wallet-auth/internal/service` | |
 | ADR-020 | 3 The IdP token as the issuance grant | Done | `vca/services/wallet-auth/internal/service` | |
-| ADR-020 | 4 Holder key binding in the browser or the DPG | Done | `vca/services/wallet-portal/internal/blobs` | |
+| ADR-020 | 4 Holder key binding in the browser or the DPG | Done | `vca/services/wallet-portal/internal/blobs`, `vca/services/wallet-portal/internal/portal/holderkey.go`, `vca/services/wallet-auth/internal/service/holderkey.go` | Since 2026-10-04 `wallet.js` binds its signing key once after the browser makes it. `RegisterHolderKey` answers a session token that names the key. `TestTheBrowserBindsItsKeyToTheWallet`, `TestTheBrowserBindsItsKeyOnce`, `TestRegisterHolderKeyRenewsTheSession`, both walkthroughs and `TestWalletScriptInChromium` pin it. |
 | ADR-020 | 5 Logout revokes the session | Done | `vca/services/wallet-auth/internal/service` | |
 | ADR-020 | 6 Redis-backed rate limit and OTP | Partial | `vca/services/wallet-auth/internal/limits` | The in-process limiter works. The Redis limiter is a stub, because the build network blocks the client. |
 

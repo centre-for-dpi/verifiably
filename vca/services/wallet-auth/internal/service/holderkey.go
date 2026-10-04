@@ -22,7 +22,8 @@ import (
 // RegisterHolderKey implements WalletAuthServiceHandler (ADR-020
 // decision 4). The browser keeps the private key. The service stores the
 // thumbprint and derives a did:jwk. The proof is a compact JWS over the
-// session id, signed with the private key.
+// session id, signed with the private key. The answer carries a session
+// token of the same session that names the key.
 func (s *Service) RegisterHolderKey(_ context.Context, req *connect.Request[walletauthv1.RegisterHolderKeyRequest]) (*connect.Response[walletauthv1.RegisterHolderKeyResponse], error) {
 	claims, err := s.d.Signer.Verify(req.Msg.GetSessionToken())
 	if err != nil {
@@ -53,7 +54,16 @@ func (s *Service) RegisterHolderKey(_ context.Context, req *connect.Request[wall
 	if _, err := s.d.Wallets.BindKey(claims.Subject, thumbprint, did); err != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}
-	return connect.NewResponse(&walletauthv1.RegisterHolderKeyResponse{Thumbprint: thumbprint, HolderDid: did}), nil
+	// The same session, with its id and expiry, now names the key. A
+	// logout of either token ends both, because the deny list keys on
+	// the session id.
+	renewed := claims
+	renewed.ID, renewed.HasHolderKey, renewed.HolderDID = "", true, did
+	token, _, ierr := s.d.Signer.Issue(renewed)
+	if ierr != nil {
+		return nil, connect.NewError(connect.CodeInternal, ierr)
+	}
+	return connect.NewResponse(&walletauthv1.RegisterHolderKeyResponse{Thumbprint: thumbprint, HolderDid: did, SessionToken: token}), nil
 }
 
 func supportedKey(k any) bool {

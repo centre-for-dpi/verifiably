@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
@@ -119,7 +120,8 @@ func chromium(ctx context.Context, t *testing.T, browsers string, input map[stri
 // TestWalletScriptInChromium runs wallet.js in a real browser against
 // the walt.id walkthrough (ADR-004 decision 6, ADR-073). Chromium claims
 // the offer: wallet.js makes its signing key in IndexedDB and signs the
-// proof. Chromium then answers the request of the verifier: wallet.js
+// proof. It then binds the key to the wallet, and the keys page names
+// the key by its thumbprint. Chromium then answers the request of the verifier: wallet.js
 // signs the key binding, and the verifier reads a valid answer. The
 // test runs when VCA_PLAYWRIGHT is set; the CI job of the browser test
 // sets it and installs Playwright with Chromium. The test finds the
@@ -166,6 +168,24 @@ func TestWalletScriptInChromium(t *testing.T) {
 	}
 	if api.onboarded != 1 {
 		t.Fatalf("the issuer API onboarded %d keys, want 1", api.onboarded)
+	}
+	// wallet.js bound its key to the wallet after the claim (ADR-020
+	// decision 4), so the keys page names the key by its thumbprint.
+	jwk, merr := json.Marshal(claimed["jwk"])
+	if merr != nil {
+		t.Fatal(merr)
+	}
+	parsed, perr := jose.ParseJWK(jwk)
+	if perr != nil {
+		t.Fatalf("the signing key %s: %v", jwk, perr)
+	}
+	thumbprint, terr := jose.Thumbprint(parsed)
+	if terr != nil {
+		t.Fatal(terr)
+	}
+	keys, ok := claimed["keys"].(string)
+	if !ok || !strings.Contains(keys, "Your browser holds a key for this wallet.") || !strings.Contains(keys, thumbprint) {
+		t.Fatalf("the keys page does not name the key %s of the browser:\n%s", thumbprint, keys)
 	}
 
 	// The admin trusts the issuer, and the verifier asks for the

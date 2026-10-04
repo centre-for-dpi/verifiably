@@ -49,6 +49,13 @@ func (p *Portal) keys(w http.ResponseWriter, r *http.Request) error {
 		http.NotFound(w, r)
 		return nil
 	}
+	page := components.Page{Title: msg.T("holder.nav.keys.label"), Lead: msg.T("holder.keys.lead"), Description: msg.T("holder.keys.lead")}
+	// The browser store keeps its key in the browser, so the page asks
+	// no wallet of the stack.
+	if p.opts.Service.BrowserStorage() {
+		page.Content = p.summary(b, nil)
+		return p.render(w, r, b, page)
+	}
 	parts := service.WalletParts{
 		Keys: b.frame.Has(backendv1.Feature_FEATURE_WALLET_KEYS), Dids: true,
 		Events: b.frame.Has(backendv1.Feature_FEATURE_WALLET_EVENTS),
@@ -66,20 +73,19 @@ func (p *Portal) keys(w http.ResponseWriter, r *http.Request) error {
 			content += p.eventBlock(b, wallet.Events)
 		}
 	}
-	return p.render(w, r, b, components.Page{
-		Title: msg.T("holder.nav.keys.label"), Lead: msg.T("holder.keys.lead"), Description: msg.T("holder.keys.lead"),
-		Content: content,
-	})
+	page.Content = content
+	return p.render(w, r, b, page)
 }
 
 // summary is the identifier and the key that bind a new credential. A
 // stack wallet binds to its default DID with a key it keeps. A browser
-// store binds to the key of the browser.
+// store binds to the key of the browser, which the did:jwk of the
+// session names after the binding.
 func (p *Portal) summary(b *pen, dids []*backendv1.WalletDid) template.HTML {
-	did, key := b.who.HolderDID, msg.T("holder.keys.key.stack")
+	did, key, thumbprint := b.who.HolderDID, msg.T("holder.keys.key.stack"), ""
 	switch {
 	case p.opts.Service.BrowserStorage() && b.who.HasHolderKey:
-		key = msg.T("holder.keys.key.browser")
+		key, thumbprint = msg.T("holder.keys.key.browser"), browserThumbprint(did)
 	case p.opts.Service.BrowserStorage():
 		key = msg.T("holder.keys.key.browser_first")
 	default:
@@ -90,13 +96,17 @@ func (p *Portal) summary(b *pen, dids []*backendv1.WalletDid) template.HTML {
 	if did == "" {
 		did = msg.T("holder.keys.none")
 	}
+	rows := []components.Row{
+		{{Text: msg.T("holder.keys.did.label")}, b.mono(did)},
+		{{Text: msg.T("holder.keys.key.label")}, {Text: key}},
+	}
+	if thumbprint != "" {
+		rows = append(rows, components.Row{{Text: msg.T("holder.keys.thumbprint.label")}, b.mono(thumbprint)})
+	}
 	return b.part("table", components.Table{
 		ID: "holder-keys", Caption: msg.T("holder.keys.caption.label"),
 		Columns: []string{msg.T("holder.keys.column.item.label"), msg.T("holder.keys.column.value.label")},
-		Rows: []components.Row{
-			{{Text: msg.T("holder.keys.did.label")}, {HTML: b.raw(`<span class="mono">` + template.HTMLEscapeString(did) + `</span>`)}},
-			{{Text: msg.T("holder.keys.key.label")}, {Text: key}},
-		},
+		Rows:    rows,
 	})
 }
 

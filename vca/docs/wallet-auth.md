@@ -82,7 +82,11 @@ Logout deletes the sealed tokens.
 WebCrypto (ADR-020 decision 4). The request carries the public JWK and a
 compact JWS over the session id, signed with the private key. The service
 checks the proof, stores the RFC 7638 thumbprint, derives a `did:jwk`,
-and returns both. The private key never reaches the service.
+and returns both. The private key never reaches the service. The answer
+also carries a session token of the same session. It names the key and
+the `did:jwk`, and it keeps the session id and the expiry. The wallet
+portal sets it as the session cookie, so its pages know the browser
+holds a key.
 
 ## Logout
 

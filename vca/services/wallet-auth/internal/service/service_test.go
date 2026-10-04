@@ -754,3 +754,48 @@ func TestSessionNamesTheHolder(t *testing.T) {
 
 // peers is the peer authority of the tests of the package (ADR-075).
 var peers = peertest.Fixed()
+
+// TestRegisterHolderKeyRenewsTheSession: the binding answers a session
+// token of the same session that names the key, so the wallet pages know
+// the browser holds a key without a new sign in. The token keeps the
+// session id, the expiry, and the provider of the session.
+func TestRegisterHolderKeyRenewsTheSession(t *testing.T) {
+	f := newFixture(t)
+	body, _ := f.login(t)
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, err := jose.PublicJWK(priv, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubJSON, err := json.Marshal(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof, err := jose.Sign(priv, "", "JWT", map[string]string{"sid": body.Claims.SID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := f.client.RegisterHolderKey(context.Background(), connect.NewRequest(&walletauthv1.RegisterHolderKeyRequest{
+		SessionToken: body.SessionToken, PublicJwk: string(pubJSON), Proof: proof}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	renewed, err := f.svc.Signer().Verify(res.Msg.GetSessionToken())
+	if err != nil {
+		t.Fatalf("the answer carries no session token: %v", err)
+	}
+	if !renewed.HasHolderKey || renewed.HolderDID != res.Msg.GetHolderDid() || renewed.SID != body.Claims.SID ||
+		renewed.Subject != body.Claims.Subject || renewed.Provider != body.Claims.Provider || renewed.ExpiresAt != body.Claims.ExpiresAt {
+		t.Errorf("renewed = %+v, was %+v", renewed, body.Claims)
+	}
+	// A logout of the old token ends the renewed one too.
+	if _, err := f.svc.Signer().Revoke(body.SessionToken); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Signer().Verify(res.Msg.GetSessionToken()); err == nil {
+		t.Error("the renewed token outlives the session")
+	}
+}

@@ -134,8 +134,9 @@ func consentOf(r *http.Request) *walletportalv1.PresentConfirmRequest {
 }
 
 // signingScript is the status line and the script that signs with the
-// holder key of the browser (ADR-073).
+// holder key of the browser (ADR-073). The status line marks a browser
+// that still has to bind its key to the wallet.
 func (p *Portal) signingScript(b *pen) template.HTML {
-	return b.raw(`<p id="wallet-status" role="status"></p>` +
+	return b.raw(`<p id="wallet-status" role="status"` + p.keyMark(b) + `></p>` +
 		`<script src="` + template.HTMLEscapeString(p.opts.Prefix+static.Path) + `" defer></script>`)
 }

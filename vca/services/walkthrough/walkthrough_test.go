@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -215,13 +216,26 @@ func (w *walk) claimInBrowser(offer, pin, trust string) string {
 	w.t.Helper()
 	w.signIn(w.citizen, w.holder).has(w.t, "Your browser keeps these credentials.")
 	paste := w.citizen.get(w.holder.public+"/wallet/claim").must(w.t).form(w.t, "/wallet/claim/offer")
-	accept := w.citizen.submit(paste, "offer", offer).must(w.t).has(w.t, "data-browser-claim").form(w.t, "/wallet/accept")
+	keys := w.citizen.get(w.holder.public+"/wallet/keys").must(w.t).has(w.t, "Your browser makes its key at your first claim")
+	if strings.Contains(keys.body, "did not answer") {
+		w.t.Fatalf("the keys page of the browser store asked the wallet of the stack:\n%s", text(keys.body))
+	}
+	offerPage := w.citizen.submit(paste, "offer", offer).must(w.t).has(w.t, "data-browser-claim", `data-holder-key="register"`)
+	accept := offerPage.form(w.t, "/wallet/accept")
 	if pin != "" {
 		accept.values.Set("pin", pin)
 	}
 	step := w.citizen.script(accept, "/wallet/claim/proof", "jwk", w.key.jwk)
 	done := w.citizen.script(accept, "/wallet/claim/finish",
 		"claim", step["claim"], "signature", w.key.sign(w.t, step["signing_input"]))
+	// The browser made its key for the claim, so wallet.js binds it to
+	// the wallet once (ADR-020 decision 4). The keys page then names it.
+	proof := w.citizen.script(accept, "/wallet/holder-key/proof")
+	bound := w.citizen.script(accept, "/wallet/holder-key", "jwk", w.key.jwk, "signature", w.key.sign(w.t, proof["signing_input"]))
+	if bound["thumbprint"] == "" || !strings.HasPrefix(bound["holder_did"], "did:jwk:") {
+		w.t.Fatalf("the binding answered %v", bound)
+	}
+	w.citizen.get(w.holder.public+"/wallet/keys").must(w.t).has(w.t, "Your browser holds a key for this wallet.", bound["thumbprint"])
 	w.citizen.get(w.holder.public+"/wallet/").must(w.t).has(w.t, "Farmer registration", "Wanjiku Njeri", trust)
 	return done["credential"]
 }

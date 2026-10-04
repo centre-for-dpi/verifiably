@@ -104,8 +104,22 @@ type Topology struct {
 	// cookie.
 	Logout func(ctx context.Context, authURL, token string) (string, error)
 	// SecureCookie sets the Secure attribute of the cookie that clears
-	// the session.
+	// the session, and of the cookie that renews it.
 	SecureCookie bool
+	// RegisterKey binds the signing key of the browser to the wallet at
+	// the wallet-auth service of authURL (ADR-020 decision 4). The proof
+	// is a JWS over the session id. Nil offers no binding.
+	RegisterKey func(ctx context.Context, authURL, token, jwk, proof string) (HolderKey, error)
+}
+
+// HolderKey is the answer of a key binding.
+type HolderKey struct {
+	// Thumbprint is the JWK thumbprint of the key.
+	Thumbprint string
+	// HolderDID is the DID the service derived from the key.
+	HolderDID string
+	// SessionToken is the session token that names the key.
+	SessionToken string
 }
 
 // Portal serves the pages.
@@ -173,6 +187,8 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+p.opts.Prefix+"/claim/proof", p.handle(p.claimProof))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/claim/finish", p.handle(p.claimFinish))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/present/binding", p.handle(p.presentBinding))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/holder-key/proof", p.handle(p.holderKeyProof))
+	mux.HandleFunc("POST "+p.opts.Prefix+"/holder-key", p.handle(p.holderKeyBind))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/claimable", p.moved("/claim"))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/scan", p.moved("/claim"))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/scan", p.handle(p.scan))

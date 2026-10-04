@@ -249,8 +249,9 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 }
 
 // frame returns the topology of the holder frame: the peers, their
-// probe, the own pair by the key set of wallet-auth, and the logout call
-// of the sign out form (ADR-034, ADR-044 decision 5).
+// probe, the own pair by the key set of wallet-auth, the logout call of
+// the sign out form (ADR-034, ADR-044 decision 5), and the binding of
+// the browser key (ADR-020 decision 4).
 func frame(cfg config.Config, deps Deps, snapshot func(context.Context) topology.Snapshot) portal.Topology {
 	secure := false
 	for _, p := range cfg.Peers {
@@ -268,6 +269,18 @@ func frame(cfg config.Config, deps Deps, snapshot func(context.Context) topology
 				return "", err
 			}
 			return res.Msg.GetProviderLogoutUrl(), nil
+		},
+		RegisterKey: func(ctx context.Context, authURL, token, jwk, proof string) (portal.HolderKey, error) {
+			c := walletauthv1connect.NewWalletAuthServiceClient(client, authURL)
+			res, err := c.RegisterHolderKey(ctx, connect.NewRequest(&walletauthv1.RegisterHolderKeyRequest{
+				SessionToken: token, PublicJwk: jwk, Proof: proof,
+			}))
+			if err != nil {
+				return portal.HolderKey{}, err
+			}
+			return portal.HolderKey{
+				Thumbprint: res.Msg.GetThumbprint(), HolderDID: res.Msg.GetHolderDid(), SessionToken: res.Msg.GetSessionToken(),
+			}, nil
 		},
 	}
 }

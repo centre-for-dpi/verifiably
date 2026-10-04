@@ -14,6 +14,8 @@
 //      that is not extractable (ADR-073). It signs the proof of an
 //      OID4VCI claim and the key binding JWT of an SD-JWT answer. The
 //      portal runs the protocol and hands the page each signing input.
+//      Once the key exists, the page binds it to the wallet one time
+//      (ADR-020 decision 4).
 //
 // The envelope format matches services/wallet-portal/internal/blobs:
 //
@@ -163,8 +165,15 @@ const VCA = (() => {
     return b64url(signature);
   }
 
-  // publicJWK returns the public holder key as a JWK. The wallet
-  // authentication service takes it in RegisterHolderKey.
+  // hasSigningKey reports whether this browser made its signing key.
+  async function hasSigningKey() {
+    const db = await openDB();
+    const held = await dbGet(db, SIGN_ID);
+    return Boolean(held && held.privateKey);
+  }
+
+  // publicJWK returns the public content key as a JWK. It cannot sign,
+  // so the binding of the wallet takes the signing key instead.
   async function publicJWK() {
     const pair = await holderKey();
     return crypto.subtle.exportKey("jwk", pair.publicKey);
@@ -310,6 +319,44 @@ const VCA = (() => {
     return step.signing_input + "." + (await sign(step.signing_input));
   }
 
+  // keyMark returns the status line when the page asks the browser to
+  // bind its signing key to the wallet, or null.
+  function keyMark() {
+    const region = document.getElementById("wallet-status");
+    return region && region.dataset.holderKey === "register" ? region : null;
+  }
+
+  // bindKey binds the signing key of this browser to the wallet. The
+  // portal hands the signing input of a proof over the session, the
+  // browser signs it and posts the public key with the signature. The
+  // mark changes first, so a page posts the key once.
+  async function bindKey() {
+    const mark = keyMark();
+    if (!mark) {
+      return false;
+    }
+    mark.dataset.holderKey = "sent";
+    const csrf = csrfToken();
+    const step = await post("/holder-key/proof", { csrf_token: csrf });
+    const signature = await sign(step.signing_input);
+    await post("/holder-key", { csrf_token: csrf, jwk: JSON.stringify(await signingJWK()), signature });
+    mark.dataset.holderKey = "held";
+    return true;
+  }
+
+  // wireKey binds a key that the browser holds already, when the page
+  // asks. A failure waits for the next page, which asks again.
+  async function wireKey() {
+    if (!keyMark() || !(await hasSigningKey())) {
+      return;
+    }
+    try {
+      await bindKey();
+    } catch (err) {
+      say("Your browser did not bind its key yet. " + String(err.message || err));
+    }
+  }
+
   // newID returns a random blob id.
   function newID() {
     const bytes = crypto.getRandomValues(new Uint8Array(8));
@@ -373,6 +420,13 @@ const VCA = (() => {
         say("Your browser signs the claim with its key.");
         try {
           const done = await claimOffer(claim);
+          // The browser made its key for the claim, so it binds the key
+          // now. A failure waits for the next page.
+          try {
+            await bindKey();
+          } catch (err) {
+            say("Your browser did not bind its key yet. " + String(err.message || err));
+          }
           window.location.assign(done.next || base() + "/");
         } catch (err) {
           say("The claim did not finish. " + String(err.message || err));
@@ -401,11 +455,12 @@ const VCA = (() => {
   if (typeof document !== "undefined") {
     document.addEventListener("DOMContentLoaded", wire);
     document.addEventListener("DOMContentLoaded", wireSigning);
+    document.addEventListener("DOMContentLoaded", wireKey);
   }
 
   return {
     b64url, unb64url, holderKey, contentKey, publicJWK, seal, open, list, save, remove, newID, wire, say,
-    signingKey, signingJWK, sign, claimOffer, bindAnswer, wireSigning,
+    signingKey, signingJWK, sign, claimOffer, bindAnswer, wireSigning, hasSigningKey, bindKey, wireKey,
   };
 })();
 

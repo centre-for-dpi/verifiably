@@ -816,7 +816,11 @@ type RegisterHolderKeyResponse struct {
 	// The JWK thumbprint of the key.
 	Thumbprint string `protobuf:"bytes,1,opt,name=thumbprint,proto3" json:"thumbprint,omitempty"`
 	// The holder DID the service derived from the key, for example did:jwk.
-	HolderDid     string `protobuf:"bytes,2,opt,name=holder_did,json=holderDid,proto3" json:"holder_did,omitempty"`
+	HolderDid string `protobuf:"bytes,2,opt,name=holder_did,json=holderDid,proto3" json:"holder_did,omitempty"`
+	// A session JWT of the same session that names the key and the holder
+	// DID. The caller replaces the session cookie with it, so the next page
+	// knows the browser holds a key.
+	SessionToken  string `protobuf:"bytes,3,opt,name=session_token,json=sessionToken,proto3" json:"session_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -861,6 +865,13 @@ func (x *RegisterHolderKeyResponse) GetThumbprint() string {
 func (x *RegisterHolderKeyResponse) GetHolderDid() string {
 	if x != nil {
 		return x.HolderDid
+	}
+	return ""
+}
+
+func (x *RegisterHolderKeyResponse) GetSessionToken() string {
+	if x != nil {
+		return x.SessionToken
 	}
 	return ""
 }
@@ -1041,13 +1052,14 @@ const file_vca_walletauth_v1_walletauth_proto_rawDesc = "" +
 	"\rsession_token\x18\x01 \x01(\tR\fsessionToken\x12\x1d\n" +
 	"\n" +
 	"public_jwk\x18\x02 \x01(\tR\tpublicJwk\x12\x14\n" +
-	"\x05proof\x18\x03 \x01(\tR\x05proof\"Z\n" +
+	"\x05proof\x18\x03 \x01(\tR\x05proof\"\x7f\n" +
 	"\x19RegisterHolderKeyResponse\x12\x1e\n" +
 	"\n" +
 	"thumbprint\x18\x01 \x01(\tR\n" +
 	"thumbprint\x12\x1d\n" +
 	"\n" +
-	"holder_did\x18\x02 \x01(\tR\tholderDid\"p\n" +
+	"holder_did\x18\x02 \x01(\tR\tholderDid\x12#\n" +
+	"\rsession_token\x18\x03 \x01(\tR\fsessionToken\"p\n" +
 	"\x1cGetAuthorizationGrantRequest\x12#\n" +
 	"\rsession_token\x18\x01 \x01(\tR\fsessionToken\x12+\n" +
 	"\x11credential_issuer\x18\x02 \x01(\tR\x10credentialIssuer\"\x8f\x01\n" +

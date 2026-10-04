@@ -234,7 +234,7 @@ func TestAcceptInTheBrowserStoreNeedsScript(t *testing.T) {
 // reads the answer.
 func (h *harness) jsonPost(t *testing.T, path string, want int, form url.Values) map[string]string {
 	t.Helper()
-	form.Set(session.Field, h.guard.Token(citizen()))
+	form.Set(session.Field, h.guard.Token(h.who))
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")

@@ -237,6 +237,8 @@ type harness struct {
 	guard   session.Guard
 	holder  *fakeHolder
 	svc     *service.Service
+	// who is the citizen of every request.
+	who session.Citizen
 }
 
 // serviceOptions is the options type of the service a test changes.
@@ -249,6 +251,12 @@ func setup(t *testing.T, change func(*service.Options)) *harness {
 
 // setupShell builds the harness with the topology of the frame.
 func setupShell(t *testing.T, change func(*service.Options), topo portal.Topology) *harness {
+	t.Helper()
+	return setupWho(t, change, topo, citizen())
+}
+
+// setupWho builds the harness for the session of one citizen.
+func setupWho(t *testing.T, change func(*service.Options), topo portal.Topology, who session.Citizen) *harness {
 	t.Helper()
 	holder := &fakeHolder{credential: credential(t), accepted: true}
 	opts := service.Options{
@@ -289,12 +297,12 @@ func setupShell(t *testing.T, change func(*service.Options), topo portal.Topolog
 	pages.Register(mux)
 	mux.Handle("GET /wallet/wallet.js", pages.Script())
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mux.ServeHTTP(w, r.WithContext(session.With(r.Context(), citizen())))
+		mux.ServeHTTP(w, r.WithContext(session.With(r.Context(), who)))
 	})
 	if pages.Prefix() != "/wallet" {
 		t.Fatalf("prefix = %q", pages.Prefix())
 	}
-	return &harness{handler: handler, guard: guard, holder: holder, svc: svc}
+	return &harness{handler: handler, guard: guard, holder: holder, svc: svc, who: who}
 }
 
 // get renders one page and checks the accessibility rules.
@@ -314,7 +322,7 @@ func (h *harness) post(t *testing.T, path string, form url.Values) *httptest.Res
 	if form == nil {
 		form = url.Values{}
 	}
-	form.Set(session.Field, h.guard.Token(citizen()))
+	form.Set(session.Field, h.guard.Token(h.who))
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()

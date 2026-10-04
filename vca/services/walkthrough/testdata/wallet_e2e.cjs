@@ -7,7 +7,9 @@
 // IndexedDB between them.
 //
 //   claim    signs the holder in, pastes the offer, and lets wallet.js
-//            sign the proof of the claim with its own key.
+//            sign the proof of the claim with its own key. wallet.js
+//            then binds the key to the wallet, and the keys page names
+//            it.
 //   present  pastes the request of the verifier and lets wallet.js sign
 //            the key binding of the answer.
 //
@@ -50,7 +52,12 @@ async function claim(page, input) {
   ]);
   const key = await page.evaluate(async () => window.VCA.signingJWK());
   const blobs = await page.evaluate(async () => (await window.VCA.list()).length);
-  return { key: key.kty + "/" + key.crv, blobs, page: await page.locator("main").innerText() };
+  const home = await page.locator("main").innerText();
+  // wallet.js bound the key to the wallet after the claim, so the keys
+  // page names it.
+  await page.goto(input.holder + "/wallet/keys");
+  const keys = await page.locator("#holder-keys").innerText();
+  return { key: key.kty + "/" + key.crv, jwk: key, blobs, page: home, keys };
 }
 
 // present pastes the request and submits the consent form, which

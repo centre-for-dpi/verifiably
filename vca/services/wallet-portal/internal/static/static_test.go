@@ -24,6 +24,8 @@ func TestScriptCarriesTheWalletFunctions(t *testing.T) {
 		// The signing key and the two signing steps of ADR-073.
 		`name: "ECDSA", namedCurve: "P-256"`, "holder-signing", "data-browser-claim", "data-key-binding",
 		"/claim/proof", "/claim/finish", "/present/binding", "key_binding",
+		// The binding of the browser key to the wallet (ADR-020 decision 4).
+		"/holder-key/proof", `"/holder-key"`, "holderKey",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("wallet.js misses %q", want)
