@@ -152,10 +152,13 @@ The team must fix it before the next release.
 
 ## Pinned actions
 
-Pin every action that a new job uses to a full commit SHA, with its
-version in a comment. `TestTheBrowserJobDrivesWalletJS` checks each such
-line. The older jobs still pin a version tag. Do not use `@master` or
-`@main`.
+Every action of `vca-ci.yml`, `vca-release.yml`, and `vca-nightly.yml`
+runs at a full commit SHA, with the version of its tag in a comment.
+`TestEveryWorkflowActionIsPinnedToACommit` fails on any other `uses:`
+line. To move an action, read the commit of the new tag with
+`git ls-remote https://github.com/<owner>/<action> 'refs/tags/<tag>*'`.
+An annotated tag lists its commit on the line that ends in `^{}`.
+Do not use `@master`, `@main`, or a bare tag.
 
 ## Scripts in `vca/hack/`
 

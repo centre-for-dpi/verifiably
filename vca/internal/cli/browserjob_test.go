@@ -9,17 +9,6 @@ import (
 	"testing"
 )
 
-// legacyActions are the action references of vca-ci that predate the
-// rule of full commit pins. A job that a unit adds pins each action to
-// a commit, with its version in a comment.
-var legacyActions = map[string]bool{
-	"actions/checkout@v4":              true,
-	"actions/setup-go@v5":              true,
-	"actions/upload-artifact@v4":       true,
-	"bufbuild/buf-action@v1":           true,
-	"golangci/golangci-lint-action@v8": true,
-}
-
 // pinnedAction matches an action pinned to a commit with its version.
 var pinnedAction = regexp.MustCompile(`^[\w.-]+/[\w.-]+@[0-9a-f]{40} # v\d+(\.\d+)*$`)
 
@@ -46,7 +35,7 @@ func TestTheBrowserJobDrivesWalletJS(t *testing.T) {
 	}
 	for _, line := range strings.Split(ci, "\n") {
 		_, ref, found := strings.Cut(strings.TrimSpace(line), "uses: ")
-		if !found || legacyActions[ref] {
+		if !found {
 			continue
 		}
 		if !pinnedAction.MatchString(ref) {
