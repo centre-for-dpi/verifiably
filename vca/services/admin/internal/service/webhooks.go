@@ -49,10 +49,8 @@ func (s *Service) listStackWebhooks(ctx context.Context) (*adminv1.ListStackWebh
 		return nil, err
 	}
 	offered := map[configv1.Dpg]stacks.Stack{}
-	for _, st := range s.d.Stacks.List(ctx) {
-		if st.Has(webhooks) {
-			offered[st.Dpg] = st
-		}
+	for _, st := range s.d.Stacks.With(ctx, webhooks) {
+		offered[st.Dpg] = st
 	}
 	res := &adminv1.ListStackWebhooksResponse{}
 	for _, t := range all {

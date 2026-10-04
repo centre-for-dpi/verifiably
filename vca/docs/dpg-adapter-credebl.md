@@ -209,7 +209,7 @@ answer says so.
 | `Revoke` without `VCA_CREDEBL_STATUS_LIST` | The platform revokes an OID4VC session only with a status list host. Without one, the status services of VCA own the status bits. |
 | A suspension or a reinstatement | The agent sets the revoked bit of a credential and clears none. The answer lists no `FEATURE_SUSPENSION`, so the issued page offers a revoke alone. |
 | `Revoke` of a DIDComm credential | The adapter writes every credential definition without a revocation registry. |
-| Every holder RPC without the agent | The holder role needs the admin address and the API key of the shared agent. `vca setup` writes both into a holder pair. |
+| Every holder RPC without the agent | The holder role needs the admin address and the API key of the shared agent. `vca setup` writes both into every pair, and keeps the wallets of an issuer and a verifier pair off. |
 | The cloud wallet service of the platform | The pinned cloud wallet service reads the agent with a call that the pinned agent refuses. Its proof paths hold a stray brace. Its holder account also needs a mail check. The adapter keeps each holder wallet in the shared agent instead (ADR-062). |
 | `AcceptOffer` with an OID4VCI offer that has an authorization code grant only | The agent redeems a pre-authorized code only. Ask the issuer for an offer with such a code. |
 | An OID4VP answer with another matching credential | The agent answers with the first credential that matches each query. The adapter refuses a pick that differs, so the answer never differs from the consent. |
@@ -361,7 +361,9 @@ of the shared agent, which reads the ledger. The agent records each DID
 it resolves in the tenant that asks. So the adapter asks with a tenant
 of its own, which it makes once. It never asks with the wallet of an
 organisation. The admin service hands the document to the trust
-registry, so an AnonCreds issuer can sit on a trust list.
+registry, so an AnonCreds issuer can sit on a trust list. Every pair has
+the agent address, so an issuer or a verifier pair resolves too. There
+`VCA_CREDEBL_AGENT_RESOLVER_ONLY` keeps the holder wallets off.
 
 **An X.509 chain binds to a certificate row of the platform.** The
 platform imports a certificate only with its private key, and VCA never

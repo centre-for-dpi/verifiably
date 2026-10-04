@@ -43,8 +43,9 @@ database and it never controls a container.
 | `VCA_CREDEBL_RETRIES` | The number of extra attempts. The default is `2`. |
 | `VCA_CREDEBL_MAX_BYTES` | The bound of a response body. The default is 8 megabytes. |
 | `VCA_CREDEBL_STORE_FILE` | The file that keeps the verifier id and the tenant of each holder. Empty uses memory. The compose file names a file on the data volume. |
-| `VCA_CREDEBL_AGENT_URL` | The admin address of the shared agent. With the API key it turns the holder wallet on (ADR-062). The compose file of a holder pair names it. |
-| `VCA_CREDEBL_AGENT_API_KEY` | The API key of the shared agent. `vca setup` writes it from the stack into a holder pair. It holds a secret. |
+| `VCA_CREDEBL_AGENT_URL` | The admin address of the shared agent. With the API key the agent resolves ledger DIDs, and it turns the holder wallet on (ADR-062). Every CREDEBL pair names it. |
+| `VCA_CREDEBL_AGENT_API_KEY` | The API key of the shared agent. `vca setup` writes it from the stack into every CREDEBL pair. It holds a secret. |
+| `VCA_CREDEBL_AGENT_RESOLVER_ONLY` | `true` keeps the holder wallet off, so the agent resolves ledger DIDs only. An issuer and a verifier pair set it. The default is `false`. |
 | `VCA_CREDEBL_HOLDER_LABEL` | The label a holder wallet shows the other party of a connection. The default is `Wallet`. |
 
 Run the binary:

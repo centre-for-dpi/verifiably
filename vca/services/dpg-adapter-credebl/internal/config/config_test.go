@@ -207,6 +207,24 @@ func TestLoadReadsTheAgentOfTheHolderRole(t *testing.T) {
 	}
 }
 
+// TestLoadReadsAResolverOnlyAgent: an issuer and a verifier pair reach
+// the agent to resolve ledger DIDs only (ADR-062 amendment of
+// 2026-10-04). The setting keeps the holder role off.
+func TestLoadReadsAResolverOnlyAgent(t *testing.T) {
+	values := required()
+	values["VCA_CREDEBL_AGENT_URL"] = "http://credebl-agent.vca.internal:8001"
+	values["VCA_CREDEBL_AGENT_API_KEY"] = "key"
+	values["VCA_CREDEBL_AGENT_RESOLVER_ONLY"] = "true"
+	cfg, err := config.Load(env(values))
+	if err != nil || cfg.HolderRole() || !cfg.UsesAgent() {
+		t.Fatalf("config = %+v, %v", cfg, err)
+	}
+	delete(values, "VCA_CREDEBL_AGENT_API_KEY")
+	if cfg, err = config.Load(env(values)); err != nil || cfg.UsesAgent() {
+		t.Fatalf("an agent without a key = %+v, %v", cfg, err)
+	}
+}
+
 // TestLoadReadsTheStatusList: the status list host of the stack turns
 // revocable offers on (P6-C5b). It is off by default, because the
 // platform refuses a revocable offer without the host.

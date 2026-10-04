@@ -60,10 +60,7 @@ func (s *Service) listStackEcosystems(ctx context.Context) (*adminv1.ListStackEc
 		return nil, err
 	}
 	res := &adminv1.ListStackEcosystemsResponse{}
-	for _, st := range s.d.Stacks.List(ctx) {
-		if !st.Has(ecosystemsFeature) {
-			continue
-		}
+	for _, st := range s.d.Stacks.With(ctx, ecosystemsFeature) {
 		entry := &adminv1.EcosystemStack{Stack: st.Dpg, StackName: st.Name}
 		res.Stacks = append(res.Stacks, entry)
 		got, gerr := s.d.Stacks.Tenants(st).GetEcosystemSettings(ctx, connect.NewRequest(&backendv1.GetEcosystemSettingsRequest{}))

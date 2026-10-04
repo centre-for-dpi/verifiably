@@ -313,7 +313,7 @@ const resolverKey = "did-resolver/tenant"
 func (s *Service) ResolveDid(
 	ctx context.Context, req *connect.Request[backendv1.ResolveDidRequest],
 ) (*connect.Response[backendv1.ResolveDidResponse], error) {
-	if !s.holderRole() {
+	if s.agent == nil {
 		return nil, unimplemented("this adapter has no agent address, so it resolves no DID")
 	}
 	did := strings.TrimSpace(req.Msg.GetDid())

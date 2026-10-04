@@ -43,10 +43,8 @@ func (s *Service) listStackCredentials(ctx context.Context, tenantID string) (*a
 		return nil, err
 	}
 	offered := map[configv1.Dpg]stacks.Stack{}
-	for _, st := range s.d.Stacks.List(ctx) {
-		if st.Has(clientCredentials) {
-			offered[st.Dpg] = st
-		}
+	for _, st := range s.d.Stacks.With(ctx, clientCredentials) {
+		offered[st.Dpg] = st
 	}
 	res := &adminv1.ListStackCredentialsResponse{}
 	for _, t := range all {

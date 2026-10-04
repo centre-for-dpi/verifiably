@@ -71,11 +71,16 @@ type Config struct {
 	// between restarts. Empty keeps them in memory.
 	StoreFile string `env:"STORE_FILE"`
 	// AgentURL is the admin address of the shared agent of the stack.
-	// With AgentAPIKey it turns the holder role on (ADR-062).
+	// With AgentAPIKey the agent resolves ledger DIDs, and it turns the
+	// holder role on unless AgentResolverOnly is set (ADR-062).
 	AgentURL string `env:"AGENT_URL"`
 	// AgentAPIKey is the API key of the shared agent. vca setup writes
-	// it from the stack .env into a holder pair.
+	// it from the stack .env into every CREDEBL pair.
 	AgentAPIKey string `env:"AGENT_API_KEY" secret:"true"`
+	// AgentResolverOnly keeps the holder role off while the adapter
+	// reaches the agent. The agent then resolves ledger DIDs only. vca
+	// setup sets it for an issuer and a verifier pair.
+	AgentResolverOnly bool `env:"AGENT_RESOLVER_ONLY" default:"false"`
 	// HolderLabel is the label a holder wallet shows the other party of
 	// a DIDComm connection.
 	HolderLabel string `env:"HOLDER_LABEL" default:"Wallet"`
@@ -85,8 +90,11 @@ type Config struct {
 	Peer peerauth.Settings
 }
 
+// UsesAgent reports whether the settings reach the shared agent.
+func (c Config) UsesAgent() bool { return c.AgentURL != "" && c.AgentAPIKey != "" }
+
 // HolderRole reports whether the settings turn the holder role on.
-func (c Config) HolderRole() bool { return c.AgentURL != "" && c.AgentAPIKey != "" }
+func (c Config) HolderRole() bool { return c.UsesAgent() && !c.AgentResolverOnly }
 
 // Load reads the settings with getenv, for example os.Getenv.
 func Load(getenv func(string) string) (Config, error) {

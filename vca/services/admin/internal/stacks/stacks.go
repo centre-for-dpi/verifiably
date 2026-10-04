@@ -5,10 +5,11 @@
 // adapter for the admin service (ADR-037, ADR-038, ADR-040).
 //
 // A stack is one DPG. The topology snapshot holds one status per pair,
-// and several pairs of one stack reach the same adapter, so the package
-// keeps the first live pair of each stack that carries an adapter
-// answer. A stack offers a feature when that answer lists it
-// (ADR-034 decision 5). The package holds no vendor name: the name of a
+// and each pair of a stack runs its own adapter, whose answer may list
+// other features than its siblings. List keeps the first live pair of
+// each stack, for its name. A stack offers a feature when the answer of
+// any of its live pairs lists it, and a call for that feature goes to
+// the first such pair (ADR-034 decision 5). The package holds no vendor name: the name of a
 // stack comes from the adapter (ADR-001 decision 4).
 package stacks
 
@@ -54,16 +55,15 @@ func (s Stack) Has(f backendv1.Feature) bool {
 	return false
 }
 
-// List returns one stack per DPG with a live adapter, in snapshot order.
-func List(snap topology.Snapshot) []Stack {
+// pairs returns every live pair with an adapter answer, in snapshot
+// order, each as a stack.
+func pairs(snap topology.Snapshot) []Stack {
 	var out []Stack
-	seen := map[configv1.Dpg]bool{}
 	for _, st := range snap.Live() {
 		adapter := st.Peer.Adapter()
-		if adapter == "" || st.Capabilities == nil || seen[st.Peer.Dpg] {
+		if adapter == "" || st.Capabilities == nil {
 			continue
 		}
-		seen[st.Peer.Dpg] = true
 		name := st.Capabilities.GetDpgInfo().GetDisplayName()
 		if name == "" {
 			name = shortName(st.Peer.Dpg)
@@ -73,15 +73,30 @@ func List(snap topology.Snapshot) []Stack {
 	return out
 }
 
-// With returns the stacks of List whose adapter lists a feature.
-func With(snap topology.Snapshot, f backendv1.Feature) []Stack {
+// firstPerDpg keeps the first stack of each DPG that keep accepts.
+func firstPerDpg(list []Stack, keep func(Stack) bool) []Stack {
 	var out []Stack
-	for _, s := range List(snap) {
-		if s.Has(f) {
-			out = append(out, s)
+	seen := map[configv1.Dpg]bool{}
+	for _, s := range list {
+		if seen[s.Dpg] || !keep(s) {
+			continue
 		}
+		seen[s.Dpg] = true
+		out = append(out, s)
 	}
 	return out
+}
+
+// List returns one stack per DPG with a live adapter, in snapshot order:
+// the first live pair of the DPG.
+func List(snap topology.Snapshot) []Stack {
+	return firstPerDpg(pairs(snap), func(Stack) bool { return true })
+}
+
+// With returns one stack per DPG that offers a feature: the first live
+// pair of the DPG whose adapter lists it.
+func With(snap topology.Snapshot, f backendv1.Feature) []Stack {
+	return firstPerDpg(pairs(snap), func(s Stack) bool { return s.Has(f) })
 }
 
 // Name returns the display name of a stack, or the short name of the
@@ -127,11 +142,20 @@ func (d *Directory) List(ctx context.Context) []Stack {
 	return List(d.snapshot(ctx))
 }
 
-// Find returns the stack of a DPG when its adapter lists a feature. It
-// returns ErrNotOffered otherwise.
+// With returns the stacks of the deployment now that offer a feature,
+// each through the first live pair whose adapter lists it.
+func (d *Directory) With(ctx context.Context, f backendv1.Feature) []Stack {
+	if d == nil || d.snapshot == nil {
+		return nil
+	}
+	return With(d.snapshot(ctx), f)
+}
+
+// Find returns the stack of a DPG through the first live pair whose
+// adapter lists a feature. It returns ErrNotOffered otherwise.
 func (d *Directory) Find(ctx context.Context, dpg configv1.Dpg, f backendv1.Feature) (Stack, error) {
-	for _, s := range d.List(ctx) {
-		if s.Dpg == dpg && s.Has(f) {
+	for _, s := range d.With(ctx, f) {
+		if s.Dpg == dpg {
 			return s, nil
 		}
 	}

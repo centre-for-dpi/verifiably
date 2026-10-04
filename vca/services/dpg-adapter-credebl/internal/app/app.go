@@ -63,7 +63,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		IssuerID: cfg.IssuerID,
 	})
 	var agent *credebl.Agent
-	if cfg.HolderRole() {
+	if cfg.UsesAgent() {
 		agent = credebl.NewAgent(credebl.AgentOptions{
 			HTTP: dpgclient.New(dpgclient.Options{
 				BaseURL: cfg.AgentURL, Timeout: cfg.Timeout, Retries: cfg.Retries, MaxBytes: cfg.MaxBytes, HTTP: deps.HTTP,
@@ -83,8 +83,11 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Versions:     cfg.Versions(),
 		MailOffers:   cfg.MailOffers,
 		Agent:        agent,
-		HolderLabel:  cfg.HolderLabel,
-		StatusList:   cfg.StatusList,
+		// An issuer and a verifier pair reach the agent to resolve
+		// ledger DIDs only.
+		AgentResolverOnly: cfg.AgentResolverOnly,
+		HolderLabel:       cfg.HolderLabel,
+		StatusList:        cfg.StatusList,
 	})
 	if err != nil {
 		return nil, err

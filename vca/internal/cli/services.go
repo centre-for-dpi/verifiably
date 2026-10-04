@@ -329,12 +329,16 @@ func Catalog() []Service {
 			Callers: map[string][]string{rpcDataSource: {"dpg-adapter-inji", "schema-registry"}}},
 		// The data volume keeps the verifier id and the tenant of each
 		// holder. A holder pair reaches the admin port of the shared agent
-		// for the wallets (ADR-062).
+		// for the wallets (ADR-062). Every pair reaches it for the DID
+		// resolver.
 		{Name: "dpg-adapter-credebl", ListenEnv: "VCA_CREDEBL_LISTEN", ExposedPort: 8080, Roles: everyRole, Dpg: configv1.Dpg_DPG_CREDEBL,
 			Links:    []Link{dpgURL("VCA_CREDEBL_API_URL")},
 			Stateful: true, Fixed: []FixedValue{
 				{Env: "VCA_CREDEBL_STORE_FILE", Value: "/data/credebl-state"},
-				{Env: CredeblAdapterAgentURLEnv, Value: "http://" + SharedAgentHost + ":8001", Roles: holder},
+				// Every pair reaches the agent to resolve ledger DIDs. Only
+				// the holder pair keeps wallets there (ADR-062 decision 7).
+				{Env: CredeblAdapterAgentURLEnv, Value: "http://" + SharedAgentHost + ":8001"},
+				{Env: CredeblAdapterAgentResolverOnlyEnv, Value: "true", Roles: []commonv1.Role{commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_VERIFIER}},
 				// The stack file runs the status list host, so the offers
 				// of an issuer pair are revocable (P6-C5b).
 				{Env: CredeblAdapterStatusListEnv, Value: "true", Roles: issuer},

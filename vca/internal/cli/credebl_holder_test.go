@@ -11,12 +11,13 @@ import (
 	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 )
 
-// TestCredeblHolderPairReachesTheAgent is ADR-062 decision 7: setup
-// gives the adapter of a CREDEBL holder pair the admin address and the
-// generated API key of the shared agent, which turn the holder wallet
-// on. A pair of another role gets neither.
+// TestCredeblHolderPairReachesTheAgent is ADR-062 decision 7 as the
+// amendment of 2026-10-04 changes it: setup gives the adapter of every
+// CREDEBL pair the admin address and the generated API key of the
+// shared agent. The agent of an issuer and a verifier pair resolves
+// ledger DIDs only, so only the holder pair serves a wallet.
 func TestCredeblHolderPairReachesTheAgent(t *testing.T) {
-	for role, want := range map[commonv1.Role]bool{commonv1.Role_ROLE_HOLDER: true, commonv1.Role_ROLE_ISSUER: false, commonv1.Role_ROLE_VERIFIER: false} {
+	for _, role := range []commonv1.Role{commonv1.Role_ROLE_HOLDER, commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_VERIFIER} {
 		plan, err := BuildPlan(SetupRequest{Pair: credeblPair(role), Flags: credeblFlags(), Random: rand.Reader})
 		if err != nil {
 			t.Fatal(err)
@@ -30,12 +31,17 @@ func TestCredeblHolderPairReachesTheAgent(t *testing.T) {
 			t.Fatal(err)
 		}
 		key, address := env[CredeblAdapterAgentKeyEnv], env[CredeblAdapterAgentURLEnv]
-		if want && (key != stack[SharedAgentAPIKeyEnv] || key == "" || address != "http://"+SharedAgentHost+":8001") {
+		if key != stack[SharedAgentAPIKeyEnv] || key == "" || address != "http://"+SharedAgentHost+":8001" {
 			t.Errorf("%v: key %q, address %q", role, key, address)
 		}
-		if !want && (key != "" || address != "") {
-			t.Errorf("%v: the pair holds the agent: %q %q", role, key, address)
+		resolverOnly := env[CredeblAdapterAgentResolverOnlyEnv] == "true"
+		if resolverOnly == (role == commonv1.Role_ROLE_HOLDER) {
+			t.Errorf("%v: resolver only = %v", role, resolverOnly)
 		}
+	}
+	// A pair of another DPG gets nothing.
+	if got := CredeblAdapterValues(Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_WALTID}, map[string]string{SharedAgentAPIKeyEnv: "k"}); got != nil {
+		t.Errorf("a pair of another DPG got %v", got)
 	}
 }
 

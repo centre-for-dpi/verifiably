@@ -16,3 +16,9 @@
   1. A citizen holds AnonCreds, W3C JSON-LD, and SD-JWT credentials from a CREDEBL issuer in one wallet of the stack. The citizen answers a DIDComm proof request and an OID4VP request from the pages of VCA.
   2. The holder sees an offer or a request before the wallet contacts the other party.
   3. The pinned agent has no basic message call, so VCA offers no basic messages.
+- Amendment of 2026-10-04:
+  1. Decision 7 gave the agent to the holder pair only. Only that pair then listed `FEATURE_DID_RESOLVE`. An admin without a holder pair could not trust a `did:indy`.
+  2. `vca setup` writes the agent URL and the agent API key into every CREDEBL pair. Each adapter resolves DIDs in a tenant of its own, so no pair reads the wallets of another.
+  3. An issuer and a verifier pair also get `VCA_CREDEBL_AGENT_RESOLVER_ONLY`. Their answer lists `FEATURE_DID_RESOLVE` without `ROLE_HOLDER` and without a wallet feature.
+  4. The admin asks every live pair of a stack for a feature, not the first live pair only.
+  5. More adapters hold the agent API key. The issuer pair already holds the platform admin and its key, so the reach of a pair grows little.

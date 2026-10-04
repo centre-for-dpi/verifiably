@@ -365,11 +365,15 @@ const (
 	// CredeblAdapterCryptoKeyEnv holds CRYPTO_PRIVATE_KEY of the stack.
 	CredeblAdapterCryptoKeyEnv = "VCA_CREDEBL_CRYPTO_KEY" //nolint:gosec // G101: this is a variable name, not a credential.
 	// CredeblAdapterAgentURLEnv names the admin address of the shared
-	// agent, which a holder pair reaches for the wallets (ADR-062).
+	// agent, which a holder pair reaches for the wallets (ADR-062) and
+	// every pair reaches for the DID resolver.
 	CredeblAdapterAgentURLEnv = "VCA_CREDEBL_AGENT_URL" //nolint:gosec // G101: this is a variable name, not a credential.
 	// CredeblAdapterAgentKeyEnv holds the generated API key of the shared
-	// agent in a holder pair.
+	// agent in a CREDEBL pair.
 	CredeblAdapterAgentKeyEnv = "VCA_CREDEBL_AGENT_API_KEY" //nolint:gosec // G101: this is a variable name, not a credential.
+	// CredeblAdapterAgentResolverOnlyEnv keeps the holder wallets off in
+	// an issuer and a verifier pair, whose agent resolves DIDs only.
+	CredeblAdapterAgentResolverOnlyEnv = "VCA_CREDEBL_AGENT_RESOLVER_ONLY" //nolint:gosec // G101: this is a variable name, not a credential.
 )
 
 // CredeblAdapterValues returns the sign in of the CREDEBL adapter for
@@ -397,9 +401,11 @@ func CredeblAdapterValues(p Pair, stack map[string]string) map[string]string {
 		out[CredeblMailOffersEnv] = "true"
 	}
 	// A holder pair keeps a tenant wallet per holder in the shared agent
-	// (ADR-062 decision 7). The fixed value of the catalogue names the
-	// address, and the key comes from the stack .env.
-	if key := strings.TrimSpace(stack[SharedAgentAPIKeyEnv]); key != "" && p.Role == commonv1.Role_ROLE_HOLDER {
+	// (ADR-062 decision 7). Every pair resolves ledger DIDs there, in a
+	// tenant of its own. The fixed values of the catalogue name the
+	// address and keep the wallets of an issuer and a verifier pair off.
+	// The key comes from the stack .env.
+	if key := strings.TrimSpace(stack[SharedAgentAPIKeyEnv]); key != "" && p.Role != commonv1.Role_ROLE_ADMIN {
 		out[CredeblAdapterAgentKeyEnv] = key
 	}
 	return out

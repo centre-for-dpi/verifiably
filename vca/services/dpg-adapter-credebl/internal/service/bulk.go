@@ -88,8 +88,11 @@ func (s *Service) features() []backendv1.Feature {
 		// screen marks each claim as required.
 		out = append(out, backendv1.Feature_FEATURE_WALLET_DIDCOMM, backendv1.Feature_FEATURE_WALLET_DIDS,
 			backendv1.Feature_FEATURE_WALLET_WHOLE_QUERY)
-		// The resolver of the shared agent reads a ledger DID, such as
-		// the did:indy of an AnonCreds issuer.
+	}
+	// The resolver of the shared agent reads a ledger DID, such as the
+	// did:indy of an AnonCreds issuer. Every pair with the agent lists
+	// it, so the admin needs no holder pair to trust a ledger DID.
+	if s.agent != nil {
 		out = append(out, backendv1.Feature_FEATURE_DID_RESOLVE)
 	}
 	return out

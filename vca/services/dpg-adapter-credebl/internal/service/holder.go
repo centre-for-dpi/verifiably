@@ -82,8 +82,9 @@ func holderKey(subject string) string {
 // walletKey is the store key that marks a tenant of a holder.
 func walletKey(tenant string) string { return "wallet/" + tenant }
 
-// holderRole reports whether the adapter serves the holder role.
-func (s *Service) holderRole() bool { return s.agent != nil }
+// holderRole reports whether the adapter serves the holder role: it
+// reaches the agent, and the agent does more than resolve DIDs.
+func (s *Service) holderRole() bool { return s.agent != nil && !s.resolverOnly }
 
 // wallet checks the role and the wallet id. The id must name a tenant
 // that Register made, never the tenant of an organisation in the same

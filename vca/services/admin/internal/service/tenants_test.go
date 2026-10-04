@@ -128,9 +128,14 @@ func (d *deployment) stop(dpg configv1.Dpg) {
 
 // livePair is a live issuer pair whose adapter lists features.
 func livePair(dpg configv1.Dpg, url, name string, features ...backendv1.Feature) topology.Status {
+	return liveRolePair(commonv1.Role_ROLE_ISSUER, dpg, url, name, features...)
+}
+
+// liveRolePair is a live pair of a role whose adapter lists features.
+func liveRolePair(role commonv1.Role, dpg configv1.Dpg, url, name string, features ...backendv1.Feature) topology.Status {
 	return topology.Status{
 		Peer: topology.Peer{
-			Pair: topology.PairName(commonv1.Role_ROLE_ISSUER, dpg), Role: commonv1.Role_ROLE_ISSUER, Dpg: dpg,
+			Pair: topology.PairName(role, dpg), Role: role, Dpg: dpg,
 			Services: map[string]string{topology.AdapterService(dpg): url},
 		},
 		State:        topology.Live,
@@ -144,16 +149,26 @@ func livePair(dpg configv1.Dpg, url, name string, features ...backendv1.Feature)
 // extra features too.
 func withStacks(t *testing.T, h *harness, extra ...backendv1.Feature) (*fakeAdapter, *deployment) {
 	t.Helper()
+	return withPairs(t, h, func(url string) []topology.Status {
+		return []topology.Status{
+			livePair(configv1.Dpg_DPG_WALTID, "http://plain.invalid", "Plain stack"),
+			livePair(configv1.Dpg_DPG_CREDEBL, url, "Tenancy stack", append([]backendv1.Feature{backendv1.Feature_FEATURE_MULTI_TENANCY}, extra...)...),
+		}
+	})
+}
+
+// withPairs rebuilds the service of the harness over the pairs that
+// pairs returns. The returned fake serves the adapter at the URL that
+// pairs gets.
+func withPairs(t *testing.T, h *harness, pairs func(url string) []topology.Status) (*fakeAdapter, *deployment) {
+	t.Helper()
 	fake := newFakeAdapter()
 	mux := http.NewServeMux()
 	mux.Handle(backendv1connect.NewTenantBackendServiceHandler(fake))
 	mux.Handle(backendv1connect.NewNotificationBackendServiceHandler(fake))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	dep := &deployment{snap: topology.Snapshot{Peers: []topology.Status{
-		livePair(configv1.Dpg_DPG_WALTID, "http://plain.invalid", "Plain stack"),
-		livePair(configv1.Dpg_DPG_CREDEBL, srv.URL, "Tenancy stack", append([]backendv1.Feature{backendv1.Feature_FEATURE_MULTI_TENANCY}, extra...)...),
-	}}}
+	dep := &deployment{snap: topology.Snapshot{Peers: pairs(srv.URL)}}
 	svc, err := service.New(service.Deps{
 		Cfg: h.cfg, Records: h.rec, Audit: h.log, Login: h.login, Providers: h.svc.Providers(),
 		Vault: onboard.NewVault(""), Fetch: http.DefaultClient, Trust: h.trust,

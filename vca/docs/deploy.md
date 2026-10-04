@@ -261,8 +261,9 @@ env file when its name starts with `VCA_`.
 Setup writes the sign in of the CREDEBL adapter into the `.env` file of a
 CREDEBL pair from `deploy/credebl/.env`: `VCA_CREDEBL_EMAIL`,
 `VCA_CREDEBL_PASSWORD` and `VCA_CREDEBL_CRYPTO_KEY`.
-A CREDEBL holder pair also gets `VCA_CREDEBL_AGENT_API_KEY` for its
-wallets (ADR-062).
+Every CREDEBL pair also gets `VCA_CREDEBL_AGENT_API_KEY` for the DID
+resolver of the shared agent. A holder pair keeps its wallets there too
+(ADR-062).
 A `--set` value still wins.
 `vca dpg bootstrap credebl` writes `VCA_CREDEBL_ORG_ID`, the organisation
 it makes for the deployment.
@@ -739,6 +740,10 @@ The adapter reaches the admin port of the agent on the compose network.
 Its data volume keeps the tenant of each holder, so keep the volume.
 The holder pair runs the same services as before, so the memory floor
 does not change.
+An issuer and a verifier pair reach the agent too, with the same key.
+There the agent resolves ledger DIDs only, because the catalogue sets
+`VCA_CREDEBL_AGENT_RESOLVER_ONLY`. So the admin trusts a `did:indy`
+without a holder pair.
 A wallet reaches an issuer or a verifier on the address of the agent.
 Set `CREDEBL_AGENT_ENDPOINT` to its public address on a public host.
 

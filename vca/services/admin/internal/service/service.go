@@ -231,7 +231,7 @@ func (s *Service) UpsertTrustEntry(ctx context.Context, req *connect.Request[adm
 var localMethods = []string{"did:key:", "did:jwk:", "did:web:"}
 
 // withStackDocument adds the DID document of a DID that VCA does not
-// resolve, such as the did:indy of an AnonCreds issuer, when a live stack
+// resolve, such as the did:indy of an AnonCreds issuer, when a live pair
 // that lists FEATURE_DID_RESOLVE resolves it. The registry keeps that
 // document and the name of the stack. Without such a stack the entry goes
 // as it came, and the registry asks for the confirmation of the admin.
@@ -245,10 +245,7 @@ func (s *Service) withStackDocument(ctx context.Context, e *trustv1.TrustEntry) 
 			return e
 		}
 	}
-	for _, st := range s.d.Stacks.List(ctx) {
-		if !st.Has(backendv1.Feature_FEATURE_DID_RESOLVE) {
-			continue
-		}
+	for _, st := range s.d.Stacks.With(ctx, backendv1.Feature_FEATURE_DID_RESOLVE) {
 		res, err := s.d.Stacks.Tenants(st).ResolveDid(ctx, connect.NewRequest(&backendv1.ResolveDidRequest{Did: did}))
 		if err != nil {
 			continue

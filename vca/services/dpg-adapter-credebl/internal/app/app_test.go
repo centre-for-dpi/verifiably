@@ -142,6 +142,35 @@ func TestBuildWiresTheHolderAgent(t *testing.T) {
 	}
 }
 
+// TestBuildWiresAResolverOnlyAgent: an issuer or a verifier pair holds
+// the agent to resolve ledger DIDs, and serves no holder wallet.
+func TestBuildWiresAResolverOnlyAgent(t *testing.T) {
+	peers := peertest.New(t)
+	f := fake.New(testdata)
+	defer f.Close()
+	agent := fake.NewAgent(testdata)
+	defer agent.Close()
+	cfg := settings(f)
+	cfg.AgentURL, cfg.AgentAPIKey, cfg.AgentResolverOnly = agent.URL(), fake.AgentAPIKey, true
+	a, err := buildPeered(peers, cfg, app.Deps{HTTP: f.Client()})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	srv := httptest.NewServer(a.Mux)
+	defer srv.Close()
+	resp, err := peers.Client(srv.Client()).Post(srv.URL+"/vca.backend.v1.CapabilityService/GetCapabilities", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if cerr := resp.Body.Close(); cerr != nil || err != nil {
+		t.Fatalf("read: %v %v", err, cerr)
+	}
+	if !strings.Contains(string(body), "FEATURE_DID_RESOLVE") || strings.Contains(string(body), "ROLE_HOLDER") {
+		t.Errorf("capabilities: %s", body)
+	}
+}
+
 // TestBuildWiresTheStatusList lists revocation when the settings name
 // the status list host of the stack (P6-C5b).
 func TestBuildWiresTheStatusList(t *testing.T) {

@@ -62,8 +62,11 @@ type Options struct {
 	// platform mails an out of band offer (CHANNEL_EMAIL).
 	MailOffers bool
 	// Agent calls the shared agent of the stack for the holder role
-	// (ADR-062). Nil turns the holder role off.
+	// (ADR-062) and to resolve ledger DIDs. Nil turns both off.
 	Agent *credebl.Agent
+	// AgentResolverOnly uses the agent to resolve ledger DIDs only, so
+	// the adapter serves no holder wallet (an issuer or a verifier pair).
+	AgentResolverOnly bool
 	// HolderLabel is the label a holder wallet shows the other party of
 	// a connection. Empty means DefaultHolderLabel.
 	HolderLabel string
@@ -93,6 +96,7 @@ type Service struct {
 	now          func() time.Time
 	mailOffers   bool
 	agent        *credebl.Agent
+	resolverOnly bool
 	holderLabel  string
 	pollInterval time.Duration
 	pollAttempts int
@@ -147,6 +151,7 @@ func New(opts Options) (*Service, error) {
 		now:          opts.Now,
 		mailOffers:   opts.MailOffers,
 		agent:        opts.Agent,
+		resolverOnly: opts.AgentResolverOnly,
 		holderLabel:  opts.HolderLabel,
 		pollInterval: opts.PollInterval,
 		pollAttempts: opts.PollAttempts,

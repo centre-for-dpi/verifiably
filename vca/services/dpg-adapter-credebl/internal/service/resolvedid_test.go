@@ -12,6 +12,8 @@ import (
 	"connectrpc.com/connect"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/service"
 )
 
 // ledgerDid is the did:indy of the recorded resolution.
@@ -61,5 +63,29 @@ func TestResolveDidThroughTheAgent(t *testing.T) {
 	plain, _ := newService(t, nil)
 	if _, err := plain.ResolveDid(ctx, connect.NewRequest(&backendv1.ResolveDidRequest{Did: ledgerDid})); connect.CodeOf(err) != connect.CodeUnimplemented {
 		t.Errorf("an adapter without the agent: %v", err)
+	}
+}
+
+// TestAResolverOnlyAgentServesNoWallet: an issuer or a verifier pair
+// reaches the agent to resolve ledger DIDs, so the admin needs no holder
+// pair for that (ADR-062 amendment of 2026-10-04). Such a pair lists DID
+// resolution but no holder role and no wallet feature.
+func TestAResolverOnlyAgentServesNoWallet(t *testing.T) {
+	ctx := context.Background()
+	svc, _, _ := newHolder(t, func(o *service.Options) { o.AgentResolverOnly = true })
+	caps, err := svc.GetCapabilities(ctx, connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	features := caps.Msg.GetFeatures()
+	if !slices.Contains(features, backendv1.Feature_FEATURE_DID_RESOLVE) || slices.Contains(features, backendv1.Feature_FEATURE_WALLET_DIDCOMM) ||
+		slices.Contains(caps.Msg.GetRoles(), commonv1.Role_ROLE_HOLDER) || len(caps.Msg.GetWalletDidMethods()) != 0 {
+		t.Errorf("capabilities = %+v", caps.Msg)
+	}
+	if _, err := svc.ResolveDid(ctx, connect.NewRequest(&backendv1.ResolveDidRequest{Did: ledgerDid})); err != nil {
+		t.Errorf("ResolveDid: %v", err)
+	}
+	if _, err := svc.Register(ctx, connect.NewRequest(&backendv1.RegisterRequest{PairwiseSubject: "s-1"})); connect.CodeOf(err) != connect.CodeUnimplemented {
+		t.Errorf("Register: %v", err)
 	}
 }

@@ -144,3 +144,33 @@ func TestANilDirectoryOffersNothing(t *testing.T) {
 		t.Errorf("a directory without a snapshot lists %+v", got)
 	}
 }
+
+// TestAFeatureOfALaterPairCounts: each pair of a stack runs its own
+// adapter, and the pairs may list different features. A stack offers a
+// feature when any of its live pairs lists it, and the call goes to the
+// adapter of that pair.
+func TestAFeatureOfALaterPairCounts(t *testing.T) {
+	snap := snapshot()
+	snap.Peers = append(snap.Peers, live("holder-credebl", commonv1.Role_ROLE_HOLDER, configv1.Dpg_DPG_CREDEBL, "http://credebl-3", "Tenancy stack",
+		backendv1.Feature_FEATURE_DID_RESOLVE))
+	got := stacks.With(snap, backendv1.Feature_FEATURE_DID_RESOLVE)
+	if len(got) != 1 || got[0].Dpg != configv1.Dpg_DPG_CREDEBL || got[0].Adapter != "http://credebl-3" {
+		t.Fatalf("With = %+v", got)
+	}
+	d := stacks.New(func(context.Context) topology.Snapshot { return snap }, nil)
+	ctx := context.Background()
+	st, err := d.Find(ctx, configv1.Dpg_DPG_CREDEBL, backendv1.Feature_FEATURE_DID_RESOLVE)
+	if err != nil || st.Adapter != "http://credebl-3" {
+		t.Fatalf("Find = %+v, %v", st, err)
+	}
+	if got := d.With(ctx, backendv1.Feature_FEATURE_DID_RESOLVE); len(got) != 1 || got[0].Adapter != "http://credebl-3" {
+		t.Fatalf("Directory.With = %+v", got)
+	}
+	// The first pair that lists the feature serves it.
+	if st, err := d.Find(ctx, configv1.Dpg_DPG_CREDEBL, backendv1.Feature_FEATURE_MULTI_TENANCY); err != nil || st.Adapter != "http://credebl" {
+		t.Errorf("Find = %+v, %v", st, err)
+	}
+	if got := (*stacks.Directory)(nil).With(ctx, backendv1.Feature_FEATURE_DID_RESOLVE); got != nil {
+		t.Errorf("a nil directory offers %+v", got)
+	}
+}

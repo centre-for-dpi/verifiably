@@ -12,7 +12,10 @@ import (
 	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	configv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/config/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
+	"github.com/centre-for-dpi/vc-adapters/internal/topology"
 )
 
 // ledgerDid is the did:indy of an AnonCreds issuer.
@@ -78,5 +81,35 @@ func TestApproveTrustEntryResolvesALedgerDid(t *testing.T) {
 	}
 	if got := res.Msg.GetEntry(); got.GetStatus() != trustv1.Status_STATUS_ACTIVE || got.GetResolvedBy() != "Tenancy stack" || got.GetDidDocument() == "" {
 		t.Fatalf("approved = %+v", got)
+	}
+}
+
+// TestUpsertTrustEntryAsksEveryPairOfAStack: each pair of a stack runs
+// its own adapter, and only one of them may resolve DIDs. Here the
+// issuer pair comes first and lists no DID resolution, while the holder
+// pair does. The admin asks the holder pair, so a ledger DID needs no
+// confirmation and the registry names the stack that resolved it.
+func TestUpsertTrustEntryAsksEveryPairOfAStack(t *testing.T) {
+	h := newHarness(t)
+	withPairs(t, h, func(url string) []topology.Status {
+		return []topology.Status{
+			liveRolePair(commonv1.Role_ROLE_ISSUER, configv1.Dpg_DPG_CREDEBL, "http://issuer.invalid", "CREDEBL", backendv1.Feature_FEATURE_MULTI_TENANCY),
+			liveRolePair(commonv1.Role_ROLE_HOLDER, configv1.Dpg_DPG_CREDEBL, url, "CREDEBL", backendv1.Feature_FEATURE_DID_RESOLVE),
+		}
+	})
+	entry := &trustv1.TrustEntry{Identifier: &trustv1.TrustEntry_Identifier{Id: &trustv1.TrustEntry_Identifier_Did{Did: ledgerDid}},
+		DisplayName: "Registry", Role: commonv1.Role_ROLE_ISSUER, Status: trustv1.Status_STATUS_ACTIVE}
+	if _, err := h.svc.UpsertTrustEntry(context.Background(), request(h, &adminv1.UpsertTrustEntryRequest{Entry: entry})); err != nil {
+		t.Fatal(err)
+	}
+	stored := h.trust.entries[key(entry.GetIdentifier())]
+	if stored.GetDidDocument() != `{"id":"`+ledgerDid+`"}` || stored.GetResolvedBy() != "CREDEBL" {
+		t.Fatalf("the registry got %+v", stored)
+	}
+	if got := msg.T("admin.trust.resolution.stack.label", stored.GetResolvedBy()); got != "Resolved by CREDEBL" {
+		t.Errorf("resolution = %q", got)
+	}
+	if got := h.trust.confirms; len(got) != 1 || got[0] {
+		t.Errorf("confirmations = %v", got)
 	}
 }

@@ -470,6 +470,8 @@ change.
 VCA does not resolve some DIDs, such as the `did:indy` of an AnonCreds
 issuer. Such a DID goes first to each live stack that lists
 `FEATURE_DID_RESOLVE`.
+Each pair of a stack runs its own adapter, so the admin asks every live
+pair of the stack. The first pair that lists the feature answers.
 The first stack that resolves it gives the document, and the registry
 keeps it with the name of the stack. When no stack resolves it, the
 admin ticks "Confirm the DID" to store it anyway. The trust table has a
