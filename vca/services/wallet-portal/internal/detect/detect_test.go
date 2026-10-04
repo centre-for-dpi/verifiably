@@ -134,6 +134,23 @@ func TestTextReadsCredential(t *testing.T) {
 	}
 }
 
+// TestTextKeepsTheSdJwtFormat keeps the format the issuer gave an SD-JWT:
+// the typ of its header names vc+sd-jwt or dc+sd-jwt. A header without
+// a typ reads as dc+sd-jwt, the identifier of OID4VP 1.0.
+func TestTextKeepsTheSdJwtFormat(t *testing.T) {
+	body := ".eyJ2Y3QiOiJEcml2ZXIifQ.c2ln~WyJzIiwiYSIsMV0~"
+	for header, want := range map[string]commonv1.Format{
+		"eyJhbGciOiJFUzI1NiIsInR5cCI6InZjK3NkLWp3dCJ9": commonv1.Format_FORMAT_VC_SD_JWT,
+		"eyJhbGciOiJFUzI1NiIsInR5cCI6ImRjK3NkLWp3dCJ9": commonv1.Format_FORMAT_DC_SD_JWT,
+		"eyJhbGciOiJFUzI1NiJ9":                         commonv1.Format_FORMAT_DC_SD_JWT,
+	} {
+		got, err := detect.Text(header+body, 0)
+		if err != nil || got.Kind != detect.Credential || got.Format != want {
+			t.Errorf("header %s: %+v %v, want %v", header, got.Format, err, want)
+		}
+	}
+}
+
 func TestTextRejects(t *testing.T) {
 	if _, err := detect.Text("   ", 0); !errors.Is(err, detect.ErrEmpty) {
 		t.Fatalf("empty: %v", err)

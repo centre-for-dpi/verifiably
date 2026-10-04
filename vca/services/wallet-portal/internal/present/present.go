@@ -499,12 +499,25 @@ func Matches(cq dcql.CredentialQuery, held []*walletportalv1.Card) []*walletport
 			continue
 		}
 		if format != commonv1.Format_FORMAT_UNSPECIFIED && card.GetFormat() != commonv1.Format_FORMAT_UNSPECIFIED &&
-			format != card.GetFormat() {
+			!SameFormat(format, card.GetFormat()) {
 			continue
 		}
 		out = append(out, card)
 	}
 	return out
+}
+
+// SameFormat reports whether a credential of format b answers a query
+// for format a. SD-JWT VC renamed its media type from vc+sd-jwt to
+// dc+sd-jwt, and OID4VP 1.0 names dc+sd-jwt. Both identifiers name the
+// same credential, so each answers a query for the other.
+func SameFormat(a, b commonv1.Format) bool {
+	return a == b || sdJwt(a) && sdJwt(b)
+}
+
+// sdJwt reports whether f is one of the two SD-JWT VC identifiers.
+func sdJwt(f commonv1.Format) bool {
+	return f == commonv1.Format_FORMAT_DC_SD_JWT || f == commonv1.Format_FORMAT_VC_SD_JWT
 }
 
 // valueOf returns the value of one claim path on a card.

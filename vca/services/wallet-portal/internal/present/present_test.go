@@ -374,6 +374,24 @@ func TestMatchesIgnoresFormatWhenUnknown(t *testing.T) {
 	}
 }
 
+// TestMatchesTreatsBothSdJwtFormatsAlike matches a vc+sd-jwt query with
+// a dc+sd-jwt card and the other way round. SD-JWT VC renamed the media
+// type from vc+sd-jwt to dc+sd-jwt; both name the same credential.
+func TestMatchesTreatsBothSdJwtFormatsAlike(t *testing.T) {
+	held := []*walletportalv1.Card{
+		card("legacy", "DriverLicence", commonv1.Format_FORMAT_VC_SD_JWT, nil),
+		card("current", "DriverLicence", commonv1.Format_FORMAT_DC_SD_JWT, nil),
+		card("jwt", "DriverLicence", commonv1.Format_FORMAT_JWT_VC_JSON, nil),
+	}
+	for _, format := range []string{dcql.FormatSDJWTLegacy, dcql.FormatSDJWT} {
+		cq := dcql.CredentialQuery{ID: "a", Format: format, Meta: &dcql.Meta{VctValues: []string{"DriverLicence"}}}
+		got := present.Matches(cq, held)
+		if len(got) != 2 || got[0].GetId() != "legacy" || got[1].GetId() != "current" {
+			t.Errorf("a %s query matched %+v", format, got)
+		}
+	}
+}
+
 func TestValueOfNestedPath(t *testing.T) {
 	req, err := present.Parse("openid4vp://?client_id=v&nonce=n&response_uri=https%3A%2F%2Fv.example%2Fp" +
 		"&dcql_query=" + url.QueryEscape(`{"credentials":[{"id":"a","format":"dc+sd-jwt",

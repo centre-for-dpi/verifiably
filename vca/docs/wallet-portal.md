@@ -351,7 +351,11 @@ The wallet then reads the request:
    claim set leaves out.
 3. The request card names the verifier and its identifier. A badge says
    whether the trust list names the verifier. The card shows the
-   purpose and the matched credential.
+   purpose and the matched credential. A credential matches a query
+   of its type and format. The store keeps the format the issuer gave
+   an SD-JWT, from the `typ` of its header. SD-JWT VC renamed
+   `vc+sd-jwt` to `dc+sd-jwt`, so a query for one matches a credential
+   of the other.
 4. The list "They ask for" shows each claim with the value the wallet
    would send. The page ticks and locks each required claim. An optional
    claim stays off until the holder turns it on.

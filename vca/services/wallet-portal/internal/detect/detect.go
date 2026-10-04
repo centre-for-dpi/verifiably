@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 )
@@ -193,7 +194,18 @@ func credentialOf(text string) (Result, bool) {
 	if format == commonv1.Format_FORMAT_UNSPECIFIED {
 		return Result{}, false
 	}
+	if format == commonv1.Format_FORMAT_DC_SD_JWT && legacySdJwt(text) {
+		format = commonv1.Format_FORMAT_VC_SD_JWT
+	}
 	return Result{Kind: Credential, Credential: []byte(text), Format: format}, true
+}
+
+// legacySdJwt reports whether the header of an SD-JWT names the typ
+// vc+sd-jwt. The wallet keeps the format the issuer gave the credential.
+func legacySdJwt(text string) bool {
+	jwt, _, _ := strings.Cut(text, "~")
+	header, err := jose.PeekHeader(jwt)
+	return err == nil && header.Typ == "vc+sd-jwt"
 }
 
 // FormatOf maps a core format to the proto format.
