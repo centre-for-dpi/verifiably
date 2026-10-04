@@ -103,9 +103,9 @@ type ID struct {
 	Pair string
 	// Deployment marks a deployment scoped caller, such as the vca
 	// command or the landing. The authority writes it into the
-	// statement. A callee takes the token of such a caller at any host,
-	// because the vca command calls through a port that the host
-	// publishes.
+	// statement. A callee takes the token of such a caller only at a
+	// name of its own too. The vca command calls through a port that the
+	// host publishes, so each service lists that port in Hosts.
 	Deployment bool
 }
 
@@ -493,7 +493,7 @@ func (s Settings) Check(h http.Header, procedure string) (ID, error) {
 		return ID{}, unauthenticated("the token names %q, the identity %q", c.Issuer, id.Service)
 	case audience != procedure:
 		return ID{}, unauthenticated("the token of %s is for %q, not %q", id, audience, procedure)
-	case !id.Deployment && !s.ownHost(host):
+	case !s.ownHost(host):
 		return ID{}, unauthenticated("the token of %s is for the host %q, which is no name of %s", id, host, s.ID)
 	case expires.Sub(issued) > TokenTTL || expires.Before(issued):
 		return ID{}, unauthenticated("the token of %s lives longer than %s", id, TokenTTL)

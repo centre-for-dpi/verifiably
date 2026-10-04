@@ -449,13 +449,19 @@ A token counts from 30 seconds before its issue time to 30 seconds after
 its end.
 So a replay works for 90 seconds at most.
 The vca command and the landing are deployment scoped.
-The vca command calls through a port of the host, so a callee takes
-their tokens at any host.
-Such a token opens the same procedure on every server that lists the
-caller.
+A callee still takes their tokens for its own names only.
+The vca command calls through a port of the host.
+So setup writes the published names of each service into
+`VCA_PEER_HOSTS`: `127.0.0.1` and `localhost`, each with the host port.
+A token of the vca command then opens one callee only.
+The landing calls each adapter at its compose name or its cluster name.
 When you reach a service at another name, add the name to
 `VCA_PEER_HOSTS` in its identity file, joined by commas.
+Set it, for example, when `VCA_BOOTSTRAP_ADAPTER_URL` names another
+host.
 A name with no port stands for any port.
+`vca dpg upgrade-secrets` keeps a name that you added.
+It writes an identity again when a host port changes.
 `TestEveryInternalConnectServiceListsItsCallers` keeps the lists in step
 with this table.
 `TestEveryConnectHandlerChecksItsCaller` fails when any Go file of

@@ -295,7 +295,7 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	pairPeers, sharedPeers, err := peerFiles(req.Pair, authority, req.Random, now())
+	pairPeers, sharedPeers, err := peerFiles(req.Pair, values, authority, req.Random, now())
 	if err != nil {
 		return Plan{}, err
 	}

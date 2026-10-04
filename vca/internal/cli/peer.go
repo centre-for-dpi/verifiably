@@ -12,7 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -165,7 +167,8 @@ func peerAuthority(existing []byte, random io.Reader) (peerauth.Authority, []Fil
 // owner is the pair, or the service name of a deployment scoped service.
 // deployment marks a deployment scoped service in the statement.
 // It returns the identity file and the key file.
-func peerIdentity(a peerauth.Authority, owner string, s Service, deployment bool, random io.Reader, now time.Time) ([]byte, []byte, error) {
+// hosts are the more names of the service, for VCA_PEER_HOSTS.
+func peerIdentity(a peerauth.Authority, owner string, s Service, deployment bool, hosts []string, random io.Reader, now time.Time) ([]byte, []byte, error) {
 	id, err := a.Issue(peerauth.ID{Service: s.Name, Pair: owner, Deployment: deployment}, random, now)
 	if err != nil {
 		return nil, nil, err
@@ -175,6 +178,7 @@ func peerIdentity(a peerauth.Authority, owner string, s Service, deployment bool
 		return nil, nil, err
 	}
 	id.Callers = s.Callers
+	id.Hosts = hosts
 	values := id.Env()
 	values[peerauth.KeyFileEnv] = PeerKeyMount
 	names := make([]string, 0, len(values))
@@ -193,20 +197,21 @@ func peerIdentity(a peerauth.Authority, owner string, s Service, deployment bool
 }
 
 // peerFiles returns the identity file of every service of a pair, and
-// of the landing, from the authority of the deployment.
-func peerFiles(p Pair, a peerauth.Authority, random io.Reader, now time.Time) (pair, shared []File, err error) {
+// of the landing, from the authority of the deployment. values are the
+// settings of the pair, which hold its host ports.
+func peerFiles(p Pair, values map[string]string, a peerauth.Authority, random io.Reader, now time.Time) (pair, shared []File, err error) {
 	// Git ignores the identity files beside the keys.
 	ignore := File{Name: filepath.Join(PeerDir, ".gitignore"), Data: []byte("*\n"), Mode: 0o600}
 	pair = append(pair, ignore)
 	for _, s := range ServicesFor(p) {
-		data, key, err := peerIdentity(a, p.Name(), s, false, random, now)
+		data, key, err := peerIdentity(a, p.Name(), s, false, PublishedHosts(p, values, s.Name), random, now)
 		if err != nil {
 			return nil, nil, err
 		}
 		pair = append(pair, File{Name: PeerFile(s.Name), Data: data, Mode: 0o600}, peerKeyFile("", s.Name, key))
 	}
 	for _, s := range DeploymentServices() {
-		data, key, err := peerIdentity(a, s.Name, s, true, random, now)
+		data, key, err := peerIdentity(a, s.Name, s, true, nil, random, now)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -262,15 +267,21 @@ func UpgradePeerIdentities(opts PeerUpgradeOptions) (int, error) {
 		dir        string
 		s          Service
 		deployment bool
+		hosts      []string
 	}
 	var targets []target
 	for _, p := range AllPairs() {
 		dir := OutputDir(opts.Deploy, p)
-		if _, err := os.Stat(filepath.Join(dir, EnvFileName)); err != nil {
+		raw, err := os.ReadFile(filepath.Join(dir, EnvFileName)) // #nosec G304 -- the path comes from the deploy root
+		if err != nil {
 			continue
 		}
+		values, err := ParseDotenv(bytes.NewReader(raw))
+		if err != nil {
+			return 0, fmt.Errorf("read %s: %w", filepath.Join(dir, EnvFileName), err)
+		}
 		for _, s := range ServicesFor(p) {
-			targets = append(targets, target{owner: p.Name(), dir: dir, s: s})
+			targets = append(targets, target{owner: p.Name(), dir: dir, s: s, hosts: PublishedHosts(p, values, s.Name)})
 		}
 	}
 	for _, s := range DeploymentServices() {
@@ -281,10 +292,11 @@ func UpgradePeerIdentities(opts PeerUpgradeOptions) (int, error) {
 	}
 	written := 0
 	for _, tg := range targets {
-		if current(tg.dir, trusted, tg.s, tg.deployment) {
+		if current(tg.dir, trusted, tg.s, tg.deployment, tg.hosts) {
 			continue
 		}
-		data, key, err := peerIdentity(authority, tg.owner, tg.s, tg.deployment, opts.Random, now())
+		hosts := mergeHosts(tg.hosts, identityHosts(tg.dir, tg.s.Name))
+		data, key, err := peerIdentity(authority, tg.owner, tg.s, tg.deployment, hosts, opts.Random, now())
 		if err != nil {
 			return written, err
 		}
@@ -308,10 +320,11 @@ func UpgradePeerIdentities(opts PeerUpgradeOptions) (int, error) {
 
 // current reports whether the identity file of the service under dir
 // holds an identity of the authority with the callers of the catalogue
-// and the scope of the service, and names a key file that holds the key
-// of its statement. An identity file of an earlier release, with the
-// key in the environment, is not current.
-func current(dir, trusted string, s Service, deployment bool) bool {
+// and the scope of the service, lists every one of hosts, and names a
+// key file that holds the key of its statement. An identity file of an
+// earlier release, with the key in the environment or without the
+// published hosts, is not current.
+func current(dir, trusted string, s Service, deployment bool, hosts []string) bool {
 	raw, err := os.ReadFile(filepath.Join(dir, PeerFile(s.Name))) // #nosec G304 -- the path comes from the deploy root
 	if err != nil {
 		return false
@@ -322,7 +335,15 @@ func current(dir, trusted string, s Service, deployment bool) bool {
 	}
 	values[peerauth.KeyFileEnv] = filepath.Join(dir, PeerKeyFile(s.Name))
 	id, err := peerauth.Load(func(k string) string { return values[k] })
-	return err == nil && id.ID.Service == s.Name && id.ID.Deployment == deployment &&
+	if err != nil {
+		return false
+	}
+	for _, h := range hosts {
+		if !slices.Contains(id.Hosts, h) {
+			return false
+		}
+	}
+	return id.ID.Service == s.Name && id.ID.Deployment == deployment &&
 		id.Callers.String() == peerauth.Callers(s.Callers).String()
 }
 
@@ -402,8 +423,8 @@ func HelmPeerSecrets(opts PeerHelmOptions) error {
 	trusted := authority.PublicSet()
 	var b strings.Builder
 	for _, s := range Catalog() {
-		if !current(dir, trusted, s, scoped[s.Name]) {
-			data, key, ierr := peerIdentity(authority, opts.Release, s, scoped[s.Name], opts.Random, now())
+		if !current(dir, trusted, s, scoped[s.Name], nil) {
+			data, key, ierr := peerIdentity(authority, opts.Release, s, scoped[s.Name], nil, opts.Random, now())
 			if ierr != nil {
 				return ierr
 			}
@@ -499,4 +520,58 @@ func CLIPeerClient(deploy string, c *http.Client, random io.Reader) (*http.Clien
 		return nil, err
 	}
 	return id.Client(c), nil
+}
+
+// PublishedHosts returns the names under which the vca command reaches
+// a service of a pair on its host port: the loopback address and
+// localhost, each with the port. The callee takes a token for these
+// names, so a token of the vca command opens one callee only (amendment
+// of ADR-075 of 2026-10-04). A service with no host port gets none.
+func PublishedHosts(p Pair, values map[string]string, service string) []string {
+	for _, a := range HostPorts(p, values) {
+		if a.Service.Name == service {
+			port := strconv.Itoa(a.Host)
+			return []string{LoopbackAddress + ":" + port, "localhost:" + port}
+		}
+	}
+	return nil
+}
+
+// loopbackHost reports whether a name of VCA_PEER_HOSTS is a loopback
+// name with a port, as PublishedHosts writes it.
+func loopbackHost(h string) bool {
+	return strings.HasPrefix(h, LoopbackAddress+":") || strings.HasPrefix(h, "localhost:")
+}
+
+// identityHosts returns the hosts of the identity file of a service
+// under dir, or nil when it has none.
+func identityHosts(dir, service string) []string {
+	raw, err := os.ReadFile(filepath.Join(dir, PeerFile(service))) // #nosec G304 -- the path comes from the deploy root
+	if err != nil {
+		return nil
+	}
+	values, err := ParseDotenv(bytes.NewReader(raw))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, h := range strings.Split(values[peerauth.HostsEnv], ",") {
+		if h = strings.TrimSpace(h); h != "" {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// mergeHosts returns the published hosts, then each name of an earlier
+// identity file that the operator added. A loopback name of an earlier
+// port goes, because the port changed.
+func mergeHosts(published, earlier []string) []string {
+	out := append([]string(nil), published...)
+	for _, h := range earlier {
+		if !loopbackHost(h) && !slices.Contains(out, h) {
+			out = append(out, h)
+		}
+	}
+	return out
 }

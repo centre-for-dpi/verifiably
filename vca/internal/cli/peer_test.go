@@ -11,14 +11,17 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"gopkg.in/yaml.v3"
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -504,7 +507,7 @@ func TestUpgradeAddsPeerIdentities(t *testing.T) {
 	// A landing identity of a release before the deployment scope gets
 	// the scope at the next run, with the same authority.
 	landingPath := filepath.Join(deploy, LandingDir, PeerFile(LandingService))
-	old, _, err := peerIdentity(authority, LandingService, deploymentServiceNamed(t, LandingService), false, rand.Reader, time.Now())
+	old, _, err := peerIdentity(authority, LandingService, deploymentServiceNamed(t, LandingService), false, nil, rand.Reader, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -706,10 +709,20 @@ func TestCLIClientSignsWithTheAuthority(t *testing.T) {
 	}
 	callee := mustIssue(t, authority, "dpg-adapter-waltid")
 	callee.Callers = peerauth.Callers{"vca.backend.v1.IssuerBackendService": {CLIPeer}}
-	// The CLI calls through a port of the host, so the adapter takes its
-	// token at any host: the identity is deployment scoped.
-	if id, err := callee.Check(got, "/vca.backend.v1.IssuerBackendService/GetIssuerIdentity"); err != nil || id.Service != CLIPeer || !id.Deployment {
-		t.Fatalf("the adapter refused the CLI: %+v, %v", id, err)
+	// The CLI calls through a port of the host. The identity is
+	// deployment scoped, and the adapter takes its token at the host port
+	// it publishes only (amendment of ADR-075 of 2026-10-04).
+	procedure := "/vca.backend.v1.IssuerBackendService/GetIssuerIdentity"
+	if _, cerr := callee.Check(got, procedure); connect.CodeOf(cerr) != connect.CodeUnauthenticated {
+		t.Fatalf("an adapter that does not publish the port took the token: %v", cerr)
+	}
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callee.Hosts = []string{u.Host}
+	if id, cerr := callee.Check(got, procedure); cerr != nil || id.Service != CLIPeer || !id.Deployment {
+		t.Fatalf("the adapter refused the CLI: %+v, %v", id, cerr)
 	}
 }
 
@@ -791,4 +804,81 @@ func lineDiff(a, b string) string {
 		}
 	}
 	return strings.Join(out, "\n")
+}
+
+// TestIdentitiesNameThePublishedPorts is the amendment of ADR-075 of
+// 2026-10-04 on deployment scoped callers: each service of a pair lists
+// the loopback names of its host port in VCA_PEER_HOSTS, so it takes a
+// token of the vca command that names that port, and no token for
+// another callee. An identity without them is stale. A name that the
+// operator added stays.
+func TestIdentitiesNameThePublishedPorts(t *testing.T) {
+	p := Pair{Role: commonv1.Role_ROLE_ISSUER, Dpg: configv1.Dpg_DPG_WALTID}
+	plan := planWithAuthority(t, p, nil)
+	for _, a := range plan.Ports {
+		id := planned(t, plan.Files, "", a.Service.Name)
+		for _, want := range []string{LoopbackAddress + ":" + strconv.Itoa(a.Host), "localhost:" + strconv.Itoa(a.Host)} {
+			if !slices.Contains(id.Hosts, want) {
+				t.Errorf("%s lists the hosts %v, not %s", a.Service.Name, id.Hosts, want)
+			}
+		}
+	}
+	deploy, pairs := writeOldDeployment(t)
+	opts := PeerUpgradeOptions{Deploy: deploy, Random: rand.Reader, Out: io.Discard}
+	if _, err := UpgradePeerIdentities(opts); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(deploy, pairs[0].Name())
+	published := PublishedHosts(pairs[0], map[string]string{"VCA_ROLE": "x"}, "issuance")
+	if len(published) != 2 {
+		t.Fatalf("published hosts %v", published)
+	}
+	if got := onDisk(t, dir, "issuance").Hosts; !slices.Equal(got, published) {
+		t.Errorf("issuance lists %v, want %v", got, published)
+	}
+	path := filepath.Join(dir, PeerFile("issuance"))
+	edit := func(from, to string) {
+		t.Helper()
+		raw, err := os.ReadFile(path) // #nosec G304 -- a test path
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), from) {
+			t.Fatalf("the identity file holds no %q", from)
+		}
+		if werr := os.WriteFile(path, []byte(strings.Replace(string(raw), from, to, 1)), 0o600); werr != nil {
+			t.Fatal(werr)
+		}
+	}
+	line := peerauth.HostsEnv + "=" + quoteValue(strings.Join(published, ","))
+	edit(line, peerauth.HostsEnv+"="+quoteValue(strings.Join(append(append([]string(nil), published...), "status.internal"), ",")))
+	if n, err := UpgradePeerIdentities(opts); err != nil || n != 0 {
+		t.Fatalf("a name that the operator added made the identity stale: wrote %d, %v", n, err)
+	}
+	if werr := os.WriteFile(filepath.Join(dir, EnvFileName), []byte("VCA_ROLE=x\nVCA_HOST_PORT_ISSUANCE=19999\n"), 0o600); werr != nil {
+		t.Fatal(werr)
+	}
+	if n, err := UpgradePeerIdentities(opts); err != nil || n != 1 {
+		t.Fatalf("a new host port: wrote %d, %v", n, err)
+	}
+	got := onDisk(t, dir, "issuance").Hosts
+	if !slices.Contains(got, LoopbackAddress+":19999") || !slices.Contains(got, "status.internal") || slices.Contains(got, published[0]) {
+		t.Errorf("after a new host port the hosts are %v", got)
+	}
+	raw, err := os.ReadFile(path) // #nosec G304 -- a test path
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept []string
+	for _, l := range strings.Split(string(raw), "\n") {
+		if !strings.HasPrefix(l, peerauth.HostsEnv+"=") {
+			kept = append(kept, l)
+		}
+	}
+	if werr := os.WriteFile(path, []byte(strings.Join(kept, "\n")), 0o600); werr != nil {
+		t.Fatal(werr)
+	}
+	if n, err := UpgradePeerIdentities(opts); err != nil || n != 1 {
+		t.Fatalf("an identity of an earlier release without hosts: wrote %d, %v", n, err)
+	}
 }

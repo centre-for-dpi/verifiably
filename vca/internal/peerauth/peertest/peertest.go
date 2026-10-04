@@ -75,7 +75,8 @@ func (k *Kit) Identity(service string, callers peerauth.Callers) peerauth.Settin
 }
 
 // caller issues the identity of Caller. It is deployment scoped, as the
-// vca command is, so a callee takes its token at any host.
+// vca command is. A callee of the kit takes its token at the hosts of a
+// test server, as it takes any other.
 func (k *Kit) caller() peerauth.Settings {
 	s, err := k.a.Issue(peerauth.ID{Service: Caller, Deployment: true}, rand.Reader, time.Now())
 	if err != nil {
@@ -122,7 +123,12 @@ func (k *Kit) Client(c *http.Client) *http.Client {
 // Sign puts the identity headers of Caller on r, for a test that
 // serves r with a handler directly.
 func (k *Kit) Sign(r *http.Request) {
-	h, err := k.caller().Header(r.URL.Path, r.URL.Host)
+	host := r.URL.Host
+	if host == "" {
+		// A request of httptest.NewRequest names its host in r.Host.
+		host = r.Host
+	}
+	h, err := k.caller().Header(r.URL.Path, host)
 	if err != nil {
 		k.fail(err)
 	}

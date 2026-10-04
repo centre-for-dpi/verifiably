@@ -8,9 +8,9 @@ import (
 	"crypto/rand"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,18 +107,23 @@ func TestCombinedCommandsManageTheTemplatesOfThePair(t *testing.T) {
 	callee.Callers = verifierCombinedCallers(t)
 	store := &combinedStore{}
 	mux := http.NewServeMux()
-	mux.Handle(combinedv1connect.NewCombinedServiceHandler(store, peerauth.Require(callee)))
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-	u, err := url.Parse(srv.URL)
+	srv := httptest.NewUnstartedServer(mux)
+	_, port, err := net.SplitHostPort(srv.Listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
 	opts := CombinedOptions{
 		Root: root, Pair: pair, Client: srv.Client(), Out: &out,
-		Values: map[string]string{"VCA_HOST_PORT_VERIFIER_COMBINED": u.Port()},
+		Values: map[string]string{"VCA_HOST_PORT_VERIFIER_COMBINED": port},
 	}
+	// The combined service takes the token of the vca command at the
+	// names of its host port, as setup writes them.
+	callee.Hosts = PublishedHosts(pair, opts.Values, "verifier-combined")
+	mux.Handle(combinedv1connect.NewCombinedServiceHandler(store, peerauth.Require(callee)))
+	srv.Start()
+	defer srv.Close()
+	opts.Client = srv.Client()
 	file := filepath.Join(root, "guardian.json")
 	template := `{"displayName":"Guardian check","members":[{"templateId":"identity"},{"templateId":"delegation"}],` +
 		`"rules":[{"kind":"CROSS_RULE_DELEGATION_LINK","params":{"subject":"identity","delegation":"delegation"}}]}`
@@ -148,7 +153,7 @@ func TestCombinedCommandsManageTheTemplatesOfThePair(t *testing.T) {
 	if err := os.MkdirAll(OutputDir(deploy, pair), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	writeText(t, OutputDir(deploy, pair), EnvFileName, "VCA_HOST_PORT_VERIFIER_COMBINED="+u.Port()+"\n")
+	writeText(t, OutputDir(deploy, pair), EnvFileName, "VCA_HOST_PORT_VERIFIER_COMBINED="+port+"\n")
 	env := Environment{Root: root, HTTP: srv.Client()}
 	for _, args := range [][]string{
 		{"combined", "create", "--dpg", "waltid", file},

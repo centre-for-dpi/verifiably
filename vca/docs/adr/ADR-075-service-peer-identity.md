@@ -27,3 +27,11 @@
   7. The key file has mode 0644, because the container user has another user id than the operator. Its directory has mode 0700, so no other user of the host opens it.
   8. Decision 6 changes. `vca peer secrets` writes a second Secret per chart with the key, and each pod mounts it as a file. A checksum of both Secrets is an annotation of each pod, so `helm upgrade` after a new run rolls the pods.
   9. `VCA_PEER_KEY` stays as a fallback for a platform that cannot mount a file. The CLI never writes it, because the environment shows the key.
+- Amendment of 2026-10-04, deployment scoped callers:
+  1. Item 3 of the first amendment let a callee take a token of `cli` or the landing at any host. Such a token opened the same procedure on every server that lists that caller.
+  2. A callee now checks the host of every token. A token of a deployment scoped caller opens one callee only, as any other token does.
+  3. Setup writes the published names of each service of a pair into `VCA_PEER_HOSTS`: `127.0.0.1` and `localhost`, each with the host port of the service. The vca command calls through these names.
+  4. `vca dpg upgrade-secrets` treats an identity without those names as stale and writes it again. A name that the operator added to `VCA_PEER_HOSTS` stays. A loopback name of an earlier host port goes.
+  5. The landing calls each adapter at its compose name or its cluster name, so its tokens name the callee already.
+  6. A Helm release publishes no host port. A pod lists no published name, and the vca command does not call a pod.
+  7. `vca peer secrets` keeps the identities of each release under `deploy/peer/helm/<release>`. A second run prints the same Secrets, as decision 5 promises for compose.

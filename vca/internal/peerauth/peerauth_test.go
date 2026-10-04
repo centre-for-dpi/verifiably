@@ -517,7 +517,7 @@ const statusAllocate = "/vca.status.v1.StatusService/Allocate"
 // the other status service of the pair, not the same service of
 // another pair. A deployment scoped caller, such as the vca command on
 // the machine of the operator, calls through a published port, so the
-// callee takes its token at any host.
+// callee takes its token only at a name of its own as well.
 func TestATokenNamesItsCallee(t *testing.T) {
 	a := newAuthority(t)
 	list := peerauth.Callers{"vca.status.v1.StatusService": {"issuance", "cli"}}
@@ -579,11 +579,22 @@ func TestATokenNamesItsCallee(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A deployment scoped caller is bound to one callee too (amendment of
+	// ADR-075 of 2026-10-04): the callee takes its token only at a name of
+	// its own, such as the host port it publishes.
+	published := token
+	published.Hosts = []string{"127.0.0.1:18085", "localhost:18085"}
+	cliToken := headerFor(t, cli, statusAllocate, "localhost:18085")
+	if id, err := published.Check(cliToken, statusAllocate); err != nil || !id.Deployment {
+		t.Errorf("the callee that publishes the port: %+v, %v", id, err)
+	}
 	for _, c := range []peerauth.Settings{token, bitstring, inji} {
-		id, err := c.Check(headerFor(t, cli, statusAllocate, "localhost:18085"), statusAllocate)
-		if err != nil || !id.Deployment {
-			t.Errorf("the deployment scoped caller at %s: %+v, %v", c.ID, id, err)
+		if _, err := c.Check(cliToken, statusAllocate); connect.CodeOf(err) != connect.CodeUnauthenticated {
+			t.Errorf("%s took a token of the deployment scoped caller for another host: %v", c.ID, err)
 		}
+	}
+	if _, err := bitstring.Check(headerFor(t, cli, statusAllocate, "issuer-waltid-status-bitstring:8084"), statusAllocate); err != nil {
+		t.Errorf("the deployment scoped caller at the default name of the callee: %v", err)
 	}
 }
 
