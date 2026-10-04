@@ -7,10 +7,16 @@ says how to run it. This page says how it works.
 
 ## Who calls it
 
-The vca command stores, lists and removes the combined templates with
-`vca combined` (ADR-078). It is the only caller of the service. The
-ingestion service is the planned caller of `BuildDcql` and
-`EvaluateCombined`.
+Three callers reach the service on the compose network (ADR-079).
+
+| Caller | RPCs | Why |
+|---|---|---|
+| `verifier-discovery` | `List`, `Get`, `Create`, `Update`, `Delete` | The combined query pages at `/discovery/combined/` manage the templates. |
+| `verifier-ingest` | `List`, `Get`, `BuildDcql`, `EvaluateCombined` | A request of a combined template sends the merged query. Its answer gets the combined verdict. |
+| `cli` | `List`, `Create`, `Delete` | `vca combined` manages the templates on the host port of the pair (ADR-078). |
+
+`Update` replaces the name, the members, the rules, and the policy set
+of a stored template. The id, the tenant, and the creation time stay.
 
 ## Combined template
 
@@ -120,5 +126,4 @@ Each card carries a role, so staff see which credential is which:
 | Item | Reason |
 |---|---|
 | Shared DCQL package | The builder lives in `internal/dcql`. A `core/dcql` package from another branch can replace it. The service API does not change. |
-| Request creation | The service builds the query, and the ingestion service sends it to the wallet. The OID4VP transaction stays in that service (ADR-023). |
 | More cross rules | The three rules of ADR-026 decision 2 are in place. A new rule is one function plus one enum value. |

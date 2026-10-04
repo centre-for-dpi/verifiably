@@ -247,6 +247,10 @@ enum TemplateKind {
   TEMPLATE_KIND_PE = 2;
   // A proof request in the native form of a stack.
   TEMPLATE_KIND_NATIVE = 3;
+  // A combined template of the combined service (ADR-026, ADR-079).
+  // The discovery service stores no such template. A request to the
+  // ingestion service names one with this kind.
+  TEMPLATE_KIND_COMBINED = 4;
 }
 
 // CrawlRequest selects issuers.

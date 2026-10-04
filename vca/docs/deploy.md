@@ -384,7 +384,7 @@ home service of the role.
 | `vca.backend.v1.NotificationBackendService` | `dpg-adapter-*` | Compose network | Only `admin` calls it, for stack webhooks. |
 | `vca.backend.v1.BulkImportBackendService` | `dpg-adapter-*` | Compose network | Only `issuance` calls it, for the bulk import of the stack. |
 | `POST /callbacks/issuance/*`, no RPC | `dpg-adapter-waltid` | Compose network | The walt.id issuer posts session events there. Each offer has its own random token in the path, and a wrong token answers 404. |
-| `vca.combined.v1.CombinedService` | `verifier-combined` | Compose network | Only `cli` calls it, on the host port of the pair, for `vca combined` (ADR-078). No party outside the host calls it. |
+| `vca.combined.v1.CombinedService` | `verifier-combined` | Compose network | `verifier-discovery` and `verifier-ingest` call it (ADR-079). The combined query pages manage the templates. A request of a combined template takes its merged query and verdict. `cli` calls it on the host port of the pair, for `vca combined` (ADR-078). No party outside the host calls it. |
 | `vca.datasource.v1.DataSourceService` | `data-source` | Compose network | `dpg-adapter-inji` and `schema-registry` call it. Each call also needs a staff session or the lookup token of the pair. The data source pages call it in process. |
 | `vca.discovery.v1.DiscoveryService` | `verifier-discovery` | Compose network | `verifier-combined`, `verifier-ingest`, `verifier-results`, and `wallet-portal` call it. A wallet reads `/catalog` instead. |
 | `vca.ingest.v1.IngestService` | `verifier-ingest` | Compose network | Only `verifier-results` calls it. A wallet posts to `/oid4vp/response`. The scanner page posts to `/scan/ingest`. |

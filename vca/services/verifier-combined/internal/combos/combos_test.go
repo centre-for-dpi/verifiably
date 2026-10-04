@@ -145,3 +145,44 @@ func TestDefaultIDShapes(t *testing.T) {
 		t.Fatalf("want a safe id, got %q", got)
 	}
 }
+
+// TestUpdateReplacesTheTemplate is ADR-079 decision 3: an edit keeps the
+// id, the tenant, and the creation time, and replaces the rest.
+func TestUpdateReplacesTheTemplate(t *testing.T) {
+	ctx := context.Background()
+	s := newStore()
+	if _, err := s.Create(ctx, &combinedv1.CombinedTemplate{Id: "pair", DisplayName: "Old", TenantId: "t1",
+		Members: []*combinedv1.CombinedTemplate_Member{{TemplateId: "identity"}}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Update(ctx, &combinedv1.CombinedTemplate{Id: "pair", DisplayName: "New", TenantId: "other",
+		Members: []*combinedv1.CombinedTemplate_Member{{TemplateId: "identity"}, {TemplateId: "guardian"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, err := s.Get(ctx, "pair")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.GetDisplayName() != "New" || len(read.GetMembers()) != 2 || read.GetTenantId() != "t1" || got.GetTenantId() != "t1" {
+		t.Fatalf("unexpected template after the update: %+v", read)
+	}
+	if _, err := s.Update(ctx, &combinedv1.CombinedTemplate{Id: "missing"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("want not found for a missing template, got %v", err)
+	}
+	if _, err := s.Update(ctx, &combinedv1.CombinedTemplate{Id: "bad id"}); !errors.Is(err, ErrBadID) {
+		t.Fatalf("want a bad id error, got %v", err)
+	}
+	mem := store.Memory()
+	if _, err := New(mem, nil).Create(ctx, &combinedv1.CombinedTemplate{Id: "one"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(putKV{mem}, nil).Update(ctx, &combinedv1.CombinedTemplate{Id: "one"}); !errors.Is(err, errBroken) {
+		t.Fatalf("want the write error, got %v", err)
+	}
+}
+
+// putKV reads fine and fails the write.
+type putKV struct{ store.KeyValue }
+
+func (putKV) Put(context.Context, string, []byte) error { return errBroken }

@@ -45,8 +45,12 @@ type Config struct {
 	// ResultsURL is the base URL of the results service. The service
 	// stores the result of a request there. Empty stores no result.
 	ResultsURL string `env:"RESULTS_URL"`
-	// EvaluateTimeout bounds one call to the policy service or the
-	// results service.
+	// CombinedURL is the base URL of the combined service. The service
+	// merges the query of a combined template there and evaluates its
+	// answer (ADR-079). Empty refuses a combined template.
+	CombinedURL string `env:"COMBINED_URL"`
+	// EvaluateTimeout bounds one call to the policy service, the results
+	// service, or the combined service.
 	EvaluateTimeout time.Duration `env:"EVALUATE_TIMEOUT" default:"30s"`
 	// ClientID is the OID4VP client identifier of the verifier. Empty
 	// means the base URL.
@@ -124,6 +128,7 @@ func Load(getenv func(string) string) (Config, error) {
 	c.DiscoveryURL = strings.TrimRight(c.DiscoveryURL, "/")
 	c.PolicyURL = strings.TrimRight(c.PolicyURL, "/")
 	c.ResultsURL = strings.TrimRight(c.ResultsURL, "/")
+	c.CombinedURL = strings.TrimRight(c.CombinedURL, "/")
 	if c.ClientID == "" {
 		c.ClientID = c.BaseURL
 	}

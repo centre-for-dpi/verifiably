@@ -99,6 +99,15 @@ keeps the result id. A failed call keeps the answer and names the
 failure on the transaction. Both services sit on the compose network
 (ADR-047).
 
+A request can name a combined template instead (ADR-079). It sets
+`template_kind` to `TEMPLATE_KIND_COMBINED`, and `template_id` names
+the template in the combined service at `VCA_INGEST_COMBINED_URL`. The
+service calls `BuildDcql` there and sends the merged query. The answer
+goes to `EvaluateCombined`. That call runs the policy set on each
+credential, then the cross rules. The combined service stores the
+result, and the transaction keeps its id. A request page offers each
+combined template next to the saved queries.
+
 A request can go through the verifier of a live stack instead. The
 request names the pair in `stack`. The adapter must read the query kind
 of the template: `PROTOCOL_OID4VP_DCQL` for a DCQL query, or

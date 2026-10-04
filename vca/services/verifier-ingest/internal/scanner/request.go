@@ -20,6 +20,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/pdf"
 	"github.com/centre-for-dpi/vc-adapters/core/qr"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	combinedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/combined/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	ingestv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1"
@@ -61,6 +62,14 @@ const DefaultResultsPath = "/portal/results/"
 type Templates interface {
 	ListTemplates(context.Context, *connect.Request[discoveryv1.ListTemplatesRequest]) (*connect.Response[discoveryv1.ListTemplatesResponse], error)
 	GetTemplate(context.Context, *connect.Request[discoveryv1.GetTemplateRequest]) (*connect.Response[discoveryv1.GetTemplateResponse], error)
+}
+
+// CombinedTemplates reads the combined templates and their merged
+// queries. The combined client is one.
+type CombinedTemplates interface {
+	List(context.Context, *connect.Request[combinedv1.ListRequest]) (*connect.Response[combinedv1.ListResponse], error)
+	Get(context.Context, *connect.Request[combinedv1.GetRequest]) (*connect.Response[combinedv1.GetResponse], error)
+	BuildDcql(context.Context, *connect.Request[combinedv1.BuildDcqlRequest]) (*connect.Response[combinedv1.BuildDcqlResponse], error)
 }
 
 // Results reads a stored result. The results client is one.
@@ -200,28 +209,75 @@ func (p *Page) throughName(ctx context.Context, pair string) string {
 	return pair
 }
 
-// templateList reads the saved queries, or none without a discovery
-// client.
-func (p *Page) templateList(ctx context.Context) ([]*discoveryv1.PresentationTemplate, error) {
-	if p.opts.Discovery == nil {
-		return nil, nil
+// combinedPrefix marks a combined template in the query select of the
+// request form (ADR-079 decision 4).
+const combinedPrefix = "combined:"
+
+// formID returns the value of a template in the query select: the id,
+// with combinedPrefix for a combined template.
+func formID(id string, kind discoveryv1.TemplateKind) string {
+	if kind == discoveryv1.TemplateKind_TEMPLATE_KIND_COMBINED {
+		return combinedPrefix + id
 	}
-	resp, err := p.opts.Discovery.ListTemplates(ctx, connect.NewRequest(&discoveryv1.ListTemplatesRequest{}))
-	if err != nil {
-		return nil, err
-	}
-	return resp.Msg.GetTemplates(), nil
+	return id
 }
 
-// templateOf reads one saved query. A missing query gives a template
-// that holds only the id.
+// templateList reads the saved queries, or none without a discovery
+// client, then the combined templates of the pair. A combined template
+// carries its form id and no query yet.
+func (p *Page) templateList(ctx context.Context) ([]*discoveryv1.PresentationTemplate, error) {
+	var out []*discoveryv1.PresentationTemplate
+	if p.opts.Discovery != nil {
+		resp, err := p.opts.Discovery.ListTemplates(ctx, connect.NewRequest(&discoveryv1.ListTemplatesRequest{}))
+		if err != nil {
+			return nil, err
+		}
+		out = resp.Msg.GetTemplates()
+	}
+	if p.opts.Combined != nil {
+		resp, err := p.opts.Combined.List(ctx, connect.NewRequest(&combinedv1.ListRequest{}))
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range resp.Msg.GetTemplates() {
+			out = append(out, &discoveryv1.PresentationTemplate{
+				Id: formID(c.GetId(), discoveryv1.TemplateKind_TEMPLATE_KIND_COMBINED), DisplayName: c.GetDisplayName(),
+				Kind: discoveryv1.TemplateKind_TEMPLATE_KIND_COMBINED,
+			})
+		}
+	}
+	return out, nil
+}
+
+// templateOf reads one saved query, or the merged query of a combined
+// template when the id carries combinedPrefix. A missing query gives a
+// template that holds only the id.
 func (p *Page) templateOf(ctx context.Context, id string) *discoveryv1.PresentationTemplate {
+	if combinedID, ok := strings.CutPrefix(id, combinedPrefix); ok {
+		return p.combinedOf(ctx, combinedID)
+	}
 	if p.opts.Discovery != nil && id != "" {
 		if resp, err := p.opts.Discovery.GetTemplate(ctx, connect.NewRequest(&discoveryv1.GetTemplateRequest{Id: id})); err == nil {
 			return resp.Msg.GetTemplate()
 		}
 	}
 	return &discoveryv1.PresentationTemplate{Id: id, DisplayName: id}
+}
+
+// combinedOf reads one combined template with its merged query.
+func (p *Page) combinedOf(ctx context.Context, id string) *discoveryv1.PresentationTemplate {
+	out := &discoveryv1.PresentationTemplate{Id: formID(id, discoveryv1.TemplateKind_TEMPLATE_KIND_COMBINED), DisplayName: id,
+		Kind: discoveryv1.TemplateKind_TEMPLATE_KIND_COMBINED}
+	if p.opts.Combined == nil {
+		return out
+	}
+	if got, err := p.opts.Combined.Get(ctx, connect.NewRequest(&combinedv1.GetRequest{Id: id})); err == nil {
+		out.DisplayName = got.Msg.GetTemplate().GetDisplayName()
+	}
+	if built, err := p.opts.Combined.BuildDcql(ctx, connect.NewRequest(&combinedv1.BuildDcqlRequest{TemplateId: id})); err == nil {
+		out.Dcql = built.Msg.GetDcql()
+	}
+	return out
 }
 
 // kindLabel names the query language of a template.
@@ -231,6 +287,8 @@ func kindLabel(t *discoveryv1.PresentationTemplate) string {
 		return "DIF PE"
 	case discoveryv1.TemplateKind_TEMPLATE_KIND_NATIVE:
 		return "AnonCreds"
+	case discoveryv1.TemplateKind_TEMPLATE_KIND_COMBINED:
+		return "Combined"
 	}
 	return "DCQL"
 }
@@ -319,6 +377,9 @@ func (p *Page) renderForm(w http.ResponseWriter, r *http.Request, f requestForm)
 			picked = t
 		}
 		options = append(options, components.Option{Value: t.GetId(), Text: t.GetDisplayName() + ", " + kindLabel(t), Selected: t.GetId() == f.template})
+	}
+	if picked.GetKind() == discoveryv1.TemplateKind_TEMPLATE_KIND_COMBINED {
+		picked = p.templateOf(r.Context(), picked.GetId())
 	}
 	var body template.HTML
 	if f.problem != "" {
@@ -426,8 +487,12 @@ func (p *Page) createRequest(w http.ResponseWriter, r *http.Request) error {
 		}
 		connection = f.connection
 	}
+	templateID, kind := f.template, discoveryv1.TemplateKind_TEMPLATE_KIND_UNSPECIFIED
+	if id, ok := strings.CutPrefix(f.template, combinedPrefix); ok {
+		templateID, kind = id, discoveryv1.TemplateKind_TEMPLATE_KIND_COMBINED
+	}
 	resp, err := p.opts.Client.CreateOid4VpRequest(r.Context(), connect.NewRequest(&ingestv1.CreateOid4VpRequestRequest{
-		TemplateId: f.template, Stack: stack, ExpiresInSeconds: int32(min(max(f.expires, 0), 3600)), //nolint:gosec // the value is clamped to one hour
+		TemplateId: templateID, TemplateKind: kind, Stack: stack, ExpiresInSeconds: int32(min(max(f.expires, 0), 3600)), //nolint:gosec // the value is clamped to one hour
 		DcApi: f.deliver == deliverDCAPI, Didcomm: didcomm, ConnectionId: connection,
 	}))
 	if err != nil {
@@ -467,7 +532,7 @@ func (p *Page) requestPage(w http.ResponseWriter, r *http.Request) error {
 	if !slices.Contains(ways, as) {
 		as = deliverQR
 	}
-	t := p.templateOf(r.Context(), tx.GetTemplateId())
+	t := p.templateOf(r.Context(), formID(tx.GetTemplateId(), tx.GetTemplateKind()))
 	b := &blocks{kit: p.opts.Kit}
 	through := p.throughOf(r.Context(), tx)
 	summary := b.add("card", components.Card{ID: "request-query", Title: msg.T("verifier.request.query.label"),
@@ -815,7 +880,7 @@ func (p *Page) requestList(w http.ResponseWriter, r *http.Request) error {
 	b := &blocks{kit: p.opts.Kit}
 	rows := make([]components.Row, 0, len(resp.Msg.GetTransactions()))
 	for _, s := range resp.Msg.GetTransactions() {
-		name := names[s.GetTemplateId()]
+		name := names[formID(s.GetTemplateId(), s.GetTemplateKind())]
 		if name == "" {
 			name = msg.T("verifier.request.query.adhoc.label")
 		}
@@ -917,7 +982,7 @@ func (p *Page) requestDocument(w http.ResponseWriter, r *http.Request) error {
 	if !ok {
 		return err
 	}
-	t := p.templateOf(r.Context(), tx.GetTemplateId())
+	t := p.templateOf(r.Context(), formID(tx.GetTemplateId(), tx.GetTemplateKind()))
 	data, err := RequestPDF(t.GetDisplayName(), tx.GetRequestUri(), tx.GetExpiresAt().AsTime())
 	if err != nil {
 		return err

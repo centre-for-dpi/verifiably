@@ -100,6 +100,9 @@ type Options struct {
 	// a URL: its connections and its proof requests (ADR-061). Nil means
 	// a Connect client with StackTimeout.
 	Didcomm func(adapterURL string) DidcommVerifier
+	// Combined reads the combined templates of the pair for the request
+	// pages (ADR-079 decision 4). Nil offers none.
+	Combined CombinedTemplates
 }
 
 // Getter reads one document. A fetchguard.Fetcher is one.

@@ -43,6 +43,10 @@ const (
 	TemplateKind_TEMPLATE_KIND_PE TemplateKind = 2
 	// A proof request in the native form of a stack.
 	TemplateKind_TEMPLATE_KIND_NATIVE TemplateKind = 3
+	// A combined template of the combined service (ADR-026, ADR-079).
+	// The discovery service stores no such template. A request to the
+	// ingestion service names one with this kind.
+	TemplateKind_TEMPLATE_KIND_COMBINED TemplateKind = 4
 )
 
 // Enum value maps for TemplateKind.
@@ -52,12 +56,14 @@ var (
 		1: "TEMPLATE_KIND_DCQL",
 		2: "TEMPLATE_KIND_PE",
 		3: "TEMPLATE_KIND_NATIVE",
+		4: "TEMPLATE_KIND_COMBINED",
 	}
 	TemplateKind_value = map[string]int32{
 		"TEMPLATE_KIND_UNSPECIFIED": 0,
 		"TEMPLATE_KIND_DCQL":        1,
 		"TEMPLATE_KIND_PE":          2,
 		"TEMPLATE_KIND_NATIVE":      3,
+		"TEMPLATE_KIND_COMBINED":    4,
 	}
 )
 
@@ -2253,12 +2259,13 @@ const file_vca_discovery_v1_discovery_proto_rawDesc = "" +
 	"\x16VersionTemplateRequest\x12B\n" +
 	"\btemplate\x18\x01 \x01(\v2&.vca.discovery.v1.PresentationTemplateR\btemplate\"]\n" +
 	"\x17VersionTemplateResponse\x12B\n" +
-	"\btemplate\x18\x01 \x01(\v2&.vca.discovery.v1.PresentationTemplateR\btemplate*u\n" +
+	"\btemplate\x18\x01 \x01(\v2&.vca.discovery.v1.PresentationTemplateR\btemplate*\x91\x01\n" +
 	"\fTemplateKind\x12\x1d\n" +
 	"\x19TEMPLATE_KIND_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12TEMPLATE_KIND_DCQL\x10\x01\x12\x14\n" +
 	"\x10TEMPLATE_KIND_PE\x10\x02\x12\x18\n" +
-	"\x14TEMPLATE_KIND_NATIVE\x10\x032\xf2\x06\n" +
+	"\x14TEMPLATE_KIND_NATIVE\x10\x03\x12\x1a\n" +
+	"\x16TEMPLATE_KIND_COMBINED\x10\x042\xf2\x06\n" +
 	"\x10DiscoveryService\x12H\n" +
 	"\x05Crawl\x12\x1e.vca.discovery.v1.CrawlRequest\x1a\x1f.vca.discovery.v1.CrawlResponse\x12Z\n" +
 	"\vListIssuers\x12$.vca.discovery.v1.ListIssuersRequest\x1a%.vca.discovery.v1.ListIssuersResponse\x12r\n" +

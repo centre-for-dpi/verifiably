@@ -15,6 +15,7 @@ import (
 	"sort"
 	"time"
 
+	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	ingestv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
@@ -97,6 +98,19 @@ type Transaction struct {
 	Didcomm bool `json:"didcomm,omitempty"`
 	// ConnectionID is the DIDComm connection the request went over.
 	ConnectionID string `json:"connection_id,omitempty"`
+	// Combined is true when TemplateID names a combined template of the
+	// combined service. The service then evaluates the answer with
+	// EvaluateCombined (ADR-079).
+	Combined bool `json:"combined,omitempty"`
+}
+
+// Kind returns the template kind of the request: combined, or
+// unspecified for a template of the discovery service.
+func (t Transaction) Kind() discoveryv1.TemplateKind {
+	if t.Combined {
+		return discoveryv1.TemplateKind_TEMPLATE_KIND_COMBINED
+	}
+	return discoveryv1.TemplateKind_TEMPLATE_KIND_UNSPECIFIED
 }
 
 // StackCheck is one check a stack verifier ran.

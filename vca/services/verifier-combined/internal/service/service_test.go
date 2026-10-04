@@ -578,3 +578,40 @@ func TestListBackendError(t *testing.T) {
 		t.Fatalf("want an internal error, got %v", err)
 	}
 }
+
+// TestUpdateKeepsTheIdAndReplacesTheMembers is ADR-079 decision 3: the
+// edit page of the discovery service stores a template again under its
+// id.
+func TestUpdateKeepsTheIdAndReplacesTheMembers(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	created := f.create(t, pair())
+	edit := pair()
+	edit.DisplayName = "Guardian and identity"
+	edit.Members = edit.Members[:1]
+	edit.Rules = nil
+	resp, err := f.svc.Update(ctx, connect.NewRequest(&combinedv1.UpdateRequest{Template: edit}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := resp.Msg.GetTemplate()
+	if got.GetId() != "guardian-pair" || got.GetDisplayName() != "Guardian and identity" || len(got.GetMembers()) != 1 ||
+		len(got.GetRules()) != 0 || !got.GetCreatedAt().AsTime().Equal(created.GetCreatedAt().AsTime()) {
+		t.Fatalf("unexpected template after the update: %+v", got)
+	}
+	for name, in := range map[string]*combinedv1.UpdateRequest{
+		"no template":   {},
+		"no member":     {Template: &combinedv1.CombinedTemplate{Id: "guardian-pair"}},
+		"bad id":        {Template: &combinedv1.CombinedTemplate{Id: "bad id", Members: edit.Members}},
+		"missing":       {Template: &combinedv1.CombinedTemplate{Id: "missing", Members: edit.Members}},
+		"rule, no kind": {Template: &combinedv1.CombinedTemplate{Id: "guardian-pair", Members: edit.Members, Rules: []*combinedv1.CombinedTemplate_Rule{{}}}},
+	} {
+		want := connect.CodeInvalidArgument
+		if name == "missing" {
+			want = connect.CodeNotFound
+		}
+		if _, err := f.svc.Update(ctx, connect.NewRequest(in)); connect.CodeOf(err) != want {
+			t.Errorf("%s: want %v, got %v", name, want, err)
+		}
+	}
+}

@@ -574,9 +574,11 @@ func Catalog() []Service {
 			},
 			// No caller outside the host exists (ADR-047). The vca
 			// command manages the combined templates on the host port of
-			// the pair (ADR-078).
+			// the pair (ADR-078). The discovery pages manage them, and the
+			// ingestion service merges and evaluates them for a request
+			// (ADR-079).
 			Fixed:   state("VCA_VERIFIER_COMBINED_STATE_DIR"),
-			Callers: map[string][]string{rpcCombined: {CLIPeer}}},
+			Callers: map[string][]string{rpcCombined: {CLIPeer, "verifier-discovery", "verifier-ingest"}}},
 		{Name: "verifier-discovery", ListenEnv: "VCA_DISCOVERY_LISTEN", ExposedPort: 8090, Roles: verifier, Stateful: true, UI: true,
 			Links: []Link{
 				{Env: "VCA_DISCOVERY_BASE_URL", Kind: LinkPublicURL},
@@ -584,6 +586,9 @@ func Catalog() []Service {
 				// The rules of a query become a policy set (ADR-042
 				// decision 3), on the compose network (ADR-047).
 				{Env: "VCA_DISCOVERY_POLICY_URL", Target: "verifier-policy", Kind: LinkURL},
+				// The combined query pages store the combined templates
+				// there (ADR-079).
+				{Env: "VCA_DISCOVERY_COMBINED_URL", Target: "verifier-combined", Kind: LinkURL},
 				staffJWKS("VCA_DISCOVERY_AUTH_JWKS_URL", "verifier-auth"),
 				staffLogin("VCA_DISCOVERY_LOGIN_URL"),
 				peers,
@@ -612,6 +617,9 @@ func Catalog() []Service {
 				// (P5-04, ADR-047).
 				{Env: "VCA_INGEST_POLICY_URL", Target: "verifier-policy", Kind: LinkURL},
 				{Env: "VCA_INGEST_RESULTS_URL", Target: "verifier-results", Kind: LinkURL},
+				// A request of a combined template takes the merged query
+				// and the combined verdict there (ADR-079).
+				{Env: "VCA_INGEST_COMBINED_URL", Target: "verifier-combined", Kind: LinkURL},
 				signingKey("VCA_INGEST_SIGNING_KEY_FILE"),
 				staffJWKS("VCA_INGEST_AUTH_JWKS_URL", "verifier-auth"),
 				staffLogin("VCA_INGEST_LOGIN_URL"),

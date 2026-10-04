@@ -38,14 +38,15 @@ var helpServices = []struct {
 // helpPages says what each verifier page does and which document covers
 // it, by the path of the page in internal/rolenav.
 var helpPages = map[string]struct{ key, doc string }{
-	"/portal/":         {"verifier.help.page.overview", "verifier-results.md"},
-	"/discovery/":      {"verifier.help.page.discover", "verifier-discovery.md"},
-	"/discovery/dcql/": {"verifier.help.page.dcql", "verifier-discovery.md"},
-	"/discovery/pe/":   {"verifier.help.page.pe", "verifier-discovery.md"},
-	"/scan/":           {"verifier.help.page.requests", "verifier-ingest.md"},
-	"/portal/results/": {"verifier.help.page.results", "verifier-results.md"},
-	"/portal/cache/":   {"verifier.help.page.cache", "verifier-policy.md"},
-	"/portal/help/":    {"verifier.help.page.help", "verifier-results.md"},
+	"/portal/":             {"verifier.help.page.overview", "verifier-results.md"},
+	"/discovery/":          {"verifier.help.page.discover", "verifier-discovery.md"},
+	"/discovery/dcql/":     {"verifier.help.page.dcql", "verifier-discovery.md"},
+	"/discovery/pe/":       {"verifier.help.page.pe", "verifier-discovery.md"},
+	"/discovery/combined/": {"verifier.help.page.combined", "verifier-combined.md"},
+	"/scan/":               {"verifier.help.page.requests", "verifier-ingest.md"},
+	"/portal/results/":     {"verifier.help.page.results", "verifier-results.md"},
+	"/portal/cache/":       {"verifier.help.page.cache", "verifier-policy.md"},
+	"/portal/help/":        {"verifier.help.page.help", "verifier-results.md"},
 }
 
 // help lists what each verifier page does with a link to its document,
@@ -82,12 +83,13 @@ func (p *Portal) helpPages(r *http.Request, b *blocks) template.HTML {
 	if docs == "" {
 		docs = DefaultDocsURL
 	}
-	var has rolenav.Has
+	var gate rolenav.Gate
 	if p.opts.Shell != nil {
-		has = p.opts.Shell.Frame(r.Context()).Has
+		f := p.opts.Shell.Frame(r.Context())
+		gate = rolenav.Gate{Has: f.Has, Runs: f.Runs}
 	}
 	var rows []components.Row
-	for _, s := range rolenav.Visible(commonv1.Role_ROLE_VERIFIER, has) {
+	for _, s := range rolenav.VisibleWith(commonv1.Role_ROLE_VERIFIER, gate) {
 		for _, page := range s.Pages {
 			info, ok := helpPages[page.Path]
 			if !ok {

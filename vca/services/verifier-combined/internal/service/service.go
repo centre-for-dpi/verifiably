@@ -194,6 +194,33 @@ func (s *Service) List(ctx context.Context, req *connect.Request[combinedv1.List
 	return connect.NewResponse(resp), nil
 }
 
+// Update replaces the name, the members, the rules, and the policy set
+// of one combined template (ADR-079 decision 3).
+func (s *Service) Update(ctx context.Context, req *connect.Request[combinedv1.UpdateRequest]) (
+	*connect.Response[combinedv1.UpdateResponse], error) {
+	in := req.Msg.GetTemplate()
+	if in == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			errors.New("service: the request carries no template"))
+	}
+	if err := checkTemplate(in); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	out, err := s.opts.Templates.Update(ctx, &combinedv1.CombinedTemplate{
+		Id: in.GetId(), DisplayName: in.GetDisplayName(), Members: in.GetMembers(),
+		Rules: in.GetRules(), PolicySetId: in.GetPolicySetId(),
+	})
+	switch {
+	case errors.Is(err, combos.ErrNotFound):
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, combos.ErrBadID):
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	case err != nil:
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&combinedv1.UpdateResponse{Template: out}), nil
+}
+
 // Delete removes one combined template.
 func (s *Service) Delete(ctx context.Context, req *connect.Request[combinedv1.DeleteRequest]) (
 	*connect.Response[combinedv1.DeleteResponse], error) {

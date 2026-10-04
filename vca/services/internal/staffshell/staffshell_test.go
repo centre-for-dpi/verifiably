@@ -295,3 +295,40 @@ func TestUserHookDrawsAnotherSession(t *testing.T) {
 		t.Fatalf("shell = %+v", got)
 	}
 }
+
+// TestRunsReadsTheServicesOfTheOwnPair is ADR-079 decision 4: a page
+// gated on a service shows when the live own pair lists that service in
+// the peer list, and the side navigation follows.
+func TestRunsReadsTheServicesOfTheOwnPair(t *testing.T) {
+	verifier := peer(commonv1.Role_ROLE_VERIFIER, configv1.Dpg_DPG_INJI)
+	verifier.Services["verifier-combined"] = "http://verifier-inji-verifier-combined:8088"
+	build := func(state topology.State) *staffshell.Shell {
+		return staffshell.New(staffshell.Options{
+			Role: commonv1.Role_ROLE_VERIFIER, Peers: []topology.Peer{verifier},
+			Snapshot: func(context.Context) topology.Snapshot {
+				return topology.Snapshot{Peers: []topology.Status{{Peer: verifier, State: state, Capabilities: caps("MOSIP Inji")}}}
+			},
+			JWKSURL: verifier.Auth() + staffshell.JWKSPath,
+		})
+	}
+	live := build(topology.Live)
+	f := live.Frame(context.Background())
+	if !f.Runs("verifier-combined") || f.Runs("verifier-policy") {
+		t.Errorf("Runs: combined %v, policy %v", f.Runs("verifier-combined"), f.Runs("verifier-policy"))
+	}
+	labels := func(sh *staffshell.Shell) string {
+		var got []string
+		for _, s := range sh.Build(session("/discovery/combined/"), sh.Frame(context.Background())).Sections {
+			for _, l := range s.Links {
+				got = append(got, l.Text)
+			}
+		}
+		return strings.Join(got, ", ")
+	}
+	if got := labels(live); !strings.Contains(got, "Combined queries") {
+		t.Errorf("the live pair hides the combined page: %s", got)
+	}
+	if got := labels(build(topology.Starting)); strings.Contains(got, "Combined queries") {
+		t.Errorf("a starting pair shows the combined page: %s", got)
+	}
+}

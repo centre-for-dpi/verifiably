@@ -80,6 +80,9 @@ const (
 	KindDCQL   = "dcql"
 	KindPE     = "pe"
 	KindNative = "native"
+	// KindCombined names a combined template of the combined service.
+	// Build refuses it (ADR-079 decision 1).
+	KindCombined = "combined"
 )
 
 // The operators of a claim rule. They are the operators of the
@@ -575,6 +578,8 @@ func kindName(k discoveryv1.TemplateKind) string {
 		return KindPE
 	case discoveryv1.TemplateKind_TEMPLATE_KIND_NATIVE:
 		return KindNative
+	case discoveryv1.TemplateKind_TEMPLATE_KIND_COMBINED:
+		return KindCombined
 	case discoveryv1.TemplateKind_TEMPLATE_KIND_UNSPECIFIED:
 	}
 	return ""

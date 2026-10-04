@@ -30,7 +30,14 @@ type Page struct {
 	// Feature, when set, hides the page until a live pair of the role
 	// lists the feature.
 	Feature backendv1.Feature
+	// Service, when set, hides the page until the own pair lists that
+	// service in the peer list and runs (ADR-079 decision 4).
+	Service string
 }
+
+// CombinedService is the service that holds the combined templates of a
+// verifier pair. The combined query page needs it.
+const CombinedService = "verifier-combined"
 
 // Label returns the label of the page from the catalogue.
 func (p Page) Label() string { return msg.T(p.Key) }
@@ -54,6 +61,26 @@ func (s Section) Label() string {
 // Has reports whether a deployment offers a feature. A nil predicate
 // offers none.
 type Has func(backendv1.Feature) bool
+
+// Runs reports whether the own pair runs a service. A nil predicate
+// runs none.
+type Runs func(service string) bool
+
+// Gate holds the predicates that decide which gated pages show.
+type Gate struct {
+	// Has decides the pages gated on a feature.
+	Has Has
+	// Runs decides the pages gated on a service.
+	Runs Runs
+}
+
+// shows reports whether a page passes the gate.
+func (g Gate) shows(p Page) bool {
+	if p.Feature != backendv1.Feature_FEATURE_UNSPECIFIED && (g.Has == nil || !g.Has(p.Feature)) {
+		return false
+	}
+	return p.Service == "" || (g.Runs != nil && g.Runs(p.Service))
+}
 
 // Sections returns the full navigation of a role, in order. The first
 // page is the home of the role. An unknown role gives nil.
@@ -119,6 +146,7 @@ func Sections(role commonv1.Role) []Section {
 			{Path: "/discovery/dcql/", Key: "verifier.nav.dcql.label"},
 			{Path: "/discovery/pe/", Key: "verifier.nav.pe.label"},
 			{Path: "/discovery/anoncreds/", Key: "verifier.nav.anoncreds.label", Feature: backendv1.Feature_FEATURE_ANONCREDS_PROOF},
+			{Path: "/discovery/combined/", Key: "verifier.nav.combined.label", Service: CombinedService},
 			{Path: "/scan/", Key: "verifier.nav.requests.label"},
 			{Path: "/portal/results/", Key: "verifier.nav.results.label"},
 			{Path: "/portal/cache/", Key: "verifier.nav.cache.label"},
@@ -141,18 +169,29 @@ func Paths(role commonv1.Role) []string {
 }
 
 // Visible returns the navigation of a role without the gated pages the
-// deployment lacks, and without a section that lost every page.
+// deployment lacks, and without a section that lost every page. A page
+// gated on a service stays out.
 func Visible(role commonv1.Role, has Has) []Section {
-	return visible(Sections(role), has)
+	return VisibleWith(role, Gate{Has: has})
 }
 
-// visible filters one table.
+// VisibleWith is Visible with both predicates of a gate.
+func VisibleWith(role commonv1.Role, gate Gate) []Section {
+	return visibleGate(Sections(role), gate)
+}
+
+// visible filters one table with a feature predicate.
 func visible(sections []Section, has Has) []Section {
+	return visibleGate(sections, Gate{Has: has})
+}
+
+// visibleGate filters one table with a gate.
+func visibleGate(sections []Section, gate Gate) []Section {
 	var out []Section
 	for _, s := range sections {
 		kept := Section{Key: s.Key}
 		for _, p := range s.Pages {
-			if p.Feature == backendv1.Feature_FEATURE_UNSPECIFIED || (has != nil && has(p.Feature)) {
+			if gate.shows(p) {
 				kept.Pages = append(kept.Pages, p)
 			}
 		}
@@ -169,7 +208,12 @@ func visible(sections []Section, has Has) []Section {
 // current wins, so /admin/providers/new marks the providers page. An
 // unknown role gives nil.
 func Nav(role commonv1.Role, has Has, current string) []components.NavSection {
-	sections := Visible(role, has)
+	return NavWith(role, Gate{Has: has}, current)
+}
+
+// NavWith is Nav with both predicates of a gate.
+func NavWith(role commonv1.Role, gate Gate, current string) []components.NavSection {
+	sections := VisibleWith(role, gate)
 	if sections == nil {
 		return nil
 	}

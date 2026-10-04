@@ -18,6 +18,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/combined/v1/combinedv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1/policyv1connect"
@@ -116,7 +117,13 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		SignOut: cfg.PortalPrefix + "/signout", Prober: deps.Prober, Client: &http.Client{Timeout: cfg.TrustTimeout}, Now: deps.Now,
 	})
 	stackClient := cfg.Peer.Client(&http.Client{Timeout: cfg.TrustTimeout})
-	pages, portalErr := portal.New(portal.Options{Client: svc, Prefix: cfg.PortalPrefix, Kit: kit, Shell: shell, SignOut: signOut,
+	// The combined query pages store the combined templates in the
+	// combined service of the pair, on the compose network (ADR-079).
+	var combined portal.CombinedTemplates
+	if cfg.CombinedURL != "" {
+		combined = combinedv1connect.NewCombinedServiceClient(cfg.Peer.Client(&http.Client{Timeout: cfg.PolicyTimeout}), cfg.CombinedURL)
+	}
+	pages, portalErr := portal.New(portal.Options{Client: svc, Prefix: cfg.PortalPrefix, Kit: kit, Shell: shell, SignOut: signOut, Combined: combined,
 		ProofSchemas: ProofSchemasOf(shell, func(adapterURL string) backendv1connect.VerifierBackendServiceClient {
 			return backendv1connect.NewVerifierBackendServiceClient(stackClient, adapterURL)
 		})})

@@ -170,3 +170,16 @@ func TestFormatNamesOfEveryValue(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildRefusesACombinedKind is ADR-079 decision 1: the combined
+// service holds the combined templates, so the discovery service stores
+// none, and a message of that kind does not turn into a DCQL template.
+func TestBuildRefusesACombinedKind(t *testing.T) {
+	in := template.FromProto(&discoveryv1.PresentationTemplate{
+		DisplayName: "Guardian pair", Kind: discoveryv1.TemplateKind_TEMPLATE_KIND_COMBINED,
+		Dcql: `{"credentials":[{"id":"a","format":"ldp_vc"}]}`,
+	})
+	if _, err := template.Build(in); err == nil || !strings.Contains(err.Error(), "combined") {
+		t.Fatalf("want a refusal that names the combined kind, got %v", err)
+	}
+}

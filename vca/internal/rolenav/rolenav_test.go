@@ -238,3 +238,32 @@ func TestVerifierNavShowsAnonCredsOnlyWithFeature(t *testing.T) {
 		t.Errorf("without the feature: %s", got)
 	}
 }
+
+// TestVerifierNavShowsCombinedOnlyWhenThePairRunsIt is ADR-079 decision
+// 4: the combined query page joins the query pages only when the own
+// pair lists the combined service in the peer list.
+func TestVerifierNavShowsCombinedOnlyWhenThePairRunsIt(t *testing.T) {
+	labels := func(runs Runs) string {
+		var got []string
+		for _, s := range NavWith(commonv1.Role_ROLE_VERIFIER, Gate{Runs: runs}, "/discovery/combined/edit/pair") {
+			for _, l := range s.Links {
+				text := l.Text
+				if l.Current {
+					text += "*"
+				}
+				got = append(got, text)
+			}
+		}
+		return strings.Join(got, ", ")
+	}
+	runs := func(service string) bool { return service == CombinedService }
+	if got := labels(runs); got != "Overview, Discover schemas, DCQL builder, DIF PE queries, Combined queries*, Requests, Results, Caching, Help" {
+		t.Errorf("with the service: %s", got)
+	}
+	if got := labels(nil); strings.Contains(got, "Combined") {
+		t.Errorf("without the service: %s", got)
+	}
+	if got := Visible(commonv1.Role_ROLE_VERIFIER, nil); len(got[0].Pages) != 8 {
+		t.Errorf("Visible keeps a page gated on a service: %+v", got)
+	}
+}

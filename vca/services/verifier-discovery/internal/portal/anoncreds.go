@@ -80,6 +80,9 @@ func (p *Portal) queryTabs(ctx context.Context, b *blocks, current string) templ
 	if p.anonCredsLive(ctx) {
 		links = append(links, components.Link{Href: p.anonPath(), Text: msg.T("verifier.dcql.tab.anoncreds.label"), Current: current == "anoncreds"})
 	}
+	if p.combinedLive(ctx) {
+		links = append(links, components.Link{Href: p.combinedPath(), Text: msg.T("verifier.nav.combined.label"), Current: current == "combined"})
+	}
 	return b.add("tabs", components.Tabs{Label: msg.T("verifier.dcql.tabs.label"), Links: links})
 }
 

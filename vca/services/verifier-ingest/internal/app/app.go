@@ -26,6 +26,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
+	"github.com/centre-for-dpi/vc-adapters/gen/vca/combined/v1/combinedv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1/discoveryv1connect"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
@@ -129,6 +130,12 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	if cfg.ResultsURL != "" {
 		results = resultsv1connect.NewResultsServiceClient(internal, cfg.ResultsURL)
 	}
+	// The combined service merges the query of a combined template and
+	// evaluates its answer, on the compose network (ADR-079).
+	var combined combinedv1connect.CombinedServiceClient
+	if cfg.CombinedURL != "" {
+		combined = combinedv1connect.NewCombinedServiceClient(internal, cfg.CombinedURL)
+	}
 	requests := deps.Requests
 	if requests == nil {
 		stackClient := cfg.Peer.Client(&http.Client{Timeout: cfg.StackTimeout})
@@ -140,6 +147,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	store, storeErr := txn.NewStore(backend)
 	svc, serviceErr := service.New(service.Options{
 		Policy: policy, Results: resultsStore(results), Stacks: stacks, StackClient: requests,
+		Combined:  combinedService(combined),
 		Store:     store,
 		Discovery: discovery,
 		Fetcher: oid4vp.Fetcher{
@@ -171,7 +179,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	page, pageErr := scanner.New(scanner.Options{
 		Client: svc, Prefix: cfg.ScannerPrefix, Kit: kit, Shell: shell, SignOut: signOut,
 		Links: links, Stack: deps.Stack, StackTimeout: cfg.StackTimeout, Peer: cfg.Peer,
-		Discovery: discovery, Results: resultsReader(results), Stacks: stacks,
+		Discovery: discovery, Results: resultsReader(results), Stacks: stacks, Combined: combinedPages(combined),
 	})
 	guard, guardErr := staffsession.Build(cfg.Auth, staffsession.VerifierRealm(), config.Prefix, staffsession.Deps{
 		Keys: deps.SessionKeys, ReadFile: deps.ReadFile, Now: deps.Now, Log: deps.Log, MaxFormBytes: scanner.MaxUploadBytes,
@@ -217,6 +225,24 @@ func StacksOf(shell *staffshell.Shell) func(ctx context.Context) []service.Stack
 
 // resultsStore returns the store side of a results client, or nil.
 func resultsStore(c resultsv1connect.ResultsServiceClient) service.ResultStore {
+	if c == nil {
+		return nil
+	}
+	return c
+}
+
+// combinedService returns the side of a combined client that the
+// service calls, or nil.
+func combinedService(c combinedv1connect.CombinedServiceClient) service.Combined {
+	if c == nil {
+		return nil
+	}
+	return c
+}
+
+// combinedPages returns the side of a combined client that the request
+// pages read, or nil.
+func combinedPages(c combinedv1connect.CombinedServiceClient) scanner.CombinedTemplates {
 	if c == nil {
 		return nil
 	}

@@ -94,6 +94,26 @@ func (s *Store) Create(ctx context.Context, t *combinedv1.CombinedTemplate) (
 	return out, nil
 }
 
+// Update replaces a stored template. The id selects it. The tenant and
+// the creation time of the stored template stay (ADR-079 decision 3).
+func (s *Store) Update(ctx context.Context, t *combinedv1.CombinedTemplate) (
+	*combinedv1.CombinedTemplate, error) {
+	old, err := s.Get(ctx, t.GetId())
+	if err != nil {
+		return nil, err
+	}
+	out := proto.CloneOf(t)
+	out.TenantId, out.CreatedAt = old.GetTenantId(), old.GetCreatedAt()
+	raw, err := protojson.Marshal(out)
+	if err != nil {
+		return nil, fmt.Errorf("combos: encode: %w", err)
+	}
+	if err := s.kv.Put(ctx, Prefix+out.GetId(), raw); err != nil {
+		return nil, fmt.Errorf("combos: write: %w", err)
+	}
+	return out, nil
+}
+
 // Get returns one template.
 func (s *Store) Get(ctx context.Context, id string) (*combinedv1.CombinedTemplate, error) {
 	if !idRE.MatchString(id) {

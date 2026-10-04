@@ -180,6 +180,8 @@ type requestRig struct {
 	legacy  *stackVerifier
 	modern  *stackVerifier
 	now     *time.Time
+	// combined is the combined service of the rig (ADR-079).
+	combined *combinedService
 	// dcapi makes the modern stack list FEATURE_DC_API_VERIFY.
 	dcapi bool
 }
@@ -206,6 +208,7 @@ func newRequestRigWith(t *testing.T, dcapi bool) *requestRig {
 	now := time.Unix(1700000000, 0).UTC()
 	rig := &requestRig{store: store, now: &now, policy: &policy{}, results: &results{stored: map[string]*resultsv1.VerificationResult{}},
 		legacy: &stackVerifier{}, modern: &stackVerifier{}, dcapi: dcapi}
+	rig.combined = &combinedService{results: rig.results}
 	clock := func() time.Time { return *rig.now }
 	stacks := func(context.Context) []service.Stack {
 		return []service.Stack{
@@ -226,7 +229,7 @@ func newRequestRigWith(t *testing.T, dcapi bool) *requestRig {
 	rig.svc, err = service.New(service.Options{
 		Store: store, SigningKey: key, BaseURL: "https://verify.example", ClientID: "https://verify.example",
 		Discovery: discovery, Policy: rig.policy, Results: rig.results, Stacks: stacks, StackClient: client,
-		RequestTTL: 5 * time.Minute, Now: clock,
+		RequestTTL: 5 * time.Minute, Now: clock, Combined: rig.combined,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -243,7 +246,7 @@ func newRequestRigWith(t *testing.T, dcapi bool) *requestRig {
 	})
 	page, err := scanner.New(scanner.Options{
 		Client: rig.svc, Shell: shell, SignOut: http.NotFoundHandler(),
-		Discovery: discovery, Results: rig.results, Stacks: stacks,
+		Discovery: discovery, Results: rig.results, Stacks: stacks, Combined: rig.combined,
 	})
 	if err != nil {
 		t.Fatal(err)

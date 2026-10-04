@@ -88,7 +88,7 @@ func (f *fakeRequests) ListTransactions(_ context.Context, req *connect.Request[
 func verifierPeer(dpg configv1.Dpg) topology.Peer {
 	pair := topology.PairName(commonv1.Role_ROLE_VERIFIER, dpg)
 	return topology.Peer{Pair: pair, Role: commonv1.Role_ROLE_VERIFIER, Dpg: dpg, PublicURL: "https://" + pair + ".labs.example",
-		Services: map[string]string{"verifier-auth": "http://" + pair + "-auth:8081"}}
+		Services: map[string]string{"verifier-auth": "http://" + pair + "-auth:8081", "verifier-combined": "http://" + pair + "-combined:8088"}}
 }
 
 // shellFixture is a portal in the verifier frame of the first pair, with
@@ -285,7 +285,8 @@ func TestCacheAndHelpPages(t *testing.T) {
 		}
 	}
 	help := ok(t, f.get(t, DefaultPrefix+"/help/"))
-	for _, want := range []string{"verifier-results.md", "verifier-discovery.md", "verifier-ingest.md", "ListTransactions"} {
+	for _, want := range []string{"verifier-results.md", "verifier-discovery.md", "verifier-ingest.md", "ListTransactions",
+		`<a href="/discovery/combined/">Combined queries</a>`, "verifier-combined.md"} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help page lacks %q", want)
 		}

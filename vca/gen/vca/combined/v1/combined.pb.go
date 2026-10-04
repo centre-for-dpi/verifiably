@@ -571,6 +571,99 @@ func (*DeleteResponse) Descriptor() ([]byte, []int) {
 	return file_vca_combined_v1_combined_proto_rawDescGZIP(), []int{8}
 }
 
+// UpdateRequest carries the new form of a stored template.
+type UpdateRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The template. Its id selects the stored template. The service
+	// ignores tenant_id and created_at.
+	Template      *CombinedTemplate `protobuf:"bytes,1,opt,name=template,proto3" json:"template,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateRequest) Reset() {
+	*x = UpdateRequest{}
+	mi := &file_vca_combined_v1_combined_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateRequest) ProtoMessage() {}
+
+func (x *UpdateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_combined_v1_combined_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateRequest.ProtoReflect.Descriptor instead.
+func (*UpdateRequest) Descriptor() ([]byte, []int) {
+	return file_vca_combined_v1_combined_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *UpdateRequest) GetTemplate() *CombinedTemplate {
+	if x != nil {
+		return x.Template
+	}
+	return nil
+}
+
+// UpdateResponse returns the stored template.
+type UpdateResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The template as stored.
+	Template      *CombinedTemplate `protobuf:"bytes,1,opt,name=template,proto3" json:"template,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateResponse) Reset() {
+	*x = UpdateResponse{}
+	mi := &file_vca_combined_v1_combined_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateResponse) ProtoMessage() {}
+
+func (x *UpdateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vca_combined_v1_combined_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateResponse.ProtoReflect.Descriptor instead.
+func (*UpdateResponse) Descriptor() ([]byte, []int) {
+	return file_vca_combined_v1_combined_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *UpdateResponse) GetTemplate() *CombinedTemplate {
+	if x != nil {
+		return x.Template
+	}
+	return nil
+}
+
 // EvaluateCombinedRequest carries the presentation and the template.
 type EvaluateCombinedRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -589,7 +682,7 @@ type EvaluateCombinedRequest struct {
 
 func (x *EvaluateCombinedRequest) Reset() {
 	*x = EvaluateCombinedRequest{}
-	mi := &file_vca_combined_v1_combined_proto_msgTypes[9]
+	mi := &file_vca_combined_v1_combined_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -601,7 +694,7 @@ func (x *EvaluateCombinedRequest) String() string {
 func (*EvaluateCombinedRequest) ProtoMessage() {}
 
 func (x *EvaluateCombinedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_combined_v1_combined_proto_msgTypes[9]
+	mi := &file_vca_combined_v1_combined_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -614,7 +707,7 @@ func (x *EvaluateCombinedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluateCombinedRequest.ProtoReflect.Descriptor instead.
 func (*EvaluateCombinedRequest) Descriptor() ([]byte, []int) {
-	return file_vca_combined_v1_combined_proto_rawDescGZIP(), []int{9}
+	return file_vca_combined_v1_combined_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *EvaluateCombinedRequest) GetPresentation() *v11.RawPresentation {
@@ -661,7 +754,7 @@ type EvaluateCombinedResponse struct {
 
 func (x *EvaluateCombinedResponse) Reset() {
 	*x = EvaluateCombinedResponse{}
-	mi := &file_vca_combined_v1_combined_proto_msgTypes[10]
+	mi := &file_vca_combined_v1_combined_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -673,7 +766,7 @@ func (x *EvaluateCombinedResponse) String() string {
 func (*EvaluateCombinedResponse) ProtoMessage() {}
 
 func (x *EvaluateCombinedResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_combined_v1_combined_proto_msgTypes[10]
+	mi := &file_vca_combined_v1_combined_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -686,7 +779,7 @@ func (x *EvaluateCombinedResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvaluateCombinedResponse.ProtoReflect.Descriptor instead.
 func (*EvaluateCombinedResponse) Descriptor() ([]byte, []int) {
-	return file_vca_combined_v1_combined_proto_rawDescGZIP(), []int{10}
+	return file_vca_combined_v1_combined_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *EvaluateCombinedResponse) GetResult() *v12.VerificationResult {
@@ -721,7 +814,7 @@ type BuildDcqlRequest struct {
 
 func (x *BuildDcqlRequest) Reset() {
 	*x = BuildDcqlRequest{}
-	mi := &file_vca_combined_v1_combined_proto_msgTypes[11]
+	mi := &file_vca_combined_v1_combined_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -733,7 +826,7 @@ func (x *BuildDcqlRequest) String() string {
 func (*BuildDcqlRequest) ProtoMessage() {}
 
 func (x *BuildDcqlRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_combined_v1_combined_proto_msgTypes[11]
+	mi := &file_vca_combined_v1_combined_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -746,7 +839,7 @@ func (x *BuildDcqlRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildDcqlRequest.ProtoReflect.Descriptor instead.
 func (*BuildDcqlRequest) Descriptor() ([]byte, []int) {
-	return file_vca_combined_v1_combined_proto_rawDescGZIP(), []int{11}
+	return file_vca_combined_v1_combined_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *BuildDcqlRequest) GetTemplateId() string {
@@ -767,7 +860,7 @@ type BuildDcqlResponse struct {
 
 func (x *BuildDcqlResponse) Reset() {
 	*x = BuildDcqlResponse{}
-	mi := &file_vca_combined_v1_combined_proto_msgTypes[12]
+	mi := &file_vca_combined_v1_combined_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -779,7 +872,7 @@ func (x *BuildDcqlResponse) String() string {
 func (*BuildDcqlResponse) ProtoMessage() {}
 
 func (x *BuildDcqlResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_combined_v1_combined_proto_msgTypes[12]
+	mi := &file_vca_combined_v1_combined_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -792,7 +885,7 @@ func (x *BuildDcqlResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildDcqlResponse.ProtoReflect.Descriptor instead.
 func (*BuildDcqlResponse) Descriptor() ([]byte, []int) {
-	return file_vca_combined_v1_combined_proto_rawDescGZIP(), []int{12}
+	return file_vca_combined_v1_combined_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *BuildDcqlResponse) GetDcql() string {
@@ -818,7 +911,7 @@ type CombinedTemplate_Member struct {
 
 func (x *CombinedTemplate_Member) Reset() {
 	*x = CombinedTemplate_Member{}
-	mi := &file_vca_combined_v1_combined_proto_msgTypes[13]
+	mi := &file_vca_combined_v1_combined_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -830,7 +923,7 @@ func (x *CombinedTemplate_Member) String() string {
 func (*CombinedTemplate_Member) ProtoMessage() {}
 
 func (x *CombinedTemplate_Member) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_combined_v1_combined_proto_msgTypes[13]
+	mi := &file_vca_combined_v1_combined_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -882,7 +975,7 @@ type CombinedTemplate_Rule struct {
 
 func (x *CombinedTemplate_Rule) Reset() {
 	*x = CombinedTemplate_Rule{}
-	mi := &file_vca_combined_v1_combined_proto_msgTypes[14]
+	mi := &file_vca_combined_v1_combined_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -894,7 +987,7 @@ func (x *CombinedTemplate_Rule) String() string {
 func (*CombinedTemplate_Rule) ProtoMessage() {}
 
 func (x *CombinedTemplate_Rule) ProtoReflect() protoreflect.Message {
-	mi := &file_vca_combined_v1_combined_proto_msgTypes[14]
+	mi := &file_vca_combined_v1_combined_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -974,7 +1067,11 @@ const file_vca_combined_v1_combined_proto_rawDesc = "" +
 	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page\"\x1f\n" +
 	"\rDeleteRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\x10\n" +
-	"\x0eDeleteResponse\"\xc7\x01\n" +
+	"\x0eDeleteResponse\"N\n" +
+	"\rUpdateRequest\x12=\n" +
+	"\btemplate\x18\x01 \x01(\v2!.vca.combined.v1.CombinedTemplateR\btemplate\"O\n" +
+	"\x0eUpdateResponse\x12=\n" +
+	"\btemplate\x18\x01 \x01(\v2!.vca.combined.v1.CombinedTemplateR\btemplate\"\xc7\x01\n" +
 	"\x17EvaluateCombinedRequest\x12B\n" +
 	"\fpresentation\x18\x01 \x01(\v2\x1e.vca.ingest.v1.RawPresentationR\fpresentation\x12\x1f\n" +
 	"\vtemplate_id\x18\x02 \x01(\tR\n" +
@@ -997,12 +1094,13 @@ const file_vca_combined_v1_combined_proto_rawDesc = "" +
 	"\x16CROSS_RULE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17CROSS_RULE_SAME_SUBJECT\x10\x01\x12\x1e\n" +
 	"\x1aCROSS_RULE_DELEGATION_LINK\x10\x02\x12\x19\n" +
-	"\x15CROSS_RULE_DATE_ORDER\x10\x032\xeb\x03\n" +
+	"\x15CROSS_RULE_DATE_ORDER\x10\x032\xb6\x04\n" +
 	"\x0fCombinedService\x12I\n" +
 	"\x06Create\x12\x1e.vca.combined.v1.CreateRequest\x1a\x1f.vca.combined.v1.CreateResponse\x12@\n" +
 	"\x03Get\x12\x1b.vca.combined.v1.GetRequest\x1a\x1c.vca.combined.v1.GetResponse\x12C\n" +
 	"\x04List\x12\x1c.vca.combined.v1.ListRequest\x1a\x1d.vca.combined.v1.ListResponse\x12I\n" +
-	"\x06Delete\x12\x1e.vca.combined.v1.DeleteRequest\x1a\x1f.vca.combined.v1.DeleteResponse\x12g\n" +
+	"\x06Delete\x12\x1e.vca.combined.v1.DeleteRequest\x1a\x1f.vca.combined.v1.DeleteResponse\x12I\n" +
+	"\x06Update\x12\x1e.vca.combined.v1.UpdateRequest\x1a\x1f.vca.combined.v1.UpdateResponse\x12g\n" +
 	"\x10EvaluateCombined\x12(.vca.combined.v1.EvaluateCombinedRequest\x1a).vca.combined.v1.EvaluateCombinedResponse\x12R\n" +
 	"\tBuildDcql\x12!.vca.combined.v1.BuildDcqlRequest\x1a\".vca.combined.v1.BuildDcqlResponseB\xc8\x01\n" +
 	"\x13com.vca.combined.v1B\rCombinedProtoP\x01ZDgithub.com/centre-for-dpi/vc-adapters/gen/vca/combined/v1;combinedv1\xa2\x02\x03VCX\xaa\x02\x0fVca.Combined.V1\xca\x02\x0fVca\\Combined\\V1\xe2\x02\x1bVca\\Combined\\V1\\GPBMetadata\xea\x02\x11Vca::Combined::V1b\x06proto3"
@@ -1020,7 +1118,7 @@ func file_vca_combined_v1_combined_proto_rawDescGZIP() []byte {
 }
 
 var file_vca_combined_v1_combined_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_vca_combined_v1_combined_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_vca_combined_v1_combined_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_vca_combined_v1_combined_proto_goTypes = []any{
 	(CrossRule)(0),                    // 0: vca.combined.v1.CrossRule
 	(*CombinedTemplate)(nil),          // 1: vca.combined.v1.CombinedTemplate
@@ -1032,57 +1130,63 @@ var file_vca_combined_v1_combined_proto_goTypes = []any{
 	(*ListResponse)(nil),              // 7: vca.combined.v1.ListResponse
 	(*DeleteRequest)(nil),             // 8: vca.combined.v1.DeleteRequest
 	(*DeleteResponse)(nil),            // 9: vca.combined.v1.DeleteResponse
-	(*EvaluateCombinedRequest)(nil),   // 10: vca.combined.v1.EvaluateCombinedRequest
-	(*EvaluateCombinedResponse)(nil),  // 11: vca.combined.v1.EvaluateCombinedResponse
-	(*BuildDcqlRequest)(nil),          // 12: vca.combined.v1.BuildDcqlRequest
-	(*BuildDcqlResponse)(nil),         // 13: vca.combined.v1.BuildDcqlResponse
-	(*CombinedTemplate_Member)(nil),   // 14: vca.combined.v1.CombinedTemplate.Member
-	(*CombinedTemplate_Rule)(nil),     // 15: vca.combined.v1.CombinedTemplate.Rule
-	nil,                               // 16: vca.combined.v1.CombinedTemplate.Rule.ParamsEntry
-	nil,                               // 17: vca.combined.v1.EvaluateCombinedResponse.CredentialVerdictsEntry
-	(*timestamppb.Timestamp)(nil),     // 18: google.protobuf.Timestamp
-	(*v1.Pagination)(nil),             // 19: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),             // 20: vca.common.v1.PageResult
-	(*v11.RawPresentation)(nil),       // 21: vca.ingest.v1.RawPresentation
-	(*v12.VerificationResult)(nil),    // 22: vca.results.v1.VerificationResult
-	(*v13.CheckResult)(nil),           // 23: vca.policy.v1.CheckResult
-	(v13.EvaluateResponse_Verdict)(0), // 24: vca.policy.v1.EvaluateResponse.Verdict
+	(*UpdateRequest)(nil),             // 10: vca.combined.v1.UpdateRequest
+	(*UpdateResponse)(nil),            // 11: vca.combined.v1.UpdateResponse
+	(*EvaluateCombinedRequest)(nil),   // 12: vca.combined.v1.EvaluateCombinedRequest
+	(*EvaluateCombinedResponse)(nil),  // 13: vca.combined.v1.EvaluateCombinedResponse
+	(*BuildDcqlRequest)(nil),          // 14: vca.combined.v1.BuildDcqlRequest
+	(*BuildDcqlResponse)(nil),         // 15: vca.combined.v1.BuildDcqlResponse
+	(*CombinedTemplate_Member)(nil),   // 16: vca.combined.v1.CombinedTemplate.Member
+	(*CombinedTemplate_Rule)(nil),     // 17: vca.combined.v1.CombinedTemplate.Rule
+	nil,                               // 18: vca.combined.v1.CombinedTemplate.Rule.ParamsEntry
+	nil,                               // 19: vca.combined.v1.EvaluateCombinedResponse.CredentialVerdictsEntry
+	(*timestamppb.Timestamp)(nil),     // 20: google.protobuf.Timestamp
+	(*v1.Pagination)(nil),             // 21: vca.common.v1.Pagination
+	(*v1.PageResult)(nil),             // 22: vca.common.v1.PageResult
+	(*v11.RawPresentation)(nil),       // 23: vca.ingest.v1.RawPresentation
+	(*v12.VerificationResult)(nil),    // 24: vca.results.v1.VerificationResult
+	(*v13.CheckResult)(nil),           // 25: vca.policy.v1.CheckResult
+	(v13.EvaluateResponse_Verdict)(0), // 26: vca.policy.v1.EvaluateResponse.Verdict
 }
 var file_vca_combined_v1_combined_proto_depIdxs = []int32{
-	14, // 0: vca.combined.v1.CombinedTemplate.members:type_name -> vca.combined.v1.CombinedTemplate.Member
-	15, // 1: vca.combined.v1.CombinedTemplate.rules:type_name -> vca.combined.v1.CombinedTemplate.Rule
-	18, // 2: vca.combined.v1.CombinedTemplate.created_at:type_name -> google.protobuf.Timestamp
+	16, // 0: vca.combined.v1.CombinedTemplate.members:type_name -> vca.combined.v1.CombinedTemplate.Member
+	17, // 1: vca.combined.v1.CombinedTemplate.rules:type_name -> vca.combined.v1.CombinedTemplate.Rule
+	20, // 2: vca.combined.v1.CombinedTemplate.created_at:type_name -> google.protobuf.Timestamp
 	1,  // 3: vca.combined.v1.CreateRequest.template:type_name -> vca.combined.v1.CombinedTemplate
 	1,  // 4: vca.combined.v1.CreateResponse.template:type_name -> vca.combined.v1.CombinedTemplate
 	1,  // 5: vca.combined.v1.GetResponse.template:type_name -> vca.combined.v1.CombinedTemplate
-	19, // 6: vca.combined.v1.ListRequest.page:type_name -> vca.common.v1.Pagination
+	21, // 6: vca.combined.v1.ListRequest.page:type_name -> vca.common.v1.Pagination
 	1,  // 7: vca.combined.v1.ListResponse.templates:type_name -> vca.combined.v1.CombinedTemplate
-	20, // 8: vca.combined.v1.ListResponse.page:type_name -> vca.common.v1.PageResult
-	21, // 9: vca.combined.v1.EvaluateCombinedRequest.presentation:type_name -> vca.ingest.v1.RawPresentation
-	18, // 10: vca.combined.v1.EvaluateCombinedRequest.at:type_name -> google.protobuf.Timestamp
-	22, // 11: vca.combined.v1.EvaluateCombinedResponse.result:type_name -> vca.results.v1.VerificationResult
-	17, // 12: vca.combined.v1.EvaluateCombinedResponse.credential_verdicts:type_name -> vca.combined.v1.EvaluateCombinedResponse.CredentialVerdictsEntry
-	23, // 13: vca.combined.v1.EvaluateCombinedResponse.cross_checks:type_name -> vca.policy.v1.CheckResult
-	0,  // 14: vca.combined.v1.CombinedTemplate.Rule.kind:type_name -> vca.combined.v1.CrossRule
-	16, // 15: vca.combined.v1.CombinedTemplate.Rule.params:type_name -> vca.combined.v1.CombinedTemplate.Rule.ParamsEntry
-	24, // 16: vca.combined.v1.EvaluateCombinedResponse.CredentialVerdictsEntry.value:type_name -> vca.policy.v1.EvaluateResponse.Verdict
-	2,  // 17: vca.combined.v1.CombinedService.Create:input_type -> vca.combined.v1.CreateRequest
-	4,  // 18: vca.combined.v1.CombinedService.Get:input_type -> vca.combined.v1.GetRequest
-	6,  // 19: vca.combined.v1.CombinedService.List:input_type -> vca.combined.v1.ListRequest
-	8,  // 20: vca.combined.v1.CombinedService.Delete:input_type -> vca.combined.v1.DeleteRequest
-	10, // 21: vca.combined.v1.CombinedService.EvaluateCombined:input_type -> vca.combined.v1.EvaluateCombinedRequest
-	12, // 22: vca.combined.v1.CombinedService.BuildDcql:input_type -> vca.combined.v1.BuildDcqlRequest
-	3,  // 23: vca.combined.v1.CombinedService.Create:output_type -> vca.combined.v1.CreateResponse
-	5,  // 24: vca.combined.v1.CombinedService.Get:output_type -> vca.combined.v1.GetResponse
-	7,  // 25: vca.combined.v1.CombinedService.List:output_type -> vca.combined.v1.ListResponse
-	9,  // 26: vca.combined.v1.CombinedService.Delete:output_type -> vca.combined.v1.DeleteResponse
-	11, // 27: vca.combined.v1.CombinedService.EvaluateCombined:output_type -> vca.combined.v1.EvaluateCombinedResponse
-	13, // 28: vca.combined.v1.CombinedService.BuildDcql:output_type -> vca.combined.v1.BuildDcqlResponse
-	23, // [23:29] is the sub-list for method output_type
-	17, // [17:23] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	22, // 8: vca.combined.v1.ListResponse.page:type_name -> vca.common.v1.PageResult
+	1,  // 9: vca.combined.v1.UpdateRequest.template:type_name -> vca.combined.v1.CombinedTemplate
+	1,  // 10: vca.combined.v1.UpdateResponse.template:type_name -> vca.combined.v1.CombinedTemplate
+	23, // 11: vca.combined.v1.EvaluateCombinedRequest.presentation:type_name -> vca.ingest.v1.RawPresentation
+	20, // 12: vca.combined.v1.EvaluateCombinedRequest.at:type_name -> google.protobuf.Timestamp
+	24, // 13: vca.combined.v1.EvaluateCombinedResponse.result:type_name -> vca.results.v1.VerificationResult
+	19, // 14: vca.combined.v1.EvaluateCombinedResponse.credential_verdicts:type_name -> vca.combined.v1.EvaluateCombinedResponse.CredentialVerdictsEntry
+	25, // 15: vca.combined.v1.EvaluateCombinedResponse.cross_checks:type_name -> vca.policy.v1.CheckResult
+	0,  // 16: vca.combined.v1.CombinedTemplate.Rule.kind:type_name -> vca.combined.v1.CrossRule
+	18, // 17: vca.combined.v1.CombinedTemplate.Rule.params:type_name -> vca.combined.v1.CombinedTemplate.Rule.ParamsEntry
+	26, // 18: vca.combined.v1.EvaluateCombinedResponse.CredentialVerdictsEntry.value:type_name -> vca.policy.v1.EvaluateResponse.Verdict
+	2,  // 19: vca.combined.v1.CombinedService.Create:input_type -> vca.combined.v1.CreateRequest
+	4,  // 20: vca.combined.v1.CombinedService.Get:input_type -> vca.combined.v1.GetRequest
+	6,  // 21: vca.combined.v1.CombinedService.List:input_type -> vca.combined.v1.ListRequest
+	8,  // 22: vca.combined.v1.CombinedService.Delete:input_type -> vca.combined.v1.DeleteRequest
+	10, // 23: vca.combined.v1.CombinedService.Update:input_type -> vca.combined.v1.UpdateRequest
+	12, // 24: vca.combined.v1.CombinedService.EvaluateCombined:input_type -> vca.combined.v1.EvaluateCombinedRequest
+	14, // 25: vca.combined.v1.CombinedService.BuildDcql:input_type -> vca.combined.v1.BuildDcqlRequest
+	3,  // 26: vca.combined.v1.CombinedService.Create:output_type -> vca.combined.v1.CreateResponse
+	5,  // 27: vca.combined.v1.CombinedService.Get:output_type -> vca.combined.v1.GetResponse
+	7,  // 28: vca.combined.v1.CombinedService.List:output_type -> vca.combined.v1.ListResponse
+	9,  // 29: vca.combined.v1.CombinedService.Delete:output_type -> vca.combined.v1.DeleteResponse
+	11, // 30: vca.combined.v1.CombinedService.Update:output_type -> vca.combined.v1.UpdateResponse
+	13, // 31: vca.combined.v1.CombinedService.EvaluateCombined:output_type -> vca.combined.v1.EvaluateCombinedResponse
+	15, // 32: vca.combined.v1.CombinedService.BuildDcql:output_type -> vca.combined.v1.BuildDcqlResponse
+	26, // [26:33] is the sub-list for method output_type
+	19, // [19:26] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_vca_combined_v1_combined_proto_init() }
@@ -1096,7 +1200,7 @@ func file_vca_combined_v1_combined_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_combined_v1_combined_proto_rawDesc), len(file_vca_combined_v1_combined_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   17,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

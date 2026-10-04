@@ -11,6 +11,7 @@ package vca.ingest.v1;
 import "google/protobuf/timestamp.proto";
 import "vca/backend/v1/backend.proto";
 import "vca/common/v1/common.proto";
+import "vca/discovery/v1/discovery.proto";
 
 // IngestService turns any supported carrier into a RawPresentation.
 service IngestService {
@@ -176,6 +177,12 @@ message CreateOid4vpRequestRequest {
   // sends the request over that connection, and the request has no QR
   // code. Empty makes an out of band invitation.
   string connection_id = 10;
+  // The kind of the template that template_id names. With
+  // TEMPLATE_KIND_COMBINED the id names a combined template of the
+  // combined service. The service then sends the merged query of
+  // BuildDcql and evaluates the answer with EvaluateCombined (ADR-079).
+  // Any other value names a template of the discovery service.
+  vca.discovery.v1.TemplateKind template_kind = 11;
 }
 
 // CreateOid4vpRequestResponse describes the transaction.
@@ -267,6 +274,9 @@ message GetTransactionResponse {
   bool didcomm = 12;
   // The DIDComm connection the request went over, when it went over one.
   string connection_id = 13;
+  // TEMPLATE_KIND_COMBINED when template_id names a combined template
+  // (ADR-079). Unspecified otherwise.
+  vca.discovery.v1.TemplateKind template_kind = 14;
 
   // State names the transaction phase.
   enum State {
@@ -316,6 +326,9 @@ message TransactionSummary {
   vca.common.v1.Verdict verdict = 10;
   // True when the request went over DIDComm.
   bool didcomm = 11;
+  // TEMPLATE_KIND_COMBINED when template_id names a combined template
+  // (ADR-079). Unspecified otherwise.
+  vca.discovery.v1.TemplateKind template_kind = 12;
 }
 
 // ListTransactionsResponse returns the transactions.

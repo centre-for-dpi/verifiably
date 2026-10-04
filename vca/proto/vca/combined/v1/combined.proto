@@ -23,6 +23,10 @@ service CombinedService {
   rpc List(ListRequest) returns (ListResponse);
   // Delete removes one combined template.
   rpc Delete(DeleteRequest) returns (DeleteResponse);
+  // Update replaces the name, the members, the rules, and the policy set
+  // of one combined template. The id, the tenant, and the creation time
+  // stay (ADR-079).
+  rpc Update(UpdateRequest) returns (UpdateResponse);
   // EvaluateCombined runs the policy set per credential, then the cross
   // rules, and returns one result with a card per credential.
   rpc EvaluateCombined(EvaluateCombinedRequest) returns (EvaluateCombinedResponse);
@@ -135,6 +139,19 @@ message DeleteRequest {
 
 // DeleteResponse has no fields.
 message DeleteResponse {}
+
+// UpdateRequest carries the new form of a stored template.
+message UpdateRequest {
+  // The template. Its id selects the stored template. The service
+  // ignores tenant_id and created_at.
+  CombinedTemplate template = 1;
+}
+
+// UpdateResponse returns the stored template.
+message UpdateResponse {
+  // The template as stored.
+  CombinedTemplate template = 1;
+}
 
 // EvaluateCombinedRequest carries the presentation and the template.
 message EvaluateCombinedRequest {

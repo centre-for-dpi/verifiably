@@ -26,6 +26,12 @@
 //	GET  /anoncreds/            the AnonCreds proof request builder (anoncreds.go)
 //	POST /anoncreds/            draw the preview again, or save the query
 //	POST /anoncreds/preview     the preview fragment for htmx
+//	GET  /combined/             the combined queries (combined.go)
+//	GET  /combined/new          the form of a new combined query
+//	POST /combined/new          store it in the combined service
+//	GET  /combined/edit/{id}    the form of a stored combined query
+//	POST /combined/edit/{id}    store it again under its id
+//	POST /combined/delete/{id}  remove one combined query
 //	POST /signout               end the session at verifier-auth
 //
 // With a shell the pages sit in the verifier frame of
@@ -85,6 +91,10 @@ type Options struct {
 	// stack that lists FEATURE_ANONCREDS_PROOF. Nil, or no such stack,
 	// hides the AnonCreds builder (ADR-061 decision 4).
 	ProofSchemas func(ctx context.Context) []StackSchemas
+	// Combined manages the combined templates of the pair (ADR-079
+	// decision 4). Nil, or an own pair that lists no combined service,
+	// hides the combined query pages.
+	Combined CombinedTemplates
 }
 
 // Portal serves the verifier pages.
@@ -135,6 +145,7 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/anoncreds/{$}", p.handle(p.anonPage))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/anoncreds/{$}", p.handle(p.anonPage))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/anoncreds/preview", p.handle(p.anonPreviewPost))
+	p.registerCombined(mux)
 	if p.opts.SignOut != nil {
 		mux.Handle("POST "+p.opts.Prefix+"/signout", p.opts.SignOut)
 	}
@@ -212,6 +223,9 @@ var Notices = map[string]components.Toast{
 	"crawled": {Level: "ok", Text: "The crawl finished. The catalogue shows the new metadata."},
 	"saved":   {Level: "ok", Text: "The template is saved. The ingestion service can use it now."},
 	"deleted": {Level: "warn", Text: "The template is removed. Every version is gone."},
+	// The combined query pages (ADR-079 decision 4).
+	"combined-saved":   {Level: "ok", Text: msg.T("verifier.combined.saved")},
+	"combined-deleted": {Level: "warn", Text: msg.T("verifier.combined.deleted")},
 }
 
 // notice returns the toast of a notice query value.

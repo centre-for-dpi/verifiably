@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-078, one row per decision.
+ADR-079, one row per decision.
 
 The status values are:
 
@@ -827,12 +827,22 @@ A row that is not `Done` carries a note.
 | ADR-078 | 1 `vca combined list`, `create` and `delete` | Done | `vca/internal/cli/combined.go`, `vca/internal/cli/command.go` | `TestCombinedCommandsManageTheTemplatesOfThePair` pins it. |
 | ADR-078 | 2 The caller `cli` of the combined service | Done | `vca/internal/cli/services.go` | `TestCombinedCommandsManageTheTemplatesOfThePair` calls a service that takes the callers of the catalogue. |
 
+## ADR-079: The ingestion service requests and evaluates combined templates
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-079 | 1 The combined template kind | Done | `proto/vca/discovery/v1/discovery.proto`, `proto/vca/ingest/v1/ingest.proto`, `vca/services/verifier-discovery/internal/template/template.go` | `TestBuildRefusesACombinedKind` pins the refusal of the discovery service. |
+| ADR-079 | 2 Merge, send, and evaluate | Done | `vca/services/verifier-ingest/internal/service/request.go`, `vca/services/verifier-ingest/internal/app/app.go` | `TestACombinedRequestSendsTheMergedQueryAndEvaluatesTheCombination`, `TestACombinedRequestThroughAStack`, `TestACombinedRequestRefusals`, and `TestBuildCallsTheCombinedServiceOfTheLink` pin it. |
+| ADR-079 | 3 `Update` of the combined service | Done | `proto/vca/combined/v1/combined.proto`, `vca/services/verifier-combined/internal/service/service.go`, `vca/services/verifier-combined/internal/combos/combos.go` | `TestUpdateKeepsTheIdAndReplacesTheMembers` and `TestUpdateReplacesTheTemplate` pin it. |
+| ADR-079 | 4 The combined query pages and the request page | Done | `vca/services/verifier-discovery/internal/portal/combined.go`, `vca/services/verifier-ingest/internal/scanner/request.go`, `vca/internal/rolenav/rolenav.go`, `vca/services/internal/staffshell/staffshell.go` | `TestCombinedPagesListCreateEditAndDelete`, `TestCombinedPagesHideWhenThePairRunsNoCombinedService`, `TestCombinedPagesReadTheCombinedServiceOfTheLink`, `TestACombinedTemplateIsAQueryOfTheRequestPage`, `TestVerifierNavShowsCombinedOnlyWhenThePairRunsIt`, and `TestRunsReadsTheServicesOfTheOwnPair` pin it. |
+| ADR-079 | 5 The callers of the combined service | Done | `vca/internal/cli/services.go`, `docs/deploy.md` | `TestEveryConnectHandlerChecksItsCaller` and `TestDeployDocClassifiesEveryRPC` keep the table and the catalogue in step. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 393 |
+| Done | 398 |
 | Partial | 19 |
 | Deferred | 3 |
 | Not started | 5 |
-| Total | 420 |
+| Total | 425 |

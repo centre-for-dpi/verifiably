@@ -58,3 +58,4 @@ each decision of each record.
 - [ADR-076: The answer of Issue names the status entry its credential carries](adr/ADR-076-issue-names-its-status-entry.md)
 - [ADR-077: The schema registry registers each published version again at start](adr/ADR-077-registry-registers-again-at-start.md)
 - [ADR-078: The vca command manages the combined templates of a verifier pair](adr/ADR-078-cli-manages-combined-templates.md)
+- [ADR-079: The ingestion service requests and evaluates combined templates](adr/ADR-079-ingest-requests-combined-templates.md)

@@ -20,6 +20,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/pex"
 	cardsummary "github.com/centre-for-dpi/vc-adapters/core/summary"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	combinedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/combined/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	ingestv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1"
@@ -108,6 +109,14 @@ type Evaluator interface {
 	Evaluate(context.Context, *connect.Request[policyv1.EvaluateRequest]) (*connect.Response[policyv1.EvaluateResponse], error)
 }
 
+// Combined is the combined service (ADR-026). It holds the combined
+// templates, merges their queries, and evaluates their answers.
+type Combined interface {
+	Get(context.Context, *connect.Request[combinedv1.GetRequest]) (*connect.Response[combinedv1.GetResponse], error)
+	BuildDcql(context.Context, *connect.Request[combinedv1.BuildDcqlRequest]) (*connect.Response[combinedv1.BuildDcqlResponse], error)
+	EvaluateCombined(context.Context, *connect.Request[combinedv1.EvaluateCombinedRequest]) (*connect.Response[combinedv1.EvaluateCombinedResponse], error)
+}
+
 // ResultStore keeps a verification result. The results service is one.
 type ResultStore interface {
 	Store(context.Context, *connect.Request[resultsv1.StoreRequest]) (*connect.Response[resultsv1.StoreResponse], error)
@@ -162,6 +171,9 @@ func (s *Service) template(ctx context.Context, msg *ingestv1.CreateOid4VpReques
 	if id == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("service: the request names no template and carries no query"))
 	}
+	if isCombined(msg) {
+		return s.combinedTemplate(ctx, id)
+	}
 	if s.opts.Discovery == nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("service: no discovery service is configured, so a template cannot be read"))
 	}
@@ -172,6 +184,47 @@ func (s *Service) template(ctx context.Context, msg *ingestv1.CreateOid4VpReques
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("service: read the template %q: %w", id, err))
 	}
 	return resp.Msg.GetTemplate(), nil
+}
+
+// isCombined reports whether a request names a combined template
+// (ADR-079 decision 1).
+func isCombined(msg *ingestv1.CreateOid4VpRequestRequest) bool {
+	return msg.GetTemplateKind() == discoveryv1.TemplateKind_TEMPLATE_KIND_COMBINED
+}
+
+// combinedTemplate returns a DCQL template of a combined template: the
+// merged query of BuildDcql, the name, and the policy set of the
+// combination (ADR-079 decision 2). The stack checks the issuer when a
+// member template asks for a trusted issuer.
+func (s *Service) combinedTemplate(ctx context.Context, id string) (*discoveryv1.PresentationTemplate, error) {
+	if s.opts.Combined == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("service: no combined service is configured, so a combined template cannot be read"))
+	}
+	got, err := s.opts.Combined.Get(ctx, connect.NewRequest(&combinedv1.GetRequest{Id: id}))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("service: read the combined template %q: %w", id, err))
+	}
+	built, err := s.opts.Combined.BuildDcql(ctx, connect.NewRequest(&combinedv1.BuildDcqlRequest{TemplateId: id}))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("service: merge the query of the combined template %q: %w", id, err))
+	}
+	ct := got.Msg.GetTemplate()
+	out := &discoveryv1.PresentationTemplate{
+		Id: id, DisplayName: ct.GetDisplayName(), Dcql: built.Msg.GetDcql(),
+		Kind: discoveryv1.TemplateKind_TEMPLATE_KIND_DCQL, PolicySetId: ct.GetPolicySetId(),
+	}
+	if s.opts.Discovery == nil {
+		return out, nil
+	}
+	for _, m := range ct.GetMembers() {
+		resp, gerr := s.opts.Discovery.GetTemplate(ctx, connect.NewRequest(&discoveryv1.GetTemplateRequest{
+			Id: m.GetTemplateId(), Version: m.GetTemplateVersion(),
+		}))
+		if gerr == nil && resp.Msg.GetTemplate().GetRequireTrustedIssuer() {
+			out.RequireTrustedIssuer = true
+		}
+	}
+	return out, nil
 }
 
 // ttl returns how long a request works: the pick of the staff member,
@@ -252,6 +305,7 @@ func (s *Service) createThroughStack(ctx context.Context, msg *ingestv1.CreateOi
 		State: txn.StatePending, CreatedAt: now, ExpiresAt: now.Add(ttl),
 		Stack: stack.Pair, StackName: stack.Name, Adapter: stack.Adapter, StackState: resp.Msg.GetState(), RequestURI: resp.Msg.GetRequestUri(),
 		DcAPIRequest: resp.Msg.GetDcApiRequest(), Didcomm: didcomm, ConnectionID: msg.GetConnectionId(),
+		Combined: isCombined(msg),
 	}
 	if at := resp.Msg.GetExpiresAt(); at != nil {
 		record.ExpiresAt = at.AsTime()
@@ -374,6 +428,10 @@ func formatWord(f commonv1.Format) string {
 // service it does nothing. A failure keeps the answer and names the
 // failure on the record.
 func (s *Service) finish(ctx context.Context, record *txn.Transaction) {
+	if record.Combined && record.Presentation != nil {
+		s.finishCombined(ctx, record)
+		return
+	}
 	if s.opts.Policy == nil || record.Presentation == nil {
 		return
 	}
@@ -395,6 +453,28 @@ func (s *Service) finish(ctx context.Context, record *txn.Transaction) {
 		return
 	}
 	record.ResultID = stored.Msg.GetResult().GetId()
+}
+
+// finishCombined evaluates the answer of a combined request with
+// EvaluateCombined. The combined service runs the policy set on each
+// credential, then the cross rules, and stores the result (ADR-079
+// decision 2). A failure keeps the answer and names the failure on the
+// record.
+func (s *Service) finishCombined(ctx context.Context, record *txn.Transaction) {
+	if s.opts.Combined == nil {
+		record.Error = "no combined service is configured, so the answer was not evaluated"
+		return
+	}
+	resp, err := s.opts.Combined.EvaluateCombined(ctx, connect.NewRequest(&combinedv1.EvaluateCombinedRequest{
+		Presentation: RecordToProto(record.Presentation, record.ID), TemplateId: record.TemplateID,
+		At: timestamppb.New(s.opts.Now()),
+	}))
+	if err != nil {
+		record.Error = "the combined service did not evaluate the answer: " + err.Error()
+		return
+	}
+	record.Verdict = int32(resp.Msg.GetResult().GetVerdict())
+	record.ResultID = resp.Msg.GetResult().GetId()
 }
 
 // ResultOf builds the verification result of an evaluated answer, with

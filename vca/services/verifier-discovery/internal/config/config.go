@@ -65,7 +65,12 @@ type Config struct {
 	// of a query become a policy set there (ADR-042 decision 3). Empty
 	// refuses a query with a rule.
 	PolicyURL string `env:"POLICY_URL"`
-	// PolicyTimeout bounds one call to the policy service.
+	// CombinedURL is the base URL of the combined service of the pair.
+	// The combined query pages store the combined templates there
+	// (ADR-079). Empty hides the pages.
+	CombinedURL string `env:"COMBINED_URL"`
+	// PolicyTimeout bounds one call to the policy service or the
+	// combined service.
 	PolicyTimeout time.Duration `env:"POLICY_TIMEOUT" default:"10s"`
 	// PortalPrefix is the URL prefix of the staff pages.
 	PortalPrefix string `env:"PORTAL_PREFIX" default:"/portal"`
@@ -100,6 +105,7 @@ func Load(getenv func(string) string) (Config, error) {
 	c.BaseURL = strings.TrimRight(c.BaseURL, "/")
 	c.TrustURL = strings.TrimRight(c.TrustURL, "/")
 	c.PolicyURL = strings.TrimRight(c.PolicyURL, "/")
+	c.CombinedURL = strings.TrimRight(c.CombinedURL, "/")
 	peers, err := topology.Parse(getenv(topology.Env))
 	if err != nil {
 		return Config{}, err

@@ -14,8 +14,9 @@
 package ingestv1
 
 import (
-	v11 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	v12 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	v1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
+	v11 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -653,7 +654,13 @@ type CreateOid4VpRequestRequest struct {
 	// The DIDComm connection of the holder at the stack. The stack then
 	// sends the request over that connection, and the request has no QR
 	// code. Empty makes an out of band invitation.
-	ConnectionId  string `protobuf:"bytes,10,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
+	ConnectionId string `protobuf:"bytes,10,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
+	// The kind of the template that template_id names. With
+	// TEMPLATE_KIND_COMBINED the id names a combined template of the
+	// combined service. The service then sends the merged query of
+	// BuildDcql and evaluates the answer with EvaluateCombined (ADR-079).
+	// Any other value names a template of the discovery service.
+	TemplateKind  v11.TemplateKind `protobuf:"varint,11,opt,name=template_kind,json=templateKind,proto3,enum=vca.discovery.v1.TemplateKind" json:"template_kind,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -756,6 +763,13 @@ func (x *CreateOid4VpRequestRequest) GetConnectionId() string {
 		return x.ConnectionId
 	}
 	return ""
+}
+
+func (x *CreateOid4VpRequestRequest) GetTemplateKind() v11.TemplateKind {
+	if x != nil {
+		return x.TemplateKind
+	}
+	return v11.TemplateKind(0)
 }
 
 // CreateOid4vpRequestResponse describes the transaction.
@@ -1151,14 +1165,17 @@ type GetTransactionResponse struct {
 	// or of the stack, or the failure of the evaluation.
 	Error string `protobuf:"bytes,9,opt,name=error,proto3" json:"error,omitempty"`
 	// The checks the stack ran, for a request through a stack verifier.
-	StackChecks []*v11.GetResultResponse_DpgCheck `protobuf:"bytes,10,rep,name=stack_checks,json=stackChecks,proto3" json:"stack_checks,omitempty"`
+	StackChecks []*v12.GetResultResponse_DpgCheck `protobuf:"bytes,10,rep,name=stack_checks,json=stackChecks,proto3" json:"stack_checks,omitempty"`
 	// The request object of the Digital Credentials API, as a JSON string,
 	// for a request that asked for it.
 	DcApiRequest string `protobuf:"bytes,11,opt,name=dc_api_request,json=dcApiRequest,proto3" json:"dc_api_request,omitempty"`
 	// True when the request went over DIDComm.
 	Didcomm bool `protobuf:"varint,12,opt,name=didcomm,proto3" json:"didcomm,omitempty"`
 	// The DIDComm connection the request went over, when it went over one.
-	ConnectionId  string `protobuf:"bytes,13,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
+	ConnectionId string `protobuf:"bytes,13,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
+	// TEMPLATE_KIND_COMBINED when template_id names a combined template
+	// (ADR-079). Unspecified otherwise.
+	TemplateKind  v11.TemplateKind `protobuf:"varint,14,opt,name=template_kind,json=templateKind,proto3,enum=vca.discovery.v1.TemplateKind" json:"template_kind,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1256,7 +1273,7 @@ func (x *GetTransactionResponse) GetError() string {
 	return ""
 }
 
-func (x *GetTransactionResponse) GetStackChecks() []*v11.GetResultResponse_DpgCheck {
+func (x *GetTransactionResponse) GetStackChecks() []*v12.GetResultResponse_DpgCheck {
 	if x != nil {
 		return x.StackChecks
 	}
@@ -1282,6 +1299,13 @@ func (x *GetTransactionResponse) GetConnectionId() string {
 		return x.ConnectionId
 	}
 	return ""
+}
+
+func (x *GetTransactionResponse) GetTemplateKind() v11.TemplateKind {
+	if x != nil {
+		return x.TemplateKind
+	}
+	return v11.TemplateKind(0)
 }
 
 // ListTransactionsRequest selects transactions.
@@ -1365,7 +1389,10 @@ type TransactionSummary struct {
 	// evaluated the answer.
 	Verdict v1.Verdict `protobuf:"varint,10,opt,name=verdict,proto3,enum=vca.common.v1.Verdict" json:"verdict,omitempty"`
 	// True when the request went over DIDComm.
-	Didcomm       bool `protobuf:"varint,11,opt,name=didcomm,proto3" json:"didcomm,omitempty"`
+	Didcomm bool `protobuf:"varint,11,opt,name=didcomm,proto3" json:"didcomm,omitempty"`
+	// TEMPLATE_KIND_COMBINED when template_id names a combined template
+	// (ADR-079). Unspecified otherwise.
+	TemplateKind  v11.TemplateKind `protobuf:"varint,12,opt,name=template_kind,json=templateKind,proto3,enum=vca.discovery.v1.TemplateKind" json:"template_kind,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1477,6 +1504,13 @@ func (x *TransactionSummary) GetDidcomm() bool {
 	return false
 }
 
+func (x *TransactionSummary) GetTemplateKind() v11.TemplateKind {
+	if x != nil {
+		return x.TemplateKind
+	}
+	return v11.TemplateKind(0)
+}
+
 // ListTransactionsResponse returns the transactions.
 type ListTransactionsResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1536,7 +1570,7 @@ var File_vca_ingest_v1_ingest_proto protoreflect.FileDescriptor
 
 const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	"\n" +
-	"\x1avca/ingest/v1/ingest.proto\x12\rvca.ingest.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cvca/backend/v1/backend.proto\x1a\x1avca/common/v1/common.proto\"\xd7\x03\n" +
+	"\x1avca/ingest/v1/ingest.proto\x12\rvca.ingest.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cvca/backend/v1/backend.proto\x1a\x1avca/common/v1/common.proto\x1a vca/discovery/v1/discovery.proto\"\xd7\x03\n" +
 	"\x0fRawPresentation\x12\x10\n" +
 	"\x03ref\x18\x01 \x01(\tR\x03ref\x120\n" +
 	"\acarrier\x18\x02 \x01(\x0e2\x16.vca.ingest.v1.CarrierR\acarrier\x12-\n" +
@@ -1574,7 +1608,7 @@ const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	"media_type\x18\x04 \x01(\tR\tmediaType\"j\n" +
 	"\x0eIngestResponse\x12B\n" +
 	"\fpresentation\x18\x01 \x01(\v2\x1e.vca.ingest.v1.RawPresentationR\fpresentation\x12\x14\n" +
-	"\x05steps\x18\x02 \x03(\tR\x05steps\"\xd3\x02\n" +
+	"\x05steps\x18\x02 \x03(\tR\x05steps\"\x98\x03\n" +
 	"\x1aCreateOid4vpRequestRequest\x12\x1f\n" +
 	"\vtemplate_id\x18\x01 \x01(\tR\n" +
 	"templateId\x12)\n" +
@@ -1587,7 +1621,8 @@ const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	"\x06origin\x18\b \x01(\tR\x06origin\x12\x18\n" +
 	"\adidcomm\x18\t \x01(\bR\adidcomm\x12#\n" +
 	"\rconnection_id\x18\n" +
-	" \x01(\tR\fconnectionId\"\xfb\x01\n" +
+	" \x01(\tR\fconnectionId\x12C\n" +
+	"\rtemplate_kind\x18\v \x01(\x0e2\x1e.vca.discovery.v1.TemplateKindR\ftemplateKind\"\xfb\x01\n" +
 	"\x1bCreateOid4vpRequestResponse\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x12\x1f\n" +
 	"\vrequest_uri\x18\x02 \x01(\tR\n" +
@@ -1612,7 +1647,7 @@ const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	"\fpresentation\x18\x01 \x01(\v2\x1e.vca.ingest.v1.RawPresentationR\fpresentation\x12!\n" +
 	"\fredirect_uri\x18\x02 \x01(\tR\vredirectUri\">\n" +
 	"\x15GetTransactionRequest\x12%\n" +
-	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\"\xb1\x05\n" +
+	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\"\xf6\x05\n" +
 	"\x16GetTransactionResponse\x12A\n" +
 	"\x05state\x18\x01 \x01(\x0e2+.vca.ingest.v1.GetTransactionResponse.StateR\x05state\x12B\n" +
 	"\fpresentation\x18\x02 \x01(\v2\x1e.vca.ingest.v1.RawPresentationR\fpresentation\x12\x1f\n" +
@@ -1630,7 +1665,8 @@ const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	" \x03(\v2*.vca.backend.v1.GetResultResponse.DpgCheckR\vstackChecks\x12$\n" +
 	"\x0edc_api_request\x18\v \x01(\tR\fdcApiRequest\x12\x18\n" +
 	"\adidcomm\x18\f \x01(\bR\adidcomm\x12#\n" +
-	"\rconnection_id\x18\r \x01(\tR\fconnectionId\"k\n" +
+	"\rconnection_id\x18\r \x01(\tR\fconnectionId\x12C\n" +
+	"\rtemplate_kind\x18\x0e \x01(\x0e2\x1e.vca.discovery.v1.TemplateKindR\ftemplateKind\"k\n" +
 	"\x05State\x12\x15\n" +
 	"\x11STATE_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rSTATE_PENDING\x10\x01\x12\x12\n" +
@@ -1639,7 +1675,7 @@ const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	"\rSTATE_EXPIRED\x10\x04\"\x8b\x01\n" +
 	"\x17ListTransactionsRequest\x12A\n" +
 	"\x05state\x18\x01 \x01(\x0e2+.vca.ingest.v1.GetTransactionResponse.StateR\x05state\x12-\n" +
-	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PaginationR\x04page\"\xfc\x03\n" +
+	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PaginationR\x04page\"\xc1\x04\n" +
 	"\x12TransactionSummary\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x12A\n" +
 	"\x05state\x18\x02 \x01(\x0e2+.vca.ingest.v1.GetTransactionResponse.StateR\x05state\x12\x1f\n" +
@@ -1656,7 +1692,8 @@ const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	"\x05stack\x18\t \x01(\tR\x05stack\x120\n" +
 	"\averdict\x18\n" +
 	" \x01(\x0e2\x16.vca.common.v1.VerdictR\averdict\x12\x18\n" +
-	"\adidcomm\x18\v \x01(\bR\adidcomm\"\x90\x01\n" +
+	"\adidcomm\x18\v \x01(\bR\adidcomm\x12C\n" +
+	"\rtemplate_kind\x18\f \x01(\x0e2\x1e.vca.discovery.v1.TemplateKindR\ftemplateKind\"\x90\x01\n" +
 	"\x18ListTransactionsResponse\x12E\n" +
 	"\ftransactions\x18\x01 \x03(\v2!.vca.ingest.v1.TransactionSummaryR\ftransactions\x12-\n" +
 	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page*\xe3\x01\n" +
@@ -1726,10 +1763,11 @@ var file_vca_ingest_v1_ingest_proto_goTypes = []any{
 	(v1.Format)(0),                         // 20: vca.common.v1.Format
 	(*v1.Credential)(nil),                  // 21: vca.common.v1.Credential
 	(*timestamppb.Timestamp)(nil),          // 22: google.protobuf.Timestamp
-	(*v11.GetResultResponse_DpgCheck)(nil), // 23: vca.backend.v1.GetResultResponse.DpgCheck
-	(*v1.Pagination)(nil),                  // 24: vca.common.v1.Pagination
-	(v1.Verdict)(0),                        // 25: vca.common.v1.Verdict
-	(*v1.PageResult)(nil),                  // 26: vca.common.v1.PageResult
+	(v11.TemplateKind)(0),                  // 23: vca.discovery.v1.TemplateKind
+	(*v12.GetResultResponse_DpgCheck)(nil), // 24: vca.backend.v1.GetResultResponse.DpgCheck
+	(*v1.Pagination)(nil),                  // 25: vca.common.v1.Pagination
+	(v1.Verdict)(0),                        // 26: vca.common.v1.Verdict
+	(*v1.PageResult)(nil),                  // 27: vca.common.v1.PageResult
 }
 var file_vca_ingest_v1_ingest_proto_depIdxs = []int32{
 	0,  // 0: vca.ingest.v1.RawPresentation.carrier:type_name -> vca.ingest.v1.Carrier
@@ -1742,38 +1780,41 @@ var file_vca_ingest_v1_ingest_proto_depIdxs = []int32{
 	0,  // 7: vca.ingest.v1.IngestRequest.carrier:type_name -> vca.ingest.v1.Carrier
 	5,  // 8: vca.ingest.v1.IngestRequest.xml:type_name -> vca.ingest.v1.XmlConfig
 	4,  // 9: vca.ingest.v1.IngestResponse.presentation:type_name -> vca.ingest.v1.RawPresentation
-	22, // 10: vca.ingest.v1.CreateOid4vpRequestResponse.expires_at:type_name -> google.protobuf.Timestamp
-	4,  // 11: vca.ingest.v1.ReceiveDirectPostResponse.presentation:type_name -> vca.ingest.v1.RawPresentation
-	3,  // 12: vca.ingest.v1.GetTransactionResponse.state:type_name -> vca.ingest.v1.GetTransactionResponse.State
-	4,  // 13: vca.ingest.v1.GetTransactionResponse.presentation:type_name -> vca.ingest.v1.RawPresentation
-	22, // 14: vca.ingest.v1.GetTransactionResponse.expires_at:type_name -> google.protobuf.Timestamp
-	23, // 15: vca.ingest.v1.GetTransactionResponse.stack_checks:type_name -> vca.backend.v1.GetResultResponse.DpgCheck
-	3,  // 16: vca.ingest.v1.ListTransactionsRequest.state:type_name -> vca.ingest.v1.GetTransactionResponse.State
-	24, // 17: vca.ingest.v1.ListTransactionsRequest.page:type_name -> vca.common.v1.Pagination
-	3,  // 18: vca.ingest.v1.TransactionSummary.state:type_name -> vca.ingest.v1.GetTransactionResponse.State
-	22, // 19: vca.ingest.v1.TransactionSummary.created_at:type_name -> google.protobuf.Timestamp
-	22, // 20: vca.ingest.v1.TransactionSummary.expires_at:type_name -> google.protobuf.Timestamp
-	22, // 21: vca.ingest.v1.TransactionSummary.answered_at:type_name -> google.protobuf.Timestamp
-	25, // 22: vca.ingest.v1.TransactionSummary.verdict:type_name -> vca.common.v1.Verdict
-	17, // 23: vca.ingest.v1.ListTransactionsResponse.transactions:type_name -> vca.ingest.v1.TransactionSummary
-	26, // 24: vca.ingest.v1.ListTransactionsResponse.page:type_name -> vca.common.v1.PageResult
-	6,  // 25: vca.ingest.v1.IngestService.Ingest:input_type -> vca.ingest.v1.IngestRequest
-	8,  // 26: vca.ingest.v1.IngestService.CreateOid4vpRequest:input_type -> vca.ingest.v1.CreateOid4vpRequestRequest
-	12, // 27: vca.ingest.v1.IngestService.ReceiveDirectPost:input_type -> vca.ingest.v1.ReceiveDirectPostRequest
-	14, // 28: vca.ingest.v1.IngestService.GetTransaction:input_type -> vca.ingest.v1.GetTransactionRequest
-	16, // 29: vca.ingest.v1.IngestService.ListTransactions:input_type -> vca.ingest.v1.ListTransactionsRequest
-	10, // 30: vca.ingest.v1.IngestService.SubmitBrowserAnswer:input_type -> vca.ingest.v1.SubmitBrowserAnswerRequest
-	7,  // 31: vca.ingest.v1.IngestService.Ingest:output_type -> vca.ingest.v1.IngestResponse
-	9,  // 32: vca.ingest.v1.IngestService.CreateOid4vpRequest:output_type -> vca.ingest.v1.CreateOid4vpRequestResponse
-	13, // 33: vca.ingest.v1.IngestService.ReceiveDirectPost:output_type -> vca.ingest.v1.ReceiveDirectPostResponse
-	15, // 34: vca.ingest.v1.IngestService.GetTransaction:output_type -> vca.ingest.v1.GetTransactionResponse
-	18, // 35: vca.ingest.v1.IngestService.ListTransactions:output_type -> vca.ingest.v1.ListTransactionsResponse
-	11, // 36: vca.ingest.v1.IngestService.SubmitBrowserAnswer:output_type -> vca.ingest.v1.SubmitBrowserAnswerResponse
-	31, // [31:37] is the sub-list for method output_type
-	25, // [25:31] is the sub-list for method input_type
-	25, // [25:25] is the sub-list for extension type_name
-	25, // [25:25] is the sub-list for extension extendee
-	0,  // [0:25] is the sub-list for field type_name
+	23, // 10: vca.ingest.v1.CreateOid4vpRequestRequest.template_kind:type_name -> vca.discovery.v1.TemplateKind
+	22, // 11: vca.ingest.v1.CreateOid4vpRequestResponse.expires_at:type_name -> google.protobuf.Timestamp
+	4,  // 12: vca.ingest.v1.ReceiveDirectPostResponse.presentation:type_name -> vca.ingest.v1.RawPresentation
+	3,  // 13: vca.ingest.v1.GetTransactionResponse.state:type_name -> vca.ingest.v1.GetTransactionResponse.State
+	4,  // 14: vca.ingest.v1.GetTransactionResponse.presentation:type_name -> vca.ingest.v1.RawPresentation
+	22, // 15: vca.ingest.v1.GetTransactionResponse.expires_at:type_name -> google.protobuf.Timestamp
+	24, // 16: vca.ingest.v1.GetTransactionResponse.stack_checks:type_name -> vca.backend.v1.GetResultResponse.DpgCheck
+	23, // 17: vca.ingest.v1.GetTransactionResponse.template_kind:type_name -> vca.discovery.v1.TemplateKind
+	3,  // 18: vca.ingest.v1.ListTransactionsRequest.state:type_name -> vca.ingest.v1.GetTransactionResponse.State
+	25, // 19: vca.ingest.v1.ListTransactionsRequest.page:type_name -> vca.common.v1.Pagination
+	3,  // 20: vca.ingest.v1.TransactionSummary.state:type_name -> vca.ingest.v1.GetTransactionResponse.State
+	22, // 21: vca.ingest.v1.TransactionSummary.created_at:type_name -> google.protobuf.Timestamp
+	22, // 22: vca.ingest.v1.TransactionSummary.expires_at:type_name -> google.protobuf.Timestamp
+	22, // 23: vca.ingest.v1.TransactionSummary.answered_at:type_name -> google.protobuf.Timestamp
+	26, // 24: vca.ingest.v1.TransactionSummary.verdict:type_name -> vca.common.v1.Verdict
+	23, // 25: vca.ingest.v1.TransactionSummary.template_kind:type_name -> vca.discovery.v1.TemplateKind
+	17, // 26: vca.ingest.v1.ListTransactionsResponse.transactions:type_name -> vca.ingest.v1.TransactionSummary
+	27, // 27: vca.ingest.v1.ListTransactionsResponse.page:type_name -> vca.common.v1.PageResult
+	6,  // 28: vca.ingest.v1.IngestService.Ingest:input_type -> vca.ingest.v1.IngestRequest
+	8,  // 29: vca.ingest.v1.IngestService.CreateOid4vpRequest:input_type -> vca.ingest.v1.CreateOid4vpRequestRequest
+	12, // 30: vca.ingest.v1.IngestService.ReceiveDirectPost:input_type -> vca.ingest.v1.ReceiveDirectPostRequest
+	14, // 31: vca.ingest.v1.IngestService.GetTransaction:input_type -> vca.ingest.v1.GetTransactionRequest
+	16, // 32: vca.ingest.v1.IngestService.ListTransactions:input_type -> vca.ingest.v1.ListTransactionsRequest
+	10, // 33: vca.ingest.v1.IngestService.SubmitBrowserAnswer:input_type -> vca.ingest.v1.SubmitBrowserAnswerRequest
+	7,  // 34: vca.ingest.v1.IngestService.Ingest:output_type -> vca.ingest.v1.IngestResponse
+	9,  // 35: vca.ingest.v1.IngestService.CreateOid4vpRequest:output_type -> vca.ingest.v1.CreateOid4vpRequestResponse
+	13, // 36: vca.ingest.v1.IngestService.ReceiveDirectPost:output_type -> vca.ingest.v1.ReceiveDirectPostResponse
+	15, // 37: vca.ingest.v1.IngestService.GetTransaction:output_type -> vca.ingest.v1.GetTransactionResponse
+	18, // 38: vca.ingest.v1.IngestService.ListTransactions:output_type -> vca.ingest.v1.ListTransactionsResponse
+	11, // 39: vca.ingest.v1.IngestService.SubmitBrowserAnswer:output_type -> vca.ingest.v1.SubmitBrowserAnswerResponse
+	34, // [34:40] is the sub-list for method output_type
+	28, // [28:34] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_vca_ingest_v1_ingest_proto_init() }

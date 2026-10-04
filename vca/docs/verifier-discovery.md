@@ -195,6 +195,25 @@ request. An attribute appears once, because an agent refuses a name in
 both lists. `?from=<id>` opens a saved request, and a save stores its
 next version. The page works without JavaScript.
 
+## Combined queries
+
+The page at `/discovery/combined/` joins saved queries into one request
+(ADR-026, ADR-079 decision 4). The combined service of the pair at
+`VCA_DISCOVERY_COMBINED_URL` stores each combined query. The page shows
+only when the own pair lists `verifier-combined` in its peer list and
+runs. The side navigation and the query tabs follow the same rule.
+
+Staff tick the saved queries that the holder answers together. Two
+queries with the same alternative group form one choice, so either
+answer is enough. A policy set names the checks of each credential.
+Each rule spans two credentials of the merged query: same subject,
+delegation link, or date order. The edit page stores the combined query
+again under its id with `Update`. The delete action calls `Delete`.
+
+The request page of the ingestion service offers each combined query
+next to the saved queries. That service sends the merged query of
+`BuildDcql` and evaluates the answer with `EvaluateCombined`.
+
 ## Versions
 
 A template version never changes (ADR-022 decision 4).
@@ -234,6 +253,12 @@ structural WCAG 2.2 checks of `ui/a11ytest`.
 | `GET /portal/anoncreds/` | The AnonCreds proof request builder. `?schema=<id>` picks a schema, and `?from=<id>` opens a saved request. |
 | `POST /portal/anoncreds/` | Draw the preview again, or save the request. |
 | `POST /portal/anoncreds/preview` | The preview fragment for htmx. |
+| `GET /portal/combined/` | The combined queries, with the edit link and the delete action of each. |
+| `GET /portal/combined/new` | The form of a new combined query. |
+| `POST /portal/combined/new` | Store the combined query in the combined service. |
+| `GET /portal/combined/edit/{id}` | The form of a stored combined query. |
+| `POST /portal/combined/edit/{id}` | Store it again under its id. |
+| `POST /portal/combined/delete/{id}` | Remove one combined query. |
 | `POST /portal/signout` | The sign out form of the user menu. |
 
 A pair sets the prefix to `/discovery`. The pages then sit in the
@@ -242,7 +267,8 @@ Verifier-Portal). The frame shows the role chip, the switcher of the
 live verifier pairs, the user menu, and the side navigation.
 
 Every page calls a `DiscoveryService` RPC in process, so the pages and
-the API cannot diverge.
+the API cannot diverge. The combined query pages call the
+`CombinedService` of the pair instead.
 
 ## Storage
 

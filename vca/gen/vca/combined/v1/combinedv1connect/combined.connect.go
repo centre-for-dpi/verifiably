@@ -47,6 +47,8 @@ const (
 	CombinedServiceListProcedure = "/vca.combined.v1.CombinedService/List"
 	// CombinedServiceDeleteProcedure is the fully-qualified name of the CombinedService's Delete RPC.
 	CombinedServiceDeleteProcedure = "/vca.combined.v1.CombinedService/Delete"
+	// CombinedServiceUpdateProcedure is the fully-qualified name of the CombinedService's Update RPC.
+	CombinedServiceUpdateProcedure = "/vca.combined.v1.CombinedService/Update"
 	// CombinedServiceEvaluateCombinedProcedure is the fully-qualified name of the CombinedService's
 	// EvaluateCombined RPC.
 	CombinedServiceEvaluateCombinedProcedure = "/vca.combined.v1.CombinedService/EvaluateCombined"
@@ -65,6 +67,10 @@ type CombinedServiceClient interface {
 	List(context.Context, *connect.Request[v1.ListRequest]) (*connect.Response[v1.ListResponse], error)
 	// Delete removes one combined template.
 	Delete(context.Context, *connect.Request[v1.DeleteRequest]) (*connect.Response[v1.DeleteResponse], error)
+	// Update replaces the name, the members, the rules, and the policy set
+	// of one combined template. The id, the tenant, and the creation time
+	// stay (ADR-079).
+	Update(context.Context, *connect.Request[v1.UpdateRequest]) (*connect.Response[v1.UpdateResponse], error)
 	// EvaluateCombined runs the policy set per credential, then the cross
 	// rules, and returns one result with a card per credential.
 	EvaluateCombined(context.Context, *connect.Request[v1.EvaluateCombinedRequest]) (*connect.Response[v1.EvaluateCombinedResponse], error)
@@ -108,6 +114,12 @@ func NewCombinedServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(combinedServiceMethods.ByName("Delete")),
 			connect.WithClientOptions(opts...),
 		),
+		update: connect.NewClient[v1.UpdateRequest, v1.UpdateResponse](
+			httpClient,
+			baseURL+CombinedServiceUpdateProcedure,
+			connect.WithSchema(combinedServiceMethods.ByName("Update")),
+			connect.WithClientOptions(opts...),
+		),
 		evaluateCombined: connect.NewClient[v1.EvaluateCombinedRequest, v1.EvaluateCombinedResponse](
 			httpClient,
 			baseURL+CombinedServiceEvaluateCombinedProcedure,
@@ -129,6 +141,7 @@ type combinedServiceClient struct {
 	get              *connect.Client[v1.GetRequest, v1.GetResponse]
 	list             *connect.Client[v1.ListRequest, v1.ListResponse]
 	delete           *connect.Client[v1.DeleteRequest, v1.DeleteResponse]
+	update           *connect.Client[v1.UpdateRequest, v1.UpdateResponse]
 	evaluateCombined *connect.Client[v1.EvaluateCombinedRequest, v1.EvaluateCombinedResponse]
 	buildDcql        *connect.Client[v1.BuildDcqlRequest, v1.BuildDcqlResponse]
 }
@@ -153,6 +166,11 @@ func (c *combinedServiceClient) Delete(ctx context.Context, req *connect.Request
 	return c.delete.CallUnary(ctx, req)
 }
 
+// Update calls vca.combined.v1.CombinedService.Update.
+func (c *combinedServiceClient) Update(ctx context.Context, req *connect.Request[v1.UpdateRequest]) (*connect.Response[v1.UpdateResponse], error) {
+	return c.update.CallUnary(ctx, req)
+}
+
 // EvaluateCombined calls vca.combined.v1.CombinedService.EvaluateCombined.
 func (c *combinedServiceClient) EvaluateCombined(ctx context.Context, req *connect.Request[v1.EvaluateCombinedRequest]) (*connect.Response[v1.EvaluateCombinedResponse], error) {
 	return c.evaluateCombined.CallUnary(ctx, req)
@@ -173,6 +191,10 @@ type CombinedServiceHandler interface {
 	List(context.Context, *connect.Request[v1.ListRequest]) (*connect.Response[v1.ListResponse], error)
 	// Delete removes one combined template.
 	Delete(context.Context, *connect.Request[v1.DeleteRequest]) (*connect.Response[v1.DeleteResponse], error)
+	// Update replaces the name, the members, the rules, and the policy set
+	// of one combined template. The id, the tenant, and the creation time
+	// stay (ADR-079).
+	Update(context.Context, *connect.Request[v1.UpdateRequest]) (*connect.Response[v1.UpdateResponse], error)
 	// EvaluateCombined runs the policy set per credential, then the cross
 	// rules, and returns one result with a card per credential.
 	EvaluateCombined(context.Context, *connect.Request[v1.EvaluateCombinedRequest]) (*connect.Response[v1.EvaluateCombinedResponse], error)
@@ -212,6 +234,12 @@ func NewCombinedServiceHandler(svc CombinedServiceHandler, opts ...connect.Handl
 		connect.WithSchema(combinedServiceMethods.ByName("Delete")),
 		connect.WithHandlerOptions(opts...),
 	)
+	combinedServiceUpdateHandler := connect.NewUnaryHandler(
+		CombinedServiceUpdateProcedure,
+		svc.Update,
+		connect.WithSchema(combinedServiceMethods.ByName("Update")),
+		connect.WithHandlerOptions(opts...),
+	)
 	combinedServiceEvaluateCombinedHandler := connect.NewUnaryHandler(
 		CombinedServiceEvaluateCombinedProcedure,
 		svc.EvaluateCombined,
@@ -234,6 +262,8 @@ func NewCombinedServiceHandler(svc CombinedServiceHandler, opts ...connect.Handl
 			combinedServiceListHandler.ServeHTTP(w, r)
 		case CombinedServiceDeleteProcedure:
 			combinedServiceDeleteHandler.ServeHTTP(w, r)
+		case CombinedServiceUpdateProcedure:
+			combinedServiceUpdateHandler.ServeHTTP(w, r)
 		case CombinedServiceEvaluateCombinedProcedure:
 			combinedServiceEvaluateCombinedHandler.ServeHTTP(w, r)
 		case CombinedServiceBuildDcqlProcedure:
@@ -261,6 +291,10 @@ func (UnimplementedCombinedServiceHandler) List(context.Context, *connect.Reques
 
 func (UnimplementedCombinedServiceHandler) Delete(context.Context, *connect.Request[v1.DeleteRequest]) (*connect.Response[v1.DeleteResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.combined.v1.CombinedService.Delete is not implemented"))
+}
+
+func (UnimplementedCombinedServiceHandler) Update(context.Context, *connect.Request[v1.UpdateRequest]) (*connect.Response[v1.UpdateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.combined.v1.CombinedService.Update is not implemented"))
 }
 
 func (UnimplementedCombinedServiceHandler) EvaluateCombined(context.Context, *connect.Request[v1.EvaluateCombinedRequest]) (*connect.Response[v1.EvaluateCombinedResponse], error) {

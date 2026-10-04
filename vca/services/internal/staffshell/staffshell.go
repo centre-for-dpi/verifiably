@@ -128,6 +128,14 @@ func (f Frame) Has(feature backendv1.Feature) bool {
 	return ok && own.State == topology.Live && own.Has(feature)
 }
 
+// Runs reports whether the live own pair lists a service in the peer
+// list (ADR-079 decision 4). A page that needs another service of the
+// pair gates on it.
+func (f Frame) Runs(service string) bool {
+	own, ok := f.Own()
+	return ok && own.State == topology.Live && own.Peer.Services[service] != ""
+}
+
 // Live returns the live pairs of a role, in stack order.
 func (f Frame) Live(role commonv1.Role) []topology.Status {
 	var out []topology.Status
@@ -148,7 +156,7 @@ func (s *Shell) Build(r *http.Request, f Frame) *components.Shell {
 		Role:      role,
 		RoleLabel: msg.T("role." + role + ".label"),
 		Stacks:    s.stacks(f),
-		Sections:  rolenav.Nav(s.opts.Role, f.Has, r.URL.Path),
+		Sections:  rolenav.NavWith(s.opts.Role, rolenav.Gate{Has: f.Has, Runs: f.Runs}, r.URL.Path),
 	}
 	if s.opts.User != nil {
 		sh.User = s.opts.User(r)

@@ -72,6 +72,10 @@ type Options struct {
 	// StackClient returns the verifier of the adapter at a URL. Stacks
 	// needs it.
 	StackClient func(adapterURL string) StackVerifier
+	// Combined merges the query of a combined template and evaluates
+	// its answer (ADR-079). Nil refuses a request that names a combined
+	// template.
+	Combined Combined
 }
 
 // Service is the IngestService handler. It also satisfies the client
@@ -230,7 +234,7 @@ func (s *Service) CreateOid4VpRequest(ctx context.Context, req *connect.Request[
 		ID: id, Nonce: nonce, StateParam: state,
 		TemplateID: req.Msg.GetTemplateId(), TemplateVersion: t.GetVersion(), PolicySetID: t.GetPolicySetId(),
 		DCQL: t.GetDcql(), ResponseMode: mode, State: txn.StatePending,
-		CreatedAt: now, ExpiresAt: now.Add(ttl),
+		CreatedAt: now, ExpiresAt: now.Add(ttl), Combined: isCombined(req.Msg),
 		RequestURI: oid4vp.AuthorizeURL(oid4vp.DefaultScheme, s.opts.ClientID, requestURI),
 	}
 	if err := s.opts.Store.Put(ctx, record); err != nil {
@@ -320,6 +324,7 @@ func (s *Service) GetTransaction(ctx context.Context, req *connect.Request[inges
 		DcApiRequest:    record.DcAPIRequest,
 		Didcomm:         record.Didcomm,
 		ConnectionId:    record.ConnectionID,
+		TemplateKind:    record.Kind(),
 	}), nil
 }
 
