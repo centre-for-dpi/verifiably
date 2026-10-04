@@ -368,7 +368,11 @@ With `native` set, the service checks every row against the schema. It
 sends the rows that pass to the bulk import of the stack in one call. The adapter must list
 `FEATURE_BULK_NATIVE`. The channel is the channel of the import. For
 `CHANNEL_PDF` each credential becomes a document, as on the document
-channel. For `CHANNEL_EMAIL` each row names the address of the holder in
+channel. Each item of the answer names the status entry of its
+credential, as the answer of `Issue` does (ADR-076). The record of the
+row keeps that entry. An entry of the stack comes with the id that the
+adapter revokes by. An item that names no entry gives a record with
+none. For `CHANNEL_EMAIL` each row names the address of the holder in
 its delivery. The stack mails the offer. The row becomes a delivered
 offer on the email channel, with no status entry (ADR-060). A row the
 schema or the stack refuses fails alone, with the reason.

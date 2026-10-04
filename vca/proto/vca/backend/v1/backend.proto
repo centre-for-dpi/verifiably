@@ -931,6 +931,14 @@ message IssueBatchResponse {
     // True when the DPG took the row and delivers the offer itself, so
     // no credential comes back (ADR-060).
     bool delivered = 4;
+    // The status entry the credential carries, as in IssueResponse
+    // (ADR-076). The adapter returns spec.status when the DPG embeds that
+    // entry. A DPG that writes an entry of its own list gets dpg_list
+    // set. Empty means the credential carries no status entry.
+    StatusListBinding status = 5;
+    // The DPG assigned id of the credential, when the DPG has one.
+    // Revoke names it for an entry with dpg_list set.
+    string credential_id = 6;
   }
 }
 

@@ -71,3 +71,30 @@ func TestIssueNamesTheStatusEntryOfTheRow(t *testing.T) {
 		t.Fatalf("status = %v, want none", resp.Msg.GetStatus())
 	}
 }
+
+// TestIssueBatchNamesTheStatusEntryOfEachRow is the follow-up of
+// ADR-076: each item of IssueBatch names the entry its credential
+// carries and the id of the credential, as the answer of Issue does. A
+// spec with no entry gives an item with none.
+func TestIssueBatchNamesTheStatusEntryOfEachRow(t *testing.T) {
+	svc, _ := newService(t, both)
+	spec, bare := farmerSpec(), farmerSpec()
+	bare.Status = nil
+	resp, err := svc.IssueBatch(context.Background(), connect.NewRequest(&backendv1.IssueBatchRequest{Specs: []*backendv1.IssueSpec{spec, bare}}))
+	if err != nil {
+		t.Fatalf("IssueBatch: %v", err)
+	}
+	items := resp.Msg.GetItems()
+	if len(items) != 2 || items[0].GetError() != nil || items[1].GetError() != nil {
+		t.Fatalf("items = %v", items)
+	}
+	if !proto.Equal(items[0].GetStatus(), spec.GetStatus()) {
+		t.Errorf("status = %v, want the entry of the spec %v", items[0].GetStatus(), spec.GetStatus())
+	}
+	if items[0].GetCredentialId() == "" {
+		t.Error("the item names no credential id")
+	}
+	if items[1].GetStatus() != nil {
+		t.Errorf("status = %v, want none", items[1].GetStatus())
+	}
+}

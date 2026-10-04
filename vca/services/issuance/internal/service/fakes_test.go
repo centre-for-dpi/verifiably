@@ -34,9 +34,10 @@ type fakeAdapter struct {
 	offer *backendv1.CreateOfferResponse
 	// offerErr fails CreateOffer.
 	offerErr error
-	// noEcho makes CreateOffer and Issue name no status entry, as for a
-	// stack that embeds none. Else an answer with no status of its own
-	// names the status entry of the spec, as a stack that embeds it does.
+	// noEcho makes CreateOffer, Issue, and IssueBatch name no status
+	// entry, as for a stack that embeds none. Else an answer with no
+	// status of its own names the status entry of the spec, as a stack
+	// that embeds it does.
 	noEcho bool
 	// credential is the answer of Issue.
 	credential *backendv1.IssueResponse
@@ -135,8 +136,14 @@ func (f *fakeAdapter) IssueBatch(
 	}
 	out := &backendv1.IssueBatchResponse{}
 	var position int32
-	for range req.Msg.GetSpecs() {
-		out.Items = append(out.Items, &backendv1.IssueBatchResponse_Item{Position: position, Credential: f.credential.GetCredential()})
+	for _, spec := range req.Msg.GetSpecs() {
+		item := &backendv1.IssueBatchResponse_Item{Position: position, Credential: f.credential.GetCredential()}
+		if !f.noEcho {
+			// A stack that embeds the entry of the spec names it, as
+			// in the answer of Issue (ADR-076).
+			item.Status = spec.GetStatus()
+		}
+		out.Items = append(out.Items, item)
 		position++
 	}
 	return connect.NewResponse(out), nil

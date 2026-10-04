@@ -10,10 +10,12 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	issuancev1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issuance/v1"
+	issuedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/issued/v1"
 )
 
 func TestIssueBatchStreamsTheProgress(t *testing.T) {
@@ -361,4 +363,37 @@ func TestIssueBatchNativeChecksTheStack(t *testing.T) {
 	h.schemas.err = connect.NewError(connect.CodeUnavailable, errors.New("down"))
 	_, err = h.batch(t, &issuancev1.IssueBatchRequest{SchemaId: "farmer", Native: true, Items: items})
 	wantCode(t, err, connect.CodeUnavailable)
+}
+
+// TestANativeBatchRecordsTheEntryEachItemNames is the follow-up of
+// ADR-076: the record of a native row keeps the entry that the item of
+// IssueBatch names, and the id a stack with its own list revokes by. An
+// item that names no entry gives a record with no entry.
+func TestANativeBatchRecordsTheEntryEachItemNames(t *testing.T) {
+	h := nativeHarness(t)
+	h.adapter.batch = &backendv1.IssueBatchResponse{Items: []*backendv1.IssueBatchResponse_Item{
+		{Position: 0, Credential: h.adapter.credential.GetCredential(), Status: stackEntry(), CredentialId: "c7d1a2b3-0e4f-4a5b-9c6d-7e8f9a0b1c2d"},
+		{Position: 1, Credential: h.adapter.credential.GetCredential()},
+	}}
+	if _, err := h.batch(t, &issuancev1.IssueBatchRequest{
+		SchemaId: "farmer", Channel: backendv1.Channel_CHANNEL_PDF, Native: true,
+		Items: []*issuancev1.IssueBatchRequest_Item{
+			{Row: 1, SubjectData: `{"fullName":"Wanjiku Njeri","farmerID":"FM-0042"}`},
+			{Row: 2, SubjectData: `{"fullName":"Otieno Ouma","farmerID":"FM-0043"}`},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	h.recorder.mu.Lock()
+	records := append([]*issuedv1.IssuedRecord(nil), h.recorder.records...)
+	h.recorder.mu.Unlock()
+	if len(records) != 2 {
+		t.Fatalf("%d records, want 2", len(records))
+	}
+	if !proto.Equal(records[0].GetStatusBinding(), stackEntry()) || records[0].GetDpgCredentialId() != "c7d1a2b3-0e4f-4a5b-9c6d-7e8f9a0b1c2d" {
+		t.Errorf("row 1 records %v and %q, want the entry and the id of the item", records[0].GetStatusBinding(), records[0].GetDpgCredentialId())
+	}
+	if records[1].GetStatusBinding() != nil {
+		t.Errorf("row 2 records %v, want no entry", records[1].GetStatusBinding())
+	}
 }

@@ -810,7 +810,7 @@ A row that is not `Done` carries a note.
 |---|---|---|---|---|
 | ADR-076 | 1 `IssueResponse` names the entry | Done | `proto/vca/backend/v1/backend.proto`, `vca/services/dpg-adapter-inji/internal/service/issuer.go` | `TestIssueNamesTheStatusEntryOfTheRow` pins it. walt.id and CREDEBL serve no `Issue`. |
 | ADR-076 | 2 `credential_id` for a list of the stack | Done | `vca/services/issuance/internal/service/issue.go` | `TestADocumentOfAStackWithItsOwnListRecordsTheEntryOfIssue` pins it. |
-| ADR-076 | 3 The record of a document keeps the entry of the answer | Done | `vca/services/issuance/internal/service/issue.go` | `TestADocumentWhoseCredentialCarriesNoStatusRecordsNone` and `TestADocumentRecordsTheVcaEntryTheAnswerNames` pin it. |
+| ADR-076 | 3 The record of a document keeps the entry of the answer | Done | `vca/services/issuance/internal/service/issue.go`, `vca/services/issuance/internal/service/batch.go`, `vca/services/dpg-adapter-inji/internal/service/issuer.go` | `TestADocumentWhoseCredentialCarriesNoStatusRecordsNone` and `TestADocumentRecordsTheVcaEntryTheAnswerNames` pin it. Since the amendment of 2026-10-04 each item of `IssueBatchResponse` names its entry too. `TestIssueBatchNamesTheStatusEntryOfEachRow` and `TestANativeBatchRecordsTheEntryEachItemNames` pin that. |
 
 ## ADR-077: The schema registry registers each published version again at start
 

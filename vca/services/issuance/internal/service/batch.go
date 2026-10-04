@@ -260,8 +260,12 @@ func (s *Service) runNative(ctx context.Context, run *batchRun, bulk *nativeRun,
 			offer, err = s.keepMailed(ctx, bulk, n)
 			n.row.OfferID = offer.ID
 		default:
+			// The record keeps the entry that the item names, as the
+			// record of Issue does (ADR-076 decision 3).
+			var carried carriedStatus
+			carried.carry(item)
 			var offer offers.Offer
-			offer, err = s.keepNative(ctx, bulk, n, item.GetCredential())
+			offer, err = s.keepNative(ctx, bulk, n, item.GetCredential(), carried)
 			n.row.OfferID = offer.ID
 		}
 		s.recordIssue(ctx, bulk.schema.GetId(), n.row.OfferID, bulk.schema.GetVersion(), bulk.channel.String(), err)
@@ -273,8 +277,9 @@ func (s *Service) runNative(ctx context.Context, run *batchRun, bulk *nativeRun,
 }
 
 // keepNative stores the credential of one native row as a document
-// offer with its issued record, as the document channel does.
-func (s *Service) keepNative(ctx context.Context, bulk *nativeRun, n nativeRow, credential *commonv1.Credential) (offers.Offer, error) {
+// offer with its issued record, as the document channel does. The
+// record names the entry that the item of the stack named.
+func (s *Service) keepNative(ctx context.Context, bulk *nativeRun, n nativeRow, credential *commonv1.Credential, carried carriedStatus) (offers.Offer, error) {
 	now := s.opts.Now().UTC()
 	offer := offers.Offer{
 		ID:            s.opts.NewID(),
@@ -291,7 +296,8 @@ func (s *Service) keepNative(ctx context.Context, bulk *nativeRun, n nativeRow, 
 	if err := s.credentialDocument(ctx, &offer, credential, bulk.schema, r); err != nil {
 		return offers.Offer{}, err
 	}
-	if rerr := s.record(ctx, &offer, n.binding, nil); rerr != nil {
+	offer.DPGCredentialID = carried.credentialID
+	if rerr := s.record(ctx, &offer, carried.entry, nil); rerr != nil {
 		s.opts.Log.Warn("the issued record did not reach the log", "error", rerr)
 	}
 	if perr := s.opts.Store.PutOffer(ctx, offer); perr != nil {

@@ -11,3 +11,8 @@
   1. The adapter now revokes a document channel credential of a stack with its own list. Before, its record named the entry of VCA that the spec carried, whether or not the credential held it.
   2. An adapter that embeds the entry of the spec must now return it. The Inji adapter does.
   3. The items of `IssueBatchResponse` name no entry yet. A native batch keeps the entry of each spec.
+- Amendment of 2026-10-04:
+  1. Consequence 3 left the items of `IssueBatchResponse` with no entry. A native batch recorded the entry of each spec, whether or not the credential held it.
+  2. Each item now names the status entry of its credential in `status` and the id of the credential in `credential_id`. The rules of decisions 1 and 2 hold for each item.
+  3. The issuance service records the entry that each item names, on the document channel of a native batch. An item that names no entry gives a record with no entry.
+  4. The Inji adapter names the entry of each item. A row that the CREDEBL bulk import mails carries no entry of VCA, so its item names none (ADR-059 decision 4).

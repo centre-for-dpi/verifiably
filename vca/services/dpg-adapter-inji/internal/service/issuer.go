@@ -463,7 +463,7 @@ func (s *Service) IssueBatch(
 	out := &backendv1.IssueBatchResponse{Items: make([]*backendv1.IssueBatchResponse_Item, 0, len(specs))}
 	for i, spec := range specs {
 		item := &backendv1.IssueBatchResponse_Item{Position: toInt32(int64(i))}
-		credential, _, err := s.issueOne(ctx, spec)
+		credential, status, err := s.issueOne(ctx, spec)
 		if err != nil {
 			item.Error = &commonv1.Error{
 				Code:     "VCA-DPG-ISSUE",
@@ -471,7 +471,10 @@ func (s *Service) IssueBatch(
 				NextStep: "Check the claims of the row against the credential configuration.",
 			}
 		} else {
-			item.Credential = credential
+			// Each item names the entry its credential carries and the id
+			// of the credential, as the answer of Issue does (ADR-076).
+			item.Credential, item.Status = credential, status
+			item.CredentialId = inji.KeyID(credential.GetPayload())
 		}
 		out.Items = append(out.Items, item)
 	}
