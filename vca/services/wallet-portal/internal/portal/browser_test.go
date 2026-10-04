@@ -199,9 +199,15 @@ func TestTheConsentFormAsksTheBrowserForAKeyBinding(t *testing.T) {
 	}
 	id := parsed.Query().Get("id")
 	form := url.Values{"id": {id}, "card.licence": {done["id"]}, "claim.licence": {"given_name"}}
-	input := h.jsonPost(t, "/wallet/present/binding", http.StatusOK, form)["signing_input"]
+	step = h.jsonPost(t, "/wallet/present/binding", http.StatusOK, form)
+	input := step["signing_input"]
 	if input == "" {
 		t.Fatal("a bound credential got no key binding input")
+	}
+	// Each bound credential of the answer has its input by query id, so
+	// a combined answer binds every credential.
+	if step["signing_input.licence"] != input {
+		t.Fatalf("the input of the query is missing: %v", step)
 	}
 	form.Set("key_binding", input+"."+browser.sign(t, input))
 	if sent := h.post(t, "/wallet/present", form); sent.Code != http.StatusOK || !strings.Contains(sent.Body.String(), "The verifier has your answer.") {

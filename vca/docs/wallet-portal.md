@@ -364,7 +364,10 @@ The wallet then reads the request:
    claim stays off until the holder turns it on.
 5. Share selected sends the `vp_token` to the response address with
    `direct_post`. Decline sends the OID4VP error `access_denied` to the
-   same address.
+   same address. A query for several credentials gets every chosen
+   credential. The `vp_token` is then a JSON object that maps each query
+   id to its presentations. Each bound credential carries its own key
+   binding.
 
 With a DPG wallet the `Present` RPC of the holder backend does the
 submit. Without one the service builds the SD-JWT presentation itself.

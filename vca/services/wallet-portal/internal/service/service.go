@@ -846,7 +846,7 @@ func (s *Service) PresentConfirm(ctx context.Context,
 	case s.opts.Holder != nil && !s.inBrowser(ctx, citizen, chosen[0]):
 		answer, shared, err = s.presentWithBackend(ctx, citizen, parsed, chosen, disclosed)
 	default:
-		answer, err = s.presentDirect(ctx, citizen, parsed, chosen, disclosed, req.Msg.GetKeyBinding())
+		answer, err = s.presentDirect(ctx, citizen, parsed, choices(req.Msg), req.Msg.GetKeyBinding())
 	}
 	result := walletportalv1.PresentationRecord_RESULT_FAILED
 	switch {
@@ -929,27 +929,53 @@ func (s *Service) presentWithBackend(ctx context.Context, citizen session.Citize
 	}, resp.Msg.GetSharedClaims(), nil
 }
 
-// presentDirect builds the vp_token from a credential the citizen
-// pasted and posts it with direct_post (ADR-021 decision 5).
+// presentDirect builds the vp_token from the credentials the citizen
+// chose and posts it with direct_post (ADR-021 decision 5). Every chosen
+// credential goes, so a combined query gets each of its members. One
+// credential goes as it is. Several go as a JSON object of query id to
+// presentations (OID4VP 1.0 section 8.1).
 func (s *Service) presentDirect(ctx context.Context, citizen session.Citizen,
-	parsed present.Request, chosen, disclosed []string, keyBinding string,
+	parsed present.Request, picks []choice, keyBinding string,
 ) (*walletportalv1.PresentConfirmResponse, error) {
-	rec, err := s.get(ctx, KindHeld, citizen.WalletKey(), chosen[0])
-	if err != nil {
-		return nil, recordError(err)
-	}
-	token, key, bound, err := disclosedToken(rec, disclosed)
+	bindings, single, err := keyBindings(keyBinding)
 	if err != nil {
 		return nil, err
 	}
-	if bound {
-		// A holder bound SD-JWT needs the key binding of the browser
-		// (ADR-073).
-		if token, err = bind(token, keyBinding, key, parsed); err != nil {
-			return nil, err
+	tokens := make(map[string][]string, len(picks))
+	var only string
+	for _, c := range picks {
+		rec, gerr := s.get(ctx, KindHeld, citizen.WalletKey(), c.card)
+		if gerr != nil {
+			return nil, recordError(gerr)
 		}
+		token, key, bound, terr := disclosedToken(rec, c.paths)
+		if terr != nil {
+			return nil, terr
+		}
+		if bound {
+			kb := bindings[c.query]
+			if bindings == nil {
+				// One key binding covers the one bound credential.
+				kb, single = single, ""
+			}
+			// A holder bound SD-JWT needs the key binding of the browser
+			// (ADR-073).
+			if token, err = bind(token, kb, key, parsed); err != nil {
+				return nil, err
+			}
+		}
+		tokens[c.query] = append(tokens[c.query], token)
+		only = token
 	}
-	result, err := present.Submit(ctx, parsed, token, s.opts.Post)
+	vpToken := only
+	if len(picks) > 1 {
+		raw, merr := json.Marshal(tokens)
+		if merr != nil {
+			return nil, connect.NewError(connect.CodeInternal, merr)
+		}
+		vpToken = string(raw)
+	}
+	result, err := present.Submit(ctx, parsed, vpToken, s.opts.Post)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, errors.New(result.Message))
 	}

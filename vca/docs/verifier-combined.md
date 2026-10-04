@@ -87,7 +87,8 @@ linkage, the permission, and the invocation as evidence.
 
 A rule whose named query is absent from the presentation reports `SKIP`.
 A rule that cannot read a value reports `SKIP` too. Only a real mismatch
-reports `FAIL`.
+reports `FAIL`. A missing member still fails the combination through the
+check `REQUIRED_MEMBERS` below.
 
 ## Evaluation
 
@@ -101,7 +102,12 @@ and works in these steps (ADR-026 decisions 3 and 4):
 3. It sends each credential to the policy service on its own. Each call
    carries a `RawPresentation` with one credential. A fault in one
    credential cannot hide inside a larger presentation.
-4. It runs the cross rules over every credential.
+4. It checks that the presentation answers every required member. A
+   mandatory member needs its credentials. An alternative group needs
+   the credentials of one of its members. A missing member gives the
+   check `REQUIRED_MEMBERS` the outcome `FAIL`, with the missing query
+   ids as evidence. Without the members, the check reports an error.
+   It then runs the cross rules over every credential.
 5. It folds the per credential verdicts and the rule outcomes into one
    verdict. One `INVALID` credential or one failed rule gives `INVALID`.
    An `INDETERMINATE` credential or a rule that could not run gives

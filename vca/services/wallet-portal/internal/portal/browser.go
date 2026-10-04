@@ -7,6 +7,7 @@ import (
 	"errors"
 	"html/template"
 	"net/http"
+	"sort"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -57,11 +58,26 @@ func (p *Portal) presentBinding(w http.ResponseWriter, r *http.Request) error {
 	if _, ok := p.writer(w, r); !ok {
 		return nil
 	}
-	input, err := p.opts.Service.BindingInput(r.Context(), consentOf(r))
+	inputs, err := p.opts.Service.BindingInputs(r.Context(), consentOf(r))
 	if err != nil {
 		return writeJSONError(w, err)
 	}
-	return writeJSON(w, http.StatusOK, map[string]string{"signing_input": input})
+	// signing_input is the input of the first bound credential, as one
+	// bound credential needs. Each bound credential also has its input
+	// under signing_input.<query id>, so a combined answer binds each.
+	queries := make([]string, 0, len(inputs))
+	for q := range inputs {
+		queries = append(queries, q)
+	}
+	sort.Strings(queries)
+	body := map[string]string{"signing_input": ""}
+	for i, q := range queries {
+		if i == 0 {
+			body["signing_input"] = inputs[q]
+		}
+		body["signing_input."+q] = inputs[q]
+	}
+	return writeJSON(w, http.StatusOK, body)
 }
 
 // writeJSON writes one JSON answer.

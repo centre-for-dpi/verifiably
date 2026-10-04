@@ -442,7 +442,9 @@ message PresentConfirmRequest {
   map<string, ClaimPaths> disclosed = 3;
   // The key binding JWT that the holder key of the browser signed over
   // the disclosed credential (ADR-073). A holder bound SD-JWT of the
-  // browser store needs it. Empty for any other credential.
+  // browser store needs it. Empty for any other credential. An answer
+  // with several bound credentials carries a JSON object instead. The
+  // object maps each query id to its key binding JWT.
   string key_binding = 4;
 
   // ClaimPaths is a list of claim paths.

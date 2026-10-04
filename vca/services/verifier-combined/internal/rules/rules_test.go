@@ -241,3 +241,29 @@ func TestYesNo(t *testing.T) {
 		t.Fatal("unexpected words")
 	}
 }
+
+// TestRequiredNeedsOneFullOptionPerSet passes a set when one option has
+// every credential it names, and fails it with the missing ids of its
+// first option otherwise.
+func TestRequiredNeedsOneFullOptionPerSet(t *testing.T) {
+	creds := []Credential{{QueryID: "id"}, {QueryID: "permit"}}
+	cases := []struct {
+		name    string
+		sets    [][][]string
+		outcome policy.Outcome
+		missing string
+	}{
+		{"every set held", [][][]string{{{"id"}}, {{"permit"}}}, policy.Pass, ""},
+		{"one option of two", [][][]string{{{"licence"}, {"permit"}}}, policy.Pass, ""},
+		{"an empty set", [][][]string{{}}, policy.Pass, ""},
+		{"no set", nil, policy.Pass, ""},
+		{"a missing member", [][][]string{{{"id"}}, {{"lease", "deed"}}}, policy.Fail, "lease deed"},
+		{"a part of an option", [][][]string{{{"id", "lease"}}}, policy.Fail, "lease"},
+	}
+	for _, c := range cases {
+		got := Required(c.sets, creds)
+		if got.Name != KindRequiredMembers || got.Outcome != c.outcome || got.Evidence["missing"] != c.missing {
+			t.Errorf("%s: %+v", c.name, got)
+		}
+	}
+}

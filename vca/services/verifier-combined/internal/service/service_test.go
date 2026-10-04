@@ -438,7 +438,9 @@ func TestEvaluateCombinedPass(t *testing.T) {
 	if result.GetCredentials()[1].GetRole() != RoleDelegation {
 		t.Fatalf("want the delegation role, got %q", result.GetCredentials()[1].GetRole())
 	}
-	if len(got.Msg.GetCrossChecks()) != 1 || got.Msg.GetCrossChecks()[0].GetName() != "Guardian link" {
+	// The check of the required members comes first, then the rules.
+	if len(got.Msg.GetCrossChecks()) != 2 || got.Msg.GetCrossChecks()[0].GetName() != rules.KindRequiredMembers ||
+		got.Msg.GetCrossChecks()[1].GetName() != "Guardian link" {
 		t.Fatalf("unexpected cross checks: %+v", got.Msg.GetCrossChecks())
 	}
 	if got.Msg.GetCredentialVerdicts()["subject"] != policyv1.EvaluateResponse_VERDICT_VALID {
@@ -446,6 +448,52 @@ func TestEvaluateCombinedPass(t *testing.T) {
 	}
 	if result.GetPolicySetId() != "strict" || result.GetPolicySetVersion() != 2 {
 		t.Fatalf("want the policy set version, got %s %d", result.GetPolicySetId(), result.GetPolicySetVersion())
+	}
+}
+
+// TestEvaluateCombinedNeedsEveryRequiredMember fails a combination whose
+// presentation leaves a mandatory member out, even when every rule that
+// names the member skips. A member of an alternative group needs only
+// one answered option.
+func TestEvaluateCombinedNeedsEveryRequiredMember(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	f.create(t, pair())
+	one := presentation(t, "urn:person:1")
+	one.Credentials = one.Credentials[:1]
+	got, err := f.svc.EvaluateCombined(ctx, connect.NewRequest(&combinedv1.EvaluateCombinedRequest{
+		Presentation: one, TemplateId: "guardian-pair",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Msg.GetResult().GetVerdict() != policyv1.EvaluateResponse_VERDICT_INVALID {
+		t.Errorf("a presentation without the guardian credential: verdict %s, want INVALID", got.Msg.GetResult().GetVerdict())
+	}
+	var required *policyv1.CheckResult
+	for _, c := range got.Msg.GetCrossChecks() {
+		if c.GetName() == rules.KindRequiredMembers {
+			required = c
+		}
+	}
+	if required == nil || required.GetOutcome() != policyv1.Outcome_OUTCOME_FAIL || required.GetEvidence()["missing"] != "delegation" {
+		t.Errorf("the cross checks name no missing member: %+v", got.Msg.GetCrossChecks())
+	}
+	either := pair()
+	either.Id = "guardian-either"
+	for _, m := range either.GetMembers() {
+		m.AlternativeGroup = "either"
+	}
+	either.Rules = nil
+	f.create(t, either)
+	got, err = f.svc.EvaluateCombined(ctx, connect.NewRequest(&combinedv1.EvaluateCombinedRequest{
+		Presentation: one, TemplateId: "guardian-either",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Msg.GetResult().GetVerdict() != policyv1.EvaluateResponse_VERDICT_VALID {
+		t.Errorf("one option of an alternative group: verdict %s, want VALID; checks %+v", got.Msg.GetResult().GetVerdict(), got.Msg.GetCrossChecks())
 	}
 }
 

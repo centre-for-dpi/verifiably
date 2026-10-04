@@ -25,6 +25,9 @@ const (
 	KindSameSubject    = "SAME_SUBJECT"
 	KindDelegationLink = "DELEGATION_LINK"
 	KindDateOrder      = "DATE_ORDER"
+	// KindRequiredMembers is the check that the presentation answers
+	// every required member of the combination.
+	KindRequiredMembers = "REQUIRED_MEMBERS"
 )
 
 // The parameter names of the rules.
@@ -268,6 +271,48 @@ func pair(leftID, rightID string, byID map[string]Credential) (Credential, Crede
 		return Credential{}, Credential{}, rightID
 	}
 	return left, right, ""
+}
+
+// Required checks that the presentation answers every required set of
+// the combination. Each set lists its options, and each option lists
+// the query ids it needs. A set holds when one option has a credential
+// for each of its ids. A rule over a missing credential only skips, so
+// this check is what fails such a presentation.
+func Required(sets [][][]string, creds []Credential) Result {
+	byID := index(creds)
+	for _, options := range sets {
+		if len(options) == 0 || answered(options, byID) {
+			continue
+		}
+		var missing []string
+		for _, id := range options[0] {
+			if _, ok := byID[id]; !ok {
+				missing = append(missing, id)
+			}
+		}
+		return Result{Name: KindRequiredMembers, Outcome: policy.Fail,
+			Detail:   "the presentation has no credential for a required query",
+			Evidence: map[string]string{"missing": strings.Join(missing, " ")}}
+	}
+	return Result{Name: KindRequiredMembers, Outcome: policy.Pass,
+		Detail: "the presentation answers every required query"}
+}
+
+// answered reports whether one option has a credential for each id.
+func answered(options [][]string, byID map[string]Credential) bool {
+	for _, option := range options {
+		all := true
+		for _, id := range option {
+			if _, ok := byID[id]; !ok {
+				all = false
+				break
+			}
+		}
+		if all {
+			return true
+		}
+	}
+	return false
 }
 
 // skip returns the SKIP result of a rule whose credential is absent.

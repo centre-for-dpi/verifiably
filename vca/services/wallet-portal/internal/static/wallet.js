@@ -289,9 +289,21 @@ const VCA = (() => {
   }
 
   // bindAnswer returns the key binding JWT of the answer of a consent
-  // form, or "" when the chosen credential names no holder key.
+  // form, or "" when the chosen credential names no holder key. An
+  // answer with several bound credentials gets a JSON object of query id
+  // to key binding JWT, one per credential.
   async function bindAnswer(form) {
     const step = await post("/present/binding", new URLSearchParams(new FormData(form)));
+    const prefix = "signing_input.";
+    const queries = Object.keys(step).filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
+    if (queries.length > 1) {
+      const out = {};
+      for (const query of queries) {
+        const input = step[prefix + query];
+        out[query] = input + "." + (await sign(input));
+      }
+      return JSON.stringify(out);
+    }
     if (!step.signing_input) {
       return "";
     }

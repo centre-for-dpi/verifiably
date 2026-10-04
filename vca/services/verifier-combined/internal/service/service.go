@@ -19,6 +19,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/centre-for-dpi/vc-adapters/core/delegation"
+	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	combinedv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/combined/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/combined/v1/combinedv1connect"
@@ -352,7 +353,7 @@ func (s *Service) EvaluateCombined(ctx context.Context, req *connect.Request[com
 		order = append(order, resp.GetVerdict())
 		ruleCreds = append(ruleCreds, rules.Credential{QueryID: ids[i], VC: parsed})
 	}
-	crossResults := rules.Run(ctx, toRules(t), ruleCreds)
+	crossResults := append([]rules.Result{s.required(ctx, t, ruleCreds)}, rules.Run(ctx, toRules(t), ruleCreds)...)
 	result.CrossChecks = toCheckResults(crossResults)
 	result.Verdict = worst(order, rules.Verdict(crossResults))
 	stored, serr := s.store(ctx, result)
@@ -362,6 +363,24 @@ func (s *Service) EvaluateCombined(ctx context.Context, req *connect.Request[com
 	return connect.NewResponse(&combinedv1.EvaluateCombinedResponse{
 		Result: stored, CredentialVerdicts: verdicts, CrossChecks: result.GetCrossChecks(),
 	}), nil
+}
+
+// required checks that the presentation answers every required member
+// of the combination (ADR-026 decision 1). Without the members the
+// check reports an error, so the verdict is never VALID by default.
+func (s *Service) required(ctx context.Context, t *combinedv1.CombinedTemplate, creds []rules.Credential) rules.Result {
+	query, err := s.query(ctx, t.GetId())
+	if err != nil {
+		return rules.Result{Name: rules.KindRequiredMembers, Outcome: policy.Error,
+			Detail: "the service could not read the members of the combination"}
+	}
+	var sets [][][]string
+	for _, set := range query.CredentialSets {
+		if set.Required {
+			sets = append(sets, set.Options)
+		}
+	}
+	return rules.Required(sets, creds)
 }
 
 // evaluateOne sends one credential to the policy service on its own

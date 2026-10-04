@@ -2160,7 +2160,9 @@ type PresentConfirmRequest struct {
 	Disclosed map[string]*PresentConfirmRequest_ClaimPaths `protobuf:"bytes,3,rep,name=disclosed,proto3" json:"disclosed,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// The key binding JWT that the holder key of the browser signed over
 	// the disclosed credential (ADR-073). A holder bound SD-JWT of the
-	// browser store needs it. Empty for any other credential.
+	// browser store needs it. Empty for any other credential. An answer
+	// with several bound credentials carries a JSON object instead. The
+	// object maps each query id to its key binding JWT.
 	KeyBinding    string `protobuf:"bytes,4,opt,name=key_binding,json=keyBinding,proto3" json:"key_binding,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
