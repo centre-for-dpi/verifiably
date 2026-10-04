@@ -43,10 +43,11 @@ func (p *Portal) claimPage(w http.ResponseWriter, r *http.Request) error {
 func (p *Portal) renderClaim(w http.ResponseWriter, r *http.Request, text, problem string) error {
 	b := p.pen(r)
 	cards := []template.HTML{p.codeCard(b, text, problem)}
-	switch {
-	case p.hybrid(b):
+	// The browser store signs in at the issuer too, and claims with its
+	// own key afterwards (ADR-082).
+	if p.hybrid(b) {
 		cards = append(cards, p.stackCard(b, msg.T("holder.stack.text")))
-	case !p.opts.Service.BrowserStorage():
+	} else {
 		cards = append(cards, p.signInCard(b, r))
 	}
 	parts := []template.HTML{b.raw(`<div class="split">`), components.Join(cards...), b.raw(`</div>`)}
@@ -142,10 +143,10 @@ func (p *Portal) claimCard(b *pen, o *walletportalv1.Offering) template.HTML {
 		return methods[i] == walletportalv1.ClaimMethod_CLAIM_METHOD_PRE_AUTHORIZED_CODE && methods[j] != methods[i]
 	})
 	for _, m := range methods {
-		switch {
-		case m == walletportalv1.ClaimMethod_CLAIM_METHOD_PRE_AUTHORIZED_CODE:
+		switch m {
+		case walletportalv1.ClaimMethod_CLAIM_METHOD_PRE_AUTHORIZED_CODE:
 			cards = append(cards, p.codeCard(b, "", ""))
-		case m == walletportalv1.ClaimMethod_CLAIM_METHOD_AUTHORIZATION_CODE && !p.opts.Service.BrowserStorage():
+		case walletportalv1.ClaimMethod_CLAIM_METHOD_AUTHORIZATION_CODE:
 			form := b.form(p.opts.Prefix+"/claim", map[string]string{
 				"credential_issuer": o.GetCredentialIssuer(), "schema_id": configurationOf(o),
 			}, components.Button{Text: msg.T("holder.claim.signin.label"), Type: "submit", Variant: "primary"})
@@ -155,8 +156,8 @@ func (p *Portal) claimCard(b *pen, o *walletportalv1.Offering) template.HTML {
 		}
 	}
 	if len(cards) == 0 {
-		// The issuer lets the holder only sign in, which this wallet cannot
-		// run. An offer from the issuer still works.
+		// The issuer names no way the wallet knows. An offer from the
+		// issuer still works.
 		cards = append(cards, p.codeCard(b, "", ""))
 	}
 	closeLink := b.raw(`<p><a href="` + template.HTMLEscapeString(p.opts.Prefix+"/discover") + `">` +
@@ -210,7 +211,8 @@ func (p *Portal) claim(w http.ResponseWriter, r *http.Request) error {
 	}
 	b := p.pen(r)
 	resp, err := p.opts.Service.Claim(r.Context(), connect.NewRequest(&walletportalv1.ClaimRequest{
-		CredentialIssuer: issuer, SchemaId: schema, RedirectUri: p.publicBase(r, b) + p.opts.Prefix + "/claim/callback",
+		CredentialIssuer: issuer, SchemaId: schema, OfferId: r.PostFormValue("offer_id"),
+		RedirectUri: p.publicBase(r, b) + p.opts.Prefix + "/claim/callback",
 	}))
 	if err != nil {
 		return p.problem(w, r, msg.T("holder.home.claim.label"), msg.T("holder.claim.problem.title"), message(err))
@@ -243,10 +245,16 @@ func (p *Portal) publicBase(r *http.Request, b *pen) string {
 // the credential into the wallet.
 func (p *Portal) callback(w http.ResponseWriter, r *http.Request) error {
 	q := r.URL.Query()
-	if _, err := p.opts.Service.ClaimComplete(r.Context(), connect.NewRequest(&walletportalv1.ClaimCompleteRequest{
+	resp, err := p.opts.Service.ClaimComplete(r.Context(), connect.NewRequest(&walletportalv1.ClaimCompleteRequest{
 		State: q.Get("state"), Code: q.Get("code"), Error: q.Get("error"),
-	})); err != nil {
+	}))
+	if err != nil {
 		return p.problem(w, r, msg.T("holder.home.claim.label"), msg.T("holder.claim.problem.title"), message(err))
+	}
+	if id := resp.Msg.GetOfferId(); id != "" {
+		// The browser store claims with its own key, so the page asks
+		// the browser to sign the proof (ADR-082).
+		return p.offerPage(w, r, id, resp.Msg.GetOffer())
 	}
 	http.Redirect(w, r, p.opts.Prefix+"/", http.StatusSeeOther)
 	return nil
@@ -404,6 +412,12 @@ func (p *Portal) offerCard(b *pen, offerID string, offer *walletportalv1.OfferSu
 	}
 	parts := []template.HTML{p.offerSummary(b, offer), b.formWith(p.opts.Prefix+"/accept", flag, map[string]string{"offer_id": offerID},
 		components.Button{Text: msg.T("holder.offer.accept.label"), Type: "submit", Variant: "primary"}, fields...) + script}
+	if offer.GetSignIn() {
+		// The offer names the authorization code grant: the holder signs
+		// in at the issuer first (ADR-082).
+		parts[1] = b.form(p.opts.Prefix+"/claim", map[string]string{"offer_id": offerID},
+			components.Button{Text: msg.T("holder.claim.signin.label"), Type: "submit", Variant: "primary"})
+	}
 	if b.frame.Has(backendv1.Feature_FEATURE_WALLET_REJECT_OFFER) {
 		parts = append(parts, b.form(p.opts.Prefix+"/reject", map[string]string{"offer_id": offerID},
 			components.Button{Text: msg.T("holder.offer.decline.label"), Type: "submit", Variant: "secondary"}))
@@ -411,6 +425,9 @@ func (p *Portal) offerCard(b *pen, offerID string, offer *walletportalv1.OfferSu
 	text := msg.T("holder.offer.anon")
 	if issuer := offer.GetIssuerName(); issuer != "" {
 		text = msg.T("holder.offer.from", issuer)
+	}
+	if offer.GetSignIn() {
+		text += " " + msg.T("holder.offer.signin")
 	}
 	return b.part("card", components.Card{
 		ID: "offer-card", Title: msg.T("holder.offer.card.label"), Text: text, Body: components.Join(parts...),

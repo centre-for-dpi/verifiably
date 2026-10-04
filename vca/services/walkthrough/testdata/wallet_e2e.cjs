@@ -10,6 +10,10 @@
 //            sign the proof of the claim with its own key. wallet.js
 //            then binds the key to the wallet, and the keys page names
 //            it.
+//   signin   pastes an offer of the authorization code grant, signs in
+//            at the issuer, and lets wallet.js sign the proof of the
+//            claim on the page the issuer sends the browser back to
+//            (ADR-082).
 //   present  pastes the request of the verifier and lets wallet.js sign
 //            the key binding of the answer.
 //
@@ -60,6 +64,26 @@ async function claim(page, input) {
   return { key: key.kty + "/" + key.crv, jwk: key, blobs, page: home, keys };
 }
 
+// signin pastes the offer, follows the sign in at the issuer back to
+// the wallet, and submits the claim form there, which wallet.js takes
+// over.
+async function signin(page, input) {
+  await paste(page, input.holder, input.link);
+  const start = page.locator('form[action$="/wallet/claim"]');
+  await Promise.all([
+    page.waitForURL((url) => url.pathname.endsWith("/wallet/claim/callback")),
+    start.locator('button[type="submit"]').first().click(),
+  ]);
+  const form = page.locator("form[data-browser-claim]");
+  await form.waitFor();
+  await Promise.all([
+    page.waitForURL((url) => url.pathname === "/wallet/"),
+    form.locator('button[type="submit"]').first().click(),
+  ]);
+  const blobs = await page.evaluate(async () => (await window.VCA.list()).length);
+  return { blobs, page: await page.locator("main").innerText() };
+}
+
 // present pastes the request and submits the consent form, which
 // wallet.js takes over: it signs the key binding first.
 async function present(page, input) {
@@ -82,7 +106,8 @@ async function main() {
   const errors = [];
   page.on("pageerror", (err) => errors.push(String(err)));
   try {
-    const seen = input.phase === "claim" ? await claim(page, input) : await present(page, input);
+    const phases = { claim, signin, present };
+    const seen = await phases[input.phase](page, input);
     seen.errors = errors;
     process.stdout.write(JSON.stringify(seen) + "\n");
   } finally {

@@ -692,9 +692,13 @@ func Catalog() []Service {
 				peers,
 			},
 			// On a laptop the verifier pair answers on the loopback
-			// address, so the wallet reads its request links there.
+			// address, so the wallet reads its request links there. The
+			// issuer and its authorization server answer there too, so
+			// the wallet reads them for a sign in at the issuer.
 			Fixed: append(state("VCA_WALLET_PORTAL_STATE_DIR"),
-				FixedValue{Env: "VCA_WALLET_PORTAL_REQUEST_HOSTS", Value: "localhost,127.0.0.1", Local: true}),
+				FixedValue{Env: "VCA_WALLET_PORTAL_REQUEST_HOSTS", Value: "localhost,127.0.0.1", Local: true},
+				FixedValue{Env: "VCA_WALLET_PORTAL_CRAWL_ALLOW_PLAIN_HTTP", Value: "true", Local: true},
+				FixedValue{Env: "VCA_WALLET_PORTAL_CRAWL_ALLOW_PRIVATE_NETWORK", Value: "true", Local: true}),
 			// The pages call the WalletPortalService in process and the
 			// browser reaches /wallet/blobs, so the proxy does not publish
 			// the Connect service (ADR-047).

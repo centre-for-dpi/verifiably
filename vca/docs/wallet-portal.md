@@ -158,8 +158,24 @@ browser back to `/wallet/claim/callback` of the own pair. The wallet
 trades the code for an access token. It hands the token to the DPG
 wallet in `AcceptOffer` as the authorization grant. An issuer with no
 authorization server leaves the flow to the DPG wallet. The DPG wallet
-then uses the token of the identity provider (ADR-020 decision 3). In browser
-storage the wallet runs no sign in, so the card stays hidden.
+then uses the token of the identity provider (ADR-020 decision 3).
+
+The browser store runs the same sign in (ADR-082). The holder picks a
+credential on the claim page, or pastes an offer that names the
+authorization code grant. The offer page then says that the issuer asks
+for a sign in first. The wallet sends the `issuer_state` of the offer,
+the configuration in `authorization_details`, and PKCE with `S256`. It
+pushes the request to the `pushed_authorization_request_endpoint` of the
+server when the server names one (RFC 9126). The browser then opens the
+authorization endpoint with the `request_uri` alone. The holder signs
+in at the server in the same browser. The server sends the browser back
+to `/wallet/claim/callback`. The wallet trades the code and the PKCE
+verifier for an access token. It keeps the token and its `c_nonce` as
+an authorized offer. The callback page carries the claim form, and
+`wallet.js` signs the proof with the browser key (ADR-073). On a laptop
+setup lets the wallet read a local issuer over plain http
+(`VCA_WALLET_PORTAL_CRAWL_ALLOW_PLAIN_HTTP` and
+`VCA_WALLET_PORTAL_CRAWL_ALLOW_PRIVATE_NETWORK`).
 
 The offer page names what the holder accepts. The wallet reads the
 offer object, by value or through `credential_offer_uri`. It then reads

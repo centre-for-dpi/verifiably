@@ -1749,6 +1749,7 @@ var en = map[string]string{
 	"holder.offer.script":                     "Your browser signs this claim with its own key. Turn on JavaScript, then accept the offer again.",
 	"holder.offer.anon":                       "Read the issuer name before you accept.",
 	"holder.offer.issuer.label":               "Offered by",
+	"holder.offer.signin":                     "The issuer asks you to sign in first. Your browser then signs the claim with its own key.",
 	"holder.offer.trust.label":                "Issuer: {1}",
 	"holder.offer.type.label":                 "Credential",
 	"holder.offer.claims.label":               "What it says",

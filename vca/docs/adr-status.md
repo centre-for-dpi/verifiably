@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-081, one row per decision.
+ADR-082, one row per decision.
 
 The status values are:
 
@@ -857,12 +857,23 @@ A row that is not `Done` carries a note.
 | ADR-081 | 5 A stack wallet adapter refuses an unconsented claim | Done | `vca/services/dpg-adapter-credebl/internal/credebl/agent_oid4vc.go`, `vca/services/dpg-adapter-waltid/internal/service/holder.go`, `vca/services/dpg-adapter-inji/internal/service/holder.go` | `TestStackWalletConsentEqualsDisclosure` of each adapter pins it. |
 | ADR-081 | 6 A guard test across the adapters | Done | `vca/services/internal/consenttest` | `TestEveryHolderAdapterRunsTheContract` pins it. |
 
+## ADR-082: The browser store claims with the authorization code flow
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-082 | 1 The browser store runs the authorization code flow | Done | `vca/services/wallet-portal/internal/service/claim.go`, `vca/services/wallet-portal/internal/portal/claim.go` | `TestBrowserStoreClaimsWithTheAuthorizationCode` and `TestBrowserStoreSignsInAtTheIssuer` pin it. |
+| ADR-082 | 2 PKCE always, issuer_state, pushed requests | Done | `vca/services/wallet-portal/internal/service/claim.go`, `vca/services/wallet-portal/internal/issuers/issuers.go` | `TestBrowserStoreClaimsWithTheAuthorizationCode` runs with and without a pushed request endpoint. |
+| ADR-082 | 3 The callback trades the code and keeps the token | Done | `vca/services/wallet-portal/internal/service/claim.go` | `TestAuthorizationCodeRefusals` pins the refusals. |
+| ADR-082 | 4 The browser signs the proof | Done | `vca/services/wallet-portal/internal/service/browserclaim.go`, `vca/services/walkthrough/testdata/wallet_e2e.cjs` | `TestWalkthroughWaltid` and `TestWalletScriptInChromium` claim an authorization code offer of walt.id. |
+| ADR-082 | 5 The laptop reads of the wallet | Done | `vca/internal/cli/services.go` | `TestLaptopSetupOpensTheLocalReads` pins it. |
+| ADR-082 | 6 The Inji client of the VCA wallet | Done | `vca/internal/cli/inji_public.go` | `TestSetupWritesTheAuthzIssuer` pins it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 408 |
+| Done | 414 |
 | Partial | 19 |
 | Deferred | 3 |
 | Not started | 5 |
-| Total | 435 |
+| Total | 441 |

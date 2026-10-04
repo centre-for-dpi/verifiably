@@ -213,7 +213,7 @@ func (s *Service) presentForIssuance(ctx context.Context, citizen session.Citize
 		}
 		return refused, nil
 	}
-	access, err := s.token(ctx, rec, answer.Code)
+	access, _, err := s.token(ctx, rec, answer.Code)
 	if err != nil {
 		return nil, err
 	}

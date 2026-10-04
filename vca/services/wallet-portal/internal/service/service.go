@@ -353,6 +353,19 @@ func (s *Service) Claim(ctx context.Context, req *connect.Request[walletportalv1
 		return nil, err
 	}
 	msg := req.Msg
+	if msg.GetOfferId() != "" {
+		// An offer with the authorization code grant starts the sign in
+		// at the issuer (ADR-082).
+		next, ok, signErr := s.signIn(ctx, citizen, msg)
+		switch {
+		case signErr != nil:
+			return nil, signErr
+		case !ok:
+			return nil, connect.NewError(connect.CodeFailedPrecondition,
+				errors.New("the wallet needs its own address to send you back after the sign in"))
+		}
+		return connect.NewResponse(&walletportalv1.ClaimResponse{AuthorizationUrl: next}), nil
+	}
 	if msg.GetCredentialIssuer() == "" || msg.GetSchemaId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("name the issuer and the credential"))
@@ -437,14 +450,16 @@ func (s *Service) read(ctx context.Context, text string) (*walletportalv1.Detect
 	}
 	switch got.Kind {
 	case detect.Offer:
-		if got.Offer.ByReference {
-			// The page names the issuer and the credential, and the
-			// browser store asks for the transaction code the offer
-			// names (ADR-073).
-			if grant, ok := s.readOffer(ctx, got.Offer.URI); ok {
+		// The page names the issuer and the credential, and the browser
+		// store asks for the transaction code the offer names (ADR-073)
+		// or for a sign in at the issuer (ADR-082).
+		signIn := false
+		if grant, ok := s.readOffer(ctx, got.Offer.URI); ok {
+			if got.Offer.ByReference {
 				got.Offer.CredentialIssuer, got.Offer.ConfigurationIDs = grant.Issuer, grant.IDs
 				got.Offer.NeedsPIN = got.Offer.NeedsPIN || len(grant.Grants.PreAuthorized.TxCode) > 0
 			}
+			signIn = grant.Grants.Code != nil && grant.Grants.PreAuthorized.Code == ""
 		}
 		rec := record{ID: id, URI: got.Offer.URI, Issuer: got.Offer.CredentialIssuer,
 			Types: got.Offer.ConfigurationIDs, NeedsPIN: got.Offer.NeedsPIN}
@@ -465,6 +480,7 @@ func (s *Service) read(ctx context.Context, text string) (*walletportalv1.Detect
 				NeedsPin:         got.Offer.NeedsPIN,
 				Claims:           view.claims,
 				MetadataRead:     view.read,
+				SignIn:           signIn,
 			},
 		}, nil
 	case detect.Request:

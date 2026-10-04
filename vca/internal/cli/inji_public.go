@@ -138,27 +138,68 @@ type injiWalletClient struct {
 	JWK          json.RawMessage `json:"jwk,omitempty"`
 }
 
+// WalletClientID is the client id of the VCA wallet at an issuer
+// authorization server. It matches the default of the wallet portal.
+const WalletClientID = "vca-wallet"
+
 // InjiWalletClients returns the wallet clients of the holder
-// authorization server of the Inji issuer pair: the client of Inji Web
-// with the redirect page of Inji Web and the public key that Mimoto
-// signs its client assertion with (ADR-052 decision 5). It reports
-// false for another pair, and when the holder bootstrap has not yet
-// written the key.
+// authorization server of the Inji issuer pair. The VCA wallet of the
+// Inji holder pair, and of each holder pair the peers name, signs in as
+// a public client with PKCE at /wallet/claim/callback (ADR-082). The
+// client of Inji Web joins with the redirect page of Inji Web and the
+// public key that Mimoto signs its client assertion with, once the
+// holder bootstrap wrote that key (ADR-052 decision 5). It reports
+// false for another pair.
 func InjiWalletClients(p Pair, values map[string]string, domain string, peers PeerOverrides, jwk string) (string, bool) {
-	if p != injiIssuer || strings.TrimSpace(jwk) == "" || !json.Valid([]byte(jwk)) {
+	if p != injiIssuer {
 		return "", false
 	}
-	web := strings.TrimRight(peers[injiHolder.Name()][InjiWebPublicURLEnv], "/")
-	if web == "" {
-		web = containerPublicURL(injiWebPort, domain, values["VCA_PUBLIC_URL"])
+	var clients []injiWalletClient
+	if strings.TrimSpace(jwk) != "" && json.Valid([]byte(jwk)) {
+		web := strings.TrimRight(peers[injiHolder.Name()][InjiWebPublicURLEnv], "/")
+		if web == "" {
+			web = containerPublicURL(injiWebPort, domain, values["VCA_PUBLIC_URL"])
+		}
+		clients = append(clients, injiWalletClient{
+			ClientID: EsignetClientID, RedirectURIs: []string{web + "/redirect"}, JWK: json.RawMessage(jwk),
+		})
 	}
-	raw, err := json.Marshal([]injiWalletClient{{
-		ClientID: EsignetClientID, RedirectURIs: []string{web + "/redirect"}, JWK: json.RawMessage(jwk),
-	}})
+	clients = append(clients, injiWalletClient{ClientID: WalletClientID, RedirectURIs: walletCallbacks(domain, peers)})
+	raw, err := json.Marshal(clients)
 	if err != nil {
 		return "", false
 	}
 	return string(raw), true
+}
+
+// walletCallbacks returns the sign in callback of the VCA wallet of the
+// Inji holder pair and of each holder pair the peers name, in name
+// order.
+func walletCallbacks(domain string, peers PeerOverrides) []string {
+	urls := map[string]string{}
+	switch {
+	case peers[injiHolder.Name()]["VCA_PUBLIC_URL"] != "":
+		urls[injiHolder.Name()] = peers[injiHolder.Name()]["VCA_PUBLIC_URL"]
+	case domain != "":
+		urls[injiHolder.Name()] = PairPublicURL(injiHolder, domain)
+	default:
+		urls[injiHolder.Name()] = LocalPublicURL(injiHolder)
+	}
+	for name, values := range peers {
+		if strings.HasPrefix(name, "holder-") && values["VCA_PUBLIC_URL"] != "" {
+			urls[name] = values["VCA_PUBLIC_URL"]
+		}
+	}
+	names := make([]string, 0, len(urls))
+	for name := range urls {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		out = append(out, strings.TrimRight(urls[name], "/")+"/wallet/claim/callback")
+	}
+	return out
 }
 
 // injiHolder is the Inji holder pair. It runs Mimoto and Inji Web.

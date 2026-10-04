@@ -394,6 +394,7 @@ type authServer struct {
 	Authorization    string   `json:"authorization_endpoint"`
 	Token            string   `json:"token_endpoint"`
 	Interactive      string   `json:"interactive_authorization_endpoint"`
+	Pushed           string   `json:"pushed_authorization_request_endpoint"`
 }
 
 // Endpoints are the two addresses of the authorization code flow.
@@ -406,6 +407,9 @@ type Endpoints struct {
 	// where an issuer asks for a presentation before it gives a code.
 	// Empty when the server has none.
 	Interactive string
+	// PushedAuthorization is the pushed authorization request endpoint
+	// of RFC 9126. Empty when the server takes no pushed request.
+	PushedAuthorization string
 }
 
 // ErrNoEndpoints reports an issuer whose authorization server names no
@@ -433,7 +437,7 @@ func (c *Crawler) Endpoints(ctx context.Context, issuer string) (Endpoints, erro
 		if json.Unmarshal(doc.Body, &as) != nil || as.Authorization == "" || as.Token == "" {
 			continue
 		}
-		return Endpoints{Authorization: as.Authorization, Token: as.Token, Interactive: as.Interactive}, nil
+		return Endpoints{Authorization: as.Authorization, Token: as.Token, Interactive: as.Interactive, PushedAuthorization: as.Pushed}, nil
 	}
 	return Endpoints{}, ErrNoEndpoints
 }
@@ -452,7 +456,7 @@ func (c *Crawler) Server(ctx context.Context, server string) (Endpoints, error) 
 		if json.Unmarshal(doc.Body, &as) != nil || as.Token == "" || (as.Authorization == "" && as.Interactive == "") {
 			continue
 		}
-		return Endpoints{Authorization: as.Authorization, Token: as.Token, Interactive: as.Interactive}, nil
+		return Endpoints{Authorization: as.Authorization, Token: as.Token, Interactive: as.Interactive, PushedAuthorization: as.Pushed}, nil
 	}
 	return Endpoints{}, ErrNoEndpoints
 }

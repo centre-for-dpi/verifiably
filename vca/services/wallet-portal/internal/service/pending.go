@@ -80,6 +80,8 @@ type record struct {
 	Asked []string `json:"asked,omitempty"`
 	// AccessToken is the access token of a claim into the browser store.
 	AccessToken string `json:"access_token,omitempty"`
+	// Nonce is the c_nonce the token endpoint gave with that token.
+	Nonce string `json:"nonce,omitempty"`
 	// SigningInput is the proof of that claim that the browser signs.
 	SigningInput string `json:"signing_input,omitempty"`
 	// HolderKey is the public holder key of the browser, as a JWK.

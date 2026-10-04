@@ -142,13 +142,14 @@ func TestClaimCardOnDiscover(t *testing.T) {
 			t.Fatalf("claim=%s shows a card", bad)
 		}
 	}
-	// In browser storage the wallet cannot run the sign in.
+	// The browser store signs in at the issuer too, and claims with its
+	// own key afterwards (ADR-082).
 	browser := setupShell(t, func(o *serviceOptions) {
 		o.Holder = nil
 		o.Catalogue = ports.CatalogueFunc(func(context.Context) ([]*walletportalv1.Offering, error) { return boardOfferings(), nil })
 	}, holderDeployment())
-	if strings.Contains(browser.get(t, "/wallet/discover?claim=3").Body.String(), `name="credential_issuer"`) {
-		t.Fatal("browser storage shows the sign in")
+	if !strings.Contains(browser.get(t, "/wallet/discover?claim=3").Body.String(), `name="credential_issuer" value="https://county.example"`) {
+		t.Fatal("browser storage hides the sign in")
 	}
 }
 

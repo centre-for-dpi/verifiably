@@ -205,6 +205,15 @@ it. `shared_claims` names what the verifier then reads. The listed
 credential carries the document with every disclosure, so the consent
 screen shows each claim.
 
+The browser store of the VCA wallet claims an authorization code offer
+of the issuer API itself (ADR-082). The issuer API of 0.18.2 serves
+`/authorize`, `/par` and the `authorization_code` grant of `/token`
+under the credential issuer. An offer that the adapter makes with the
+authentication method `NONE` names the `issuer_state`. The wallet
+pushes its request with PKCE, and walt.id sends the browser back with a
+code. `TestWalkthroughWaltid` and `TestWalletScriptInChromium` walk
+it against the issuer double.
+
 `AcceptOffer` sends the transaction code as `pinOrTxCode`. The wallet
 API of 0.18.2 redeems a pre-authorized code only. It takes no access
 token of the issuer. A request with an `authorization_grant` for an

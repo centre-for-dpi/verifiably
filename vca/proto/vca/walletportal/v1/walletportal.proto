@@ -195,6 +195,10 @@ message ClaimRequest {
   // in. With it, the service starts the authorization code flow in the
   // browser when the issuer names an authorization server.
   string redirect_uri = 4;
+  // A pending offer that names the authorization code grant. The service
+  // reads the issuer, the configuration, the issuer_state and the
+  // authorization server from it (ADR-082).
+  string offer_id = 5;
 }
 
 // ClaimResponse returns the next step.
@@ -222,6 +226,11 @@ message ClaimCompleteRequest {
 message ClaimCompleteResponse {
   // The card of the claimed credential.
   Card card = 1;
+  // In browser storage, the authorized offer that the browser claims
+  // with its own key (ADR-082).
+  string offer_id = 2;
+  // The summary of that offer.
+  OfferSummary offer = 3;
 }
 
 // Detected says what a scanned or pasted text is.
@@ -299,6 +308,9 @@ message OfferSummary {
   // True when the wallet read the issuer metadata. The offer page names
   // the issuer address and says so when it is false.
   bool metadata_read = 8;
+  // True when the offer needs a sign in at the issuer: it names the
+  // authorization code grant and no pre-authorized code (ADR-082).
+  bool sign_in = 9;
 }
 
 // ScanRequest carries the decoded QR text.

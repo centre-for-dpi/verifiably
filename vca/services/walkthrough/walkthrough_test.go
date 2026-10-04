@@ -188,16 +188,17 @@ func (w *walk) publish() {
 }
 
 // issue walks the issue wizard for one farmer and returns the offer and
-// the transaction code the result page shows.
-func (w *walk) issue() (string, string) {
+// the transaction code the result page shows. The delivery changes pick
+// another channel than the first one.
+func (w *walk) issue(delivery ...string) (string, string) {
 	w.t.Helper()
 	b := w.staff
 	start := b.get(w.issuer.public + "/issue/").must(w.t)
 	source := b.submit(start.form(w.t, "/issue/source")).must(w.t)
 	claims := b.submit(source.form(w.t, "/issue/source"), "source", "single").must(w.t)
-	delivery := b.submit(claims.form(w.t, "/issue/delivery"),
+	deliveryPage := b.submit(claims.form(w.t, "/issue/delivery"),
 		"claim.fullName", "Wanjiku Njeri", "claim.farmerID", "FM-0042", "claim.county", "Kiambu").must(w.t)
-	review := b.submit(delivery.form(w.t, "/issue/review")).must(w.t).has(w.t, w.stack)
+	review := b.submit(deliveryPage.form(w.t, "/issue/review"), delivery...).must(w.t).has(w.t, w.stack)
 	result := b.submit(review.form(w.t, "/issue/offers")).must(w.t).has(w.t, "Credential offer ready")
 	offer := html.UnescapeString(regexp.MustCompile(`openid-credential-offer://[^"<\s]+`).FindString(result.body))
 	pin := ""
@@ -237,6 +238,34 @@ func (w *walk) claimInBrowser(offer, pin, trust string) string {
 	}
 	w.citizen.get(w.holder.public+"/wallet/keys").must(w.t).has(w.t, "Your browser holds a key for this wallet.", bound["thumbprint"])
 	w.citizen.get(w.holder.public+"/wallet/").must(w.t).has(w.t, "Farmer registration", "Wanjiku Njeri", trust)
+	return done["credential"]
+}
+
+// claimWithSignIn claims an offer of the authorization code grant into
+// the browser store (ADR-082). The offer page asks the farmer to sign in
+// at the issuer. The wallet pushes the authorization request with PKCE,
+// the authorization server of the issuer sends the browser back to the
+// wallet with a code, and the wallet trades it. The browser then signs
+// the proof with its key. It returns the credential.
+func (w *walk) claimWithSignIn(offer string) string {
+	w.t.Helper()
+	paste := w.citizen.get(w.holder.public+"/wallet/claim").must(w.t).form(w.t, "/wallet/claim/offer")
+	offerPage := w.citizen.submit(paste, "offer", offer).must(w.t).
+		has(w.t, "The issuer asks you to sign in first.", "Offered by", "Sign in at issuer")
+	if strings.Contains(offerPage.body, "data-browser-claim") {
+		w.t.Fatal("an offer of the authorization code grant asks the browser to claim before the sign in")
+	}
+	authorized := w.citizen.submit(offerPage.form(w.t, "/wallet/claim")).must(w.t).has(w.t, "data-browser-claim")
+	if authorized.url.Path != "/wallet/claim/callback" {
+		w.t.Fatalf("the sign in ended at %s, want the callback of the wallet", authorized.url)
+	}
+	accept := authorized.form(w.t, "/wallet/accept")
+	step := w.citizen.script(accept, "/wallet/claim/proof", "jwk", w.key.jwk)
+	done := w.citizen.script(accept, "/wallet/claim/finish",
+		"claim", step["claim"], "signature", w.key.sign(w.t, step["signing_input"]))
+	if done["credential"] == "" {
+		w.t.Fatalf("the claim after the sign in answered %v", done)
+	}
 	return done["credential"]
 }
 
@@ -358,6 +387,13 @@ func TestWalkthroughWaltid(t *testing.T) {
 	// the wallet above holds the binding and reads valid.
 	w.check(credential).has(t, "issuer trusted", "the presentation carries no key binding JWT")
 	w.citizen.get(w.holder.public+"/wallet/").must(t).has(t, "Issuer: trusted")
+
+	// The issuer offers the credential with the authorization code
+	// grant. The farmer signs in at the issuer, and the browser claims
+	// with its own key (ADR-082).
+	signedOffer, _ := w.issue("channel", "CHANNEL_OID4VCI_AUTHCODE", "binding_token", "sub", "binding_subject", "farmerID")
+	signed := w.claimWithSignIn(signedOffer)
+	w.check(signed).has(t, "issuer trusted")
 	if api.onboarded != 1 {
 		t.Errorf("the issuer API onboarded %d keys, want 1", api.onboarded)
 	}

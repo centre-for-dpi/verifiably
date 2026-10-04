@@ -11,6 +11,7 @@ import (
 	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -40,6 +41,8 @@ import (
 //	POST /onboard/issuer
 //	POST /openid4vc/sdjwt/issue
 //	GET  /draft13/credentialOffer?id=
+//	POST /draft13/par
+//	GET  /draft13/authorize
 //	POST /draft13/token
 //	POST /draft13/credential
 //
@@ -47,7 +50,12 @@ import (
 // does, and posts the session events to the callback address of the
 // request. A credential request with a proof gets a credential bound to
 // the key of the proof, as the browser store of the wallet claims it
-// (ADR-073). One without a proof gets no holder key.
+// (ADR-073). One without a proof gets no holder key. An issue request
+// with the authentication method NONE gets an offer with the
+// authorization code grant. The wallet pushes its authorization request
+// with PKCE (RFC 9126), the authorization endpoint sends the browser
+// back with a code, as walt.id does for NONE, and the token endpoint
+// checks the code verifier (ADR-082).
 type waltidIssuer struct {
 	t   *testing.T
 	srv *httptest.Server
@@ -60,6 +68,10 @@ type waltidIssuer struct {
 	nonces map[string]string
 	// onboarded counts the onboarding calls.
 	onboarded int
+	// pushed holds the pushed authorization requests by request_uri.
+	pushed map[string]url.Values
+	// grants holds the pushed request of each authorization code.
+	grants map[string]url.Values
 }
 
 // waltidOffer is one issue request and its offer.
@@ -67,6 +79,9 @@ type waltidOffer struct {
 	request  waltidIssue
 	callback string
 	code     string
+	// state is the issuer_state of an offer with the authorization code
+	// grant.
+	state string
 }
 
 // waltidIssue is the part of the issue request the double reads.
@@ -79,13 +94,15 @@ type waltidIssue struct {
 	CredentialData            map[string]any  `json:"credentialData"`
 	Vct                       string          `json:"vct"`
 	SelectiveDisclosure       json.RawMessage `json:"selectiveDisclosure"`
+	AuthenticationMethod      string          `json:"authenticationMethod"`
 }
 
 const waltidDraft = "/draft13"
 
 func newWaltidIssuer(t *testing.T) *waltidIssuer {
 	t.Helper()
-	w := &waltidIssuer{t: t, offers: map[string]*waltidOffer{}, codes: map[string]string{}, tokens: map[string]string{}, nonces: map[string]string{}}
+	w := &waltidIssuer{t: t, offers: map[string]*waltidOffer{}, codes: map[string]string{}, tokens: map[string]string{}, nonces: map[string]string{},
+		pushed: map[string]url.Values{}, grants: map[string]url.Values{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET "+waltidDraft+"/.well-known/openid-credential-issuer", w.metadata)
 	mux.HandleFunc("GET "+waltidDraft+"/.well-known/oauth-authorization-server", w.authServer)
@@ -93,6 +110,8 @@ func newWaltidIssuer(t *testing.T) *waltidIssuer {
 	mux.HandleFunc("POST /onboard/issuer", w.onboard)
 	mux.HandleFunc("POST /openid4vc/sdjwt/issue", w.issue)
 	mux.HandleFunc("GET "+waltidDraft+"/credentialOffer", w.offer)
+	mux.HandleFunc("POST "+waltidDraft+"/par", w.par)
+	mux.HandleFunc("GET "+waltidDraft+"/authorize", w.authorize)
 	mux.HandleFunc("POST "+waltidDraft+"/token", w.token)
 	mux.HandleFunc("POST "+waltidDraft+"/credential", w.credential)
 	w.srv = httptest.NewServer(mux)
@@ -126,8 +145,62 @@ func (w *waltidIssuer) metadata(rw http.ResponseWriter, _ *http.Request) {
 func (w *waltidIssuer) authServer(rw http.ResponseWriter, _ *http.Request) {
 	writeJSON(rw, map[string]any{
 		"issuer": w.base(), "token_endpoint": w.base() + "/token",
-		"grant_types_supported": []string{"urn:ietf:params:oauth:grant-type:pre-authorized_code"},
+		"authorization_endpoint":                w.base() + "/authorize",
+		"pushed_authorization_request_endpoint": w.base() + "/par",
+		"code_challenge_methods_supported":      []string{"S256"},
+		"grant_types_supported":                 []string{"urn:ietf:params:oauth:grant-type:pre-authorized_code", "authorization_code"},
 	})
+}
+
+// par takes a pushed authorization request with PKCE for an offer of the
+// authorization code grant (RFC 9126 section 2).
+func (w *waltidIssuer) par(rw http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
+	}
+	f := r.PostForm
+	w.mu.Lock()
+	known := false
+	for _, o := range w.offers {
+		known = known || (o.state != "" && o.state == f.Get("issuer_state"))
+	}
+	uri := "urn:ietf:params:oauth:request_uri:" + randomID()
+	if known {
+		w.pushed[uri] = f
+	}
+	w.mu.Unlock()
+	if !known || f.Get("code_challenge_method") != "S256" || f.Get("code_challenge") == "" ||
+		f.Get("client_id") == "" || f.Get("redirect_uri") == "" || f.Get("response_type") != "code" {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusBadRequest)
+		writeJSON(rw, map[string]any{"error": "invalid_request"})
+		return
+	}
+	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(http.StatusCreated)
+	writeJSON(rw, map[string]any{"request_uri": uri, "expires_in": 60})
+}
+
+// authorize answers the authorization request of a pushed request. For
+// the authentication method NONE walt.id sends the browser straight back
+// with a code.
+func (w *waltidIssuer) authorize(rw http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	w.mu.Lock()
+	pushed, ok := w.pushed[q.Get("request_uri")]
+	delete(w.pushed, q.Get("request_uri"))
+	code := randomID()
+	if ok {
+		w.grants[code] = pushed
+	}
+	w.mu.Unlock()
+	if !ok || pushed.Get("client_id") != q.Get("client_id") {
+		http.Error(rw, "invalid_request_uri", http.StatusBadRequest)
+		return
+	}
+	back := url.Values{"code": {code}, "state": {pushed.Get("state")}}
+	http.Redirect(rw, r, pushed.Get("redirect_uri")+"?"+back.Encode(), http.StatusFound)
 }
 
 // onboard makes a key of the asked type and the DID of the asked method.
@@ -191,8 +264,13 @@ func (w *waltidIssuer) issue(rw http.ResponseWriter, r *http.Request) {
 	}
 	id, code := randomID(), randomID()
 	w.mu.Lock()
-	w.offers[id] = &waltidOffer{request: req, callback: r.Header.Get("statusCallbackUri"), code: code}
-	w.codes[code] = id
+	o := &waltidOffer{request: req, callback: r.Header.Get("statusCallbackUri"), code: code}
+	if req.AuthenticationMethod == "NONE" {
+		o.state, o.code = randomID(), ""
+	} else {
+		w.codes[code] = id
+	}
+	w.offers[id] = o
 	w.mu.Unlock()
 	offerURI := w.base() + "/credentialOffer?id=" + id
 	rw.Header().Set("Content-Type", "text/plain")
@@ -211,12 +289,16 @@ func (w *waltidIssuer) offer(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.event(o, "resolved_credential_offer", map[string]any{})
+	grants := map[string]any{"urn:ietf:params:oauth:grant-type:pre-authorized_code": map[string]any{
+		"pre-authorized_code": o.code,
+	}}
+	if o.state != "" {
+		grants = map[string]any{"authorization_code": map[string]any{"issuer_state": o.state}}
+	}
 	writeJSON(rw, map[string]any{
 		"credential_issuer":            w.base(),
 		"credential_configuration_ids": []string{o.request.CredentialConfigurationID},
-		"grants": map[string]any{"urn:ietf:params:oauth:grant-type:pre-authorized_code": map[string]any{
-			"pre-authorized_code": o.code,
-		}},
+		"grants":                       grants,
 	})
 }
 
@@ -229,13 +311,18 @@ func (w *waltidIssuer) token(rw http.ResponseWriter, r *http.Request) {
 	w.mu.Lock()
 	id, ok := w.codes[r.PostForm.Get("pre-authorized_code")]
 	delete(w.codes, r.PostForm.Get("pre-authorized_code"))
+	grant := r.PostForm.Get("grant_type") == "urn:ietf:params:oauth:grant-type:pre-authorized_code"
+	if r.PostForm.Get("grant_type") == "authorization_code" {
+		id, ok = w.authorizationGrant(r.PostForm)
+		grant = ok
+	}
 	token, nonce := randomID(), randomID()
 	if ok {
 		w.tokens[token], w.nonces[token] = id, nonce
 	}
 	o := w.offers[id]
 	w.mu.Unlock()
-	if !ok || r.PostForm.Get("grant_type") != "urn:ietf:params:oauth:grant-type:pre-authorized_code" {
+	if !ok || !grant {
 		rw.Header().Set("Content-Type", "application/json")
 		rw.WriteHeader(http.StatusBadRequest)
 		writeJSON(rw, map[string]any{"error": "invalid_grant"})
@@ -243,6 +330,26 @@ func (w *waltidIssuer) token(rw http.ResponseWriter, r *http.Request) {
 	}
 	w.event(o, "requested_token", map[string]any{})
 	writeJSON(rw, map[string]any{"access_token": token, "token_type": "bearer", "expires_in": 300, "c_nonce": nonce})
+}
+
+// authorizationGrant checks an authorization code against its pushed
+// request: the client, the redirect URI and the PKCE verifier. It
+// returns the id of the offer whose issuer_state the request named. The
+// caller holds the lock.
+func (w *waltidIssuer) authorizationGrant(f url.Values) (string, bool) {
+	pushed, ok := w.grants[f.Get("code")]
+	delete(w.grants, f.Get("code"))
+	sum := sha256.Sum256([]byte(f.Get("code_verifier")))
+	if !ok || pushed.Get("client_id") != f.Get("client_id") || pushed.Get("redirect_uri") != f.Get("redirect_uri") ||
+		base64.RawURLEncoding.EncodeToString(sum[:]) != pushed.Get("code_challenge") {
+		return "", false
+	}
+	for id, o := range w.offers {
+		if o.state != "" && o.state == pushed.Get("issuer_state") {
+			return id, true
+		}
+	}
+	return "", false
 }
 
 // credential signs the SD-JWT VC of the offer of the access token. A

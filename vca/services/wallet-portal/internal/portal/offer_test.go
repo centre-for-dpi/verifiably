@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/issuers"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/service"
 )
 
@@ -66,5 +67,41 @@ func TestOfferPageSaysWhenTheMetadataIsUnread(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the offer page misses %q\n%s", want, page)
 		}
+	}
+}
+
+// TestBrowserStoreSignsInAtTheIssuer is ADR-082 on the pages: an offer
+// of the authorization code grant asks the holder to sign in first, the
+// claim form sends the browser to the authorization endpoint, and the
+// callback opens the claim form that wallet.js signs.
+func TestBrowserStoreSignsInAtTheIssuer(t *testing.T) {
+	base := withMetadata(t, offerMetadata)
+	h := setupShell(t, func(o *service.Options) {
+		base(o)
+		o.Endpoints = func(context.Context, string) (issuers.Endpoints, error) {
+			return issuers.Endpoints{Authorization: "https://issuer.example/authorize", Token: "https://issuer.example/token"}, nil
+		}
+		fetch := o.Fetch
+		o.Fetch = func(ctx context.Context, address string) ([]byte, error) {
+			if address == "https://issuer.example/offers/1" {
+				return []byte(`{"credential_issuer":"https://issuer.example","credential_configuration_ids":["dl"],` +
+					`"grants":{"authorization_code":{"issuer_state":"st-1"}}}`), nil
+			}
+			return fetch(ctx, address)
+		}
+	}, holderDeployment())
+	page := h.post(t, "/wallet/claim/offer", url.Values{"offer": {browserOffer}}).Body.String()
+	if !strings.Contains(page, "The issuer asks you to sign in first.") || strings.Contains(page, "data-browser-claim") ||
+		!strings.Contains(page, `action="/wallet/claim"`) {
+		t.Fatalf("the offer page does not ask for the sign in first\n%s", page)
+	}
+	start := h.post(t, "/wallet/claim", url.Values{"offer_id": {offerIDOf(t, page)}})
+	next, err := url.Parse(start.Header().Get("Location"))
+	if err != nil || next.Host != "issuer.example" || next.Query().Get("issuer_state") != "st-1" {
+		t.Fatalf("the claim form sent the browser to %q", start.Header().Get("Location"))
+	}
+	back := h.get(t, "/wallet/claim/callback?code=c-1&state="+url.QueryEscape(next.Query().Get("state"))).Body.String()
+	if !strings.Contains(back, "data-browser-claim") || !strings.Contains(back, "Driver licence") {
+		t.Fatalf("the callback does not open the claim of the browser\n%s", back)
 	}
 }

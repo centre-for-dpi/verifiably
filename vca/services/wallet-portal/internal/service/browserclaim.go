@@ -11,6 +11,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/detect"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/holderkey"
@@ -96,6 +97,11 @@ func (s *Service) ClaimStart(ctx context.Context, offerID, pin, jwk string) (Cla
 	if err != nil {
 		return Claim{}, recordError(err)
 	}
+	if offer.AccessToken != "" {
+		// The holder signed in at the issuer, so the wallet holds the
+		// access token already (ADR-082).
+		return s.claimProof(ctx, citizen, offer, offer.Issuer, offer.Types, tokenAnswer{AccessToken: offer.AccessToken, CNonce: offer.Nonce}, jwk, key)
+	}
 	grant, ok := s.readOffer(ctx, offer.URI)
 	if !ok || len(grant.IDs) == 0 || grant.Issuer == "" {
 		return Claim{}, claimFail(connect.CodeFailedPrecondition,
@@ -109,11 +115,29 @@ func (s *Service) ClaimStart(ctx context.Context, offerID, pin, jwk string) (Cla
 	if err != nil {
 		return Claim{}, err
 	}
-	request, err := credentialRequest(meta, grant.IDs[0])
-	if err != nil {
+	if _, err = credentialRequest(meta, grant.IDs[0]); err != nil {
 		return Claim{}, err
 	}
 	token, err := s.preAuthorizedToken(ctx, meta, grant.Issuer, code, pin)
+	if err != nil {
+		return Claim{}, err
+	}
+	return s.claimProof(ctx, citizen, offer, grant.Issuer, grant.IDs, token, jwk, key)
+}
+
+// claimProof returns the proof the browser signs for an access token,
+// and keeps the claim for the second step.
+func (s *Service) claimProof(ctx context.Context, citizen session.Citizen, offer record, issuer string, ids []string,
+	token tokenAnswer, jwk string, key jose.JWK,
+) (Claim, error) {
+	if len(ids) == 0 {
+		return Claim{}, claimFail(connect.CodeFailedPrecondition, "the offer names no credential")
+	}
+	meta, err := s.issuerMetadata(ctx, issuer)
+	if err != nil {
+		return Claim{}, err
+	}
+	request, err := credentialRequest(meta, ids[0])
 	if err != nil {
 		return Claim{}, err
 	}
@@ -121,12 +145,12 @@ func (s *Service) ClaimStart(ctx context.Context, offerID, pin, jwk string) (Cla
 	if nonce == "" && meta.NonceEndpoint != "" {
 		nonce = s.freshNonce(ctx, meta.NonceEndpoint)
 	}
-	input, err := holderkey.ProofInput(key, grant.Issuer, nonce, s.opts.Now())
+	input, err := holderkey.ProofInput(key, issuer, nonce, s.opts.Now())
 	if err != nil {
 		return Claim{}, connect.NewError(connect.CodeInternal, err)
 	}
 	rec := record{
-		ID: s.opts.NewID(), URI: meta.CredentialEndpoint, Issuer: grant.Issuer, Types: grant.IDs,
+		ID: s.opts.NewID(), URI: meta.CredentialEndpoint, Issuer: issuer, Types: ids,
 		AccessToken: token.AccessToken, SigningInput: input, HolderKey: jwk, Request: string(request), Offer: offer.ID,
 		// An issuer with a nonce endpoint follows OID4VCI 1.0 or a draft
 		// after 13, which take the proofs object (section 8.2).

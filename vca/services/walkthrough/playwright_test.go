@@ -188,6 +188,15 @@ func TestWalletScriptInChromium(t *testing.T) {
 		t.Fatalf("the keys page does not name the key %s of the browser:\n%s", thumbprint, keys)
 	}
 
+	// The issuer offers the credential with the authorization code
+	// grant. Chromium signs in at the issuer, comes back to the wallet,
+	// and wallet.js claims with the same key (ADR-082).
+	signedOffer, _ := w.issue("channel", "CHANNEL_OID4VCI_AUTHCODE", "binding_token", "sub", "binding_subject", "farmerID")
+	signed := chromium(ctx, t, browsers, map[string]string{"phase": "signin", "holder": w.holder.public, "link": signedOffer, "profile": profile})
+	if n, ok := signed["blobs"].(float64); !ok || n != 2 {
+		t.Fatalf("after the sign in the browser store holds %v credentials, want 2:\n%v", signed["blobs"], signed["page"])
+	}
+
 	// The admin trusts the issuer, and the verifier asks for the
 	// credential through a link.
 	trust := w.operator.get(w.adminSignIn().link(t, "Trust")).must(t)

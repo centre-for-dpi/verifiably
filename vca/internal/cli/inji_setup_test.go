@@ -102,7 +102,8 @@ func TestSetupWritesTheAuthzIssuer(t *testing.T) {
 	flags := withFlag(baseFlags(), "VCA_PUBLIC_URL", "https://issue.gov.example")
 	jwk := `{"kty":"RSA","n":"xyz","e":"AQAB"}`
 	env := planEnv(t, SetupRequest{Pair: issuer, Flags: flags, WalletJWK: jwk,
-		Peers: PeerOverrides{injiPair(commonv1.Role_ROLE_HOLDER).Name(): {InjiWebPublicURLEnv: "https://web.gov.example"}}})
+		Peers: PeerOverrides{injiPair(commonv1.Role_ROLE_HOLDER).Name(): {InjiWebPublicURLEnv: "https://web.gov.example",
+			"VCA_PUBLIC_URL": "https://wallet.gov.example"}}})
 	for key, want := range map[string]string{
 		InjiAuthzIssuerEnv:                   "https://issue.gov.example/authz",
 		"VCA_INJI_HOLDER_OIDC_DISCOVERY_URL": "http://inji-keycloak:8080/realms/vca-holder-realm/.well-known/openid-configuration",
@@ -122,15 +123,28 @@ func TestSetupWritesTheAuthzIssuer(t *testing.T) {
 		Redirects []string        `json:"redirect_uris"`
 		JWK       json.RawMessage `json:"jwk"`
 	}
-	if err := json.Unmarshal([]byte(env["VCA_INJI_WALLET_CLIENTS"]), &clients); err != nil || len(clients) != 1 {
+	if err := json.Unmarshal([]byte(env["VCA_INJI_WALLET_CLIENTS"]), &clients); err != nil || len(clients) != 2 {
 		t.Fatalf("wallet clients = %q, %v", env["VCA_INJI_WALLET_CLIENTS"], err)
 	}
 	if clients[0].ID != EsignetClientID || strings.Join(clients[0].Redirects, " ") != "https://web.gov.example/redirect" ||
 		string(clients[0].JWK) != jwk {
 		t.Errorf("wallet client = %+v", clients[0])
 	}
-	// Without the key of Mimoto, Inji Web has no client yet.
-	if v := planEnv(t, SetupRequest{Pair: issuer})["VCA_INJI_WALLET_CLIENTS"]; v != "" {
+	// The VCA wallet of the holder pair signs in at the issuer as a
+	// public client with PKCE and claims into the browser store (ADR-082).
+	if clients[1].ID != WalletClientID || strings.Join(clients[1].Redirects, " ") != "https://wallet.gov.example/wallet/claim/callback" ||
+		len(clients[1].JWK) != 0 {
+		t.Errorf("the client of the VCA wallet = %+v", clients[1])
+	}
+	// Without the key of Mimoto, Inji Web has no client yet. The VCA
+	// wallet has one.
+	var bare []struct {
+		ID        string   `json:"client_id"`
+		Redirects []string `json:"redirect_uris"`
+	}
+	v := planEnv(t, SetupRequest{Pair: issuer})["VCA_INJI_WALLET_CLIENTS"]
+	if err := json.Unmarshal([]byte(v), &bare); err != nil || len(bare) != 1 || bare[0].ID != WalletClientID ||
+		!strings.HasSuffix(bare[0].Redirects[0], "/wallet/claim/callback") {
 		t.Errorf("wallet clients without a key = %q", v)
 	}
 	for _, role := range []commonv1.Role{commonv1.Role_ROLE_HOLDER, commonv1.Role_ROLE_VERIFIER} {

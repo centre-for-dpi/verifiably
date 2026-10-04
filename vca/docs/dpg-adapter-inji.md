@@ -266,6 +266,14 @@ the offer under the public name of the deployment. The adapter reads the
 document from the instance it staged the claims on. A deployment with a
 public name and an internal name then needs no rewrite rule.
 
+**The VCA wallet signs in at the holder authorization server.** Setup
+registers the client `vca-wallet` in `VCA_INJI_WALLET_CLIENTS` as a
+public client with PKCE. Its redirect URIs are `/wallet/claim/callback`
+of the Inji holder pair and of each holder pair the peers name. The
+browser store of the wallet then claims an authorization code offer of
+Certify with the browser key (ADR-082). The server takes no pushed
+request, so the wallet sends the request in the query.
+
 **The adapter hosts the authorization code offer.** Inji Certify hosts
 no such offer. The adapter builds the document, serves it at
 `/offers/{id}`, and points the wallet at it.
