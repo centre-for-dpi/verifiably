@@ -79,6 +79,7 @@ var commands = []command{
 		{name: "status", text: "The trust status: active, suspended, revoked, or pending.", value: "active"},
 		{name: "credential-type", text: "One credential type. Repeat the flag for more types."},
 		{name: "service-endpoint", text: "The base URL of the entity deployment."},
+		{name: "confirm-unresolved", text: "Store a DID that neither VCA nor a stack resolves."},
 	}},
 	{path: "admin trust get", rpc: "GetTrustEntry", flags: []flag{
 		{name: "did", text: "The DID of the entity."},

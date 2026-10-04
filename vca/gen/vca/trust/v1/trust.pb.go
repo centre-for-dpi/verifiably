@@ -208,6 +208,63 @@ func (Status) EnumDescriptor() ([]byte, []int) {
 	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{2}
 }
 
+// Resolution says how the registry knows the DID document of an entry.
+type Resolution int32
+
+const (
+	Resolution_RESOLUTION_UNSPECIFIED Resolution = 0
+	// VCA resolved the DID itself.
+	Resolution_RESOLUTION_LOCAL Resolution = 1
+	// A stack resolved the DID, and the entry keeps its document. A ledger
+	// DID such as did:indy takes this way.
+	Resolution_RESOLUTION_STACK Resolution = 2
+	// Nobody resolved the DID. An admin confirmed the entry.
+	Resolution_RESOLUTION_CONFIRMED Resolution = 3
+)
+
+// Enum value maps for Resolution.
+var (
+	Resolution_name = map[int32]string{
+		0: "RESOLUTION_UNSPECIFIED",
+		1: "RESOLUTION_LOCAL",
+		2: "RESOLUTION_STACK",
+		3: "RESOLUTION_CONFIRMED",
+	}
+	Resolution_value = map[string]int32{
+		"RESOLUTION_UNSPECIFIED": 0,
+		"RESOLUTION_LOCAL":       1,
+		"RESOLUTION_STACK":       2,
+		"RESOLUTION_CONFIRMED":   3,
+	}
+)
+
+func (x Resolution) Enum() *Resolution {
+	p := new(Resolution)
+	*p = x
+	return p
+}
+
+func (x Resolution) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Resolution) Descriptor() protoreflect.EnumDescriptor {
+	return file_vca_trust_v1_trust_proto_enumTypes[3].Descriptor()
+}
+
+func (Resolution) Type() protoreflect.EnumType {
+	return &file_vca_trust_v1_trust_proto_enumTypes[3]
+}
+
+func (x Resolution) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Resolution.Descriptor instead.
+func (Resolution) EnumDescriptor() ([]byte, []int) {
+	return file_vca_trust_v1_trust_proto_rawDescGZIP(), []int{3}
+}
+
 // Outcome names the lookup result.
 type TrustLookupResponse_Outcome int32
 
@@ -253,11 +310,11 @@ func (x TrustLookupResponse_Outcome) String() string {
 }
 
 func (TrustLookupResponse_Outcome) Descriptor() protoreflect.EnumDescriptor {
-	return file_vca_trust_v1_trust_proto_enumTypes[3].Descriptor()
+	return file_vca_trust_v1_trust_proto_enumTypes[4].Descriptor()
 }
 
 func (TrustLookupResponse_Outcome) Type() protoreflect.EnumType {
-	return &file_vca_trust_v1_trust_proto_enumTypes[3]
+	return &file_vca_trust_v1_trust_proto_enumTypes[4]
 }
 
 func (x TrustLookupResponse_Outcome) Number() protoreflect.EnumNumber {
@@ -893,7 +950,17 @@ type TrustEntry struct {
 	// The public URLs of the status lists of the entity.
 	StatusListEndpoints []string `protobuf:"bytes,8,rep,name=status_list_endpoints,json=statusListEndpoints,proto3" json:"status_list_endpoints,omitempty"`
 	// The time of the last change.
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	UpdatedAt *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// How the registry knows the DID document of the entity. Empty for an
+	// x509 subject.
+	Resolution Resolution `protobuf:"varint,10,opt,name=resolution,proto3,enum=vca.trust.v1.Resolution" json:"resolution,omitempty"`
+	// The DID document as JSON, when a stack resolved the DID for the
+	// registry. VCA resolves did:key, did:jwk, and did:web itself, so such
+	// an entry keeps no document.
+	DidDocument string `protobuf:"bytes,11,opt,name=did_document,json=didDocument,proto3" json:"did_document,omitempty"`
+	// The name of the stack that resolved the DID, such as the display
+	// name of its adapter.
+	ResolvedBy    string `protobuf:"bytes,12,opt,name=resolved_by,json=resolvedBy,proto3" json:"resolved_by,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -991,13 +1058,38 @@ func (x *TrustEntry) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *TrustEntry) GetResolution() Resolution {
+	if x != nil {
+		return x.Resolution
+	}
+	return Resolution_RESOLUTION_UNSPECIFIED
+}
+
+func (x *TrustEntry) GetDidDocument() string {
+	if x != nil {
+		return x.DidDocument
+	}
+	return ""
+}
+
+func (x *TrustEntry) GetResolvedBy() string {
+	if x != nil {
+		return x.ResolvedBy
+	}
+	return ""
+}
+
 // UpsertEntryRequest carries the entry to store.
 type UpsertEntryRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The entry. The service sets updated_at.
-	Entry         *TrustEntry `protobuf:"bytes,1,opt,name=entry,proto3" json:"entry,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Entry *TrustEntry `protobuf:"bytes,1,opt,name=entry,proto3" json:"entry,omitempty"`
+	// The admin confirms a DID that neither VCA nor a stack resolves. The
+	// registry then stores the entry with RESOLUTION_CONFIRMED. Without it
+	// the registry refuses such a DID.
+	ConfirmUnresolved bool `protobuf:"varint,2,opt,name=confirm_unresolved,json=confirmUnresolved,proto3" json:"confirm_unresolved,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *UpsertEntryRequest) Reset() {
@@ -1035,6 +1127,13 @@ func (x *UpsertEntryRequest) GetEntry() *TrustEntry {
 		return x.Entry
 	}
 	return nil
+}
+
+func (x *UpsertEntryRequest) GetConfirmUnresolved() bool {
+	if x != nil {
+		return x.ConfirmUnresolved
+	}
+	return false
 }
 
 // UpsertEntryResponse returns the stored entry.
@@ -2148,7 +2247,7 @@ const file_vca_trust_v1_trust_proto_rawDesc = "" +
 	"\x13SyncRegistryRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"J\n" +
 	"\x14SyncRegistryResponse\x122\n" +
-	"\bregistry\x18\x01 \x01(\v2\x16.vca.trust.v1.RegistryR\bregistry\"\x98\x04\n" +
+	"\bregistry\x18\x01 \x01(\v2\x16.vca.trust.v1.RegistryR\bregistry\"\x96\x05\n" +
 	"\n" +
 	"TrustEntry\x12C\n" +
 	"\n" +
@@ -2162,14 +2261,22 @@ const file_vca_trust_v1_trust_proto_rawDesc = "" +
 	"\x10service_endpoint\x18\a \x01(\tR\x0fserviceEndpoint\x122\n" +
 	"\x15status_list_endpoints\x18\b \x03(\tR\x13statusListEndpoints\x129\n" +
 	"\n" +
-	"updated_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x1aK\n" +
+	"updated_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x128\n" +
+	"\n" +
+	"resolution\x18\n" +
+	" \x01(\x0e2\x18.vca.trust.v1.ResolutionR\n" +
+	"resolution\x12!\n" +
+	"\fdid_document\x18\v \x01(\tR\vdidDocument\x12\x1f\n" +
+	"\vresolved_by\x18\f \x01(\tR\n" +
+	"resolvedBy\x1aK\n" +
 	"\n" +
 	"Identifier\x12\x12\n" +
 	"\x03did\x18\x01 \x01(\tH\x00R\x03did\x12#\n" +
 	"\fx509_subject\x18\x02 \x01(\tH\x00R\vx509SubjectB\x04\n" +
-	"\x02id\"D\n" +
+	"\x02id\"s\n" +
 	"\x12UpsertEntryRequest\x12.\n" +
-	"\x05entry\x18\x01 \x01(\v2\x18.vca.trust.v1.TrustEntryR\x05entry\"E\n" +
+	"\x05entry\x18\x01 \x01(\v2\x18.vca.trust.v1.TrustEntryR\x05entry\x12-\n" +
+	"\x12confirm_unresolved\x18\x02 \x01(\bR\x11confirmUnresolved\"E\n" +
 	"\x13UpsertEntryResponse\x12.\n" +
 	"\x05entry\x18\x01 \x01(\v2\x18.vca.trust.v1.TrustEntryR\x05entry\"V\n" +
 	"\x0fGetEntryRequest\x12C\n" +
@@ -2254,7 +2361,13 @@ const file_vca_trust_v1_trust_proto_rawDesc = "" +
 	"\rSTATUS_ACTIVE\x10\x01\x12\x14\n" +
 	"\x10STATUS_SUSPENDED\x10\x02\x12\x12\n" +
 	"\x0eSTATUS_REVOKED\x10\x03\x12\x12\n" +
-	"\x0eSTATUS_PENDING\x10\x042\x84\b\n" +
+	"\x0eSTATUS_PENDING\x10\x04*n\n" +
+	"\n" +
+	"Resolution\x12\x1a\n" +
+	"\x16RESOLUTION_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10RESOLUTION_LOCAL\x10\x01\x12\x14\n" +
+	"\x10RESOLUTION_STACK\x10\x02\x12\x18\n" +
+	"\x14RESOLUTION_CONFIRMED\x10\x032\x84\b\n" +
 	"\fTrustService\x12R\n" +
 	"\vUpsertEntry\x12 .vca.trust.v1.UpsertEntryRequest\x1a!.vca.trust.v1.UpsertEntryResponse\x12I\n" +
 	"\bGetEntry\x12\x1d.vca.trust.v1.GetEntryRequest\x1a\x1e.vca.trust.v1.GetEntryResponse\x12R\n" +
@@ -2284,117 +2397,119 @@ func file_vca_trust_v1_trust_proto_rawDescGZIP() []byte {
 	return file_vca_trust_v1_trust_proto_rawDescData
 }
 
-var file_vca_trust_v1_trust_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_vca_trust_v1_trust_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
 var file_vca_trust_v1_trust_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_vca_trust_v1_trust_proto_goTypes = []any{
 	(RegistryMethod)(0),                    // 0: vca.trust.v1.RegistryMethod
 	(Method)(0),                            // 1: vca.trust.v1.Method
 	(Status)(0),                            // 2: vca.trust.v1.Status
-	(TrustLookupResponse_Outcome)(0),       // 3: vca.trust.v1.TrustLookupResponse.Outcome
-	(*ExportSnapshotRequest)(nil),          // 4: vca.trust.v1.ExportSnapshotRequest
-	(*ExportSnapshotResponse)(nil),         // 5: vca.trust.v1.ExportSnapshotResponse
-	(*Registry)(nil),                       // 6: vca.trust.v1.Registry
-	(*AddRegistryRequest)(nil),             // 7: vca.trust.v1.AddRegistryRequest
-	(*AddRegistryResponse)(nil),            // 8: vca.trust.v1.AddRegistryResponse
-	(*ListRegistriesRequest)(nil),          // 9: vca.trust.v1.ListRegistriesRequest
-	(*ListRegistriesResponse)(nil),         // 10: vca.trust.v1.ListRegistriesResponse
-	(*RemoveRegistryRequest)(nil),          // 11: vca.trust.v1.RemoveRegistryRequest
-	(*RemoveRegistryResponse)(nil),         // 12: vca.trust.v1.RemoveRegistryResponse
-	(*SyncRegistryRequest)(nil),            // 13: vca.trust.v1.SyncRegistryRequest
-	(*SyncRegistryResponse)(nil),           // 14: vca.trust.v1.SyncRegistryResponse
-	(*TrustEntry)(nil),                     // 15: vca.trust.v1.TrustEntry
-	(*UpsertEntryRequest)(nil),             // 16: vca.trust.v1.UpsertEntryRequest
-	(*UpsertEntryResponse)(nil),            // 17: vca.trust.v1.UpsertEntryResponse
-	(*GetEntryRequest)(nil),                // 18: vca.trust.v1.GetEntryRequest
-	(*GetEntryResponse)(nil),               // 19: vca.trust.v1.GetEntryResponse
-	(*ListEntriesRequest)(nil),             // 20: vca.trust.v1.ListEntriesRequest
-	(*ListEntriesResponse)(nil),            // 21: vca.trust.v1.ListEntriesResponse
-	(*DeleteEntryRequest)(nil),             // 22: vca.trust.v1.DeleteEntryRequest
-	(*DeleteEntryResponse)(nil),            // 23: vca.trust.v1.DeleteEntryResponse
-	(*PublishRequest)(nil),                 // 24: vca.trust.v1.PublishRequest
-	(*PublishResponse)(nil),                // 25: vca.trust.v1.PublishResponse
-	(*TrustLookupRequest)(nil),             // 26: vca.trust.v1.TrustLookupRequest
-	(*TrustLookupResponse)(nil),            // 27: vca.trust.v1.TrustLookupResponse
-	(*ImportEtsiRequest)(nil),              // 28: vca.trust.v1.ImportEtsiRequest
-	(*ImportEtsiResponse)(nil),             // 29: vca.trust.v1.ImportEtsiResponse
-	(*Registry_Anchor)(nil),                // 30: vca.trust.v1.Registry.Anchor
-	(*TrustEntry_Identifier)(nil),          // 31: vca.trust.v1.TrustEntry.Identifier
-	(*PublishResponse_Publication)(nil),    // 32: vca.trust.v1.PublishResponse.Publication
-	(*TrustLookupResponse_Provenance)(nil), // 33: vca.trust.v1.TrustLookupResponse.Provenance
-	(*durationpb.Duration)(nil),            // 34: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),          // 35: google.protobuf.Timestamp
-	(v1.Role)(0),                           // 36: vca.common.v1.Role
-	(*v1.ValidityWindow)(nil),              // 37: vca.common.v1.ValidityWindow
-	(*v1.Pagination)(nil),                  // 38: vca.common.v1.Pagination
-	(*v1.PageResult)(nil),                  // 39: vca.common.v1.PageResult
+	(Resolution)(0),                        // 3: vca.trust.v1.Resolution
+	(TrustLookupResponse_Outcome)(0),       // 4: vca.trust.v1.TrustLookupResponse.Outcome
+	(*ExportSnapshotRequest)(nil),          // 5: vca.trust.v1.ExportSnapshotRequest
+	(*ExportSnapshotResponse)(nil),         // 6: vca.trust.v1.ExportSnapshotResponse
+	(*Registry)(nil),                       // 7: vca.trust.v1.Registry
+	(*AddRegistryRequest)(nil),             // 8: vca.trust.v1.AddRegistryRequest
+	(*AddRegistryResponse)(nil),            // 9: vca.trust.v1.AddRegistryResponse
+	(*ListRegistriesRequest)(nil),          // 10: vca.trust.v1.ListRegistriesRequest
+	(*ListRegistriesResponse)(nil),         // 11: vca.trust.v1.ListRegistriesResponse
+	(*RemoveRegistryRequest)(nil),          // 12: vca.trust.v1.RemoveRegistryRequest
+	(*RemoveRegistryResponse)(nil),         // 13: vca.trust.v1.RemoveRegistryResponse
+	(*SyncRegistryRequest)(nil),            // 14: vca.trust.v1.SyncRegistryRequest
+	(*SyncRegistryResponse)(nil),           // 15: vca.trust.v1.SyncRegistryResponse
+	(*TrustEntry)(nil),                     // 16: vca.trust.v1.TrustEntry
+	(*UpsertEntryRequest)(nil),             // 17: vca.trust.v1.UpsertEntryRequest
+	(*UpsertEntryResponse)(nil),            // 18: vca.trust.v1.UpsertEntryResponse
+	(*GetEntryRequest)(nil),                // 19: vca.trust.v1.GetEntryRequest
+	(*GetEntryResponse)(nil),               // 20: vca.trust.v1.GetEntryResponse
+	(*ListEntriesRequest)(nil),             // 21: vca.trust.v1.ListEntriesRequest
+	(*ListEntriesResponse)(nil),            // 22: vca.trust.v1.ListEntriesResponse
+	(*DeleteEntryRequest)(nil),             // 23: vca.trust.v1.DeleteEntryRequest
+	(*DeleteEntryResponse)(nil),            // 24: vca.trust.v1.DeleteEntryResponse
+	(*PublishRequest)(nil),                 // 25: vca.trust.v1.PublishRequest
+	(*PublishResponse)(nil),                // 26: vca.trust.v1.PublishResponse
+	(*TrustLookupRequest)(nil),             // 27: vca.trust.v1.TrustLookupRequest
+	(*TrustLookupResponse)(nil),            // 28: vca.trust.v1.TrustLookupResponse
+	(*ImportEtsiRequest)(nil),              // 29: vca.trust.v1.ImportEtsiRequest
+	(*ImportEtsiResponse)(nil),             // 30: vca.trust.v1.ImportEtsiResponse
+	(*Registry_Anchor)(nil),                // 31: vca.trust.v1.Registry.Anchor
+	(*TrustEntry_Identifier)(nil),          // 32: vca.trust.v1.TrustEntry.Identifier
+	(*PublishResponse_Publication)(nil),    // 33: vca.trust.v1.PublishResponse.Publication
+	(*TrustLookupResponse_Provenance)(nil), // 34: vca.trust.v1.TrustLookupResponse.Provenance
+	(*durationpb.Duration)(nil),            // 35: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),          // 36: google.protobuf.Timestamp
+	(v1.Role)(0),                           // 37: vca.common.v1.Role
+	(*v1.ValidityWindow)(nil),              // 38: vca.common.v1.ValidityWindow
+	(*v1.Pagination)(nil),                  // 39: vca.common.v1.Pagination
+	(*v1.PageResult)(nil),                  // 40: vca.common.v1.PageResult
 }
 var file_vca_trust_v1_trust_proto_depIdxs = []int32{
 	0,  // 0: vca.trust.v1.Registry.method:type_name -> vca.trust.v1.RegistryMethod
-	30, // 1: vca.trust.v1.Registry.anchor:type_name -> vca.trust.v1.Registry.Anchor
-	34, // 2: vca.trust.v1.Registry.refresh:type_name -> google.protobuf.Duration
-	35, // 3: vca.trust.v1.Registry.last_sync:type_name -> google.protobuf.Timestamp
-	35, // 4: vca.trust.v1.Registry.last_read:type_name -> google.protobuf.Timestamp
-	6,  // 5: vca.trust.v1.AddRegistryRequest.registry:type_name -> vca.trust.v1.Registry
-	6,  // 6: vca.trust.v1.AddRegistryResponse.registry:type_name -> vca.trust.v1.Registry
-	6,  // 7: vca.trust.v1.ListRegistriesResponse.registries:type_name -> vca.trust.v1.Registry
-	32, // 8: vca.trust.v1.ListRegistriesResponse.local:type_name -> vca.trust.v1.PublishResponse.Publication
-	6,  // 9: vca.trust.v1.SyncRegistryResponse.registry:type_name -> vca.trust.v1.Registry
-	31, // 10: vca.trust.v1.TrustEntry.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
-	36, // 11: vca.trust.v1.TrustEntry.role:type_name -> vca.common.v1.Role
+	31, // 1: vca.trust.v1.Registry.anchor:type_name -> vca.trust.v1.Registry.Anchor
+	35, // 2: vca.trust.v1.Registry.refresh:type_name -> google.protobuf.Duration
+	36, // 3: vca.trust.v1.Registry.last_sync:type_name -> google.protobuf.Timestamp
+	36, // 4: vca.trust.v1.Registry.last_read:type_name -> google.protobuf.Timestamp
+	7,  // 5: vca.trust.v1.AddRegistryRequest.registry:type_name -> vca.trust.v1.Registry
+	7,  // 6: vca.trust.v1.AddRegistryResponse.registry:type_name -> vca.trust.v1.Registry
+	7,  // 7: vca.trust.v1.ListRegistriesResponse.registries:type_name -> vca.trust.v1.Registry
+	33, // 8: vca.trust.v1.ListRegistriesResponse.local:type_name -> vca.trust.v1.PublishResponse.Publication
+	7,  // 9: vca.trust.v1.SyncRegistryResponse.registry:type_name -> vca.trust.v1.Registry
+	32, // 10: vca.trust.v1.TrustEntry.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
+	37, // 11: vca.trust.v1.TrustEntry.role:type_name -> vca.common.v1.Role
 	2,  // 12: vca.trust.v1.TrustEntry.status:type_name -> vca.trust.v1.Status
-	37, // 13: vca.trust.v1.TrustEntry.validity:type_name -> vca.common.v1.ValidityWindow
-	35, // 14: vca.trust.v1.TrustEntry.updated_at:type_name -> google.protobuf.Timestamp
-	15, // 15: vca.trust.v1.UpsertEntryRequest.entry:type_name -> vca.trust.v1.TrustEntry
-	15, // 16: vca.trust.v1.UpsertEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
-	31, // 17: vca.trust.v1.GetEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
-	15, // 18: vca.trust.v1.GetEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
-	38, // 19: vca.trust.v1.ListEntriesRequest.page:type_name -> vca.common.v1.Pagination
-	36, // 20: vca.trust.v1.ListEntriesRequest.role:type_name -> vca.common.v1.Role
-	2,  // 21: vca.trust.v1.ListEntriesRequest.status:type_name -> vca.trust.v1.Status
-	15, // 22: vca.trust.v1.ListEntriesResponse.entries:type_name -> vca.trust.v1.TrustEntry
-	39, // 23: vca.trust.v1.ListEntriesResponse.page:type_name -> vca.common.v1.PageResult
-	31, // 24: vca.trust.v1.DeleteEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
-	1,  // 25: vca.trust.v1.PublishRequest.method:type_name -> vca.trust.v1.Method
-	32, // 26: vca.trust.v1.PublishResponse.publications:type_name -> vca.trust.v1.PublishResponse.Publication
-	31, // 27: vca.trust.v1.TrustLookupRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
-	36, // 28: vca.trust.v1.TrustLookupRequest.role:type_name -> vca.common.v1.Role
-	35, // 29: vca.trust.v1.TrustLookupRequest.at:type_name -> google.protobuf.Timestamp
-	3,  // 30: vca.trust.v1.TrustLookupResponse.outcome:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
-	15, // 31: vca.trust.v1.TrustLookupResponse.entry:type_name -> vca.trust.v1.TrustEntry
-	33, // 32: vca.trust.v1.TrustLookupResponse.provenance:type_name -> vca.trust.v1.TrustLookupResponse.Provenance
-	1,  // 33: vca.trust.v1.PublishResponse.Publication.method:type_name -> vca.trust.v1.Method
-	35, // 34: vca.trust.v1.PublishResponse.Publication.published_at:type_name -> google.protobuf.Timestamp
-	1,  // 35: vca.trust.v1.TrustLookupResponse.Provenance.method:type_name -> vca.trust.v1.Method
-	35, // 36: vca.trust.v1.TrustLookupResponse.Provenance.checked_at:type_name -> google.protobuf.Timestamp
-	16, // 37: vca.trust.v1.TrustService.UpsertEntry:input_type -> vca.trust.v1.UpsertEntryRequest
-	18, // 38: vca.trust.v1.TrustService.GetEntry:input_type -> vca.trust.v1.GetEntryRequest
-	20, // 39: vca.trust.v1.TrustService.ListEntries:input_type -> vca.trust.v1.ListEntriesRequest
-	22, // 40: vca.trust.v1.TrustService.DeleteEntry:input_type -> vca.trust.v1.DeleteEntryRequest
-	24, // 41: vca.trust.v1.TrustService.Publish:input_type -> vca.trust.v1.PublishRequest
-	26, // 42: vca.trust.v1.TrustService.TrustLookup:input_type -> vca.trust.v1.TrustLookupRequest
-	28, // 43: vca.trust.v1.TrustService.ImportEtsi:input_type -> vca.trust.v1.ImportEtsiRequest
-	7,  // 44: vca.trust.v1.TrustService.AddRegistry:input_type -> vca.trust.v1.AddRegistryRequest
-	9,  // 45: vca.trust.v1.TrustService.ListRegistries:input_type -> vca.trust.v1.ListRegistriesRequest
-	11, // 46: vca.trust.v1.TrustService.RemoveRegistry:input_type -> vca.trust.v1.RemoveRegistryRequest
-	13, // 47: vca.trust.v1.TrustService.SyncRegistry:input_type -> vca.trust.v1.SyncRegistryRequest
-	4,  // 48: vca.trust.v1.TrustService.ExportSnapshot:input_type -> vca.trust.v1.ExportSnapshotRequest
-	17, // 49: vca.trust.v1.TrustService.UpsertEntry:output_type -> vca.trust.v1.UpsertEntryResponse
-	19, // 50: vca.trust.v1.TrustService.GetEntry:output_type -> vca.trust.v1.GetEntryResponse
-	21, // 51: vca.trust.v1.TrustService.ListEntries:output_type -> vca.trust.v1.ListEntriesResponse
-	23, // 52: vca.trust.v1.TrustService.DeleteEntry:output_type -> vca.trust.v1.DeleteEntryResponse
-	25, // 53: vca.trust.v1.TrustService.Publish:output_type -> vca.trust.v1.PublishResponse
-	27, // 54: vca.trust.v1.TrustService.TrustLookup:output_type -> vca.trust.v1.TrustLookupResponse
-	29, // 55: vca.trust.v1.TrustService.ImportEtsi:output_type -> vca.trust.v1.ImportEtsiResponse
-	8,  // 56: vca.trust.v1.TrustService.AddRegistry:output_type -> vca.trust.v1.AddRegistryResponse
-	10, // 57: vca.trust.v1.TrustService.ListRegistries:output_type -> vca.trust.v1.ListRegistriesResponse
-	12, // 58: vca.trust.v1.TrustService.RemoveRegistry:output_type -> vca.trust.v1.RemoveRegistryResponse
-	14, // 59: vca.trust.v1.TrustService.SyncRegistry:output_type -> vca.trust.v1.SyncRegistryResponse
-	5,  // 60: vca.trust.v1.TrustService.ExportSnapshot:output_type -> vca.trust.v1.ExportSnapshotResponse
-	49, // [49:61] is the sub-list for method output_type
-	37, // [37:49] is the sub-list for method input_type
-	37, // [37:37] is the sub-list for extension type_name
-	37, // [37:37] is the sub-list for extension extendee
-	0,  // [0:37] is the sub-list for field type_name
+	38, // 13: vca.trust.v1.TrustEntry.validity:type_name -> vca.common.v1.ValidityWindow
+	36, // 14: vca.trust.v1.TrustEntry.updated_at:type_name -> google.protobuf.Timestamp
+	3,  // 15: vca.trust.v1.TrustEntry.resolution:type_name -> vca.trust.v1.Resolution
+	16, // 16: vca.trust.v1.UpsertEntryRequest.entry:type_name -> vca.trust.v1.TrustEntry
+	16, // 17: vca.trust.v1.UpsertEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
+	32, // 18: vca.trust.v1.GetEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
+	16, // 19: vca.trust.v1.GetEntryResponse.entry:type_name -> vca.trust.v1.TrustEntry
+	39, // 20: vca.trust.v1.ListEntriesRequest.page:type_name -> vca.common.v1.Pagination
+	37, // 21: vca.trust.v1.ListEntriesRequest.role:type_name -> vca.common.v1.Role
+	2,  // 22: vca.trust.v1.ListEntriesRequest.status:type_name -> vca.trust.v1.Status
+	16, // 23: vca.trust.v1.ListEntriesResponse.entries:type_name -> vca.trust.v1.TrustEntry
+	40, // 24: vca.trust.v1.ListEntriesResponse.page:type_name -> vca.common.v1.PageResult
+	32, // 25: vca.trust.v1.DeleteEntryRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
+	1,  // 26: vca.trust.v1.PublishRequest.method:type_name -> vca.trust.v1.Method
+	33, // 27: vca.trust.v1.PublishResponse.publications:type_name -> vca.trust.v1.PublishResponse.Publication
+	32, // 28: vca.trust.v1.TrustLookupRequest.identifier:type_name -> vca.trust.v1.TrustEntry.Identifier
+	37, // 29: vca.trust.v1.TrustLookupRequest.role:type_name -> vca.common.v1.Role
+	36, // 30: vca.trust.v1.TrustLookupRequest.at:type_name -> google.protobuf.Timestamp
+	4,  // 31: vca.trust.v1.TrustLookupResponse.outcome:type_name -> vca.trust.v1.TrustLookupResponse.Outcome
+	16, // 32: vca.trust.v1.TrustLookupResponse.entry:type_name -> vca.trust.v1.TrustEntry
+	34, // 33: vca.trust.v1.TrustLookupResponse.provenance:type_name -> vca.trust.v1.TrustLookupResponse.Provenance
+	1,  // 34: vca.trust.v1.PublishResponse.Publication.method:type_name -> vca.trust.v1.Method
+	36, // 35: vca.trust.v1.PublishResponse.Publication.published_at:type_name -> google.protobuf.Timestamp
+	1,  // 36: vca.trust.v1.TrustLookupResponse.Provenance.method:type_name -> vca.trust.v1.Method
+	36, // 37: vca.trust.v1.TrustLookupResponse.Provenance.checked_at:type_name -> google.protobuf.Timestamp
+	17, // 38: vca.trust.v1.TrustService.UpsertEntry:input_type -> vca.trust.v1.UpsertEntryRequest
+	19, // 39: vca.trust.v1.TrustService.GetEntry:input_type -> vca.trust.v1.GetEntryRequest
+	21, // 40: vca.trust.v1.TrustService.ListEntries:input_type -> vca.trust.v1.ListEntriesRequest
+	23, // 41: vca.trust.v1.TrustService.DeleteEntry:input_type -> vca.trust.v1.DeleteEntryRequest
+	25, // 42: vca.trust.v1.TrustService.Publish:input_type -> vca.trust.v1.PublishRequest
+	27, // 43: vca.trust.v1.TrustService.TrustLookup:input_type -> vca.trust.v1.TrustLookupRequest
+	29, // 44: vca.trust.v1.TrustService.ImportEtsi:input_type -> vca.trust.v1.ImportEtsiRequest
+	8,  // 45: vca.trust.v1.TrustService.AddRegistry:input_type -> vca.trust.v1.AddRegistryRequest
+	10, // 46: vca.trust.v1.TrustService.ListRegistries:input_type -> vca.trust.v1.ListRegistriesRequest
+	12, // 47: vca.trust.v1.TrustService.RemoveRegistry:input_type -> vca.trust.v1.RemoveRegistryRequest
+	14, // 48: vca.trust.v1.TrustService.SyncRegistry:input_type -> vca.trust.v1.SyncRegistryRequest
+	5,  // 49: vca.trust.v1.TrustService.ExportSnapshot:input_type -> vca.trust.v1.ExportSnapshotRequest
+	18, // 50: vca.trust.v1.TrustService.UpsertEntry:output_type -> vca.trust.v1.UpsertEntryResponse
+	20, // 51: vca.trust.v1.TrustService.GetEntry:output_type -> vca.trust.v1.GetEntryResponse
+	22, // 52: vca.trust.v1.TrustService.ListEntries:output_type -> vca.trust.v1.ListEntriesResponse
+	24, // 53: vca.trust.v1.TrustService.DeleteEntry:output_type -> vca.trust.v1.DeleteEntryResponse
+	26, // 54: vca.trust.v1.TrustService.Publish:output_type -> vca.trust.v1.PublishResponse
+	28, // 55: vca.trust.v1.TrustService.TrustLookup:output_type -> vca.trust.v1.TrustLookupResponse
+	30, // 56: vca.trust.v1.TrustService.ImportEtsi:output_type -> vca.trust.v1.ImportEtsiResponse
+	9,  // 57: vca.trust.v1.TrustService.AddRegistry:output_type -> vca.trust.v1.AddRegistryResponse
+	11, // 58: vca.trust.v1.TrustService.ListRegistries:output_type -> vca.trust.v1.ListRegistriesResponse
+	13, // 59: vca.trust.v1.TrustService.RemoveRegistry:output_type -> vca.trust.v1.RemoveRegistryResponse
+	15, // 60: vca.trust.v1.TrustService.SyncRegistry:output_type -> vca.trust.v1.SyncRegistryResponse
+	6,  // 61: vca.trust.v1.TrustService.ExportSnapshot:output_type -> vca.trust.v1.ExportSnapshotResponse
+	50, // [50:62] is the sub-list for method output_type
+	38, // [38:50] is the sub-list for method input_type
+	38, // [38:38] is the sub-list for extension type_name
+	38, // [38:38] is the sub-list for extension extendee
+	0,  // [0:38] is the sub-list for field type_name
 }
 
 func init() { file_vca_trust_v1_trust_proto_init() }
@@ -2415,7 +2530,7 @@ func file_vca_trust_v1_trust_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vca_trust_v1_trust_proto_rawDesc), len(file_vca_trust_v1_trust_proto_rawDesc)),
-			NumEnums:      4,
+			NumEnums:      5,
 			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,

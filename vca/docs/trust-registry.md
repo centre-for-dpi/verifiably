@@ -178,6 +178,21 @@ injected fetcher that accepts `https` URLs only and caps the document at
 1 MiB. Set `VCA_TRUST_RESOLVE_DIDS=false` to skip resolution, for example
 in a test network.
 
+VCA resolves no other DID method itself, such as the `did:indy` of an
+AnonCreds issuer. Such an entry takes one of two ways, and the entry
+says which in `resolution`:
+
+| Resolution | When |
+| --- | --- |
+| `RESOLUTION_LOCAL` | `core/did` resolved the DID. The entry keeps no document. |
+| `RESOLUTION_STACK` | The entry carries `did_document` whose `id` names the DID. A stack resolved it, and `resolved_by` names that stack. |
+| `RESOLUTION_CONFIRMED` | The request sets `confirm_unresolved`. An admin confirmed a DID that nobody resolved. |
+
+Without a document or a confirmation, `UpsertEntry` answers
+`FailedPrecondition` and says why. A DID of a local method that does not
+resolve still answers `InvalidArgument`. The lookup of an entry works
+the same way for every resolution.
+
 ## Layout
 
 | Package | Content |

@@ -17,10 +17,12 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	adminv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/admin/v1"
+	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
@@ -215,11 +217,48 @@ func (s *Service) UpsertTrustEntry(ctx context.Context, req *connect.Request[adm
 	if err != nil {
 		return nil, fail(s.write(ctx, id.Actor, "admin.UpsertTrustEntry", "", err))
 	}
-	res, err := client.UpsertEntry(ctx, asActor(&trustv1.UpsertEntryRequest{Entry: req.Msg.GetEntry()}, id.Actor))
+	entry := s.withStackDocument(ctx, req.Msg.GetEntry())
+	res, err := client.UpsertEntry(ctx, asActor(&trustv1.UpsertEntryRequest{
+		Entry: entry, ConfirmUnresolved: req.Msg.GetConfirmUnresolved(),
+	}, id.Actor))
 	if serr := s.write(ctx, id.Actor, "admin.UpsertTrustEntry", identifierText(req.Msg.GetEntry().GetIdentifier()), err); serr != nil {
 		return nil, fail(serr)
 	}
 	return connect.NewResponse(&adminv1.UpsertTrustEntryResponse{Entry: res.Msg.GetEntry()}), nil
+}
+
+// localMethods are the DID methods VCA resolves itself (core/did).
+var localMethods = []string{"did:key:", "did:jwk:", "did:web:"}
+
+// withStackDocument adds the DID document of a DID that VCA does not
+// resolve, such as the did:indy of an AnonCreds issuer, when a live stack
+// that lists FEATURE_DID_RESOLVE resolves it. The registry keeps that
+// document and the name of the stack. Without such a stack the entry goes
+// as it came, and the registry asks for the confirmation of the admin.
+func (s *Service) withStackDocument(ctx context.Context, e *trustv1.TrustEntry) *trustv1.TrustEntry {
+	did := e.GetIdentifier().GetDid()
+	if did == "" || e.GetDidDocument() != "" {
+		return e
+	}
+	for _, prefix := range localMethods {
+		if strings.HasPrefix(did, prefix) {
+			return e
+		}
+	}
+	for _, st := range s.d.Stacks.List(ctx) {
+		if !st.Has(backendv1.Feature_FEATURE_DID_RESOLVE) {
+			continue
+		}
+		res, err := s.d.Stacks.Tenants(st).ResolveDid(ctx, connect.NewRequest(&backendv1.ResolveDidRequest{Did: did}))
+		if err != nil {
+			continue
+		}
+		out := &trustv1.TrustEntry{}
+		proto.Merge(out, e)
+		out.DidDocument, out.ResolvedBy = res.Msg.GetDidDocument(), st.Name
+		return out
+	}
+	return e
 }
 
 // GetTrustEntry implements AdminServiceHandler.
@@ -288,6 +327,9 @@ func (s *Service) ApproveTrustEntry(ctx context.Context, req *connect.Request[ad
 	var stored *trustv1.TrustEntry
 	entry, err := pending(ctx, client, req.Msg.GetIdentifier())
 	if err == nil {
+		// A ledger DID needs its document before the registry publishes
+		// the entry.
+		entry = s.withStackDocument(ctx, entry)
 		entry.Status = trustv1.Status_STATUS_ACTIVE
 		var res *connect.Response[trustv1.UpsertEntryResponse]
 		if res, err = client.UpsertEntry(ctx, asActor(&trustv1.UpsertEntryRequest{Entry: entry}, id.Actor)); err == nil {

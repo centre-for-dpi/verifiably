@@ -121,3 +121,10 @@ func (s *Service) SetTenantPrimaryDid(
 ) (*connect.Response[backendv1.SetTenantPrimaryDidResponse], error) {
 	return nil, unimplemented(tenantMessage)
 }
+
+// ResolveDid is not available: the walt.id Community Stack resolves no DID for VCA; VCA resolves did:key, did:jwk, and did:web itself.
+func (s *Service) ResolveDid(
+	context.Context, *connect.Request[backendv1.ResolveDidRequest],
+) (*connect.Response[backendv1.ResolveDidResponse], error) {
+	return nil, unimplemented("the walt.id Community Stack resolves no DID for VCA; VCA resolves did:key, did:jwk, and did:web itself")
+}

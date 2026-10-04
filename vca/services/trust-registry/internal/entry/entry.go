@@ -83,6 +83,41 @@ type Entry struct {
 	Version uint64 `json:"version"`
 	// Source says who created the entry: admin or etsi-import.
 	Source string `json:"source,omitempty"`
+	// Resolution says how the registry knows the DID document. Empty for
+	// an x509 entry.
+	Resolution Resolution `json:"resolution,omitempty"`
+	// DIDDocument is the DID document a stack resolved, as JSON. VCA
+	// resolves did:key, did:jwk, and did:web itself and keeps none.
+	DIDDocument string `json:"did_document,omitempty"`
+	// ResolvedBy names the stack that resolved the DID.
+	ResolvedBy string `json:"resolved_by,omitempty"`
+}
+
+// Resolution says how the registry knows the DID document of an entry.
+type Resolution string
+
+// The resolutions of an entry.
+const (
+	// ResolvedLocally means VCA resolved the DID itself.
+	ResolvedLocally Resolution = "local"
+	// ResolvedByStack means a stack resolved the DID, and the entry keeps
+	// its document.
+	ResolvedByStack Resolution = "stack"
+	// Confirmed means nobody resolved the DID and an admin confirmed it.
+	Confirmed Resolution = "confirmed"
+)
+
+// ResolutionToProto maps a resolution onto its proto value.
+func ResolutionToProto(r Resolution) trustv1.Resolution {
+	switch r {
+	case ResolvedLocally:
+		return trustv1.Resolution_RESOLUTION_LOCAL
+	case ResolvedByStack:
+		return trustv1.Resolution_RESOLUTION_STACK
+	case Confirmed:
+		return trustv1.Resolution_RESOLUTION_CONFIRMED
+	}
+	return trustv1.Resolution_RESOLUTION_UNSPECIFIED
 }
 
 // ID returns the store key of the entry: the DID, or x509: plus the subject.
@@ -298,6 +333,8 @@ func FromProto(p *trustv1.TrustEntry) (Entry, error) {
 		CredentialTypes:     p.GetCredentialTypes(),
 		ServiceEndpoint:     p.GetServiceEndpoint(),
 		StatusListEndpoints: p.GetStatusListEndpoints(),
+		DIDDocument:         p.GetDidDocument(),
+		ResolvedBy:          p.GetResolvedBy(),
 	}
 	switch v := p.GetIdentifier().GetId().(type) {
 	case *trustv1.TrustEntry_Identifier_Did:
@@ -337,6 +374,9 @@ func ToProto(e Entry) *trustv1.TrustEntry {
 		CredentialTypes:     e.CredentialTypes,
 		ServiceEndpoint:     e.ServiceEndpoint,
 		StatusListEndpoints: e.StatusListEndpoints,
+		Resolution:          ResolutionToProto(e.Resolution),
+		DidDocument:         e.DIDDocument,
+		ResolvedBy:          e.ResolvedBy,
 	}
 	if e.DID != "" {
 		p.Identifier.Id = &trustv1.TrustEntry_Identifier_Did{Did: e.DID}

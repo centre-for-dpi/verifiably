@@ -229,6 +229,9 @@ const (
 	// TenantBackendServiceSetTenantPrimaryDidProcedure is the fully-qualified name of the
 	// TenantBackendService's SetTenantPrimaryDid RPC.
 	TenantBackendServiceSetTenantPrimaryDidProcedure = "/vca.backend.v1.TenantBackendService/SetTenantPrimaryDid"
+	// TenantBackendServiceResolveDidProcedure is the fully-qualified name of the TenantBackendService's
+	// ResolveDid RPC.
+	TenantBackendServiceResolveDidProcedure = "/vca.backend.v1.TenantBackendService/ResolveDid"
 	// NotificationBackendServiceGetWebhookProcedure is the fully-qualified name of the
 	// NotificationBackendService's GetWebhook RPC.
 	NotificationBackendServiceGetWebhookProcedure = "/vca.backend.v1.NotificationBackendService/GetWebhook"
@@ -1833,6 +1836,10 @@ type TenantBackendServiceClient interface {
 	// SetTenantPrimaryDid makes one DID of a tenant the DID it signs with.
 	// The adapter serves it when it lists FEATURE_TENANT_PRIMARY_DID.
 	SetTenantPrimaryDid(context.Context, *connect.Request[v1.SetTenantPrimaryDidRequest]) (*connect.Response[v1.SetTenantPrimaryDidResponse], error)
+	// ResolveDid resolves a DID that VCA cannot resolve itself, such as a
+	// ledger DID, through the stack. The adapter serves it when it lists
+	// FEATURE_DID_RESOLVE.
+	ResolveDid(context.Context, *connect.Request[v1.ResolveDidRequest]) (*connect.Response[v1.ResolveDidResponse], error)
 }
 
 // NewTenantBackendServiceClient constructs a client for the vca.backend.v1.TenantBackendService
@@ -1936,6 +1943,12 @@ func NewTenantBackendServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(tenantBackendServiceMethods.ByName("SetTenantPrimaryDid")),
 			connect.WithClientOptions(opts...),
 		),
+		resolveDid: connect.NewClient[v1.ResolveDidRequest, v1.ResolveDidResponse](
+			httpClient,
+			baseURL+TenantBackendServiceResolveDidProcedure,
+			connect.WithSchema(tenantBackendServiceMethods.ByName("ResolveDid")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -1956,6 +1969,7 @@ type tenantBackendServiceClient struct {
 	addEcosystemMember     *connect.Client[v1.AddEcosystemMemberRequest, v1.AddEcosystemMemberResponse]
 	removeEcosystemMember  *connect.Client[v1.RemoveEcosystemMemberRequest, v1.RemoveEcosystemMemberResponse]
 	setTenantPrimaryDid    *connect.Client[v1.SetTenantPrimaryDidRequest, v1.SetTenantPrimaryDidResponse]
+	resolveDid             *connect.Client[v1.ResolveDidRequest, v1.ResolveDidResponse]
 }
 
 // CreateTenant calls vca.backend.v1.TenantBackendService.CreateTenant.
@@ -2033,6 +2047,11 @@ func (c *tenantBackendServiceClient) SetTenantPrimaryDid(ctx context.Context, re
 	return c.setTenantPrimaryDid.CallUnary(ctx, req)
 }
 
+// ResolveDid calls vca.backend.v1.TenantBackendService.ResolveDid.
+func (c *tenantBackendServiceClient) ResolveDid(ctx context.Context, req *connect.Request[v1.ResolveDidRequest]) (*connect.Response[v1.ResolveDidResponse], error) {
+	return c.resolveDid.CallUnary(ctx, req)
+}
+
 // TenantBackendServiceHandler is an implementation of the vca.backend.v1.TenantBackendService
 // service.
 type TenantBackendServiceHandler interface {
@@ -2074,6 +2093,10 @@ type TenantBackendServiceHandler interface {
 	// SetTenantPrimaryDid makes one DID of a tenant the DID it signs with.
 	// The adapter serves it when it lists FEATURE_TENANT_PRIMARY_DID.
 	SetTenantPrimaryDid(context.Context, *connect.Request[v1.SetTenantPrimaryDidRequest]) (*connect.Response[v1.SetTenantPrimaryDidResponse], error)
+	// ResolveDid resolves a DID that VCA cannot resolve itself, such as a
+	// ledger DID, through the stack. The adapter serves it when it lists
+	// FEATURE_DID_RESOLVE.
+	ResolveDid(context.Context, *connect.Request[v1.ResolveDidRequest]) (*connect.Response[v1.ResolveDidResponse], error)
 }
 
 // NewTenantBackendServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -2173,6 +2196,12 @@ func NewTenantBackendServiceHandler(svc TenantBackendServiceHandler, opts ...con
 		connect.WithSchema(tenantBackendServiceMethods.ByName("SetTenantPrimaryDid")),
 		connect.WithHandlerOptions(opts...),
 	)
+	tenantBackendServiceResolveDidHandler := connect.NewUnaryHandler(
+		TenantBackendServiceResolveDidProcedure,
+		svc.ResolveDid,
+		connect.WithSchema(tenantBackendServiceMethods.ByName("ResolveDid")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/vca.backend.v1.TenantBackendService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TenantBackendServiceCreateTenantProcedure:
@@ -2205,6 +2234,8 @@ func NewTenantBackendServiceHandler(svc TenantBackendServiceHandler, opts ...con
 			tenantBackendServiceRemoveEcosystemMemberHandler.ServeHTTP(w, r)
 		case TenantBackendServiceSetTenantPrimaryDidProcedure:
 			tenantBackendServiceSetTenantPrimaryDidHandler.ServeHTTP(w, r)
+		case TenantBackendServiceResolveDidProcedure:
+			tenantBackendServiceResolveDidHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -2272,6 +2303,10 @@ func (UnimplementedTenantBackendServiceHandler) RemoveEcosystemMember(context.Co
 
 func (UnimplementedTenantBackendServiceHandler) SetTenantPrimaryDid(context.Context, *connect.Request[v1.SetTenantPrimaryDidRequest]) (*connect.Response[v1.SetTenantPrimaryDidResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.SetTenantPrimaryDid is not implemented"))
+}
+
+func (UnimplementedTenantBackendServiceHandler) ResolveDid(context.Context, *connect.Request[v1.ResolveDidRequest]) (*connect.Response[v1.ResolveDidResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("vca.backend.v1.TenantBackendService.ResolveDid is not implemented"))
 }
 
 // NotificationBackendServiceClient is a client for the vca.backend.v1.NotificationBackendService

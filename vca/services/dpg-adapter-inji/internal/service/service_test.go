@@ -843,6 +843,11 @@ func TestTenantServiceUnimplementedWithoutFeature(t *testing.T) {
 			t.Errorf("call %d: the message %q does not say why", i, err)
 		}
 	}
+	// VCA resolves the DID methods of this stack itself.
+	if _, err := svc.ResolveDid(ctx, connect.NewRequest(&backendv1.ResolveDidRequest{Did: "did:indy:x"})); connect.CodeOf(err) != connect.CodeUnimplemented ||
+		!strings.Contains(err.Error(), "resolves no DID") {
+		t.Errorf("ResolveDid: %v", err)
+	}
 	caps, err := svc.GetCapabilities(ctx, connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
 	if err != nil {
 		t.Fatal(err)

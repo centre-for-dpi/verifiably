@@ -47,6 +47,8 @@ type fakeTrust struct {
 	listErr error
 	// upsertErr, when set, makes UpsertEntry fail.
 	upsertErr error
+	// confirms holds the confirmation of each upsert, in call order.
+	confirms []bool
 }
 
 func keyOf(id *trustv1.TrustEntry_Identifier) string {
@@ -57,6 +59,7 @@ func keyOf(id *trustv1.TrustEntry_Identifier) string {
 }
 
 func (f *fakeTrust) UpsertEntry(_ context.Context, req *connect.Request[trustv1.UpsertEntryRequest]) (*connect.Response[trustv1.UpsertEntryResponse], error) {
+	f.confirms = append(f.confirms, req.Msg.GetConfirmUnresolved())
 	if f.upsertErr != nil {
 		return nil, f.upsertErr
 	}
@@ -1127,5 +1130,37 @@ func TestRegistriesPageWithoutARegistryExplainsIt(t *testing.T) {
 	h.trust.listErr = connect.NewError(connect.CodeUnavailable, errors.New("down"))
 	if status, _ := h.get(t, "/admin/trust/registries"); status != http.StatusInternalServerError {
 		t.Fatalf("a registry fault = %d", status)
+	}
+}
+
+// TestTrustPageShowsTheResolutionOfEachDid names how the registry knows
+// the DID document of each entry, and the add form lets the admin confirm
+// a ledger DID that no stack resolves.
+func TestTrustPageShowsTheResolutionOfEachDid(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	for id, state := range map[string]trustv1.Resolution{
+		"did:web:issuer.example":                          trustv1.Resolution_RESOLUTION_LOCAL,
+		"did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS": trustv1.Resolution_RESOLUTION_STACK,
+		"did:indy:bcovrin:testnet:Unknown":                trustv1.Resolution_RESOLUTION_CONFIRMED,
+	} {
+		h.seedTrust(didOf(id), "Entity "+id, trustv1.Status_STATUS_ACTIVE)
+		h.trust.entries[keyOf(didOf(id))].Resolution = state
+		h.trust.entries[keyOf(didOf(id))].ResolvedBy = "Third stack"
+	}
+	page := h.page(t, "/admin/trust")
+	for _, want := range []string{"Resolution", "Resolved by VCA", "Resolved by Third stack", "Confirmed by an admin",
+		`name="confirm_unresolved"`, "Store a DID that no stack resolves"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the trust page lacks %q", want)
+		}
+	}
+	form := url.Values{"kind": {"did"}, "identifier": {"did:indy:bcovrin:testnet:Other"}, "display_name": {"Ledger issuer"},
+		"role": {"issuer"}, "status": {"active"}, "confirm_unresolved": {"yes"}}
+	if status, body := h.post(t, "/admin/trust", form); status != http.StatusSeeOther {
+		t.Fatalf("add = %d %s", status, body)
+	}
+	if got := h.trust.confirms; len(got) != 1 || !got[0] {
+		t.Errorf("the registry got the confirmations %v", got)
 	}
 }

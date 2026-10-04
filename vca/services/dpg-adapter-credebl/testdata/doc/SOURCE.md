@@ -193,3 +193,9 @@ nonce and keeps it in the verification session record.
 | File | Call | Source |
 | --- | --- | --- |
 | `presentation-created.json` | `POST /v1/orgs/{org}/oid4vp/presentation` | `createVerificationPresentation` of [oid4vc-verification.controller.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/oid4vc-verification/oid4vc-verification.controller.ts), which answers with `createAuthorizationRequest` of the agent [verification-sessions.service.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/controllers/openid4vc/verifier-sessions/verification-sessions.service.ts): the request URL and the record `OpenId4VcVerificationSessionRecord` of [Credo](https://raw.githubusercontent.com/openwallet-foundation/credo-ts/main/packages/openid4vc/src/openid4vc-verifier/repository/OpenId4VcVerificationSessionRecord.ts). A request signed with a DID sits in `authorizationRequestJwt`, whose payload carries the nonce. An unsigned request sits in `authorizationRequestPayload`. Read on 2026-10-04 |
+
+## The DID resolution of the agent
+
+| File | Call | Source |
+| --- | --- | --- |
+| `agent-did-resolved-indy.json` | `GET /dids/{did}` | `getDidRecordByDid` of [DidController.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/controllers/did/DidController.ts), read on 2026-10-04. It answers with the resolution result of the DID resolver of the agent, with `didDocument` as JSON. The indy VDR resolver of Credo gives a ledger DID the key `#verkey` and the key agreement key `#key-agreement-1`. The call also imports the DID into the tenant that asks, so the adapter asks with a tenant of its own |

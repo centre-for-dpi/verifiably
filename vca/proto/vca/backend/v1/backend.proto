@@ -211,6 +211,10 @@ service TenantBackendService {
   // SetTenantPrimaryDid makes one DID of a tenant the DID it signs with.
   // The adapter serves it when it lists FEATURE_TENANT_PRIMARY_DID.
   rpc SetTenantPrimaryDid(SetTenantPrimaryDidRequest) returns (SetTenantPrimaryDidResponse);
+  // ResolveDid resolves a DID that VCA cannot resolve itself, such as a
+  // ledger DID, through the stack. The adapter serves it when it lists
+  // FEATURE_DID_RESOLVE.
+  rpc ResolveDid(ResolveDidRequest) returns (ResolveDidResponse);
 }
 
 // NotificationBackendService reads and sets the webhook that a DPG calls
@@ -556,6 +560,9 @@ enum Feature {
   // The DPG makes one DID of a tenant the DID the tenant signs with.
   // SetTenantPrimaryDid works.
   FEATURE_TENANT_PRIMARY_DID = 31;
+  // The stack resolves a DID of a method that VCA does not resolve, such
+  // as did:indy. ResolveDid works.
+  FEATURE_DID_RESOLVE = 32;
 }
 
 // GetCapabilitiesRequest has no fields.
@@ -2221,4 +2228,16 @@ message VerifyCredentialResponse {
   // The checks the DPG ran, as the DPG reported them. VCA runs its own
   // checks too (ADR-024 decision 2).
   repeated GetResultResponse.DpgCheck dpg_checks = 2;
+}
+
+// ResolveDidRequest names the DID to resolve.
+message ResolveDidRequest {
+  // The DID, for example did:indy:bcovrin:testnet:Ra8FGb2mXsTg1d4VqVnYpS.
+  string did = 1;
+}
+
+// ResolveDidResponse carries the DID document.
+message ResolveDidResponse {
+  // The DID document as JSON. Its id names the DID of the request.
+  string did_document = 1;
 }

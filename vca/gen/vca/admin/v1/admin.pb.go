@@ -1268,9 +1268,13 @@ func (x *SetTenantPrimaryDidResponse) GetTenant() *Tenant {
 type UpsertTrustEntryRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The entry. The identifier is the key.
-	Entry         *v13.TrustEntry `protobuf:"bytes,1,opt,name=entry,proto3" json:"entry,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Entry *v13.TrustEntry `protobuf:"bytes,1,opt,name=entry,proto3" json:"entry,omitempty"`
+	// The admin confirms a DID that neither VCA nor a stack resolves. A
+	// ledger DID that no live stack reads is one example. The service first
+	// asks each live stack that lists FEATURE_DID_RESOLVE.
+	ConfirmUnresolved bool `protobuf:"varint,2,opt,name=confirm_unresolved,json=confirmUnresolved,proto3" json:"confirm_unresolved,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *UpsertTrustEntryRequest) Reset() {
@@ -1308,6 +1312,13 @@ func (x *UpsertTrustEntryRequest) GetEntry() *v13.TrustEntry {
 		return x.Entry
 	}
 	return nil
+}
+
+func (x *UpsertTrustEntryRequest) GetConfirmUnresolved() bool {
+	if x != nil {
+		return x.ConfirmUnresolved
+	}
+	return false
 }
 
 // UpsertTrustEntryResponse returns the stored entry.
@@ -5904,9 +5915,10 @@ const file_vca_admin_v1_admin_proto_rawDesc = "" +
 	"\x05stack\x18\x02 \x01(\x0e2\x12.vca.config.v1.DpgR\x05stack\x12\x10\n" +
 	"\x03did\x18\x03 \x01(\tR\x03did\"K\n" +
 	"\x1bSetTenantPrimaryDidResponse\x12,\n" +
-	"\x06tenant\x18\x01 \x01(\v2\x14.vca.admin.v1.TenantR\x06tenant\"I\n" +
+	"\x06tenant\x18\x01 \x01(\v2\x14.vca.admin.v1.TenantR\x06tenant\"x\n" +
 	"\x17UpsertTrustEntryRequest\x12.\n" +
-	"\x05entry\x18\x01 \x01(\v2\x18.vca.trust.v1.TrustEntryR\x05entry\"J\n" +
+	"\x05entry\x18\x01 \x01(\v2\x18.vca.trust.v1.TrustEntryR\x05entry\x12-\n" +
+	"\x12confirm_unresolved\x18\x02 \x01(\bR\x11confirmUnresolved\"J\n" +
 	"\x18UpsertTrustEntryResponse\x12.\n" +
 	"\x05entry\x18\x01 \x01(\v2\x18.vca.trust.v1.TrustEntryR\x05entry\"[\n" +
 	"\x14GetTrustEntryRequest\x12C\n" +

@@ -198,6 +198,18 @@ enum Status {
   STATUS_PENDING = 4;
 }
 
+// Resolution says how the registry knows the DID document of an entry.
+enum Resolution {
+  RESOLUTION_UNSPECIFIED = 0;
+  // VCA resolved the DID itself.
+  RESOLUTION_LOCAL = 1;
+  // A stack resolved the DID, and the entry keeps its document. A ledger
+  // DID such as did:indy takes this way.
+  RESOLUTION_STACK = 2;
+  // Nobody resolved the DID. An admin confirmed the entry.
+  RESOLUTION_CONFIRMED = 3;
+}
+
 // TrustEntry is the canonical trust record of one entity (ADR-011 decision 1).
 message TrustEntry {
   // The entity identifier.
@@ -219,6 +231,16 @@ message TrustEntry {
   repeated string status_list_endpoints = 8;
   // The time of the last change.
   google.protobuf.Timestamp updated_at = 9;
+  // How the registry knows the DID document of the entity. Empty for an
+  // x509 subject.
+  Resolution resolution = 10;
+  // The DID document as JSON, when a stack resolved the DID for the
+  // registry. VCA resolves did:key, did:jwk, and did:web itself, so such
+  // an entry keeps no document.
+  string did_document = 11;
+  // The name of the stack that resolved the DID, such as the display
+  // name of its adapter.
+  string resolved_by = 12;
 
   // Identifier names an entity by DID or by x509 subject.
   message Identifier {
@@ -236,6 +258,10 @@ message TrustEntry {
 message UpsertEntryRequest {
   // The entry. The service sets updated_at.
   TrustEntry entry = 1;
+  // The admin confirms a DID that neither VCA nor a stack resolves. The
+  // registry then stores the entry with RESOLUTION_CONFIRMED. Without it
+  // the registry refuses such a DID.
+  bool confirm_unresolved = 2;
 }
 
 // UpsertEntryResponse returns the stored entry.

@@ -384,6 +384,10 @@ message SetTenantPrimaryDidResponse {
 message UpsertTrustEntryRequest {
   // The entry. The identifier is the key.
   vca.trust.v1.TrustEntry entry = 1;
+  // The admin confirms a DID that neither VCA nor a stack resolves. A
+  // ledger DID that no live stack reads is one example. The service first
+  // asks each live stack that lists FEATURE_DID_RESOLVE.
+  bool confirm_unresolved = 2;
 }
 
 // UpsertTrustEntryResponse returns the stored entry.

@@ -45,6 +45,8 @@ type fakeTrust struct {
 	err        error
 	// actors holds the actor header of each change, in call order.
 	actors []string
+	// confirms holds the confirmation of each upsert, in call order.
+	confirms []bool
 }
 
 func newFakeTrust() *fakeTrust {
@@ -60,6 +62,7 @@ func key(id *trustv1.TrustEntry_Identifier) string {
 
 func (f *fakeTrust) UpsertEntry(_ context.Context, req *connect.Request[trustv1.UpsertEntryRequest]) (*connect.Response[trustv1.UpsertEntryResponse], error) {
 	f.actors = append(f.actors, req.Header().Get(auditlog.ActorHeader))
+	f.confirms = append(f.confirms, req.Msg.GetConfirmUnresolved())
 	if f.err != nil {
 		return nil, f.err
 	}

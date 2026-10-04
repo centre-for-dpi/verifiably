@@ -7,10 +7,12 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -173,8 +175,8 @@ func (s *Service) UpsertEntry(ctx context.Context, req *connect.Request[trustv1.
 		return nil, connect.NewError(connect.CodeFailedPrecondition, werr)
 	}
 	if e.DID != "" && s.opts.Resolver != nil {
-		if _, serr := s.opts.Resolver.Resolve(ctx, e.DID); serr != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("service: the DID %s does not resolve: %w", e.DID, serr))
+		if rerr := s.resolve(ctx, &e, req.Msg.GetConfirmUnresolved()); rerr != nil {
+			return nil, rerr
 		}
 	}
 	stored, _, err := s.opts.Store.Upsert(e, s.opts.Now())
@@ -186,6 +188,49 @@ func (s *Service) UpsertEntry(ctx context.Context, req *connect.Request[trustv1.
 	}
 	detail = msg.T("audit.trust.entry", string(stored.Status))
 	return connect.NewResponse(&trustv1.UpsertEntryResponse{Entry: entry.ToProto(stored)}), nil
+}
+
+// resolve sets how the registry knows the DID document of an entry. VCA
+// resolves did:key, did:jwk, and did:web itself. A DID of another method,
+// such as the did:indy of an AnonCreds issuer, needs the document a
+// stack resolved, or the confirmation of an admin.
+func (s *Service) resolve(ctx context.Context, e *entry.Entry, confirmed bool) error {
+	_, err := s.opts.Resolver.Resolve(ctx, e.DID)
+	switch {
+	case err == nil:
+		e.Resolution, e.DIDDocument, e.ResolvedBy = entry.ResolvedLocally, "", ""
+		return nil
+	case !errors.Is(err, did.ErrUnsupportedMethod):
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("the DID %s does not resolve: %w", e.DID, err))
+	case strings.TrimSpace(e.DIDDocument) != "":
+		var doc struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal([]byte(e.DIDDocument), &doc) != nil || doc.ID != e.DID {
+			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("the DID document of the stack names another DID than %s", e.DID))
+		}
+		e.Resolution = entry.ResolvedByStack
+		return nil
+	case confirmed:
+		e.Resolution, e.DIDDocument, e.ResolvedBy = entry.Confirmed, "", ""
+		return nil
+	}
+	if stored, ok := s.opts.Store.Get(e.ID()); ok && (stored.Resolution == entry.Confirmed || stored.Resolution == entry.ResolvedByStack) {
+		// A later write, such as an approval or a new name, keeps how
+		// the registry came to know the DID.
+		e.Resolution, e.DIDDocument, e.ResolvedBy = stored.Resolution, stored.DIDDocument, stored.ResolvedBy
+		return nil
+	}
+	if e.Status == entry.StatusPending {
+		// A pending entry is never published or trusted. Its approval
+		// needs the resolution.
+		e.Resolution = ""
+		return nil
+	}
+	// The resolver read the method, or it would not name it unsupported.
+	method := strings.SplitN(e.DID, ":", 3)[1]
+	return connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf(
+		"VCA resolves did:key, did:jwk, and did:web only, and no stack resolved this did:%s; confirm the entry to store it", method))
 }
 
 // GetEntry returns one entry.

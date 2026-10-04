@@ -255,6 +255,8 @@ func (a *Agent) serve(w http.ResponseWriter, r *http.Request) {
 		a.send(w, "doc/agent-did-created.json")
 	case key == "GET /dids":
 		a.send(w, "doc/agent-dids.json")
+	case strings.HasPrefix(key, "GET /dids/did:indy:"):
+		a.send(w, "doc/agent-did-resolved-indy.json")
 	case key == "GET /didcomm/connections":
 		a.send(w, "doc/agent-connections.json")
 	case strings.HasPrefix(key, "GET /didcomm/connections/"):

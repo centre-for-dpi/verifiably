@@ -467,6 +467,15 @@ at once. Remove stops the federation. The CLI has the same actions under
 `vca admin registry`. The admin service writes one audit record for each
 change.
 
+VCA does not resolve some DIDs, such as the `did:indy` of an AnonCreds
+issuer. Such a DID goes first to each live stack that lists
+`FEATURE_DID_RESOLVE`.
+The first stack that resolves it gives the document, and the registry
+keeps it with the name of the stack. When no stack resolves it, the
+admin ticks "Confirm the DID" to store it anyway. The trust table has a
+column "Resolution". It reads "Resolved by VCA", "Resolved by" and the
+stack, or "Confirmed by an admin".
+
 The add form has an identifier type: DID or X.509 subject. The type
 decides how the registry reads the value, so a subject never reads as a
 DID.

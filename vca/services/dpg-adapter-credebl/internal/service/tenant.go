@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/credebl"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
 // CREDEBL organisations are the DPG tenants (ADR-037, P6-C1). A new
@@ -298,4 +300,57 @@ func (s *Service) SetTenantPrimaryDid(
 		return nil, err
 	}
 	return connect.NewResponse(&backendv1.SetTenantPrimaryDidResponse{Tenant: res.Msg.GetTenant()}), nil
+}
+
+// resolverKey is the store key of the tenant that resolves DIDs.
+const resolverKey = "did-resolver/tenant"
+
+// ResolveDid resolves a DID that VCA cannot resolve itself, such as the
+// did:indy of an AnonCreds issuer, with the DID resolver of the shared
+// agent (FEATURE_DID_RESOLVE). The agent records each DID it resolves in
+// the tenant that asks, so the adapter asks with a tenant of its own and
+// never with the wallet of an organisation.
+func (s *Service) ResolveDid(
+	ctx context.Context, req *connect.Request[backendv1.ResolveDidRequest],
+) (*connect.Response[backendv1.ResolveDidResponse], error) {
+	if !s.holderRole() {
+		return nil, unimplemented("this adapter has no agent address, so it resolves no DID")
+	}
+	did := strings.TrimSpace(req.Msg.GetDid())
+	if !strings.HasPrefix(did, "did:") {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("the request needs a DID"))
+	}
+	tenant, err := s.resolverTenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := s.agent.ResolveDid(ctx, tenant, did)
+	if err != nil {
+		return nil, failed("resolve the DID", err)
+	}
+	var doc struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(raw, &doc) != nil || doc.ID != did {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("the agent answered a document that names another DID than %s", did))
+	}
+	return connect.NewResponse(&backendv1.ResolveDidResponse{DidDocument: string(raw)}), nil
+}
+
+// resolverTenant returns the tenant that resolves DIDs, and makes it
+// once.
+func (s *Service) resolverTenant(ctx context.Context) (string, error) {
+	if raw, err := s.store.Get(ctx, resolverKey); err == nil && len(raw) > 0 {
+		return string(raw), nil
+	} else if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return "", connect.NewError(connect.CodeInternal, err)
+	}
+	tenant, err := s.agent.CreateTenant(ctx, "VCA DID resolver")
+	if err != nil {
+		return "", failed("make the resolver tenant", err)
+	}
+	if err := s.store.Put(ctx, resolverKey, []byte(tenant)); err != nil {
+		return "", connect.NewError(connect.CodeInternal, err)
+	}
+	return tenant, nil
 }

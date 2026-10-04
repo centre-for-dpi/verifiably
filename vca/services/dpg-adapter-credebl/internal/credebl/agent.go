@@ -231,6 +231,24 @@ func (a *Agent) Dids(ctx context.Context, tenant string) ([]AgentDid, error) {
 	return got, err
 }
 
+// ResolveDid resolves a DID with the DID resolver of the agent, as a
+// tenant, and returns the DID document as JSON. The agent also records
+// the DID in that tenant.
+func (a *Agent) ResolveDid(ctx context.Context, tenant, did string) (json.RawMessage, error) {
+	var got struct {
+		DidDocument json.RawMessage `json:"didDocument"`
+	}
+	if err := a.asTenant(ctx, tenant, func(c *dpgclient.Client) error {
+		return c.JSON(ctx, http.MethodGet, "/dids/"+url.PathEscape(did), nil, &got)
+	}); err != nil {
+		return nil, err
+	}
+	if len(got.DidDocument) == 0 || string(got.DidDocument) == "null" {
+		return nil, errors.New("credebl: the agent resolved no DID document")
+	}
+	return got.DidDocument, nil
+}
+
 // AgentConnection is one DIDComm connection record.
 type AgentConnection struct {
 	// ID is the record id.

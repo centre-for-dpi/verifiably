@@ -106,6 +106,7 @@ func (p *Portal) trustTable(b *blocks, entries []*trustv1.TrustEntry, csrf strin
 			{Text: e.GetDisplayName()},
 			{HTML: template.HTML(`<code>` + template.HTMLEscapeString(identifierText(e.GetIdentifier())) + `</code>`)}, //nolint:gosec // the value is escaped
 			{Text: methodText(e.GetIdentifier())},
+			{Text: resolutionText(e)},
 			{Text: roleLabel(e.GetRole())},
 			{HTML: b.add("badge", components.Badge{Status: statusBadge(e.GetStatus()), Text: statusText(e.GetStatus())})},
 			{HTML: updated},
@@ -120,7 +121,8 @@ func (p *Portal) trustTable(b *blocks, entries []*trustv1.TrustEntry, csrf strin
 		ID: "entries", Caption: caption,
 		Columns: []string{
 			msg.T("admin.trust.column.entity.label"), msg.T("admin.trust.column.id.label"),
-			msg.T("admin.trust.column.method.label"), msg.T("admin.trust.column.role.label"),
+			msg.T("admin.trust.column.method.label"), msg.T("admin.trust.column.resolution.label"),
+			msg.T("admin.trust.column.role.label"),
 			msg.T("admin.trust.column.status.label"), msg.T("admin.trust.column.updated.label"),
 			msg.T("admin.trust.column.actions.label"),
 		},
@@ -185,6 +187,10 @@ func (p *Portal) trustForm(b *blocks, csrf string) template.HTML {
 			{Value: "revoked", Text: statusText(trustv1.Status_STATUS_REVOKED)},
 		}}),
 		b.add("field", components.Field{ID: "service_endpoint", Label: msg.T("admin.trust.endpoint.label"), Type: "url"}),
+		b.add("choice", components.Choice{ID: "confirm_unresolved", Legend: msg.T("admin.trust.confirm.label"), Multiple: true,
+			Hint: msg.T("admin.trust.confirm.hint"), Options: []components.ChoiceOption{
+				{Value: "yes", Title: msg.T("admin.trust.confirm.option.label"), Text: msg.T("admin.trust.confirm.option.text")},
+			}}),
 		b.add("button", components.Button{Text: msg.T("admin.trust.save.label"), Type: "submit", Variant: "primary"}),
 	)
 	return b.add("card", components.Card{
@@ -206,7 +212,8 @@ func (p *Portal) addTrust(w http.ResponseWriter, r *http.Request, s session) err
 		Status:          statusValue(r.PostFormValue("status")),
 		ServiceEndpoint: strings.TrimSpace(r.PostFormValue("service_endpoint")),
 	}
-	if _, err := p.opts.Client.UpsertTrustEntry(r.Context(), call(s, &adminv1.UpsertTrustEntryRequest{Entry: entry})); err != nil {
+	confirm := r.PostFormValue("confirm_unresolved") == "yes"
+	if _, err := p.opts.Client.UpsertTrustEntry(r.Context(), call(s, &adminv1.UpsertTrustEntryRequest{Entry: entry, ConfirmUnresolved: confirm})); err != nil {
 		return err
 	}
 	p.redirect(w, r, "/trust", "trust-saved")
@@ -295,6 +302,21 @@ func methodText(id *trustv1.TrustEntry_Identifier) string {
 		return d
 	}
 	return parts[0] + ":" + parts[1]
+}
+
+// resolutionText says how the registry knows the DID document of an
+// entry: VCA resolved it, a stack resolved it, or an admin confirmed it.
+func resolutionText(e *trustv1.TrustEntry) string {
+	switch e.GetResolution() {
+	case trustv1.Resolution_RESOLUTION_LOCAL:
+		return msg.T("admin.trust.resolution.local.label")
+	case trustv1.Resolution_RESOLUTION_STACK:
+		return msg.T("admin.trust.resolution.stack.label", e.GetResolvedBy())
+	case trustv1.Resolution_RESOLUTION_CONFIRMED:
+		return msg.T("admin.trust.resolution.confirmed.label")
+	case trustv1.Resolution_RESOLUTION_UNSPECIFIED:
+	}
+	return ""
 }
 
 // roleLabel returns the label of an entity role.

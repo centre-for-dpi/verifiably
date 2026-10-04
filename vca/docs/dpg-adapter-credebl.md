@@ -355,6 +355,14 @@ A `did:key` request holds `{"method": "key", "keyType": "ed25519", "seed": "<32 
 The organisation of the adapter needs `isPrimaryDid` true.
 For a tenant, the admin tenant page offers "Make primary" too (`FEATURE_TENANT_PRIMARY_DID`).
 
+**A ledger DID resolves through the agent.** With the agent address the
+adapter lists `FEATURE_DID_RESOLVE`. `ResolveDid` asks `GET /dids/{did}`
+of the shared agent, which reads the ledger. The agent records each DID
+it resolves in the tenant that asks. So the adapter asks with a tenant
+of its own, which it makes once. It never asks with the wallet of an
+organisation. The admin service hands the document to the trust
+registry, so an AnonCreds issuer can sit on a trust list.
+
 **An X.509 chain binds to a certificate row of the platform.** The
 platform imports a certificate only with its private key, and VCA never
 holds one. So make or import the certificate in the platform first. The

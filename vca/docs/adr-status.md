@@ -145,7 +145,7 @@ A row that is not `Done` carries a note.
 | ADR-011 | 3 DeDi directory files and index | Done | `vca/services/trust-registry/internal/dedi` | |
 | ADR-011 | 4 Both methods per deployment | Done | `vca/services/trust-registry/internal/publish` | |
 | ADR-011 | 5 ES256 or Ed25519 keys, no HS256 | Done | `vca/core/jose` | |
-| ADR-011 | 6 Entities named by DID or x509 subject | Done | `vca/core/did` | |
+| ADR-011 | 6 Entities named by DID or x509 subject | Done | `vca/core/did`, `vca/services/trust-registry/internal/service` | A DID that `core/did` does not resolve, such as `did:indy`, needs the document of a stack (`ResolveDid`, `FEATURE_DID_RESOLVE`) or the confirmation of an admin. `TestLedgerDidNeedsTheStackOrAConfirmation` pins it. |
 | ADR-011 | 7 One cached trust lookup for the policy service | Done | `vca/services/verifier-policy/internal/ports` | |
 
 ## ADR-012: Issuer OIDC auth flows
