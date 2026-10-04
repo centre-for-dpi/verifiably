@@ -446,3 +446,44 @@ func TestIdentityPageSaysTheOperatorMakesTheDid(t *testing.T) {
 		t.Error("a stack with no operator DID methods shows the note")
 	}
 }
+
+// reasonIdentity reads the identity and refuses every change with err.
+type reasonIdentity struct {
+	*fakeIdentity
+	err error
+}
+
+func (r reasonIdentity) ProvisionIssuerIdentity(context.Context, *connect.Request[backendv1.ProvisionIssuerIdentityRequest]) (*connect.Response[backendv1.ProvisionIssuerIdentityResponse], error) {
+	return nil, r.err
+}
+
+func (r reasonIdentity) ImportIssuerIdentity(context.Context, *connect.Request[backendv1.ImportIssuerIdentityRequest]) (*connect.Response[backendv1.ImportIssuerIdentityResponse], error) {
+	return nil, r.err
+}
+
+// TestIdentityPageShowsTheReasonOfTheStack: a refusal the staff can fix
+// carries the sentence of the adapter, without its package prefix. A
+// fault inside the stack keeps the plain sentence, and its text stays
+// out of the page.
+func TestIdentityPageShowsTheReasonOfTheStack(t *testing.T) {
+	for _, code := range []connect.Code{connect.CodeInvalidArgument, connect.CodeFailedPrecondition} {
+		h := newHarness(t, allIdentity...)
+		h.opts.Identity = reasonIdentity{h.identity, connect.NewError(code, errors.New("service: the key reference names another key than the leaf certificate"))}
+		h.build(t)
+		doc := body(t, h.post(t, "/identity/import", form(map[string]string{"kind": "did", "did": didKey, "key_reference": keyRef})))
+		if !strings.Contains(doc, "The stack did not take the identity. The key reference names another key than the leaf certificate.") {
+			t.Errorf("%v: the reason of the stack is missing\n%s", code, doc)
+		}
+		doc = body(t, h.post(t, "/identity/provision", form(map[string]string{"method": "did:key", "key_type": "Ed25519"})))
+		if !strings.Contains(doc, "The key reference names another key than the leaf certificate.") {
+			t.Errorf("%v: the provision refusal lacks the reason", code)
+		}
+	}
+	h := newHarness(t, allIdentity...)
+	h.opts.Identity = reasonIdentity{h.identity, connect.NewError(connect.CodeInternal, errors.New("pq: connection refused at 10.0.0.7"))}
+	h.build(t)
+	doc := body(t, h.post(t, "/identity/import", form(map[string]string{"kind": "did", "did": didKey, "key_reference": keyRef})))
+	if !strings.Contains(doc, "The stack did not take the identity. Check the values and try again.") || strings.Contains(doc, "10.0.0.7") {
+		t.Errorf("a fault of the stack shows its text\n%s", doc)
+	}
+}

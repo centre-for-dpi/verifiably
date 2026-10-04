@@ -22,6 +22,7 @@ import (
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/auditlog"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/reason"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffsession"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
@@ -447,7 +448,7 @@ func (p *Pages) provision(pg page) error {
 	}))
 	if err != nil {
 		p.audit(ctx, ActionProvisionIdentity, method, err)
-		v.toasts = []components.Toast{{Level: "bad", Text: msg.T("issuer.identity.error.stack")}}
+		v.toasts = []components.Toast{{Level: "bad", Text: refusal(err)}}
 		return p.renderIdentity(pg, v)
 	}
 	p.audit(ctx, ActionProvisionIdentity, firstIdentifier(res.Msg.GetIdentity()), nil)
@@ -510,7 +511,7 @@ func (p *Pages) importIdentity(pg page) error {
 	res, err := p.opts.Identity.ImportIssuerIdentity(ctx, connect.NewRequest(req))
 	if err != nil {
 		p.audit(ctx, ActionImportIdentity, kind, err)
-		v.toasts = []components.Toast{{Level: "bad", Text: msg.T("issuer.identity.error.stack")}}
+		v.toasts = []components.Toast{{Level: "bad", Text: refusal(err)}}
 		return p.renderIdentity(pg, v)
 	}
 	p.audit(ctx, ActionImportIdentity, firstIdentifier(res.Msg.GetIdentity()), nil)
@@ -661,4 +662,15 @@ func pluginRows(plugins []string) []components.Row {
 		rows = append(rows, components.Row{{HTML: template.HTML("<code>" + template.HTMLEscapeString(name) + "</code>")}}) //nolint:gosec // the name is escaped
 	}
 	return rows
+}
+
+// refusal is the sentence of a stack that did not take an identity. A
+// refusal the staff can fix carries the reason of the adapter, by the
+// rule of the admin pages. A fault inside the stack keeps the plain
+// sentence.
+func refusal(err error) string {
+	if text := reason.Of(err, connect.CodeInvalidArgument, connect.CodeFailedPrecondition); text != "" {
+		return msg.T("issuer.identity.error.stack_refused") + " " + text
+	}
+	return msg.T("issuer.identity.error.stack")
 }

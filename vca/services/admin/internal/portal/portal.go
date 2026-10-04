@@ -72,6 +72,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/helptext"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/reason"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/signin"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
@@ -272,46 +273,11 @@ func (p *Portal) failed(w http.ResponseWriter, r *http.Request, s session, err e
 // Connect message of a refusal reads as a sentence once the package
 // prefixes go. Any other error gives the plain sentence of the catalogue.
 func safeMessage(err error) string {
-	var cerr *connect.Error
-	if !errors.As(err, &cerr) || cerr.Message() == "" {
-		return msg.T("admin.action.failed.text")
+	if text := reason.Of(err, connect.CodeInvalidArgument, connect.CodeFailedPrecondition, connect.CodeNotFound,
+		connect.CodeAlreadyExists, connect.CodePermissionDenied, connect.CodeOutOfRange); text != "" {
+		return text
 	}
-	switch cerr.Code() {
-	case connect.CodeInvalidArgument, connect.CodeFailedPrecondition, connect.CodeNotFound, connect.CodeAlreadyExists,
-		connect.CodePermissionDenied, connect.CodeOutOfRange:
-	default:
-		return msg.T("admin.action.failed.text")
-	}
-	text := strings.TrimSpace(cerr.Message())
-	for {
-		head, rest, ok := strings.Cut(text, ": ")
-		if !ok || !packagePrefix(head) {
-			break
-		}
-		text = strings.TrimSpace(rest)
-	}
-	if text == "" {
-		return msg.T("admin.action.failed.text")
-	}
-	text = strings.ToUpper(text[:1]) + text[1:]
-	if !strings.HasSuffix(text, ".") {
-		text += "."
-	}
-	return text
-}
-
-// packagePrefix reports whether a head of an error text is the name of a
-// Go package, such as service or store, which the reader has no use for.
-func packagePrefix(head string) bool {
-	if head == "" {
-		return false
-	}
-	for _, c := range head {
-		if (c < 'a' || c > 'z') && (c < '0' || c > '9') {
-			return false
-		}
-	}
-	return true
+	return msg.T("admin.action.failed.text")
 }
 
 // statusWriter writes a status before the first byte of the body.

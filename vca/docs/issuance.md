@@ -76,6 +76,10 @@ page hides the box when no live admin pair runs a trust registry, and
 says so. The service serves the DID document of a `did:web` of its
 host at `/.well-known/did.json`. When the adapter names the plugins of
 its stack in the DPG information, the page lists them read only.
+When the stack refuses an identity with `invalid_argument` or
+`failed_precondition`, the page shows the sentence of the adapter. The
+admin pages follow the same rule. Any other failure shows a plain
+sentence and keeps the text of the fault off the page.
 
 ### The issue wizard
 

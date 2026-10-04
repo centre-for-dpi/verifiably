@@ -1628,6 +1628,7 @@ var en = map[string]string{
 	"issuer.identity.error.key_reference":                 "Type the key reference as a JSON object.",
 	"issuer.identity.error.method":                        "Pick a method this stack offers.",
 	"issuer.identity.error.stack":                         "The stack did not take the identity. Check the values and try again.",
+	"issuer.identity.error.stack_refused":                 "The stack did not take the identity.",
 	"issuer.identity.registered":                          "The stack signs with {1} now.",
 	"issuer.identity.trust.requested":                     "The trust registry holds a pending entry for {1}. An admin approves it.",
 	"issuer.identity.trust.kept":                          "The trust list already holds {1}. The page kept that entry.",
