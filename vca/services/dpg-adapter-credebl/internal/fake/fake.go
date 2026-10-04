@@ -446,7 +446,7 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(path, "/oid4vp/verifier"):
 		f.send(w, "verifier-created.json")
 	case strings.HasSuffix(path, "/oid4vp/presentation"):
-		f.send(w, "presentation-created.json")
+		f.send(w, "doc/presentation-created.json")
 	case strings.HasSuffix(path, "/oid4vp/verifier-presentation"):
 		f.send(w, string(session))
 	default:

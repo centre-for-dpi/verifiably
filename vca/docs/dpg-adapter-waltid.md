@@ -97,6 +97,19 @@ The presented credentials come from `presented_raw_data`. The format of
 each comes from the DCQL query of the session. The checks come from
 `policy_results`.
 
+Neither verifier of 0.18.2 takes a nonce of the caller. Each picks its
+own nonce. The adapter returns that nonce from `CreateRequest`, so VCA
+checks the answer against it:
+
+| Verifier | Where the adapter reads the nonce |
+| --- | --- |
+| Verifier API | The `nonce` parameter of the authorize URL |
+| Verifier API 2, at create | The `nonce` parameter of `fullAuthorizationRequestUrl` |
+| Verifier API 2, at result | `authorizationRequest.nonce` of the answered session |
+
+A request with a Digital Credentials API session holds two sessions with
+two nonces. `GetResult` names the nonce of the session with the answer.
+
 ## The Digital Credentials API
 
 With a verifier 2 URL the answer lists `FEATURE_DC_API_VERIFY` and

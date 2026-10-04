@@ -1,0 +1,21 @@
+{
+  "statusCode": 201,
+  "message": "Presentation request created",
+  "data": {
+    "authorizationRequest": "openid4vp://?client_id=decentralized_identifier%3Adid%3Aweb%3Acredebl.example.org&request_uri=https%3A%2F%2Fcredebl.example.org%2Foid4vp%2Frequest%2F2d7f8a91",
+    "verificationSession": {
+      "_tags": {},
+      "metadata": {},
+      "id": "2d7f8a91-5c30-4e17-9b62-0a4d8f1e3c75",
+      "createdAt": "2026-09-27T10:00:00.000Z",
+      "verifierId": "0e5b7c19-2f84-4d63-a1c7-98f3e2d40b56",
+      "state": "RequestCreated",
+      "authorizationRequestJwt": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDp3ZWI6Y3JlZGVibC5leGFtcGxlLm9yZyNrZXktMSIsInR5cCI6Im9hdXRoLWF1dGh6LXJlcStqd3QifQ.eyJyZXNwb25zZV90eXBlIjoidnBfdG9rZW4iLCJjbGllbnRfaWQiOiJkZWNlbnRyYWxpemVkX2lkZW50aWZpZXI6ZGlkOndlYjpjcmVkZWJsLmV4YW1wbGUub3JnIiwicmVzcG9uc2VfdXJpIjoiaHR0cHM6Ly9jcmVkZWJsLmV4YW1wbGUub3JnL29pZDR2cC9hdXRob3JpemUvMmQ3ZjhhOTEiLCJyZXNwb25zZV9tb2RlIjoiZGlyZWN0X3Bvc3QiLCJub25jZSI6IjdiMWU0YzAyLTkzZjUtNGE4ZC1iNmUwLTVjMmY5YTEzZDg0NyIsInN0YXRlIjoiM2Y2MGMyZDgtMWE3ZS00Yjk1LThjMDQtZTlkMmI1YTdmMTYzIiwiZGNxbF9xdWVyeSI6eyJjcmVkZW50aWFscyI6W3siaWQiOiJ2Yy0xIiwiZm9ybWF0IjoiZGMrc2Qtand0IiwiY2xhaW1zIjpbeyJwYXRoIjpbImZ1bGxOYW1lIl19XX1dfSwiY2xpZW50X21ldGFkYXRhIjp7InZwX2Zvcm1hdHMiOnsiZGMrc2Qtand0Ijp7InNkLWp3dF9hbGdfdmFsdWVzIjpbIkVkRFNBIl0sImtiLWp3dF9hbGdfdmFsdWVzIjpbIkVkRFNBIl19fX19.c2ln",
+      "authorizationRequestUri": "https://credebl.example.org/oid4vp/request/2d7f8a91",
+      "authorizationRequestId": "2d7f8a91",
+      "openId4VpVersion": "v1",
+      "expiresAt": "2026-09-27T10:05:00.000Z",
+      "updatedAt": "2026-09-27T10:00:00.000Z"
+    }
+  }
+}

@@ -7700,7 +7700,8 @@ type CreateRequestRequest struct {
 	// The Presentation Exchange definition as a JSON string. The caller
 	// sets it only for a DPG that lists PROTOCOL_OID4VP_PEX.
 	PresentationDefinition string `protobuf:"bytes,2,opt,name=presentation_definition,json=presentationDefinition,proto3" json:"presentation_definition,omitempty"`
-	// The nonce the wallet must bind to.
+	// The nonce the wallet must bind to. A stack that picks its own nonce
+	// ignores it. The adapter then returns the nonce of the stack.
 	Nonce string `protobuf:"bytes,3,opt,name=nonce,proto3" json:"nonce,omitempty"`
 	// The URL the verifier calls back with the result, when present.
 	WebhookUrl string `protobuf:"bytes,4,opt,name=webhook_url,json=webhookUrl,proto3" json:"webhook_url,omitempty"`
@@ -7854,7 +7855,12 @@ type CreateRequestResponse struct {
 	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	// The request object for navigator.credentials.get, as a JSON string,
 	// when the request asked for the Digital Credentials API.
-	DcApiRequest  string `protobuf:"bytes,4,opt,name=dc_api_request,json=dcApiRequest,proto3" json:"dc_api_request,omitempty"`
+	DcApiRequest string `protobuf:"bytes,4,opt,name=dc_api_request,json=dcApiRequest,proto3" json:"dc_api_request,omitempty"`
+	// The nonce the stack put in the request. An adapter sets it when the
+	// stack ignores the nonce of the caller. The caller then checks the
+	// answer against this nonce. Empty means the stack took the nonce of
+	// the caller.
+	Nonce         string `protobuf:"bytes,5,opt,name=nonce,proto3" json:"nonce,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7913,6 +7919,13 @@ func (x *CreateRequestResponse) GetExpiresAt() *timestamppb.Timestamp {
 func (x *CreateRequestResponse) GetDcApiRequest() string {
 	if x != nil {
 		return x.DcApiRequest
+	}
+	return ""
+}
+
+func (x *CreateRequestResponse) GetNonce() string {
+	if x != nil {
+		return x.Nonce
 	}
 	return ""
 }
@@ -8067,7 +8080,12 @@ type GetResultResponse struct {
 	// The DPG verdict per check, as the DPG reported it.
 	DpgChecks []*GetResultResponse_DpgCheck `protobuf:"bytes,3,rep,name=dpg_checks,json=dpgChecks,proto3" json:"dpg_checks,omitempty"`
 	// The time the wallet answered. Empty while pending.
-	ReceivedAt    *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=received_at,json=receivedAt,proto3" json:"received_at,omitempty"`
+	ReceivedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=received_at,json=receivedAt,proto3" json:"received_at,omitempty"`
+	// The nonce of the stack request that the wallet answered. The adapter
+	// reads it from the session of the stack, never from the answer. It
+	// sets it only when one transaction holds sessions with more than one
+	// nonce. Empty means the nonce of CreateRequest applies.
+	Nonce         string `protobuf:"bytes,5,opt,name=nonce,proto3" json:"nonce,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8128,6 +8146,13 @@ func (x *GetResultResponse) GetReceivedAt() *timestamppb.Timestamp {
 		return x.ReceivedAt
 	}
 	return nil
+}
+
+func (x *GetResultResponse) GetNonce() string {
+	if x != nil {
+		return x.Nonce
+	}
+	return ""
 }
 
 // ListCredentialTypesRequest selects a page.
@@ -12029,27 +12054,29 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\rconnection_id\x18\n" +
 	" \x01(\tR\fconnectionId\x12\x1d\n" +
 	"\n" +
-	"any_issuer\x18\v \x01(\bR\tanyIssuer\"\xaf\x01\n" +
+	"any_issuer\x18\v \x01(\bR\tanyIssuer\"\xc5\x01\n" +
 	"\x15CreateRequestResponse\x12\x1f\n" +
 	"\vrequest_uri\x18\x01 \x01(\tR\n" +
 	"requestUri\x12\x14\n" +
 	"\x05state\x18\x02 \x01(\tR\x05state\x129\n" +
 	"\n" +
 	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12$\n" +
-	"\x0edc_api_request\x18\x04 \x01(\tR\fdcApiRequest\"N\n" +
+	"\x0edc_api_request\x18\x04 \x01(\tR\fdcApiRequest\x12\x14\n" +
+	"\x05nonce\x18\x05 \x01(\tR\x05nonce\"N\n" +
 	"\x1aSubmitBrowserAnswerRequest\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\x12\x1a\n" +
 	"\bresponse\x18\x02 \x01(\tR\bresponse\"\x1d\n" +
 	"\x1bSubmitBrowserAnswerResponse\"(\n" +
 	"\x10GetResultRequest\x12\x14\n" +
-	"\x05state\x18\x01 \x01(\tR\x05state\"\xd1\x03\n" +
+	"\x05state\x18\x01 \x01(\tR\x05state\"\xe7\x03\n" +
 	"\x11GetResultResponse\x12=\n" +
 	"\x05state\x18\x01 \x01(\x0e2'.vca.backend.v1.GetResultResponse.StateR\x05state\x127\n" +
 	"\tpresented\x18\x02 \x03(\v2\x19.vca.common.v1.CredentialR\tpresented\x12I\n" +
 	"\n" +
 	"dpg_checks\x18\x03 \x03(\v2*.vca.backend.v1.GetResultResponse.DpgCheckR\tdpgChecks\x12;\n" +
 	"\vreceived_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"receivedAt\x1aN\n" +
+	"receivedAt\x12\x14\n" +
+	"\x05nonce\x18\x05 \x01(\tR\x05nonce\x1aN\n" +
 	"\bDpgCheck\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06passed\x18\x02 \x01(\bR\x06passed\x12\x16\n" +

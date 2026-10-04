@@ -1639,7 +1639,8 @@ message CreateRequestRequest {
   // The Presentation Exchange definition as a JSON string. The caller
   // sets it only for a DPG that lists PROTOCOL_OID4VP_PEX.
   string presentation_definition = 2;
-  // The nonce the wallet must bind to.
+  // The nonce the wallet must bind to. A stack that picks its own nonce
+  // ignores it. The adapter then returns the nonce of the stack.
   string nonce = 3;
   // The URL the verifier calls back with the result, when present.
   string webhook_url = 4;
@@ -1684,6 +1685,11 @@ message CreateRequestResponse {
   // The request object for navigator.credentials.get, as a JSON string,
   // when the request asked for the Digital Credentials API.
   string dc_api_request = 4;
+  // The nonce the stack put in the request. An adapter sets it when the
+  // stack ignores the nonce of the caller. The caller then checks the
+  // answer against this nonce. Empty means the stack took the nonce of
+  // the caller.
+  string nonce = 5;
 }
 
 // SubmitBrowserAnswerRequest carries the answer of the browser.
@@ -1715,6 +1721,11 @@ message GetResultResponse {
   repeated DpgCheck dpg_checks = 3;
   // The time the wallet answered. Empty while pending.
   google.protobuf.Timestamp received_at = 4;
+  // The nonce of the stack request that the wallet answered. The adapter
+  // reads it from the session of the stack, never from the answer. One
+  // request can hold sessions with their own nonces. Empty means the
+  // nonce of CreateRequest applies.
+  string nonce = 5;
 
   // State names the transaction phase.
   enum State {

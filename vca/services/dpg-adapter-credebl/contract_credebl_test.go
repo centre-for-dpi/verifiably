@@ -113,6 +113,10 @@ func TestContractCreateRequestAndReadTheResult(t *testing.T) {
 	if created.Msg.GetState() == "" {
 		t.Fatal("the real platform returned no state")
 	}
+	// The platform picks the nonce. VCA checks the answer against it.
+	if created.Msg.GetNonce() == "" {
+		t.Fatal("the session record of the real platform names no nonce")
+	}
 	result, err := a.Service.GetResult(ctx, connect.NewRequest(&backendv1.GetResultRequest{
 		State: created.Msg.GetState(),
 	}))

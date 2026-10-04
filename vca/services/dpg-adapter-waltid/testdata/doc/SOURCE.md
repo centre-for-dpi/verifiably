@@ -54,3 +54,20 @@ Issuer identity notes (release 0.18.2):
 - The key store settings `server`, `auth` with `accessKey` or `roleId` and `secretId`, and `namespace`: https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/crypto/waltid-crypto/src/commonMain/kotlin/id/walt/crypto/keys/tse/TSEKeyMetadata.kt and TSEAuth.kt in the same folder
 - The transit engine refuses `secp256k1`: `keyTypeToTseKeyMapping` in TSEKey.kt
 - A did:cheqd takes `{"network": ...}` and an Ed25519 key through the public registrar: https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/waltid-did/src/commonMain/kotlin/id/walt/did/dids/registrar/dids/DidCheqdCreateOptions.kt and registrar/local/cheqd/DidCheqdRegistrar.kt
+
+Nonce notes (release 0.18.2):
+
+- The verifier-api takes no nonce of the caller. `POST /openid4vc/verify`
+  of https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-services/waltid-verifier-api/src/main/kotlin/id/walt/verifier/VerifierApi.kt
+  reads the headers and the body members `vp_policies`, `vc_policies`,
+  `request_credentials`, `openid_profile` and `trusted_root_cas` only.
+- `initializeAuthorization` of https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/protocols/waltid-openid4vc/src/commonMain/kotlin/id/walt/oid4vc/providers/OpenIDCredentialVerifier.kt
+  sets `nonce = randomUUIDString()`. `toHttpParameters` of
+  requests/AuthorizationRequest.kt in the same library puts it in the
+  query of the answer. `../verify-authorize.txt` therefore carries a
+  `nonce` parameter, read on 2026-10-04.
+- Verifier API 2 takes no nonce of the caller either. The documentation
+  above says the service generates it. The session keeps it in
+  `authorizationRequest.nonce` (`Verification2Session.kt` and
+  https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-libraries/protocols/waltid-openid4vp/src/commonMain/kotlin/id/walt/verifier/openid/models/authorization/AuthorizationRequest.kt).
+  The session files above carry that member, read on 2026-10-04.

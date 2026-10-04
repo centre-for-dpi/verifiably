@@ -39,8 +39,9 @@ func (f templateOf) GetTemplate(context.Context, *connect.Request[discoveryv1.Ge
 
 // evaluator answers valid or an error.
 type evaluator struct {
-	err  error
-	sets []string
+	err    error
+	sets   []string
+	nonces []string
 }
 
 func (f *evaluator) Evaluate(_ context.Context, req *connect.Request[policyv1.EvaluateRequest]) (*connect.Response[policyv1.EvaluateResponse], error) {
@@ -48,6 +49,7 @@ func (f *evaluator) Evaluate(_ context.Context, req *connect.Request[policyv1.Ev
 		return nil, f.err
 	}
 	f.sets = append(f.sets, req.Msg.GetPolicySetId())
+	f.nonces = append(f.nonces, req.Msg.GetNonce())
 	return connect.NewResponse(&policyv1.EvaluateResponse{Verdict: policyv1.EvaluateResponse_VERDICT_VALID, Checks: []*policyv1.CheckResult{
 		{Name: "nonce", CredentialIndex: -1}, {Name: "signature", CredentialIndex: 0},
 	}, MaterialAge: durationpb.New(3 * time.Hour), MaterialStale: true}), nil
@@ -75,6 +77,7 @@ type adapter struct {
 	submitErr error
 	answer    *backendv1.GetResultResponse
 	expires   *timestamppb.Timestamp
+	nonce     string
 	created   []*backendv1.CreateRequestRequest
 	submitted []*backendv1.SubmitBrowserAnswerRequest
 }
@@ -92,7 +95,7 @@ func (f *adapter) CreateRequest(_ context.Context, req *connect.Request[backendv
 		return nil, f.createErr
 	}
 	f.created = append(f.created, req.Msg)
-	out := &backendv1.CreateRequestResponse{RequestUri: "openid4vp://stack", State: "s", ExpiresAt: f.expires}
+	out := &backendv1.CreateRequestResponse{RequestUri: "openid4vp://stack", State: "s", ExpiresAt: f.expires, Nonce: f.nonce}
 	if req.Msg.GetDcApi() {
 		out.DcApiRequest = `{"protocol":"openid4vp-v1-unsigned","data":{}}`
 	}
@@ -228,6 +231,53 @@ func TestStackRequestLifecycle(t *testing.T) {
 	if err != nil || list.Msg.GetTransactions()[0].GetResultId() != "res-7" || list.Msg.GetTransactions()[0].GetStack() != "verifier-credebl" ||
 		list.Msg.GetTransactions()[0].GetVerdict() != commonv1.Verdict_VERDICT_VALID {
 		t.Errorf("list %+v %v", list, err)
+	}
+}
+
+// TestStackNonceDecidesTheCheck checks the answer of a stack that picks
+// its own nonce against that nonce. The nonce of the answered session
+// wins when the adapter names one. A stack that takes the nonce of the
+// caller keeps the nonce of the service.
+func TestStackNonceDecidesTheCheck(t *testing.T) {
+	ctx := context.Background()
+	accepted := func(nonce string) *backendv1.GetResultResponse {
+		return &backendv1.GetResultResponse{State: backendv1.GetResultResponse_STATE_ACCEPTED, Nonce: nonce,
+			Presented: []*commonv1.Credential{{Format: commonv1.Format_FORMAT_DC_SD_JWT, Payload: []byte(answer)}}}
+	}
+	for name, c := range map[string]struct {
+		stack, answered, want string
+	}{
+		"stack nonce":   {"stack-nonce", "", "stack-nonce"},
+		"session nonce": {"stack-nonce", "dc-api-nonce", "dc-api-nonce"},
+		"caller nonce":  {"", "", ""},
+	} {
+		a := &adapter{nonce: c.stack, answer: accepted(c.answered)}
+		pol := &evaluator{}
+		svc, store := stackService(t, licenceTemplate(), a, pol, &keeper{})
+		created, err := svc.CreateOid4VpRequest(ctx, connect.NewRequest(&ingestv1.CreateOid4VpRequestRequest{TemplateId: "pid", Stack: "verifier-credebl"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := c.want
+		if want == "" {
+			want = a.created[0].GetNonce()
+		}
+		if c.stack != "" && created.Msg.GetNonce() != c.stack {
+			t.Errorf("%s: the caller got the nonce %q, not the nonce of the stack", name, created.Msg.GetNonce())
+		}
+		if _, gerr := svc.GetTransaction(ctx, connect.NewRequest(&ingestv1.GetTransactionRequest{TransactionId: created.Msg.GetTransactionId()})); gerr != nil {
+			t.Fatal(gerr)
+		}
+		if len(pol.nonces) != 1 || pol.nonces[0] != want {
+			t.Errorf("%s: the policy checked the nonce %v, want %q", name, pol.nonces, want)
+		}
+		record, err := store.Get(ctx, created.Msg.GetTransactionId())
+		if err != nil || record.Presentation == nil {
+			t.Fatalf("%s: no stored answer: %v", name, err)
+		}
+		if record.Presentation.Nonce != want {
+			t.Errorf("%s: the stored answer names the nonce %q, want %q", name, record.Presentation.Nonce, want)
+		}
 	}
 }
 

@@ -69,9 +69,12 @@ func (s *Service) CreateRequest(
 	if verr != nil {
 		return nil, failed("create the presentation request", verr)
 	}
+	// The verifier-api of 0.18.2 takes no nonce of the caller. The nonce
+	// it picked goes back, so the caller checks the answer against it.
 	return connect.NewResponse(&backendv1.CreateRequestResponse{
 		RequestUri: authorizeURL,
 		State:      waltid.StateFromAuthorizeURL(authorizeURL),
+		Nonce:      waltid.NonceOf(authorizeURL),
 	}), nil
 }
 
@@ -116,6 +119,10 @@ func (s *Service) createSession2(
 	}
 	out.RequestUri = created.RequestURL()
 	out.State = v2Prefix + strings.Join(append(ids, created.SessionID), ",")
+	// Verifier 2 takes no nonce of the caller either. The full request
+	// URL carries the nonce of the cross device session. GetResult names
+	// the nonce of the session that the wallet answered.
+	out.Nonce = waltid.NonceOf(created.FullURL)
 	return connect.NewResponse(out), nil
 }
 
@@ -222,6 +229,7 @@ func (s *Service) answered2(session waltid.Session2) *backendv1.GetResultRespons
 		out.State = backendv1.GetResultResponse_STATE_ACCEPTED
 	}
 	out.DpgChecks = dpgChecks(session.Checks())
+	out.Nonce = session.AuthorizationRequest.Nonce
 	ids, tokens := session.Credentials()
 	for i, token := range tokens {
 		out.Presented = append(out.Presented, &commonv1.Credential{

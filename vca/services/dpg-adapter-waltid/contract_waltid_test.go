@@ -136,6 +136,10 @@ func TestContractCreateRequestAndReadTheSession(t *testing.T) {
 	if created.Msg.GetState() == "" {
 		t.Fatal("the real verifier returned no state")
 	}
+	// The verifier picks its own nonce. VCA checks the answer against it.
+	if created.Msg.GetNonce() == "" {
+		t.Fatalf("the real verifier put no nonce in %q", created.Msg.GetRequestUri())
+	}
 	result, err := a.Service.GetResult(ctx, connect.NewRequest(&backendv1.GetResultRequest{
 		State: created.Msg.GetState(),
 	}))
@@ -177,6 +181,9 @@ func TestContractDcqlRoundTrip(t *testing.T) {
 	}
 	if !strings.HasPrefix(created.Msg.GetRequestUri(), "openid4vp://") {
 		t.Fatalf("request URI = %q", created.Msg.GetRequestUri())
+	}
+	if created.Msg.GetNonce() == "" {
+		t.Fatal("the full request URL of verifier 2 carries no nonce")
 	}
 	result, err := a.Service.GetResult(ctx, connect.NewRequest(&backendv1.GetResultRequest{State: created.Msg.GetState()}))
 	if err != nil {

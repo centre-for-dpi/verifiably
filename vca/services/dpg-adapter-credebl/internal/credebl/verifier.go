@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/centre-for-dpi/vc-adapters/core/jose"
 )
 
 // DcqlQuery is the Digital Credentials Query Language body of a
@@ -75,11 +77,39 @@ type presentationRequest struct {
 // presentationResponse is the answer of the presentation endpoint.
 type presentationResponse struct {
 	Data struct {
-		AuthorizationRequest string `json:"authorizationRequest"`
-		VerificationSession  struct {
-			ID string `json:"id"`
-		} `json:"verificationSession"`
+		AuthorizationRequest string             `json:"authorizationRequest"`
+		VerificationSession  verificationRecord `json:"verificationSession"`
 	} `json:"data"`
+}
+
+// verificationRecord is the part of the verification session record of
+// the agent that the adapter reads. The agent signs the request with a
+// DID, so the record holds the request as a JWT. An unsigned request
+// sits in the payload member instead.
+type verificationRecord struct {
+	ID                          string `json:"id"`
+	AuthorizationRequestJwt     string `json:"authorizationRequestJwt"`
+	AuthorizationRequestPayload struct {
+		Nonce string `json:"nonce"`
+	} `json:"authorizationRequestPayload"`
+}
+
+// nonce returns the nonce the agent put in the request. The agent picks
+// it, and the pinned platform takes no nonce of the caller. The record
+// comes from the platform over the signed in call, not from a wallet,
+// so the adapter reads the JWT without a signature check.
+func (r verificationRecord) nonce() string {
+	if r.AuthorizationRequestPayload.Nonce != "" {
+		return r.AuthorizationRequestPayload.Nonce
+	}
+	payload, err := jose.PeekPayload(r.AuthorizationRequestJwt)
+	if err != nil {
+		return ""
+	}
+	if value, ok := payload["nonce"].(string); ok {
+		return value
+	}
+	return ""
 }
 
 // Presentation is one started OID4VP transaction.
@@ -88,6 +118,9 @@ type Presentation struct {
 	RequestURI string
 	// State is the verification session of CREDEBL.
 	State string
+	// Nonce is the nonce the platform put in the request. The answer
+	// binds to it.
+	Nonce string
 }
 
 // CreatePresentation starts an OID4VP transaction with a DCQL query.
@@ -111,6 +144,7 @@ func (c *Client) CreatePresentation(ctx context.Context, verifierID string, quer
 	return Presentation{
 		RequestURI: out.Data.AuthorizationRequest,
 		State:      out.Data.VerificationSession.ID,
+		Nonce:      out.Data.VerificationSession.nonce(),
 	}, nil
 }
 

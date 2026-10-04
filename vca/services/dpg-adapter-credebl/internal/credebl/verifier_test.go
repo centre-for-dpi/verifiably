@@ -89,6 +89,24 @@ func TestCreatePresentationSendsTheQuery(t *testing.T) {
 	}
 }
 
+func TestVerificationRecordNonce(t *testing.T) {
+	cases := map[string]string{
+		`{"authorizationRequestPayload":{"nonce":"n-plain"}}`:                            "n-plain",
+		`{"authorizationRequestJwt":"eyJhbGciOiJub25lIn0.eyJub25jZSI6Im4tand0In0.c2ln"}`: "n-jwt",
+		`{"authorizationRequestJwt":"not a jwt"}`:                                        "",
+		`{}`: "",
+	}
+	for raw, want := range cases {
+		var r verificationRecord
+		if err := json.Unmarshal([]byte(raw), &r); err != nil {
+			t.Fatal(err)
+		}
+		if got := r.nonce(); got != want {
+			t.Errorf("nonce of %s = %q, want %q", raw, got, want)
+		}
+	}
+}
+
 func TestCreatePresentationReportsAnEmptyAnswer(t *testing.T) {
 	srv := httptest.NewServer(signinHandler(t, func(w http.ResponseWriter, _ *http.Request) {
 		mustWrite(t, w, []byte(`{"data":{"authorizationRequest":""}}`))

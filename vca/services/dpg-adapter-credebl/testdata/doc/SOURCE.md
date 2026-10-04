@@ -180,3 +180,16 @@ The removal of a W3C credential goes through `DELETE
 with the type `w3c-vc`, and of an SD-JWT or an mdoc credential with
 `sd-jwt-vc` or `mso_mdoc`. The agent has no call that removes an AnonCreds
 credential, no decline call, and no basic message call.
+
+## The nonce of an OID4VP request
+
+The pinned platform takes no nonce of the caller. `PresentationRequestDto`
+of
+[oid4vc-verifier-presentation.dto.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/oid4vc-verification/dtos/oid4vc-verifier-presentation.dto.ts),
+read on 2026-10-04, has `requestSigner`, `presentationExchange`, `dcql`,
+`responseMode`, `expectedOrigins` and `version` only. The agent picks the
+nonce and keeps it in the verification session record.
+
+| File | Call | Source |
+| --- | --- | --- |
+| `presentation-created.json` | `POST /v1/orgs/{org}/oid4vp/presentation` | `createVerificationPresentation` of [oid4vc-verification.controller.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/oid4vc-verification/oid4vc-verification.controller.ts), which answers with `createAuthorizationRequest` of the agent [verification-sessions.service.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/controllers/openid4vc/verifier-sessions/verification-sessions.service.ts): the request URL and the record `OpenId4VcVerificationSessionRecord` of [Credo](https://raw.githubusercontent.com/openwallet-foundation/credo-ts/main/packages/openid4vc/src/openid4vc-verifier/repository/OpenId4VcVerificationSessionRecord.ts). A request signed with a DID sits in `authorizationRequestJwt`, whose payload carries the nonce. An unsigned request sits in `authorizationRequestPayload`. Read on 2026-10-04 |

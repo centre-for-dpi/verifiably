@@ -94,6 +94,12 @@ type Session2 struct {
 	StatusReason string `json:"statusReason"`
 	// PolicyResults holds the verdict per check.
 	PolicyResults *PolicyResults2 `json:"policy_results"`
+	// AuthorizationRequest is the request the wallet answers. walt.id
+	// picks its nonce.
+	AuthorizationRequest struct {
+		// Nonce is the value the wallet binds its answer to.
+		Nonce string `json:"nonce"`
+	} `json:"authorizationRequest"`
 	// Setup is the setup of the session, with the DCQL query.
 	Setup struct {
 		CoreFlow struct {

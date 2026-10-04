@@ -74,7 +74,7 @@ DIDComm wallet for each holder in the shared agent of the stack.
 | `GET /v1/platform/schemas` | Lists the AnonCreds schemas of the platform for the proof request builder. |
 | `GET /v1/platform/cred-defs` | Lists the credential definitions of those schemas. |
 | `POST /v1/orgs/{org}/oid4vp/verifier` | Creates the OID4VP verifier. |
-| `POST /v1/orgs/{org}/oid4vp/presentation` | Starts an OID4VP transaction. |
+| `POST /v1/orgs/{org}/oid4vp/presentation` | Starts an OID4VP transaction. The platform takes no nonce of the caller. The adapter returns the nonce of the signed request in the session record, so VCA checks the answer against it. |
 | `GET /v1/orgs/{org}/oid4vp/verifier-presentation` | Reads the answer of a transaction. |
 | `GET /v1/webhooks/orgs/webhookurl` | Reads the webhook of an organisation. The adapter reads only whether a signing secret exists. |
 | `POST /v1/webhooks/orgs/{org}/register` | Sets the address of the webhook, and the signing secret when the admin names one. |

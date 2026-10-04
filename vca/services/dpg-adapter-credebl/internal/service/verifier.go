@@ -43,9 +43,12 @@ func (s *Service) CreateRequest(
 	if perr != nil {
 		return nil, failed("create the presentation request", perr)
 	}
+	// The platform picks the nonce. It goes back, so the caller checks
+	// the answer against it.
 	return connect.NewResponse(&backendv1.CreateRequestResponse{
 		RequestUri: presentation.RequestURI,
 		State:      presentation.State,
+		Nonce:      presentation.Nonce,
 	}), nil
 }
 

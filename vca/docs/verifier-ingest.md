@@ -118,6 +118,20 @@ of the adapter. Each `GetTransaction` of a pending request calls
 evaluate and store steps. The checks of the stack stay on the
 transaction.
 
+The service sends its own nonce in `CreateRequest`. A stack that picks
+its own nonce ignores it. The adapter then returns the nonce of the
+stack, and the transaction keeps that nonce. The nonce check of the
+answer reads it. One request can hold stack sessions with their own
+nonces. `GetResult` then names the nonce of the session that the wallet
+answered, and the check reads that nonce. The adapter reads each nonce
+from the session of the stack, never from the answer.
+
+| Stack | Nonce of the request |
+| --- | --- |
+| The Inji verifier | The nonce of the service |
+| The walt.id Verifier API and Verifier API 2 | The nonce of the stack |
+| The CREDEBL verifier | The nonce of the stack |
+
 A request lives for the default `REQUEST_TTL`, or for the pick of the
 staff member up to one hour. A stack sets its own expiry.
 

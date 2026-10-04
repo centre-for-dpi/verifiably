@@ -119,6 +119,18 @@ func StateFromAuthorizeURL(authorizeURL string) string {
 	return parts[len(parts)-1]
 }
 
+// NonceOf returns the nonce of an OID4VP authorization request URL.
+// walt.id 0.18.2 picks the nonce itself and puts it in the query of the
+// request that carries the whole request. A request by reference holds
+// no nonce, so the answer is empty.
+func NonceOf(authorizeURL string) string {
+	u, err := url.Parse(strings.TrimSpace(authorizeURL))
+	if err != nil {
+		return ""
+	}
+	return u.Query().Get("nonce")
+}
+
 // PresentedCredentials returns the credentials of a token response. The
 // vp_token holds one string, an array of strings, or an object.
 func PresentedCredentials(tokenResponse json.RawMessage) []string {

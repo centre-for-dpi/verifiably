@@ -93,6 +93,19 @@ func TestStateFromAuthorizeURL(t *testing.T) {
 	}
 }
 
+func TestNonceOf(t *testing.T) {
+	cases := map[string]string{
+		"openid4vp://authorize?state=abc&nonce=n-1":                         "n-1",
+		"openid4vp://authorize?request_uri=https%3A%2F%2Fv.example%2Fr%2Fx": "",
+		"://bad url": "",
+	}
+	for in, want := range cases {
+		if got := NonceOf(in); got != want {
+			t.Fatalf("NonceOf(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestPresentedCredentialsReadsEveryTokenShape(t *testing.T) {
 	cases := map[string]int{
 		`{"vp_token":"one"}`:                     1,

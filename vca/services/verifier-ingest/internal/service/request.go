@@ -299,6 +299,11 @@ func (s *Service) createThroughStack(ctx context.Context, msg *ingestv1.CreateOi
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("service: the stack %q did not create the request: %w", stack.Pair, err))
 	}
+	// A stack that picks its own nonce returns it. The answer binds to
+	// that nonce, so the check reads it.
+	if stackNonce := resp.Msg.GetNonce(); stackNonce != "" {
+		nonce = stackNonce
+	}
 	now := s.opts.Now()
 	record := txn.Transaction{
 		ID: id, Nonce: nonce, TemplateID: t.GetId(), TemplateVersion: t.GetVersion(), PolicySetID: t.GetPolicySetId(),
@@ -390,7 +395,14 @@ func (s *Service) poll(ctx context.Context, id string) (txn.Transaction, error) 
 			break
 		}
 		record.State = txn.StateReceived
-		record.Presentation = presentationOf(msg.GetPresented(), record.ID, record.Nonce, record.AnsweredAt)
+		nonce := record.Nonce
+		// One request can hold stack sessions with their own nonces. The
+		// adapter then names the nonce of the session that the wallet
+		// answered.
+		if answered := msg.GetNonce(); answered != "" {
+			nonce = answered
+		}
+		record.Presentation = presentationOf(msg.GetPresented(), record.ID, nonce, record.AnsweredAt)
 		s.finish(ctx, &record)
 	default:
 		return record, nil
@@ -437,7 +449,7 @@ func (s *Service) finish(ctx context.Context, record *txn.Transaction) {
 	}
 	raw := RecordToProto(record.Presentation, record.ID)
 	resp, err := s.opts.Policy.Evaluate(ctx, connect.NewRequest(&policyv1.EvaluateRequest{
-		Presentation: raw, PolicySetId: record.PolicySetID, Nonce: record.Nonce, At: timestamppb.New(s.opts.Now()),
+		Presentation: raw, PolicySetId: record.PolicySetID, Nonce: record.Presentation.Nonce, At: timestamppb.New(s.opts.Now()),
 	}))
 	if err != nil {
 		record.Error = "the policy service did not evaluate the answer: " + err.Error()

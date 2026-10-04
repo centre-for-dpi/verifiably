@@ -44,6 +44,22 @@ func TestCreateRequestProvisionsTheVerifierOnce(t *testing.T) {
 	}
 }
 
+// TestCreateRequestReturnsTheNonceOfThePlatform returns the nonce of the
+// signed request of the platform. The pinned platform takes no nonce of
+// the caller, so the caller checks the answer against this one.
+func TestCreateRequestReturnsTheNonceOfThePlatform(t *testing.T) {
+	svc, _ := newService(t, nil)
+	resp, err := svc.CreateRequest(context.Background(), connect.NewRequest(&backendv1.CreateRequestRequest{
+		Dcql: farmerQuery, Nonce: "vca-nonce",
+	}))
+	if err != nil {
+		t.Fatalf("CreateRequest: %v", err)
+	}
+	if got := resp.Msg.GetNonce(); got != "7b1e4c02-93f5-4a8d-b6e0-5c2f9a13d847" {
+		t.Fatalf("nonce = %q, want the nonce of the signed authorization request", got)
+	}
+}
+
 func TestCreateRequestUsesThePinnedVerifier(t *testing.T) {
 	svc, f := newService(t, func(o *service.Options) { o.VerifierID = "v-pinned" })
 	f.SetStatus("/v1/orgs/org-1/oid4vp/verifier", http.StatusInternalServerError)
