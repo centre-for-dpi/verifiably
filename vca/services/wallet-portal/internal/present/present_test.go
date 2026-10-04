@@ -65,6 +65,44 @@ func TestParseRequestURI(t *testing.T) {
 	}
 }
 
+// TestParseReadsABareAddressWithAQuery reads an https address whose own
+// query names the request object. Only the parameters of an
+// authorization request make the text an inline request.
+func TestParseReadsABareAddressWithAQuery(t *testing.T) {
+	for _, uri := range []string{
+		"https://verifier.example/request?id=r-1",
+		"http://verifier.example:8080/oid4vp/request.jwt?session=7&lang=en",
+	} {
+		got, err := present.Parse(uri)
+		if err != nil || got.RequestURI != uri {
+			t.Errorf("Parse(%q) = %+v, %v; want the address as the request URI", uri, got, err)
+		}
+	}
+	// An https link of a wallet carries the parameters of the request.
+	link, err := present.Parse("https://wallet.example/authorize?client_id=v&request_uri=" +
+		url.QueryEscape("https://verifier.example/request?id=r-1"))
+	if err != nil || link.RequestURI != "https://verifier.example/request?id=r-1" || link.ClientID != "v" {
+		t.Errorf("an https request link = %+v, %v", link, err)
+	}
+}
+
+// TestAuthorizationRequestURL builds the one request shape that a stack
+// wallet receives: an openid4vp URL with the client id and the address
+// of the request object.
+func TestAuthorizationRequestURL(t *testing.T) {
+	cases := map[string]present.Request{
+		"openid4vp://authorize?client_id=https%3A%2F%2Fverifier.example&request_uri=https%3A%2F%2Fverifier.example%2Fr%3Fid%3D1": {
+			ClientID: "https://verifier.example", RequestURI: "https://verifier.example/r?id=1",
+		},
+		"openid4vp://authorize?request_uri=https%3A%2F%2Fverifier.example%2Fr%2F1": {RequestURI: "https://verifier.example/r/1"},
+	}
+	for want, r := range cases {
+		if got := present.AuthorizationRequestURL(r); got != want {
+			t.Errorf("AuthorizationRequestURL(%+v) = %q, want %q", r, got, want)
+		}
+	}
+}
+
 func TestParseInlineRequest(t *testing.T) {
 	uri := "openid4vp://?client_id=https%3A%2F%2Fverifier.example&nonce=n-1" +
 		"&response_uri=https%3A%2F%2Fverifier.example%2Fdirect_post&state=s-1" +

@@ -379,6 +379,25 @@ func TestPresentOid4vpThroughTheAgent(t *testing.T) {
 	}
 }
 
+// TestPresentTakesThePortalRequestShape is the contract of
+// PresentRequest.request_uri: the wallet portal sends one openid4vp URL,
+// and the adapter hands it to the agent unchanged.
+func TestPresentTakesThePortalRequestShape(t *testing.T) {
+	const request = "openid4vp://authorize?client_id=https%3A%2F%2Fverifier.example&request_uri=https%3A%2F%2Fverifier.example%2Frequest%3Fid%3Dr-1"
+	svc, agent, _ := newHolder(t, nil)
+	wallet := registerHolder(t, svc)
+	if _, err := svc.Present(context.Background(), connect.NewRequest(&backendv1.PresentRequest{WalletId: wallet, RequestUri: request,
+		CredentialIds: []string{"sd-jwt:" + fake.SdJwtRecord}, DisclosedClaims: []string{"fullName"}})); err != nil {
+		t.Fatalf("Present: %v", err)
+	}
+	var body struct {
+		ProofRequestURI string `json:"proofRequestUri"`
+	}
+	if err := json.Unmarshal(agent.Body("POST /openid4vc/holder/resolve-proof-request"), &body); err != nil || body.ProofRequestURI != request {
+		t.Fatalf("proofRequestUri = %q (%v), want %q", body.ProofRequestURI, err, request)
+	}
+}
+
 // TestPresentOid4vpRefusesAnUntickedClaim is finding 2.1 of the
 // CREDEBL review: the agent discloses every claim of the first claim
 // set it satisfies. A holder who leaves one of them out gets a refusal,

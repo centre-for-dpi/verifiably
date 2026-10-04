@@ -188,6 +188,30 @@ func TestPresentSharesTheNamedClaims(t *testing.T) {
 	}
 }
 
+// TestPresentTakesThePortalRequestShape is the contract of
+// PresentRequest.request_uri: the wallet portal sends one openid4vp URL,
+// and the adapter hands it to the walt.id wallet unchanged.
+func TestPresentTakesThePortalRequestShape(t *testing.T) {
+	const request = "openid4vp://authorize?client_id=https%3A%2F%2Fverifier.example&request_uri=https%3A%2F%2Fverifier.example%2Frequest%3Fid%3Dr-1"
+	svc, f := newService(t, all)
+	walletID := registerWallet(t, svc)
+	if _, err := svc.Present(context.Background(), connect.NewRequest(&backendv1.PresentRequest{
+		WalletId: walletID, RequestUri: request,
+		CredentialIds: []string{"urn:uuid:2b0c8a51-9c1d-4a77-9f3e-5c2f1d7b6a90"},
+	})); err != nil {
+		t.Fatalf("Present: %v", err)
+	}
+	var body struct {
+		PresentationRequest string `json:"presentationRequest"`
+	}
+	if err := f.RequestJSON("/wallet-api/wallet/"+walletID+"/exchange/usePresentationRequest", &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.PresentationRequest != request {
+		t.Fatalf("presentationRequest = %q, want %q", body.PresentationRequest, request)
+	}
+}
+
 func TestPresentChecksItsInput(t *testing.T) {
 	svc, _ := newService(t, all)
 	walletID := registerWallet(t, svc)

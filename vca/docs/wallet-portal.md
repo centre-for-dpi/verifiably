@@ -337,6 +337,10 @@ in one of three ways:
 The wallet then reads the request:
 
 1. A link with a `request_uri` names the address of the request object.
+   The wallet keeps the whole link, so the client id stays with the
+   address. A bare http address is the address of the request object,
+   even with a query of its own. Only the parameters of a request, such
+   as `client_id` or `dcql_query`, make a link a request by value.
    The host of that address must be on the allowlist in
    `REQUEST_HOSTS`. The allowlist stops a request URI that points at a
    private address. Setup of a localhost pair names `localhost` and
@@ -383,8 +387,10 @@ the page shows its reason. The record names the claims the stack
 reports as shared.
 
 A stack wallet fetches the request itself, so it takes a request link
-only. The portal refuses a request by value through a stack wallet and
-says why. The browser store answers such a request (ADR-063 decision 2).
+only. Every stack wallet gets the same shape:
+`openid4vp://authorize` with the `client_id` and the `request_uri` of
+the request. The portal builds it from the link the holder gave. The
+portal refuses a request by value through a stack wallet and says why. The browser store answers such a request (ADR-063 decision 2).
 
 The response mode is `direct_post` only. The wallet refuses another
 response mode.

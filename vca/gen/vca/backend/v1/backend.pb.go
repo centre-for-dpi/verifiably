@@ -5758,7 +5758,9 @@ type PresentRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The wallet id from Register.
 	WalletId string `protobuf:"bytes,1,opt,name=wallet_id,json=walletId,proto3" json:"wallet_id,omitempty"`
-	// The openid4vp request URI or request object. An adapter that lists
+	// The OID4VP authorization request. The wallet portal always sends
+	// one shape: openid4vp://authorize with client_id, when known, and
+	// request_uri. Every adapter takes that shape. An adapter that lists
 	// FEATURE_WALLET_DIDCOMM also takes a DIDComm out of band invitation
 	// that carries a proof request.
 	RequestUri string `protobuf:"bytes,2,opt,name=request_uri,json=requestUri,proto3" json:"request_uri,omitempty"`
@@ -8082,9 +8084,9 @@ type GetResultResponse struct {
 	// The time the wallet answered. Empty while pending.
 	ReceivedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=received_at,json=receivedAt,proto3" json:"received_at,omitempty"`
 	// The nonce of the stack request that the wallet answered. The adapter
-	// reads it from the session of the stack, never from the answer. It
-	// sets it only when one transaction holds sessions with more than one
-	// nonce. Empty means the nonce of CreateRequest applies.
+	// reads it from the session of the stack, never from the answer. One
+	// request can hold sessions with their own nonces. Empty means the
+	// nonce of CreateRequest applies.
 	Nonce         string `protobuf:"bytes,5,opt,name=nonce,proto3" json:"nonce,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

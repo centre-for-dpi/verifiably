@@ -80,11 +80,13 @@ func TestTextReadsOfferForms(t *testing.T) {
 }
 
 func TestTextReadsPresentationRequest(t *testing.T) {
-	got, err := detect.Text("openid4vp://?client_id=x&request_uri=https://verifier.example/r/1", 0)
+	link := "openid4vp://?client_id=x&request_uri=https://verifier.example/r/1"
+	got, err := detect.Text(link, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Kind != detect.Request || got.RequestURI != "https://verifier.example/r/1" {
+	// The whole link stays, so the client id is not lost.
+	if got.Kind != detect.Request || got.RequestURI != link {
 		t.Fatalf("request = %+v", got)
 	}
 	if !strings.Contains(detect.Explain(got), "Read the list") {

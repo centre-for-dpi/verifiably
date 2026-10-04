@@ -88,11 +88,11 @@ func Parse(raw string) (Request, error) {
 	if text == "" {
 		return Request{}, fmt.Errorf("%w: the request is empty", ErrBadRequest)
 	}
-	if !strings.Contains(text, "?") && !strings.HasPrefix(text, "{") {
-		return Request{RequestURI: text}, nil
-	}
 	if strings.HasPrefix(text, "{") {
 		return fromObject([]byte(text))
+	}
+	if !strings.Contains(text, "?") {
+		return Request{RequestURI: text}, nil
 	}
 	u, err := url.Parse(text)
 	if err != nil {
@@ -101,6 +101,11 @@ func Parse(raw string) (Request, error) {
 	q := u.Query()
 	if uri := strings.TrimSpace(q.Get("request_uri")); uri != "" {
 		return Request{RequestURI: uri, ClientID: q.Get("client_id")}, nil
+	}
+	if !authorizationRequest(u.Scheme, q) {
+		// An http address with a query of its own names the request
+		// object, as a bare address does.
+		return Request{RequestURI: text}, nil
 	}
 	doc := map[string]any{
 		"client_id":     q.Get("client_id"),
@@ -123,6 +128,42 @@ func Parse(raw string) (Request, error) {
 		return Request{}, fmt.Errorf("%w: %w", ErrBadRequest, err)
 	}
 	return fromObject(raw2)
+}
+
+// requestParams are the query parameters of an OID4VP authorization
+// request that the wallet reads.
+var requestParams = []string{
+	"client_id", "response_type", "response_mode", "response_uri", "nonce", "state",
+	"dcql_query", "presentation_definition", "request_uri",
+}
+
+// authorizationRequest reports whether a URL with a query is an OID4VP
+// authorization request. A wallet scheme such as openid4vp always is.
+// An http address is one only when its query names a parameter of the
+// request. Otherwise it is the address of a request object.
+func authorizationRequest(scheme string, q url.Values) bool {
+	if scheme != "http" && scheme != "https" {
+		return true
+	}
+	for _, name := range requestParams {
+		if q.Has(name) {
+			return true
+		}
+	}
+	return false
+}
+
+// AuthorizationRequestURL returns the one request shape that a stack
+// wallet receives: an openid4vp URL with the client id, when known, and
+// the address of the request object. Every holder adapter reads this
+// shape, so none needs to guess what the holder pasted.
+func AuthorizationRequestURL(r Request) string {
+	q := url.Values{}
+	if r.ClientID != "" {
+		q.Set("client_id", r.ClientID)
+	}
+	q.Set("request_uri", r.RequestURI)
+	return "openid4vp://authorize?" + q.Encode()
 }
 
 // AllowHost reports whether the host of uri is on the allowlist. An

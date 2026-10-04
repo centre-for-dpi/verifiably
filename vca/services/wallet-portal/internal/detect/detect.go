@@ -54,7 +54,8 @@ type Result struct {
 	// Offer holds the credential offer, when Kind is Offer.
 	Offer Offering
 	// RequestURI is the OID4VP request, when Kind is Request. It is the
-	// request_uri when the text carries one, else the whole URI.
+	// whole link, so the client id stays with the address of the
+	// request object.
 	RequestURI string
 	// Credential holds the credential bytes, when Kind is Credential.
 	Credential []byte
@@ -182,9 +183,6 @@ func requestOf(text string) (Result, bool) {
 	if u.Scheme != SchemeRequest && q.Get("request_uri") == "" && q.Get("presentation_definition") == "" &&
 		q.Get("dcql_query") == "" {
 		return Result{}, false
-	}
-	if uri := strings.TrimSpace(q.Get("request_uri")); uri != "" {
-		return Result{Kind: Request, RequestURI: uri}, true
 	}
 	return Result{Kind: Request, RequestURI: text}, true
 }

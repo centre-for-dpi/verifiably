@@ -14,6 +14,7 @@ import (
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/fake"
+	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/inji"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-inji/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
@@ -301,6 +302,25 @@ func TestPresentThroughMimoto(t *testing.T) {
 	}
 	_, err = svc.Present(context.Background(), connect.NewRequest(&backendv1.PresentRequest{WalletId: wallet}))
 	wantCode(t, err, connect.CodeInvalidArgument)
+}
+
+// TestPresentTakesThePortalRequestShape is the contract of
+// PresentRequest.request_uri: the wallet portal sends one openid4vp URL,
+// and the adapter hands it to Mimoto unchanged. The fake refuses any
+// other shape.
+func TestPresentTakesThePortalRequestShape(t *testing.T) {
+	const request = "openid4vp://authorize?client_id=https%3A%2F%2Fverifier.example&request_uri=https%3A%2F%2Fverifier.example%2Frequest%3Fid%3Dr-1"
+	if got := inji.AuthorizationRequestURL(request); got != request {
+		t.Fatalf("AuthorizationRequestURL changed the request to %q", got)
+	}
+	svc, _ := newService(t, holder)
+	wallet := openWallet(t, svc)
+	resp, err := svc.Present(context.Background(), connect.NewRequest(&backendv1.PresentRequest{
+		WalletId: wallet, RequestUri: request, CredentialIds: []string{"c9d27f40-6a1e-4b95-8f3c-2e7d1a5b9c04"},
+	}))
+	if err != nil || !resp.Msg.GetAccepted() {
+		t.Fatalf("Present = %v, %v", resp, err)
+	}
 }
 
 // TestDelete removes a credential from the Mimoto wallet, and the PDF of

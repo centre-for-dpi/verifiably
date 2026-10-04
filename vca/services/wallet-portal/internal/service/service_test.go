@@ -687,8 +687,8 @@ func TestPresentStartAndConfirmWithHolder(t *testing.T) {
 	if !confirm.Msg.GetAccepted() || confirm.Msg.GetRedirectUri() == "" {
 		t.Fatalf("confirm = %+v", confirm.Msg)
 	}
-	if holder.seenPresent.GetRequestUri() != "https://verifier.example/r/1" {
-		t.Fatalf("request uri = %q", holder.seenPresent.GetRequestUri())
+	if want := "openid4vp://authorize?client_id=https%3A%2F%2Fverifier.example&request_uri=https%3A%2F%2Fverifier.example%2Fr%2F1"; holder.seenPresent.GetRequestUri() != want {
+		t.Fatalf("request uri = %q, want %q", holder.seenPresent.GetRequestUri(), want)
 	}
 	if len(holder.seenPresent.GetCredentialIds()) != 1 || holder.seenPresent.GetCredentialIds()[0] != "c1" {
 		t.Fatalf("credential ids = %v", holder.seenPresent.GetCredentialIds())
@@ -1005,5 +1005,46 @@ func TestDefaultIDMaker(t *testing.T) {
 	a, b := first.Msg.GetDetected().GetOfferId(), second.Msg.GetDetected().GetOfferId()
 	if a == "" || a == b {
 		t.Fatalf("ids = %q %q", a, b)
+	}
+}
+
+// TestStackWalletGetsOneRequestShape hands every stack wallet the same
+// openid4vp URL, whatever form the holder pasted. A request object
+// address with its own query keeps that query.
+func TestStackWalletGetsOneRequestShape(t *testing.T) {
+	const object = "https://verifier.example/request?id=r-1"
+	want := "openid4vp://authorize?client_id=https%3A%2F%2Fverifier.example&request_uri=" + url.QueryEscape(object)
+	for name, text := range map[string]string{
+		"openid4vp link": "openid4vp://authorize?client_id=https%3A%2F%2Fverifier.example&request_uri=" + url.QueryEscape(object),
+		"https link":     "https://wallet.example/authorize?client_id=https%3A%2F%2Fverifier.example&request_uri=" + url.QueryEscape(object),
+	} {
+		holder := &fakeHolder{credential: credential(t), accepted: true}
+		var fetched []string
+		svc := build(t, func(o *service.Options) {
+			o.Holder = holder
+			o.Fetch = func(_ context.Context, uri string) ([]byte, error) {
+				fetched = append(fetched, uri)
+				return requestObject(), nil
+			}
+		})
+		scan, err := svc.Scan(ctx(), connect.NewRequest(&walletportalv1.ScanRequest{Text: text}))
+		if err != nil {
+			t.Fatalf("%s: scan: %v", name, err)
+		}
+		id := scan.Msg.GetDetected().GetPresentationId()
+		if _, err = svc.PresentStart(ctx(), connect.NewRequest(&walletportalv1.PresentStartRequest{PresentationId: id})); err != nil {
+			t.Fatalf("%s: start: %v", name, err)
+		}
+		if len(fetched) == 0 || fetched[0] != object {
+			t.Errorf("%s: the wallet read %v, want %q", name, fetched, object)
+		}
+		if _, err = svc.PresentConfirm(ctx(), connect.NewRequest(&walletportalv1.PresentConfirmRequest{
+			PresentationId: id, SelectedCards: map[string]string{"licence": "c1"},
+		})); err != nil {
+			t.Fatalf("%s: confirm: %v", name, err)
+		}
+		if got := holder.seenPresent.GetRequestUri(); got != want {
+			t.Errorf("%s: the stack wallet got %q, want %q", name, got, want)
+		}
 	}
 }

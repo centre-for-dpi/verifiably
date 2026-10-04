@@ -906,8 +906,9 @@ func (s *Service) presentWithBackend(ctx context.Context, citizen session.Citize
 	if parsed.RequestURI == "" {
 		return nil, nil, errByValue
 	}
+	// Every stack wallet gets the same shape of request (PresentRequest).
 	resp, err := s.opts.Holder.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{
-		WalletId: citizen.WalletID, RequestUri: parsed.RequestURI,
+		WalletId: citizen.WalletID, RequestUri: present.AuthorizationRequestURL(parsed),
 		CredentialIds: chosen, DisclosedClaims: disclosed,
 	}))
 	if cerr := new(connect.Error); errors.As(err, &cerr) && cerr.Code() == connect.CodeFailedPrecondition {

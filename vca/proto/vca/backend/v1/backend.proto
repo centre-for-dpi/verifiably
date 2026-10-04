@@ -1331,7 +1331,9 @@ message AcceptOfferResponse {
 message PresentRequest {
   // The wallet id from Register.
   string wallet_id = 1;
-  // The openid4vp request URI or request object. An adapter that lists
+  // The OID4VP authorization request. The wallet portal always sends
+  // one shape: openid4vp://authorize with client_id, when known, and
+  // request_uri. Every adapter takes that shape. An adapter that lists
   // FEATURE_WALLET_DIDCOMM also takes a DIDComm out of band invitation
   // that carries a proof request.
   string request_uri = 2;
