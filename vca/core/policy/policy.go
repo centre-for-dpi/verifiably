@@ -49,6 +49,15 @@ const (
 // presentation and not one credential.
 const WholePresentation = -1
 
+// The evidence of a cross rule of a combined template that names whether
+// the verifier needs the rule, and its two values (ADR-080). A required
+// rule that cannot run fails. An optional one skips.
+const (
+	EvidenceRequirement = "requirement"
+	RequirementRequired = "required"
+	RequirementOptional = "optional"
+)
+
 // DefaultLeeway is the clock skew the temporal checks accept.
 const DefaultLeeway = 60 * time.Second
 

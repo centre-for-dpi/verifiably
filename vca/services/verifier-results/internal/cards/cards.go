@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
@@ -205,6 +206,22 @@ func (c *Cards) stackChecks(d *draft, r *resultsv1.VerificationResult) template.
 	return d.html("table", table)
 }
 
+// checkName names a check. A cross rule of a combined template carries
+// whether the verifier needs it, and the name shows that mark (ADR-080).
+func (c *Cards) checkName(d *draft, check *policyv1.CheckResult) components.Cell {
+	var mark string
+	switch check.GetEvidence()[policy.EvidenceRequirement] {
+	case policy.RequirementRequired:
+		mark = msg.T("verifier.card.rule.required.label")
+	case policy.RequirementOptional:
+		mark = msg.T("verifier.card.rule.optional.label")
+	default:
+		return components.Cell{Text: check.GetName()}
+	}
+	badge := d.html("badge", components.Badge{Status: "info", Text: mark})
+	return components.Cell{HTML: template.HTML(template.HTMLEscapeString(check.GetName())+" ") + badge} //nolint:gosec // the name is escaped and the badge comes from the kit
+}
+
 // checks returns the table of a check list.
 func (c *Cards) checks(d *draft, id, caption string, list []*policyv1.CheckResult) template.HTML {
 	table := components.Table{
@@ -213,7 +230,7 @@ func (c *Cards) checks(d *draft, id, caption string, list []*policyv1.CheckResul
 	}
 	for _, check := range list {
 		table.Rows = append(table.Rows, components.Row{
-			{Text: check.GetName()},
+			c.checkName(d, check),
 			{HTML: d.html("badge", components.Badge{
 				Status: outcomeStatus(check.GetOutcome()), Text: outcomeWord(check.GetOutcome()),
 			})},

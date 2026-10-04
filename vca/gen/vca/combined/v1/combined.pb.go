@@ -968,7 +968,11 @@ type CombinedTemplate_Rule struct {
 	// The parameters, keyed by name. See the CrossRule comments.
 	Params map[string]string `protobuf:"bytes,2,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// The display name of the rule on the summary card.
-	DisplayName   string `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	DisplayName string `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	// The verifier needs the rule. A required rule that cannot run, for
+	// example over a credential the answer lacks, fails the verdict. An
+	// optional rule that cannot run skips and leaves the verdict alone.
+	Required      bool `protobuf:"varint,4,opt,name=required,proto3" json:"required,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1024,11 +1028,18 @@ func (x *CombinedTemplate_Rule) GetDisplayName() string {
 	return ""
 }
 
+func (x *CombinedTemplate_Rule) GetRequired() bool {
+	if x != nil {
+		return x.Required
+	}
+	return false
+}
+
 var File_vca_combined_v1_combined_proto protoreflect.FileDescriptor
 
 const file_vca_combined_v1_combined_proto_rawDesc = "" +
 	"\n" +
-	"\x1evca/combined/v1/combined.proto\x12\x0fvca.combined.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\x1a\x1avca/ingest/v1/ingest.proto\x1a\x1avca/policy/v1/policy.proto\x1a\x1cvca/results/v1/results.proto\"\xaa\x05\n" +
+	"\x1evca/combined/v1/combined.proto\x12\x0fvca.combined.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\x1a\x1avca/ingest/v1/ingest.proto\x1a\x1avca/policy/v1/policy.proto\x1a\x1cvca/results/v1/results.proto\"\xc6\x05\n" +
 	"\x10CombinedTemplate\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12B\n" +
@@ -1042,11 +1053,12 @@ const file_vca_combined_v1_combined_proto_rawDesc = "" +
 	"\vtemplate_id\x18\x01 \x01(\tR\n" +
 	"templateId\x12)\n" +
 	"\x10template_version\x18\x02 \x01(\x05R\x0ftemplateVersion\x12+\n" +
-	"\x11alternative_group\x18\x03 \x01(\tR\x10alternativeGroup\x1a\xe0\x01\n" +
+	"\x11alternative_group\x18\x03 \x01(\tR\x10alternativeGroup\x1a\xfc\x01\n" +
 	"\x04Rule\x12.\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x1a.vca.combined.v1.CrossRuleR\x04kind\x12J\n" +
 	"\x06params\x18\x02 \x03(\v22.vca.combined.v1.CombinedTemplate.Rule.ParamsEntryR\x06params\x12!\n" +
-	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x1a9\n" +
+	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12\x1a\n" +
+	"\brequired\x18\x04 \x01(\bR\brequired\x1a9\n" +
 	"\vParamsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"N\n" +

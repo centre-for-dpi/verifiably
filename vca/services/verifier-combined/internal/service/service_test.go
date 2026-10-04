@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -660,6 +661,40 @@ func TestUpdateKeepsTheIdAndReplacesTheMembers(t *testing.T) {
 		}
 		if _, err := f.svc.Update(ctx, connect.NewRequest(in)); connect.CodeOf(err) != want {
 			t.Errorf("%s: want %v, got %v", name, want, err)
+		}
+	}
+}
+
+// TestEvaluateCombinedFailsOnARequiredRuleThatCannotRun: one option of
+// an alternative group answers the members check, but the rule needs
+// both credentials. Marked required, the rule fails and so does the
+// verdict. Marked optional, the rule skips and the verdict stands. The
+// check says which it was.
+func TestEvaluateCombinedFailsOnARequiredRuleThatCannotRun(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	one := presentation(t, "urn:person:1")
+	one.Credentials = one.Credentials[:1]
+	for _, required := range []bool{true, false} {
+		either := pair()
+		either.Id = "guardian-either-" + strconv.FormatBool(required)
+		for _, m := range either.GetMembers() {
+			m.AlternativeGroup = "either"
+		}
+		either.Rules[0].Required = required
+		f.create(t, either)
+		got, err := f.svc.EvaluateCombined(ctx, connect.NewRequest(&combinedv1.EvaluateCombinedRequest{Presentation: one, TemplateId: either.GetId()}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, outcome, need := policyv1.EvaluateResponse_VERDICT_INVALID, policyv1.Outcome_OUTCOME_FAIL, "required"
+		if !required {
+			want, outcome, need = policyv1.EvaluateResponse_VERDICT_VALID, policyv1.Outcome_OUTCOME_SKIP, "optional"
+		}
+		checks := got.Msg.GetCrossChecks()
+		if got.Msg.GetResult().GetVerdict() != want || len(checks) != 2 || checks[1].GetOutcome() != outcome ||
+			checks[1].GetEvidence()["requirement"] != need {
+			t.Errorf("required %v: verdict %s, checks %+v", required, got.Msg.GetResult().GetVerdict(), checks)
 		}
 	}
 }

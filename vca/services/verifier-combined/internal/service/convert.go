@@ -78,7 +78,7 @@ func toRules(t *combinedv1.CombinedTemplate) []rules.Rule {
 	out := make([]rules.Rule, 0, len(t.GetRules()))
 	for _, r := range t.GetRules() {
 		out = append(out, rules.Rule{
-			Kind: kindName(r.GetKind()), DisplayName: r.GetDisplayName(), Params: r.GetParams(),
+			Kind: kindName(r.GetKind()), DisplayName: r.GetDisplayName(), Params: r.GetParams(), Required: r.GetRequired(),
 		})
 	}
 	return out

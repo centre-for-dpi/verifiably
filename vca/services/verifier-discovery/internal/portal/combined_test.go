@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -280,5 +281,44 @@ func TestCombinedListFailureAnswersAnError(t *testing.T) {
 	rec := staffSend(mux, http.MethodGet, "/discovery/combined/", nil)
 	if rec.Code != http.StatusInternalServerError || strings.Contains(rec.Body.String(), "down") {
 		t.Errorf("status %d body %q", rec.Code, rec.Body.String())
+	}
+}
+
+// TestCombinedFormMarksEachRuleRequired: staff mark each rule required
+// or optional (ADR-080). A new rule starts required, because a required
+// rule that cannot run fails the verdict. The edit form shows the mark
+// the stored rule carries.
+func TestCombinedFormMarksEachRuleRequired(t *testing.T) {
+	mux, combined := combinedPortal(t, true)
+	queryIDs(t, mux)
+	form := staffGet(t, mux, "/discovery/combined/new")
+	for _, want := range []string{`name="rule_need.1"`, `value="optional"`, "Required", "Optional"} {
+		if !strings.Contains(form, want) {
+			t.Errorf("the form lacks %q", want)
+		}
+	}
+	if !regexp.MustCompile(`value="required"[^>]* checked`).MatchString(form) || regexp.MustCompile(`value="optional"[^>]* checked`).MatchString(form) {
+		t.Error("a new rule does not start required")
+	}
+	// The store names every new template guardian-pair, so the optional
+	// one comes last and the edit form reads it.
+	for _, need := range []string{"required", "optional"} {
+		rec := staffSend(mux, http.MethodPost, "/discovery/combined/new", url.Values{
+			"display_name": {"Guardian pair"}, "member": {"identity-check", "guardian-check"},
+			"rule_kind.1": {"same_subject"}, "rule_first.1": {"https___a_example_pid"}, "rule_second.1": {"https___a_example_guardian"},
+			"rule_need.1": {need},
+		})
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("%s: %d %s", need, rec.Code, rec.Body.String())
+		}
+		rules := combined.templates["guardian-pair"].GetRules()
+		if len(rules) != 1 || rules[0].GetRequired() != (need == "required") {
+			t.Errorf("%s: saved %+v", need, rules)
+		}
+	}
+	edit := staffGet(t, mux, "/discovery/combined/edit/guardian-pair")
+	a11ytest.AssertPage(t, edit)
+	if !regexp.MustCompile(`name="rule_need.1" value="optional"[^>]* checked`).MatchString(edit) {
+		t.Errorf("the edit form loses the optional mark")
 	}
 }

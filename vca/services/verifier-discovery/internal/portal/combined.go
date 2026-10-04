@@ -50,6 +50,12 @@ const (
 	ruleDateOrder      = "date_order"
 )
 
+// The values of the requirement of a rule.
+const (
+	ruleRequired = "required"
+	ruleOptional = "optional"
+)
+
 // ruleKinds maps a form value onto its cross rule.
 var ruleKinds = map[string]combinedv1.CrossRule{
 	ruleSameSubject:    combinedv1.CrossRule_CROSS_RULE_SAME_SUBJECT,
@@ -76,6 +82,9 @@ const (
 type ruleRow struct {
 	kind, name                             string
 	first, second, firstClaim, secondClaim string
+	// optional marks a rule that may skip. The zero value is required,
+	// so a new rule starts required (ADR-080).
+	optional bool
 }
 
 // combinedForm is what the form holds.
@@ -263,7 +272,7 @@ func (p *Portal) combinedEdit(w http.ResponseWriter, r *http.Request) error {
 // rowOf reads one stored rule into a row of the form.
 func rowOf(rule *combinedv1.CombinedTemplate_Rule) ruleRow {
 	params := rule.GetParams()
-	row := ruleRow{name: rule.GetDisplayName()}
+	row := ruleRow{name: rule.GetDisplayName(), optional: !rule.GetRequired()}
 	switch rule.GetKind() {
 	case combinedv1.CrossRule_CROSS_RULE_SAME_SUBJECT:
 		row.kind, row.first, row.second, row.firstClaim = ruleSameSubject, params[paramLeft], params[paramRight], params[paramClaim]
@@ -305,7 +314,7 @@ func ruleOf(row ruleRow) (*combinedv1.CombinedTemplate_Rule, bool) {
 		set(paramAfterClaim, row.secondClaim)
 	case combinedv1.CrossRule_CROSS_RULE_UNSPECIFIED:
 	}
-	return &combinedv1.CombinedTemplate_Rule{Kind: kind, DisplayName: row.name, Params: params}, true
+	return &combinedv1.CombinedTemplate_Rule{Kind: kind, DisplayName: row.name, Params: params, Required: !row.optional}, true
 }
 
 // combinedSave stores the posted form: a new combined query, or the
@@ -340,6 +349,7 @@ func (p *Portal) combinedSave(w http.ResponseWriter, r *http.Request) error {
 			kind: form.Get("rule_kind." + n), name: strings.TrimSpace(form.Get("rule_name." + n)),
 			first: form.Get("rule_first." + n), second: form.Get("rule_second." + n),
 			firstClaim: strings.TrimSpace(form.Get("rule_first_claim." + n)), secondClaim: strings.TrimSpace(form.Get("rule_second_claim." + n)),
+			optional: form.Get("rule_need."+n) == ruleOptional,
 		}
 		f.rules = append(f.rules, row)
 		if rule, ok := ruleOf(row); ok {
@@ -491,6 +501,12 @@ func (p *Portal) ruleBlock(b *blocks, n int, row ruleRow, queries []components.O
 			Type: "select", Options: pick(row.second), Hint: msg.T("verifier.combined.rule.second.hint")}),
 		b.add("field", components.Field{ID: "rule-second-claim-" + num, Name: "rule_second_claim." + num,
 			Label: msg.T("verifier.combined.rule.second_claim.label"), Value: row.secondClaim}),
+		b.add("choice", components.Choice{ID: "rule-need-" + num, Name: "rule_need." + num,
+			Legend: msg.T("verifier.combined.rule.need.label"), Hint: msg.T("verifier.combined.rule.need.hint"),
+			Options: []components.ChoiceOption{
+				{Value: ruleRequired, Title: msg.T("verifier.combined.rule.required.label"), Text: msg.T("verifier.combined.rule.required.text"), Checked: !row.optional},
+				{Value: ruleOptional, Title: msg.T("verifier.combined.rule.optional.label"), Text: msg.T("verifier.combined.rule.optional.text"), Checked: row.optional},
+			}}),
 	)
 	return b.add("block", components.Block{ID: "rule-" + num, Title: msg.T("verifier.combined.rule.label", num), Body: body})
 }

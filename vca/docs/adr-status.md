@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-079, one row per decision.
+ADR-080, one row per decision.
 
 The status values are:
 
@@ -837,12 +837,21 @@ A row that is not `Done` carries a note.
 | ADR-079 | 4 The combined query pages and the request page | Done | `vca/services/verifier-discovery/internal/portal/combined.go`, `vca/services/verifier-ingest/internal/scanner/request.go`, `vca/internal/rolenav/rolenav.go`, `vca/services/internal/staffshell/staffshell.go` | `TestCombinedPagesListCreateEditAndDelete`, `TestCombinedPagesHideWhenThePairRunsNoCombinedService`, `TestCombinedPagesReadTheCombinedServiceOfTheLink`, `TestACombinedTemplateIsAQueryOfTheRequestPage`, `TestVerifierNavShowsCombinedOnlyWhenThePairRunsIt`, and `TestRunsReadsTheServicesOfTheOwnPair` pin it. |
 | ADR-079 | 5 The callers of the combined service | Done | `vca/internal/cli/services.go`, `docs/deploy.md` | `TestEveryConnectHandlerChecksItsCaller` and `TestDeployDocClassifiesEveryRPC` keep the table and the catalogue in step. |
 
+## ADR-080: A required cross rule that cannot run fails the combined verdict
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-080 | 1 `required` on each rule, marked on the page | Done | `proto/vca/combined/v1/combined.proto`, `vca/services/verifier-discovery/internal/portal/combined.go` | `TestCombinedFormMarksEachRuleRequired` pins it. |
+| ADR-080 | 2 A required rule that cannot run fails | Done | `vca/services/verifier-combined/internal/rules/rules.go`, `vca/services/verifier-combined/internal/service/convert.go` | `TestARequiredRuleThatCannotRunFailsTheVerdict` and `TestEvaluateCombinedFailsOnARequiredRuleThatCannotRun` pin it. |
+| ADR-080 | 3 An optional rule skips | Done | `vca/services/verifier-combined/internal/rules/rules.go` | The same two tests pin it. |
+| ADR-080 | 4 The card names each rule required or optional | Done | `vca/core/policy/policy.go`, `vca/services/verifier-results/internal/cards/cards.go` | `TestResultCardNamesTheRequiredRules` pins it. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 398 |
+| Done | 402 |
 | Partial | 19 |
 | Deferred | 3 |
 | Not started | 5 |
-| Total | 425 |
+| Total | 429 |

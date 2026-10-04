@@ -61,6 +61,9 @@ type Rule struct {
 	DisplayName string
 	// Params are the parameters of the rule.
 	Params map[string]string
+	// Required marks a rule the verifier needs. Such a rule fails when
+	// it cannot run. An optional rule skips.
+	Required bool
 }
 
 // Result is the outcome of one rule. It uses the outcome names of
@@ -76,6 +79,8 @@ type Result struct {
 	// Evidence holds what the rule looked at. It never holds a name or
 	// another personal attribute.
 	Evidence map[string]string
+	// Required says whether the verifier marked the rule required.
+	Required bool
 }
 
 // Run evaluates every rule in order.
@@ -104,6 +109,23 @@ func one(ctx context.Context, r Rule, byID map[string]Credential, creds []Creden
 	if r.DisplayName != "" {
 		got.Name = r.DisplayName
 	}
+	// A rule the verifier needs fails when it cannot run, so the verdict
+	// never passes without it. An optional rule skips.
+	got.Required = r.Required
+	if r.Required && got.Outcome == policy.Skip {
+		got.Outcome, got.Detail = policy.Fail, "a required rule could not run: "+got.Detail
+	}
+	// The evidence names whether the verifier needs the rule, so the
+	// verdict page names the required rules.
+	evidence := make(map[string]string, len(got.Evidence)+1)
+	for k, v := range got.Evidence {
+		evidence[k] = v
+	}
+	evidence[policy.EvidenceRequirement] = policy.RequirementOptional
+	if r.Required {
+		evidence[policy.EvidenceRequirement] = policy.RequirementRequired
+	}
+	got.Evidence = evidence
 	return got
 }
 
@@ -342,7 +364,9 @@ func Kinds() []string {
 }
 
 // Verdict folds the rule results into one outcome. A FAIL wins over an
-// ERROR, and an ERROR wins over a PASS (ADR-026 decision 3).
+// ERROR, and an ERROR wins over a PASS (ADR-026 decision 3). A SKIP is
+// the outcome of an optional rule only, because Run turns the SKIP of a
+// required rule into a FAIL (ADR-080).
 func Verdict(list []Result) policy.Outcome {
 	worst := policy.Pass
 	for _, r := range list {

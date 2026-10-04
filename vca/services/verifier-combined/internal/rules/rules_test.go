@@ -267,3 +267,32 @@ func TestRequiredNeedsOneFullOptionPerSet(t *testing.T) {
 		}
 	}
 }
+
+// TestARequiredRuleThatCannotRunFailsTheVerdict settles the SKIP of a
+// combined verdict per rule: a rule the verifier marked required fails
+// when it cannot run, so the verdict fails. An optional rule that
+// cannot run skips, and the verdict stands. Each result says whether
+// its rule was required.
+func TestARequiredRuleThatCannotRunFailsTheVerdict(t *testing.T) {
+	creds := []Credential{cred("a", subjectCredential("did:key:holder"))}
+	params := map[string]string{ParamLeft: "a", ParamRight: "b"}
+	required := Run(context.Background(), []Rule{{Kind: KindSameSubject, Params: params, Required: true}}, creds)
+	if len(required) != 1 || required[0].Outcome != policy.Fail || !required[0].Required ||
+		required[0].Detail != "a required rule could not run: the presentation has no credential for a named query" ||
+		required[0].Evidence["missing"] != "b" {
+		t.Fatalf("required = %+v", required)
+	}
+	if Verdict(required) != policy.Fail {
+		t.Error("a required rule that cannot run leaves the verdict alone")
+	}
+	optional := Run(context.Background(), []Rule{{Kind: KindSameSubject, Params: params}}, creds)
+	if len(optional) != 1 || optional[0].Outcome != policy.Skip || optional[0].Required || Verdict(optional) != policy.Pass {
+		t.Fatalf("optional = %+v", optional)
+	}
+	// A required rule that runs keeps its own outcome.
+	both := []Credential{cred("a", subjectCredential("did:key:holder")), cred("b", subjectCredential("did:key:holder"))}
+	ran := Run(context.Background(), []Rule{{Kind: KindSameSubject, Params: params, Required: true}}, both)
+	if ran[0].Outcome != policy.Pass || !ran[0].Required {
+		t.Fatalf("ran = %+v", ran)
+	}
+}

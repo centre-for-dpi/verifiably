@@ -85,9 +85,13 @@ the presentation, keyed by DCQL query id.
 delegated access evaluator (ADR-026 decision 5). The rule reports the
 linkage, the permission, and the invocation as evidence.
 
-A rule whose named query is absent from the presentation reports `SKIP`.
-A rule that cannot read a value reports `SKIP` too. Only a real mismatch
-reports `FAIL`. A missing member still fails the combination through the
+A rule whose named query is absent from the presentation cannot run.
+A rule that cannot read a value cannot run either. Each rule carries
+`required` (ADR-080). A required rule that cannot run reports `FAIL`, so
+the verdict is `INVALID`. An optional rule that cannot run reports
+`SKIP` and leaves the verdict alone. The evidence of each rule names
+`requirement`, and the summary card marks each rule required or
+optional. A missing member still fails the combination through the
 check `REQUIRED_MEMBERS` below.
 
 ## Evaluation

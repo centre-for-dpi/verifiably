@@ -88,6 +88,10 @@ message CombinedTemplate {
     map<string, string> params = 2;
     // The display name of the rule on the summary card.
     string display_name = 3;
+    // The verifier needs the rule. A required rule that cannot run, for
+    // example over a credential the answer lacks, fails the verdict. An
+    // optional rule that cannot run skips and leaves the verdict alone.
+    bool required = 4;
   }
 }
 

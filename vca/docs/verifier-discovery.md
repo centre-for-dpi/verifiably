@@ -213,7 +213,9 @@ Staff tick the saved queries that the holder answers together. Two
 queries with the same alternative group form one choice, so either
 answer is enough. A policy set names the checks of each credential.
 Each rule spans two credentials of the merged query: same subject,
-delegation link, or date order. The edit page stores the combined query
+delegation link, or date order. Staff mark each rule required or
+optional. A required rule that cannot run fails the verdict, and a new
+rule starts required (ADR-080). The edit page stores the combined query
 again under its id with `Update`. The delete action calls `Delete`.
 
 The request page of the ingestion service offers each combined query

@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
@@ -257,4 +258,37 @@ func TestResultCardTitleReadsAsWords(t *testing.T) {
 		}
 	}
 	a11ytest.AssertFragment(t, body)
+}
+
+// TestResultCardNamesTheRequiredRules: each cross rule of a combined
+// result says whether the verifier needs it (ADR-080). The summary card
+// marks each rule required or optional, so a reader sees why a rule
+// that could not run failed the verdict.
+func TestResultCardNamesTheRequiredRules(t *testing.T) {
+	r := sample()
+	r.CrossChecks = []*policyv1.CheckResult{
+		{Name: "REQUIRED_MEMBERS", Outcome: policyv1.Outcome_OUTCOME_PASS, Detail: "the presentation answers every required query"},
+		{Name: "Guardian link", Outcome: policyv1.Outcome_OUTCOME_FAIL,
+			Detail:   "a required rule could not run: the presentation has no credential for a named query",
+			Evidence: map[string]string{policy.EvidenceRequirement: policy.RequirementRequired}},
+		{Name: "Same person", Outcome: policyv1.Outcome_OUTCOME_SKIP, Detail: "a credential carries no subject identifier",
+			Evidence: map[string]string{policy.EvidenceRequirement: policy.RequirementOptional}},
+	}
+	out, err := newCards(t).Result(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(out)
+	a11ytest.AssertFragment(t, doc)
+	for _, want := range []string{
+		`Guardian link <span class="badge badge-info">Required rule</span>`,
+		`Same person <span class="badge badge-info">Optional rule</span>`,
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("the card lacks %q\n%s", want, doc)
+		}
+	}
+	if strings.Contains(doc, `REQUIRED_MEMBERS <span`) {
+		t.Error("the members check carries a rule mark")
+	}
 }
