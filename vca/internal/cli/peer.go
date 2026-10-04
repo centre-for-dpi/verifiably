@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -371,6 +372,9 @@ func HelmPeerSecrets(opts PeerHelmOptions) error {
 	if strings.TrimSpace(opts.Release) == "" {
 		return errors.New("the peer secrets need the name of the Helm release")
 	}
+	if !releaseName.MatchString(opts.Release) {
+		return fmt.Errorf("the release name %q is not a Helm release name: use lower case letters, digits, and dashes", opts.Release)
+	}
 	now := time.Now
 	if opts.Now != nil {
 		now = opts.Now
@@ -392,19 +396,30 @@ func HelmPeerSecrets(opts PeerHelmOptions) error {
 	for _, s := range DeploymentServices() {
 		scoped[s.Name] = true
 	}
+	// The identities of the release stay under deploy/peer, which git
+	// ignores, so a later run reuses them (ADR-075 decision 5).
+	dir := HelmPeerDir(opts.Deploy, opts.Release)
+	trusted := authority.PublicSet()
 	var b strings.Builder
 	for _, s := range Catalog() {
-		id, ierr := authority.Issue(peerauth.ID{Service: s.Name, Pair: opts.Release, Deployment: scoped[s.Name]}, opts.Random, now())
-		if ierr != nil {
-			return ierr
+		if !current(dir, trusted, s, scoped[s.Name]) {
+			data, key, ierr := peerIdentity(authority, opts.Release, s, scoped[s.Name], opts.Random, now())
+			if ierr != nil {
+				return ierr
+			}
+			for _, f := range []File{
+				{Name: PeerFile(s.Name), Data: data, Mode: 0o600, DirMode: 0o700},
+				{Name: PeerKeyFile(s.Name), Data: key, Mode: 0o600, DirMode: 0o700},
+			} {
+				if werr := writePeerFile(dir, f); werr != nil {
+					return werr
+				}
+			}
 		}
-		key, kerr := id.KeyJWK()
-		if kerr != nil {
-			return kerr
+		values, key, rerr := readHelmIdentity(dir, s.Name)
+		if rerr != nil {
+			return rerr
 		}
-		id.Callers = s.Callers
-		values := id.Env()
-		values[peerauth.KeyFileEnv] = PeerKeyMount
 		names := make([]string, 0, len(values))
 		for name := range values {
 			names = append(names, name)
@@ -418,6 +433,35 @@ func HelmPeerSecrets(opts PeerHelmOptions) error {
 	}
 	_, err = io.WriteString(opts.Out, b.String())
 	return err
+}
+
+// releaseName matches a Helm release name: a DNS label of at most 53
+// characters.
+var releaseName = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]{0,51}[a-z0-9])?$`)
+
+// HelmPeerDir is the directory that keeps the identities of a Helm
+// release under the deploy directory. Git ignores it with the rest of
+// deploy/peer.
+func HelmPeerDir(deploy, release string) string {
+	return filepath.Join(deploy, PeerDir, "helm", release)
+}
+
+// readHelmIdentity reads the variables and the key of one service of a
+// release from the files of an earlier run.
+func readHelmIdentity(dir, service string) (map[string]string, []byte, error) {
+	raw, err := os.ReadFile(filepath.Join(dir, PeerFile(service))) // #nosec G304 -- the path comes from the deploy root
+	if err != nil {
+		return nil, nil, fmt.Errorf("read the identity of %s: %w", service, err)
+	}
+	values, err := ParseDotenv(bytes.NewReader(raw))
+	if err != nil {
+		return nil, nil, fmt.Errorf("read the identity of %s: %w", service, err)
+	}
+	key, err := os.ReadFile(filepath.Join(dir, PeerKeyFile(service))) // #nosec G304 -- the path comes from the deploy root
+	if err != nil {
+		return nil, nil, fmt.Errorf("read the key of %s: %w", service, err)
+	}
+	return values, key, nil
 }
 
 // writeSecret writes one Secret of the release with the values named.

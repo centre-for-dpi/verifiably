@@ -655,8 +655,14 @@ It mounts its private key from the Secret
 The command prints both Secrets for every service chart.
 It keeps the authority in `deploy/peer/authority.pem`, so a later run
 vouches for the same release.
-Each run issues new keys.
-Run `helm upgrade` after it, so the pods roll and read the new keys.
+It keeps each identity of the release in `deploy/peer/helm/<release>`.
+A second run prints the same Secrets, so `kubectl apply` changes
+nothing and no pod rolls.
+A service gets a new identity only when its callers change, or when the
+authority changes.
+Run `helm upgrade` after such a run, so the pods roll and read the new
+keys.
+The release name takes lower case letters, digits, and dashes.
 A pod does not start without its Secrets.
 Set `peer.secret` and `peer.keySecret` of a chart to read Secrets of
 other names.

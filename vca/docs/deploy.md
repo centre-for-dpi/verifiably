@@ -482,9 +482,13 @@ It writes two Secrets per chart.
 Each pod reads the first as its environment and mounts the key as a
 file.
 A pod does not start without them.
-Each run of `vca peer secrets` issues new keys.
-Run `helm upgrade` after it: the checksum of the two Secrets is an
-annotation of each pod, so the pods roll.
+`vca peer secrets` keeps the identities of each release in
+`deploy/peer/helm/<release>`, which git ignores.
+A second run prints the same Secrets, so it changes nothing.
+A service gets a new identity when its callers change or the authority
+changes.
+Run `helm upgrade` after such a run: the checksum of the two Secrets is
+an annotation of each pod, so the pods roll.
 
 `VCA_PEER_KEY` holds the key itself, as base64url, in the environment.
 It is a fallback for a platform that cannot mount a Secret as a file.

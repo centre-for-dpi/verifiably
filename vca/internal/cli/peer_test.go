@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -723,4 +724,71 @@ func deploymentServiceNamed(t *testing.T, name string) Service {
 	}
 	t.Fatalf("no deployment service %s", name)
 	return Service{}
+}
+
+// TestHelmPeerSecretsTwiceChangesNothing is ADR-075 decision 5 for Helm:
+// a second run of vca peer secrets reuses the Secrets of the first, so
+// kubectl apply changes nothing and the pods do not roll. A new release
+// or a new authority gets new Secrets.
+func TestHelmPeerSecretsTwiceChangesNothing(t *testing.T) {
+	deploy := t.TempDir()
+	run := func(release string) string {
+		t.Helper()
+		var out bytes.Buffer
+		if err := HelmPeerSecrets(PeerHelmOptions{Deploy: deploy, Release: release, Namespace: "ids", Random: rand.Reader, Out: &out}); err != nil {
+			t.Fatal(err)
+		}
+		return out.String()
+	}
+	first, second := run("vca"), run("vca")
+	if first != second {
+		t.Fatalf("a second run changed the Secrets:\n%s", lineDiff(first, second))
+	}
+	if other := run("staging"); other == first || strings.Contains(other, "name: vca-") {
+		t.Error("another release reused the Secrets of the first")
+	}
+	if third := run("vca"); third != first {
+		t.Errorf("a run of another release changed the Secrets of the first:\n%s", lineDiff(first, third))
+	}
+	err := filepath.WalkDir(filepath.Join(deploy, PeerDir), func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		info, ierr := d.Info()
+		if ierr == nil && info.Mode().Perm()&0o077 != 0 && d.Name() != ".gitignore" {
+			t.Errorf("%s has mode %v", path, info.Mode().Perm())
+		}
+		return ierr
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rerr := os.Remove(filepath.Join(deploy, PeerDir, PeerAuthorityFile)); rerr != nil {
+		t.Fatal(rerr)
+	}
+	if rotated := run("vca"); rotated == first {
+		t.Error("a new authority kept the old Secrets")
+	}
+	for _, bad := range []string{"../vca", "VCA", "a/b", strings.Repeat("a", 54)} {
+		if err := HelmPeerSecrets(PeerHelmOptions{Deploy: deploy, Release: bad, Random: rand.Reader, Out: io.Discard}); err == nil {
+			t.Errorf("the release %q worked", bad)
+		}
+	}
+}
+
+// lineDiff names the lines of b that a does not hold, for a failure
+// message. It keeps the field name only, so no key reaches the log.
+func lineDiff(a, b string) string {
+	have := map[string]bool{}
+	for _, l := range strings.Split(a, "\n") {
+		have[l] = true
+	}
+	var out []string
+	for _, l := range strings.Split(b, "\n") {
+		if !have[l] {
+			name, _, _ := strings.Cut(l, ":")
+			out = append(out, "+ "+name)
+		}
+	}
+	return strings.Join(out, "\n")
 }
