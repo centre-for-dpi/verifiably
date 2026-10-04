@@ -195,6 +195,12 @@ request. An attribute appears once, because an agent refuses a name in
 both lists. `?from=<id>` opens a saved request, and a save stores its
 next version. The page works without JavaScript.
 
+An AnonCreds query always gets a policy set of its own. Without the
+trusted issuer rule its request admits any issuer, so its set leaves
+`trust_chain` out. The built in set holds that check, so it never runs
+on the answer of such a query. A query saved before this rule gets its
+set at its next save.
+
 ## Combined queries
 
 The page at `/discovery/combined/` joins saved queries into one request

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anoncreds"
+	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	discoveryv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/discovery/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/verifier-discovery/internal/template"
@@ -69,6 +70,32 @@ func TestBuildNativeAnonCreds(t *testing.T) {
 		AnonCreds: &anoncreds.Request{Attributes: []anoncreds.Attribute{{Names: []string{"a"}}}}})
 	if err != nil || len(unrestricted.Queries) != 1 || unrestricted.Queries[0].Type != "" {
 		t.Errorf("unrestricted = %+v, %v", unrestricted.Queries, err)
+	}
+}
+
+// TestAnonCredsTemplateWithoutTheTrustRuleSkipsTheTrustCheck: an
+// AnonCreds template that admits any issuer gets a policy set of its own
+// without the trust check, so the built in set, which holds that check,
+// never runs on its answer. With the rule the set holds the check.
+func TestAnonCredsTemplateWithoutTheTrustRuleSkipsTheTrustCheck(t *testing.T) {
+	open, err := template.Build(template.Template{DisplayName: "Any farmer", Kind: template.KindNative, AnonCreds: farmerRequest()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !open.HasRules() {
+		t.Fatal("an AnonCreds template without the trust rule falls back to the built in set, which checks the trust list")
+	}
+	for _, c := range open.PolicyChecks() {
+		if c.GetName() == policy.NameTrustChain {
+			t.Errorf("the set of a template open to any issuer checks the trust list: %v", open.PolicyChecks())
+		}
+	}
+	trusted, err := template.Build(template.Template{DisplayName: "Farmer", Kind: template.KindNative, AnonCreds: farmerRequest(), RequireTrustedIssuer: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checks := trusted.PolicyChecks(); len(checks) == 0 || checks[0].GetName() != policy.NameTrustChain {
+		t.Errorf("a trusted template: %v", checks)
 	}
 }
 

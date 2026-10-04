@@ -391,8 +391,11 @@ func checkPredicates(t Template) error {
 }
 
 // HasRules reports whether the template needs a policy set of its own.
+// A native AnonCreds template always has one. Without the trusted issuer
+// rule its request admits any issuer, so its set leaves the trust check
+// out, where the built in set would run it.
 func (t Template) HasRules() bool {
-	return t.RequireTrustedIssuer || t.RequireStatus || len(t.Predicates) > 0
+	return t.Kind == KindNative || t.RequireTrustedIssuer || t.RequireStatus || len(t.Predicates) > 0
 }
 
 // PolicyChecks returns the checks of the policy set of the template:
