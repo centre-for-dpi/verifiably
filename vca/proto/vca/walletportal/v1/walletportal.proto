@@ -293,6 +293,12 @@ message OfferSummary {
   repeated vca.schema.v1.Display display = 5;
   // True when the offer needs a transaction code.
   bool needs_pin = 6;
+  // The display names of the claims the offered credentials carry, read
+  // from the issuer metadata.
+  repeated string claims = 7;
+  // True when the wallet read the issuer metadata. The offer page names
+  // the issuer address and says so when it is false.
+  bool metadata_read = 8;
 }
 
 // ScanRequest carries the decoded QR text.

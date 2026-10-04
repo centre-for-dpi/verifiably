@@ -16,6 +16,7 @@ import (
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/qrscan"
+	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/cards"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/session"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
@@ -219,7 +220,7 @@ func (p *Portal) claim(w http.ResponseWriter, r *http.Request) error {
 		return nil
 	}
 	if id := resp.Msg.GetOfferId(); id != "" {
-		return p.offerPage(w, r, id, false, "")
+		return p.offerPage(w, r, id, nil)
 	}
 	http.Redirect(w, r, p.opts.Prefix+"/", http.StatusSeeOther)
 	return nil
@@ -268,7 +269,7 @@ func (p *Portal) claimOffer(w http.ResponseWriter, r *http.Request) error {
 	case walletportalv1.Detected_KIND_CREDENTIAL_OFFER:
 		offer := found.GetOffer()
 		if (offer.GetNeedsPin() && pin == "") || p.opts.Service.KeepsBrowser(r.Context()) {
-			return p.offerPage(w, r, found.GetOfferId(), offer.GetNeedsPin(), offer.GetIssuerName())
+			return p.offerPage(w, r, found.GetOfferId(), offer)
 		}
 		resp, err := p.opts.Service.Accept(r.Context(), connect.NewRequest(&walletportalv1.AcceptRequest{
 			OfferId: found.GetOfferId(), Pin: pin,
@@ -304,7 +305,7 @@ func (p *Portal) scan(w http.ResponseWriter, r *http.Request) error {
 	found := resp.Msg.GetDetected()
 	switch found.GetKind() {
 	case walletportalv1.Detected_KIND_CREDENTIAL_OFFER:
-		return p.offerPage(w, r, found.GetOfferId(), found.GetOffer().GetNeedsPin(), found.GetOffer().GetIssuerName())
+		return p.offerPage(w, r, found.GetOfferId(), found.GetOffer())
 	case walletportalv1.Detected_KIND_PRESENTATION_REQUEST:
 		http.Redirect(w, r, p.opts.Prefix+"/present?id="+url.QueryEscape(found.GetPresentationId()), http.StatusSeeOther)
 		return nil
@@ -339,7 +340,7 @@ func (p *Portal) scanRead(w http.ResponseWriter, r *http.Request) error {
 	next := ""
 	switch found.GetKind() {
 	case walletportalv1.Detected_KIND_CREDENTIAL_OFFER:
-		card := p.offerCard(b, found.GetOfferId(), found.GetOffer().GetNeedsPin(), found.GetOffer().GetIssuerName())
+		card := p.offerCard(b, found.GetOfferId(), found.GetOffer())
 		if b.err != nil {
 			return b.err
 		}
@@ -369,25 +370,27 @@ func (p *Portal) scanRead(w http.ResponseWriter, r *http.Request) error {
 }
 
 // offerPage renders the accept page of one offer.
-func (p *Portal) offerPage(w http.ResponseWriter, r *http.Request, offerID string, needsPIN bool, issuer string) error {
+func (p *Portal) offerPage(w http.ResponseWriter, r *http.Request, offerID string, offer *walletportalv1.OfferSummary) error {
 	b := p.pen(r)
-	card := p.offerCard(b, offerID, needsPIN, issuer)
+	card := p.offerCard(b, offerID, offer)
 	return p.render(w, r, b, components.Page{
 		Title: msg.T("holder.offer.title.label"), Lead: msg.T("holder.offer.lead"), Description: msg.T("holder.offer.lead"),
 		Content: card,
 	})
 }
 
-// offerCard renders one offer: who offers it, the transaction code when
-// the offer needs one, the accept button, and the decline button when
-// the stack can decline an offer.
-func (p *Portal) offerCard(b *pen, offerID string, needsPIN bool, issuer string) template.HTML {
+// offerCard renders one offer: who offers it, with the address and the
+// trust state of the issuer, the credential and its claims from the
+// issuer metadata, the transaction code when the offer needs one, the
+// accept button, and the decline button when the stack can decline an
+// offer.
+func (p *Portal) offerCard(b *pen, offerID string, offer *walletportalv1.OfferSummary) template.HTML {
 	if p.hybrid(b) {
 		name, _ := stackPage(b)
 		return p.stackCard(b, msg.T("holder.offer.stack", name))
 	}
 	var fields []template.HTML
-	if needsPIN {
+	if offer.GetNeedsPin() {
 		fields = append(fields, b.part("field", components.Field{
 			ID: "pin", Label: msg.T("holder.claim.txcode.label"), Required: true, Hint: msg.T("holder.offer.pin.hint"),
 			Autocomplete: "one-time-code", Attrs: map[string]string{"inputmode": "numeric"},
@@ -399,14 +402,14 @@ func (p *Portal) offerCard(b *pen, offerID string, needsPIN bool, issuer string)
 		// and seals the credential into the browser store (ADR-073).
 		flag, script = "data-browser-claim", p.signingScript(b)
 	}
-	parts := []template.HTML{b.formWith(p.opts.Prefix+"/accept", flag, map[string]string{"offer_id": offerID},
+	parts := []template.HTML{p.offerSummary(b, offer), b.formWith(p.opts.Prefix+"/accept", flag, map[string]string{"offer_id": offerID},
 		components.Button{Text: msg.T("holder.offer.accept.label"), Type: "submit", Variant: "primary"}, fields...) + script}
 	if b.frame.Has(backendv1.Feature_FEATURE_WALLET_REJECT_OFFER) {
 		parts = append(parts, b.form(p.opts.Prefix+"/reject", map[string]string{"offer_id": offerID},
 			components.Button{Text: msg.T("holder.offer.decline.label"), Type: "submit", Variant: "secondary"}))
 	}
 	text := msg.T("holder.offer.anon")
-	if issuer != "" {
+	if issuer := offer.GetIssuerName(); issuer != "" {
 		text = msg.T("holder.offer.from", issuer)
 	}
 	return b.part("card", components.Card{
@@ -460,4 +463,43 @@ func (p *Portal) reject(w http.ResponseWriter, r *http.Request) error {
 	}
 	http.Redirect(w, r, p.opts.Prefix+"/", http.StatusSeeOther)
 	return nil
+}
+
+// offerSummary renders what the holder reads before accepting: the
+// issuer name, address and trust state, the credential type, and the
+// claims. Without the issuer metadata it says so and names the address.
+func (p *Portal) offerSummary(b *pen, offer *walletportalv1.OfferSummary) template.HTML {
+	if offer.GetCredentialIssuer() == "" {
+		return ""
+	}
+	esc := template.HTMLEscapeString
+	parts := []template.HTML{b.raw(`<p class="hint">` + esc(msg.T("holder.offer.issuer.label")) + `</p><p>`)}
+	if name := offer.GetIssuerName(); name != "" {
+		parts = append(parts, b.raw(`<strong>`+esc(name)+`</strong><br>`))
+	}
+	parts = append(parts, b.raw(`<span class="mono">`+esc(offer.GetCredentialIssuer())+`</span></p><p>`),
+		b.part("badge", components.Badge{Text: msg.T("holder.offer.trust.label", cards.TrustWord(offer.GetTrust())), Status: cards.TrustStatus(offer.GetTrust())}),
+		b.raw(`</p>`))
+	if !offer.GetMetadataRead() {
+		return components.Join(append(parts, b.raw(`<p class="error">`+esc(msg.T("holder.offer.unread"))+`</p>`))...)
+	}
+	types := make([]string, 0, len(offer.GetDisplay()))
+	for _, d := range offer.GetDisplay() {
+		types = append(types, d.GetName())
+	}
+	if len(types) == 0 {
+		types = offer.GetTypes()
+	}
+	if len(types) > 0 {
+		parts = append(parts, b.raw(`<p class="hint">`+esc(msg.T("holder.offer.type.label"))+`</p><p><strong>`+
+			esc(strings.Join(types, ", "))+`</strong></p>`))
+	}
+	if len(offer.GetClaims()) > 0 {
+		items := ""
+		for _, c := range offer.GetClaims() {
+			items += `<li>` + esc(c) + `</li>`
+		}
+		parts = append(parts, b.raw(`<p class="hint">`+esc(msg.T("holder.offer.claims.label"))+`</p><ul>`+items+`</ul>`))
+	}
+	return components.Join(parts...)
 }

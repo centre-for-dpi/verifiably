@@ -161,6 +161,17 @@ authorization server leaves the flow to the DPG wallet. The DPG wallet
 then uses the token of the identity provider (ADR-020 decision 3). In browser
 storage the wallet runs no sign in, so the card stays hidden.
 
+The offer page names what the holder accepts. The wallet reads the
+offer object, by value or through `credential_offer_uri`. It then reads
+the issuer metadata from a host on the request host list. The page
+shows the display name and the address of the issuer, and its trust
+state from the trust registry. It shows the display name of each
+offered credential and the display names of its claims. The claims
+come from the claim list of OID4VCI 1.0, the claim map of draft 13, or
+the `credentialSubject` of a W3C configuration. A wallet that cannot
+read the metadata says so, and the page names the address of the
+issuer.
+
 The offer page shows the button Decline only when the adapter of the own
 pair lists `FEATURE_WALLET_REJECT_OFFER`. Without the feature the
 decline address answers 404. A decline reaches the wallet of the stack

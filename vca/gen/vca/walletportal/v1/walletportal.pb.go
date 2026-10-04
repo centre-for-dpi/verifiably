@@ -1261,7 +1261,13 @@ type OfferSummary struct {
 	// The display metadata per type, when known.
 	Display []*v12.Display `protobuf:"bytes,5,rep,name=display,proto3" json:"display,omitempty"`
 	// True when the offer needs a transaction code.
-	NeedsPin      bool `protobuf:"varint,6,opt,name=needs_pin,json=needsPin,proto3" json:"needs_pin,omitempty"`
+	NeedsPin bool `protobuf:"varint,6,opt,name=needs_pin,json=needsPin,proto3" json:"needs_pin,omitempty"`
+	// The display names of the claims the offered credentials carry, read
+	// from the issuer metadata.
+	Claims []string `protobuf:"bytes,7,rep,name=claims,proto3" json:"claims,omitempty"`
+	// True when the wallet read the issuer metadata. The offer page names
+	// the issuer address and says so when it is false.
+	MetadataRead  bool `protobuf:"varint,8,opt,name=metadata_read,json=metadataRead,proto3" json:"metadata_read,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1334,6 +1340,20 @@ func (x *OfferSummary) GetDisplay() []*v12.Display {
 func (x *OfferSummary) GetNeedsPin() bool {
 	if x != nil {
 		return x.NeedsPin
+	}
+	return false
+}
+
+func (x *OfferSummary) GetClaims() []string {
+	if x != nil {
+		return x.Claims
+	}
+	return nil
+}
+
+func (x *OfferSummary) GetMetadataRead() bool {
+	if x != nil {
+		return x.MetadataRead
 	}
 	return false
 }
@@ -3604,7 +3624,7 @@ const file_vca_walletportal_v1_walletportal_proto_rawDesc = "" +
 	"\x0fcarries_request\x18\x05 \x01(\bR\x0ecarriesRequest\x129\n" +
 	"\aoffered\x18\x06 \x03(\v2\x1f.vca.walletportal.v1.NamedValueR\aoffered\x12\x1c\n" +
 	"\trequested\x18\a \x03(\tR\trequested\x12\x12\n" +
-	"\x04name\x18\b \x01(\tR\x04name\"\x82\x02\n" +
+	"\x04name\x18\b \x01(\tR\x04name\"\xbf\x02\n" +
 	"\fOfferSummary\x12+\n" +
 	"\x11credential_issuer\x18\x01 \x01(\tR\x10credentialIssuer\x12\x1f\n" +
 	"\vissuer_name\x18\x02 \x01(\tR\n" +
@@ -3612,7 +3632,9 @@ const file_vca_walletportal_v1_walletportal_proto_rawDesc = "" +
 	"\x05trust\x18\x03 \x01(\x0e2).vca.trust.v1.TrustLookupResponse.OutcomeR\x05trust\x12\x14\n" +
 	"\x05types\x18\x04 \x03(\tR\x05types\x120\n" +
 	"\adisplay\x18\x05 \x03(\v2\x16.vca.schema.v1.DisplayR\adisplay\x12\x1b\n" +
-	"\tneeds_pin\x18\x06 \x01(\bR\bneedsPin\"!\n" +
+	"\tneeds_pin\x18\x06 \x01(\bR\bneedsPin\x12\x16\n" +
+	"\x06claims\x18\a \x03(\tR\x06claims\x12#\n" +
+	"\rmetadata_read\x18\b \x01(\bR\fmetadataRead\"!\n" +
 	"\vScanRequest\x12\x12\n" +
 	"\x04text\x18\x01 \x01(\tR\x04text\"I\n" +
 	"\fScanResponse\x129\n" +

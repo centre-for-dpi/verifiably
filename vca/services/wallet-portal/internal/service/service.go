@@ -437,12 +437,13 @@ func (s *Service) read(ctx context.Context, text string) (*walletportalv1.Detect
 	}
 	switch got.Kind {
 	case detect.Offer:
-		if got.Offer.ByReference && s.BrowserStorage() {
-			// The browser store claims the offer itself, so the page
-			// asks for the transaction code the offer names (ADR-073).
+		if got.Offer.ByReference {
+			// The page names the issuer and the credential, and the
+			// browser store asks for the transaction code the offer
+			// names (ADR-073).
 			if grant, ok := s.readOffer(ctx, got.Offer.URI); ok {
 				got.Offer.CredentialIssuer, got.Offer.ConfigurationIDs = grant.Issuer, grant.IDs
-				got.Offer.NeedsPIN = len(grant.Grants.PreAuthorized.TxCode) > 0
+				got.Offer.NeedsPIN = got.Offer.NeedsPIN || len(grant.Grants.PreAuthorized.TxCode) > 0
 			}
 		}
 		rec := record{ID: id, URI: got.Offer.URI, Issuer: got.Offer.CredentialIssuer,
@@ -451,15 +452,19 @@ func (s *Service) read(ctx context.Context, text string) (*walletportalv1.Detect
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}
 		trust := present.TrustOf(ctx, s.opts.Trust, got.Offer.CredentialIssuer)
+		view := s.offerDetails(ctx, got.Offer.CredentialIssuer, got.Offer.ConfigurationIDs)
 		return &walletportalv1.Detected{
 			Kind:    walletportalv1.Detected_KIND_CREDENTIAL_OFFER,
 			OfferId: id,
 			Offer: &walletportalv1.OfferSummary{
 				CredentialIssuer: got.Offer.CredentialIssuer,
-				IssuerName:       trust.Name,
+				IssuerName:       orName(trust.Name, view.name),
 				Trust:            trust.Outcome,
 				Types:            got.Offer.ConfigurationIDs,
+				Display:          view.displays,
 				NeedsPin:         got.Offer.NeedsPIN,
+				Claims:           view.claims,
+				MetadataRead:     view.read,
 			},
 		}, nil
 	case detect.Request:
