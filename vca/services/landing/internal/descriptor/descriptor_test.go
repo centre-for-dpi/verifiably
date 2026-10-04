@@ -58,6 +58,43 @@ func TestBuildListsPresentPairsAndTheirStacks(t *testing.T) {
 	}
 }
 
+// TestComponentsMergeAcrossLivePairs lists every component of a stack.
+// Each live pair reports the components of its own role, so the stack
+// lists the components of every live pair once, by name and version.
+func TestComponentsMergeAcrossLivePairs(t *testing.T) {
+	stack := configv1.Dpg(3)
+	pair := func(role commonv1.Role, state topology.State, comps ...*backendv1.Component) topology.Status {
+		return topology.Status{
+			Peer:  topology.Peer{Pair: topology.PairName(role, stack), Role: role, Dpg: stack},
+			State: state,
+			Capabilities: &backendv1.GetCapabilitiesResponse{DpgInfo: &backendv1.DpgInfo{
+				DisplayName: "Third stack", Version: "2.2.1", Components: comps,
+			}},
+		}
+	}
+	gateway := &backendv1.Component{Name: "gateway", Version: "2.2.1"}
+	snap := topology.Snapshot{Peers: []topology.Status{
+		pair(commonv1.Role_ROLE_ISSUER, topology.Live, gateway, &backendv1.Component{Name: "issuance", Version: "2.2.1"}),
+		pair(commonv1.Role_ROLE_VERIFIER, topology.Live, gateway, &backendv1.Component{Name: "verification", Version: "2.2.1"}),
+		pair(commonv1.Role_ROLE_HOLDER, topology.Live, &backendv1.Component{Name: "agent", Version: "2.2.1-agent"},
+			&backendv1.Component{Name: "gateway", Version: "2.2.0"}),
+		// A pair that is not live yet adds nothing.
+		pair(commonv1.Role_ROLE_ADMIN, topology.Starting, &backendv1.Component{Name: "groups", Version: "2.2.1"}),
+	}}
+	d := Build("1", "https://vca.example/", snap)
+	if len(d.Stacks) != 1 {
+		t.Fatalf("stacks = %+v", d.Stacks)
+	}
+	var got []string
+	for _, c := range d.Stacks[0].Components {
+		got = append(got, c.Name+"@"+c.Version)
+	}
+	want := "gateway@2.2.1,issuance@2.2.1,verification@2.2.1,agent@2.2.1-agent,gateway@2.2.0"
+	if strings.Join(got, ",") != want {
+		t.Errorf("components = %s\nwant         %s", strings.Join(got, ","), want)
+	}
+}
+
 func TestEmptySnapshotGivesEmptyLists(t *testing.T) {
 	data, err := json.Marshal(Build("", "", topology.Snapshot{}))
 	if err != nil {

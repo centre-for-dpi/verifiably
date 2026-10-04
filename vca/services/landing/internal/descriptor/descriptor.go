@@ -78,16 +78,40 @@ func Build(version, publicURL string, snap topology.Snapshot) Descriptor {
 			i = len(out.Stacks)
 			out.Stacks = append(out.Stacks, Stack{ID: id, Name: id, Components: []Component{}})
 		}
-		if info := st.Capabilities.GetDpgInfo(); info != nil && out.Stacks[i].Version == "" {
-			out.Stacks[i].Name = info.GetDisplayName()
-			out.Stacks[i].Version = info.GetVersion()
-			out.Stacks[i].Components = components(info.GetComponents())
+		if info := st.Capabilities.GetDpgInfo(); info != nil {
+			if out.Stacks[i].Version == "" {
+				out.Stacks[i].Name = info.GetDisplayName()
+				out.Stacks[i].Version = info.GetVersion()
+			}
+			// Each live pair reports the components of its own role, so
+			// the stack lists the components of every live pair.
+			if st.State == topology.Live {
+				out.Stacks[i].Components = merge(out.Stacks[i].Components, components(info.GetComponents()))
+			}
 		}
 		out.Pairs = append(out.Pairs, Pair{
 			Pair: st.Peer.Pair, Role: RoleID(st.Peer.Role), Stack: id, State: st.State.String(), PublicURL: st.Peer.PublicURL,
 		})
 	}
 	return out
+}
+
+// merge appends the components of more that the list does not hold
+// yet. A component is the same when its name and its version match.
+func merge(list, more []Component) []Component {
+	for _, c := range more {
+		known := false
+		for _, have := range list {
+			if have.Name == c.Name && have.Version == c.Version {
+				known = true
+				break
+			}
+		}
+		if !known {
+			list = append(list, c)
+		}
+	}
+	return list
 }
 
 // components converts the adapter answer.

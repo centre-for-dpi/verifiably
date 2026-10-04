@@ -31,6 +31,9 @@ One check stops after one second. The answer lives for fifteen seconds
 The stack cards come from the `GetCapabilities` answer of the live
 adapters. Each card shows the display name of the stack and its pinned
 version. It lists the components with their pinned versions. Each
+live pair reports the components of its own role, so the card lists the
+components of every live pair. A component with the same name and
+version shows once. Each
 component links to its repository and to its documentation. The service holds no vendor name: a
 test fails when one appears in its source (ADR-001 decision 4). A stack
 whose pairs all start, or whose only present pair is the admin, has no
