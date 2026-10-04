@@ -98,9 +98,15 @@ The memory check adds only the pairs you selected.
 | `public url` | `VCA_PUBLIC_URL` resolves when it is not localhost. |
 | `port 80`, `port 443` | Both are free when you use a public URL. |
 | `stack secrets <dpg>` | No volume of the stack is older than the secrets of `deploy/<dpg>/.env` with another password. |
+| `peer authority` | `deploy/peer/authority.pem` exists once setup wrote a pair. The fix is `vca dpg upgrade-secrets`. |
+| `peer identity <pair>/<service>` | The identity file and the key file of the service exist. The authority signed the identity, with the callers, the scope, and the host ports of the catalogue. The fix is `vca dpg upgrade-secrets`. |
+| `peer identity <pair>/<service>`, key | The container user reads the key file, so its mode is 0644. The fix is the `chmod 0644` command on the line. |
 
 The public URL comes from the environment, or from the `.env` file of the
 pair.
+The peer checks cover each selected pair with a `.env` file, and the
+landing (ADR-075).
+A host before setup has no peer check.
 
 When the free memory is under the floor, `doctor` and `setup` print one
 hint:

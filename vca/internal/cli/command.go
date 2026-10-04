@@ -702,6 +702,7 @@ func newDoctorCommand(env *Environment) *cobra.Command {
 				Landing: landingValuesOrNil(env.Root),
 				Probe:   env.NewProbe(cmd.Context()),
 				Out:     cmd.OutOrStdout(),
+				Deploy:  deployRoot,
 			})
 		},
 	}

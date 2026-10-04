@@ -100,6 +100,10 @@ type DoctorOptions struct {
 	Probe Probe
 	// Out receives the report.
 	Out io.Writer
+	// Deploy is the deploy directory. With it the doctor checks the
+	// peer identities of each pair that setup wrote (ADR-075). Empty
+	// skips them.
+	Deploy string
 }
 
 // ErrDoctorFailed reports at least one failed check. The command exits
@@ -269,6 +273,9 @@ func RunChecks(opts DoctorOptions) []Check {
 	out = append(out, portChecks(opts)...)
 	out = append(out, publicURLChecks(opts)...)
 	out = append(out, stackVolumeChecks(opts)...)
+	if opts.Deploy != "" {
+		out = append(out, PeerChecks(opts.Deploy, opts.Pairs)...)
+	}
 	return out
 }
 
