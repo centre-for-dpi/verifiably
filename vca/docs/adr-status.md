@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-080, one row per decision.
+ADR-081, one row per decision.
 
 The status values are:
 
@@ -846,12 +846,23 @@ A row that is not `Done` carries a note.
 | ADR-080 | 3 An optional rule skips | Done | `vca/services/verifier-combined/internal/rules/rules.go` | The same two tests pin it. |
 | ADR-080 | 4 The card names each rule required or optional | Done | `vca/core/policy/policy.go`, `vca/services/verifier-results/internal/cards/cards.go` | `TestResultCardNamesTheRequiredRules` pins it. |
 
+## ADR-081: Consent equals disclosure on every holder path
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-081 | 1 Consent equals disclosure on every holder path | Partial | `vca/services/wallet-portal/internal/service/service.go` | The browser store holds the rule. The stack wallets follow in decision 5. |
+| ADR-081 | 2 Fixed claims on the card and the consent screen | Done | `vca/core/vc/fixed.go`, `vca/services/wallet-portal/internal/present/present.go` | `TestConsentEqualsDisclosure` and `TestConsentListsAlwaysSentClaims` pin it. |
+| ADR-081 | 3 The browser store records what its tokens reveal | Done | `vca/services/wallet-portal/internal/service/service.go` | `TestConsentEqualsDisclosure` pins it. |
+| ADR-081 | 4 Inji `sdClaim` paths and `$.identityQR` | Done | `vca/services/dpg-adapter-inji/internal/inji/configs.go` | `TestIdentityQRIsSelectivelyDisclosable` pins it. |
+| ADR-081 | 5 A stack wallet adapter refuses an unconsented claim | Not started | | |
+| ADR-081 | 6 A guard test across the adapters | Not started | | |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 402 |
-| Partial | 19 |
+| Done | 405 |
+| Partial | 20 |
 | Deferred | 3 |
-| Not started | 5 |
-| Total | 429 |
+| Not started | 7 |
+| Total | 435 |

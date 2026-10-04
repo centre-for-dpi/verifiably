@@ -179,10 +179,14 @@ func (p *Portal) asked(b *pen, index int, entry *walletportalv1.PresentStartResp
 	var hidden []template.HTML
 	for _, c := range entry.GetClaims() {
 		o := components.ChoiceOption{Value: c.GetPath(), Title: c.GetPath(), Text: valueText(c.GetValue())}
-		if c.GetMandatory() {
+		switch {
+		case c.GetAlwaysSent():
+			o.Meta, o.Checked, o.Disabled = msg.T("holder.present.always"), true, true
+			hidden = append(hidden, b.hidden(name, c.GetPath()))
+		case c.GetMandatory():
 			o.Meta, o.Checked, o.Disabled = msg.T("holder.present.required.label"), true, true
 			hidden = append(hidden, b.hidden(name, c.GetPath()))
-		} else {
+		default:
 			o.Meta = msg.T("holder.present.optional")
 		}
 		choice.Options = append(choice.Options, o)

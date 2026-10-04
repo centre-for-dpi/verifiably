@@ -1775,6 +1775,7 @@ var en = map[string]string{
 	"holder.present.nomatch":                  "You hold no credential that matches this request.",
 	"holder.present.ask.label":                "They ask for",
 	"holder.present.required.label":           "Required",
+	"holder.present.always":                   "Always sent. This credential shows it in every answer.",
 	"holder.present.optional":                 "Optional. Off by default.",
 	"holder.present.noclaim":                  "The verifier asks for no single claim.",
 	"holder.present.share.label":              "Share selected",

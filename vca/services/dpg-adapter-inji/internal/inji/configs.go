@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -381,12 +382,16 @@ func BuildConfiguration(in ConfigInput, p Profiles) (ConfigurationDTO, error) {
 		dto.SdJwtVct = in.Type
 		dto.KeyManagerAppID, dto.KeyManagerRefID = p.SdJwt.AppID, p.SdJwt.RefID
 		dto.SignatureAlgo = p.SdJwt.Algorithm
-		dto.SdClaim = strings.Join(in.SDClaims, ",")
 		dto.SdJwtClaims = claimDisplays(claims, locales)
 		dto.QrSettings = qrSettings(claims)
+		sd := in.SDClaims
 		if dto.QrSettings != nil {
 			dto.QrSignatureAlgo = p.SdJwt.Algorithm
+			// The code carries the identity claims in the clear, so it
+			// travels only when a verifier asks for it.
+			sd = append(slices.Clone(sd), IdentityQRClaim)
 		}
+		dto.SdClaim = sdPaths(sd)
 		dto.VcTemplate = encodeTemplate(guarded(in.ID, sdJwtTemplate(claims, dto.QrSettings)))
 	case "mso_mdoc":
 		ns := MdocNamespace(in.Type)
@@ -404,6 +409,24 @@ func BuildConfiguration(in ConfigInput, p Profiles) (ConfigurationDTO, error) {
 		return ConfigurationDTO{}, fmt.Errorf("%w, not %q", ErrUnsupportedFormat, in.Format)
 	}
 	return dto, nil
+}
+
+// sdPaths returns the sdClaim value of Certify 0.14.0: the JSON paths
+// from the root, joined by commas. SDJsonUtils compares path segments,
+// so a bare name such as fullName matches no claim and becomes $.fullName.
+func sdPaths(names []string) string {
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		n = strings.TrimSpace(n)
+		switch {
+		case n == "":
+			continue
+		case !strings.HasPrefix(n, "$"):
+			n = "$." + n
+		}
+		out = append(out, n)
+	}
+	return strings.Join(out, ",")
 }
 
 // claim is one top level property of the schema.

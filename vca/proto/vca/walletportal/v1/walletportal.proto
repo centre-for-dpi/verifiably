@@ -101,6 +101,10 @@ message Card {
   bool in_browser = 14;
   // True when the wallet of the stack cannot remove the credential.
   bool permanent = 15;
+  // The claims that every presentation of the credential sends, whatever
+  // the holder ticks: an SD-JWT claim outside any disclosure, or each
+  // claim of a format the wallet cannot disclose in part.
+  repeated string fixed_claims = 16;
 
   // RevocationState names what the status list says.
   enum RevocationState {
@@ -428,6 +432,10 @@ message PresentStartResponse {
       string value = 2;
       // True when the verifier marks the claim as needed.
       bool mandatory = 3;
+      // True when the matched credential sends the claim in every
+      // presentation, so the holder cannot leave it out. The consent
+      // screen lists it even when the verifier did not ask for it.
+      bool always_sent = 4;
     }
   }
 }

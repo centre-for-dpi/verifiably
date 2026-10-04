@@ -357,7 +357,11 @@ type Card struct {
 	// wallet of the stack carries false.
 	InBrowser bool `protobuf:"varint,14,opt,name=in_browser,json=inBrowser,proto3" json:"in_browser,omitempty"`
 	// True when the wallet of the stack cannot remove the credential.
-	Permanent     bool `protobuf:"varint,15,opt,name=permanent,proto3" json:"permanent,omitempty"`
+	Permanent bool `protobuf:"varint,15,opt,name=permanent,proto3" json:"permanent,omitempty"`
+	// The claims that every presentation of the credential sends, whatever
+	// the holder ticks: an SD-JWT claim outside any disclosure, or each
+	// claim of a format the wallet cannot disclose in part.
+	FixedClaims   []string `protobuf:"bytes,16,rep,name=fixed_claims,json=fixedClaims,proto3" json:"fixed_claims,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -495,6 +499,13 @@ func (x *Card) GetPermanent() bool {
 		return x.Permanent
 	}
 	return false
+}
+
+func (x *Card) GetFixedClaims() []string {
+	if x != nil {
+		return x.FixedClaims
+	}
+	return nil
 }
 
 // Offering is one schema an issuer offers.
@@ -3382,7 +3393,11 @@ type PresentStartResponse_RequestedCredential_Claim struct {
 	// The value the wallet would disclose, as text.
 	Value string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
 	// True when the verifier marks the claim as needed.
-	Mandatory     bool `protobuf:"varint,3,opt,name=mandatory,proto3" json:"mandatory,omitempty"`
+	Mandatory bool `protobuf:"varint,3,opt,name=mandatory,proto3" json:"mandatory,omitempty"`
+	// True when the matched credential sends the claim in every
+	// presentation, so the holder cannot leave it out. The consent
+	// screen lists it even when the verifier did not ask for it.
+	AlwaysSent    bool `protobuf:"varint,4,opt,name=always_sent,json=alwaysSent,proto3" json:"always_sent,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3438,6 +3453,13 @@ func (x *PresentStartResponse_RequestedCredential_Claim) GetMandatory() bool {
 	return false
 }
 
+func (x *PresentStartResponse_RequestedCredential_Claim) GetAlwaysSent() bool {
+	if x != nil {
+		return x.AlwaysSent
+	}
+	return false
+}
+
 // ClaimPaths is a list of claim paths.
 type PresentConfirmRequest_ClaimPaths struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -3488,7 +3510,7 @@ var File_vca_walletportal_v1_walletportal_proto protoreflect.FileDescriptor
 
 const file_vca_walletportal_v1_walletportal_proto_rawDesc = "" +
 	"\n" +
-	"&vca/walletportal/v1/walletportal.proto\x12\x13vca.walletportal.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\x1a\x1avca/schema/v1/schema.proto\x1a\x18vca/trust/v1/trust.proto\"\xff\x06\n" +
+	"&vca/walletportal/v1/walletportal.proto\x12\x13vca.walletportal.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\x1a\x1avca/schema/v1/schema.proto\x1a\x18vca/trust/v1/trust.proto\"\xa2\a\n" +
 	"\x04Card\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x12\n" +
@@ -3511,7 +3533,8 @@ const file_vca_walletportal_v1_walletportal_proto_rawDesc = "" +
 	"\adisplay\x18\r \x01(\v2\x16.vca.schema.v1.DisplayR\adisplay\x12\x1d\n" +
 	"\n" +
 	"in_browser\x18\x0e \x01(\bR\tinBrowser\x12\x1c\n" +
-	"\tpermanent\x18\x0f \x01(\bR\tpermanent\x1a9\n" +
+	"\tpermanent\x18\x0f \x01(\bR\tpermanent\x12!\n" +
+	"\ffixed_claims\x18\x10 \x03(\tR\vfixedClaims\x1a9\n" +
 	"\vClaimsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc6\x01\n" +
@@ -3623,7 +3646,7 @@ const file_vca_walletportal_v1_walletportal_proto_rawDesc = "" +
 	"\x04page\x18\x02 \x01(\v2\x19.vca.common.v1.PageResultR\x04page\x12#\n" +
 	"\rstack_problem\x18\x03 \x01(\tR\fstackProblem\">\n" +
 	"\x13PresentStartRequest\x12'\n" +
-	"\x0fpresentation_id\x18\x01 \x01(\tR\x0epresentationId\"\xba\x05\n" +
+	"\x0fpresentation_id\x18\x01 \x01(\tR\x0epresentationId\"\xdb\x05\n" +
 	"\x14PresentStartResponse\x12'\n" +
 	"\x0fpresentation_id\x18\x01 \x01(\tR\x0epresentationId\x12\x1a\n" +
 	"\bverifier\x18\x02 \x01(\tR\bverifier\x12#\n" +
@@ -3631,17 +3654,19 @@ const file_vca_walletportal_v1_walletportal_proto_rawDesc = "" +
 	"\x05trust\x18\x04 \x01(\x0e2).vca.trust.v1.TrustLookupResponse.OutcomeR\x05trust\x12[\n" +
 	"\trequested\x18\x05 \x03(\v2=.vca.walletportal.v1.PresentStartResponse.RequestedCredentialR\trequested\x12\x18\n" +
 	"\apurpose\x18\x06 \x01(\tR\apurpose\x12'\n" +
-	"\x0fduring_issuance\x18\a \x01(\bR\x0eduringIssuance\x1a\xd6\x02\n" +
+	"\x0fduring_issuance\x18\a \x01(\bR\x0eduringIssuance\x1a\xf7\x02\n" +
 	"\x13RequestedCredential\x12\x19\n" +
 	"\bquery_id\x18\x01 \x01(\tR\aqueryId\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12-\n" +
 	"\x06format\x18\x03 \x01(\x0e2\x15.vca.common.v1.FormatR\x06format\x123\n" +
 	"\amatches\x18\x04 \x03(\v2\x19.vca.walletportal.v1.CardR\amatches\x12[\n" +
-	"\x06claims\x18\x05 \x03(\v2C.vca.walletportal.v1.PresentStartResponse.RequestedCredential.ClaimR\x06claims\x1aO\n" +
+	"\x06claims\x18\x05 \x03(\v2C.vca.walletportal.v1.PresentStartResponse.RequestedCredential.ClaimR\x06claims\x1ap\n" +
 	"\x05Claim\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\x12\x1c\n" +
-	"\tmandatory\x18\x03 \x01(\bR\tmandatory\"\xfb\x03\n" +
+	"\tmandatory\x18\x03 \x01(\bR\tmandatory\x12\x1f\n" +
+	"\valways_sent\x18\x04 \x01(\bR\n" +
+	"alwaysSent\"\xfb\x03\n" +
 	"\x15PresentConfirmRequest\x12'\n" +
 	"\x0fpresentation_id\x18\x01 \x01(\tR\x0epresentationId\x12d\n" +
 	"\x0eselected_cards\x18\x02 \x03(\v2=.vca.walletportal.v1.PresentConfirmRequest.SelectedCardsEntryR\rselectedCards\x12W\n" +

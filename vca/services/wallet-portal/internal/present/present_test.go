@@ -608,3 +608,48 @@ func TestRequestObjectText(t *testing.T) {
 		}
 	}
 }
+
+// TestConsentListsTheFixedClaimsOfEachMatch lists every claim that any
+// match sends in every answer: a requested one turns locked, and one the
+// verifier did not ask for joins the list with the value of the first
+// match that holds it (ADR-081).
+func TestConsentListsTheFixedClaimsOfEachMatch(t *testing.T) {
+	req, err := present.ParseObject(object(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := card("c1", "DriverLicence", commonv1.Format_FORMAT_DC_SD_JWT, map[string]string{"given_name": "Ada"})
+	first.FixedClaims = []string{"given_name"}
+	second := card("c2", "DriverLicence", commonv1.Format_FORMAT_DC_SD_JWT, map[string]string{"code": "QR-2"})
+	second.FixedClaims = []string{"code", "given_name"}
+	entry := present.Consent(req, []*walletportalv1.Card{first, second})[0]
+	got := map[string]*walletportalv1.PresentStartResponse_RequestedCredential_Claim{}
+	for _, c := range entry.GetClaims() {
+		got[c.GetPath()] = c
+	}
+	if c := got["given_name"]; !c.GetAlwaysSent() || !c.GetMandatory() {
+		t.Errorf("given_name = %+v, want always sent", c)
+	}
+	if c := got["birth_date"]; c.GetAlwaysSent() {
+		t.Errorf("birth_date = %+v, want a claim the holder chooses", c)
+	}
+	if c := got["code"]; !c.GetAlwaysSent() || !c.GetMandatory() || c.GetValue() != "QR-2" {
+		t.Errorf("code = %+v, want the fixed claim of the second match", c)
+	}
+	if len(entry.GetClaims()) != 3 {
+		t.Errorf("claims = %+v", entry.GetClaims())
+	}
+}
+
+// TestRevealed names the claims a token shows the verifier, and none for
+// a token the wallet cannot decode.
+func TestRevealed(t *testing.T) {
+	ld := `{"@context":["https://www.w3.org/ns/credentials/v2"],"type":["VerifiableCredential"],` +
+		`"credentialSubject":{"b":"2","a":"1"}}`
+	if got := present.Revealed(ld); strings.Join(got, ",") != "a,b" {
+		t.Fatalf("revealed = %v", got)
+	}
+	if got := present.Revealed("not a credential"); got != nil {
+		t.Fatalf("an unreadable token reveals %v", got)
+	}
+}

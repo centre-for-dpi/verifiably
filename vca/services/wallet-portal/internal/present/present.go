@@ -31,6 +31,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
+	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/cards"
@@ -437,16 +438,83 @@ func Consent(r Request, held []*walletportalv1.Card) []*walletportalv1.PresentSt
 		if len(entry.GetMatches()) > 0 {
 			first = entry.GetMatches()[0]
 		}
+		fixed := fixedClaims(entry.GetMatches())
 		for _, claim := range cq.Claims {
 			path := claim.Path.String()
+			sent := slices.Contains(fixed, path)
 			entry.Claims = append(entry.Claims, &walletportalv1.PresentStartResponse_RequestedCredential_Claim{
-				Path:      path,
-				Value:     valueOf(first, path),
-				Mandatory: mandatory(cq, claim.ID),
+				Path:       path,
+				Value:      valueOf(first, path),
+				Mandatory:  sent || mandatory(cq, claim.ID),
+				AlwaysSent: sent,
+			})
+		}
+		// A claim the credential sends in every presentation goes on
+		// the screen too, although the verifier did not ask for it, so
+		// the holder consents to all that leaves the wallet (ADR-081).
+		for _, name := range fixed {
+			if listed(entry, name) {
+				continue
+			}
+			entry.Claims = append(entry.Claims, &walletportalv1.PresentStartResponse_RequestedCredential_Claim{
+				Path: name, Value: valueIn(entry.GetMatches(), name), Mandatory: true, AlwaysSent: true,
 			})
 		}
 		out = append(out, entry)
 	}
+	return out
+}
+
+// fixedClaims returns the claims that any of the matched cards sends in
+// every presentation, in name order. The holder may pick any match, so
+// the screen lists the claims of each.
+func fixedClaims(matches []*walletportalv1.Card) []string {
+	var out []string
+	for _, m := range matches {
+		for _, name := range m.GetFixedClaims() {
+			if !slices.Contains(out, name) {
+				out = append(out, name)
+			}
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// listed reports whether a consent entry lists a claim path.
+func listed(entry *walletportalv1.PresentStartResponse_RequestedCredential, path string) bool {
+	for _, c := range entry.GetClaims() {
+		if c.GetPath() == path {
+			return true
+		}
+	}
+	return false
+}
+
+// valueIn returns the value of a claim on the first match that has it.
+func valueIn(matches []*walletportalv1.Card, path string) string {
+	for _, m := range matches {
+		if v := valueOf(m, path); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// Revealed returns the display claim names a token shows the verifier,
+// in name order: the plain claims and the disclosures an SD-JWT keeps,
+// or each claim of a credential with no selective disclosure. A token
+// the wallet cannot decode, such as an mDoc, gives none.
+func Revealed(token string) []string {
+	parsed, err := vc.Parse([]byte(token))
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(parsed.Claims))
+	for name := range parsed.Claims {
+		out = append(out, name)
+	}
+	slices.Sort(out)
 	return out
 }
 

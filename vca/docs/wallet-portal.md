@@ -393,6 +393,15 @@ submit. Without one the service builds the SD-JWT presentation itself.
 It keeps only the disclosures the citizen agreed to, so the verifier
 reads nothing more.
 
+Consent equals disclosure (ADR-081). Some claims travel in every
+answer. An SD-JWT claim outside a disclosure is one. Each claim of a
+JSON-LD or JWT credential is one too. The card of a credential names
+these claims in `fixed_claims`. The consent screen lists each of them,
+ticked and locked, with the words "Always sent". It lists them also
+when the verifier did not ask for them. The record of an answer from
+the browser store names the claims that the posted token reveals. It
+does not name the ticks.
+
 A credential of the browser store that names a holder key in
 `cnf.jwk` needs a key binding JWT. The consent form carries the field
 `key_binding`, which `wallet.js` fills before the form goes.

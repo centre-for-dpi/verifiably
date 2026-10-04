@@ -147,3 +147,28 @@ func sameMap(a, b map[string]string) bool {
 	}
 	return true
 }
+
+// TestIdentityQRIsSelectivelyDisclosable keeps the signed identity code
+// out of every SD-JWT presentation that does not ask for it. The code
+// carries the identity claims in the clear, so a plain claim would leak
+// each of them to every verifier (proof run, Inji steps 085 to 087).
+// Certify 0.14.0 reads sdClaim as JSON paths from the root ($.name), so
+// the adapter writes each name as such a path.
+func TestIdentityQRIsSelectivelyDisclosable(t *testing.T) {
+	dto, err := BuildConfiguration(ConfigInput{ID: "Identity_sd", Format: "vc+sd-jwt", Type: "NationalIdentityCredential",
+		JSONSchema: identitySchema, SDClaims: []string{"fullName", "$.gender"}}, DefaultProfiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "$.fullName,$.gender,$." + IdentityQRClaim; dto.SdClaim != want {
+		t.Fatalf("sdClaim = %q, want %q", dto.SdClaim, want)
+	}
+	plain, err := BuildConfiguration(ConfigInput{ID: "Farm_sd", Format: "vc+sd-jwt", Type: "FarmCredential",
+		JSONSchema: `{"type":"object","properties":{"farmerID":{"type":"string"}}}`, SDClaims: []string{"farmerID"}}, DefaultProfiles())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.SdClaim != "$.farmerID" {
+		t.Fatalf("a credential with no identity code wants no code path: %q", plain.SdClaim)
+	}
+}

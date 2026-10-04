@@ -115,6 +115,11 @@ func (b *Builder) Card(ctx context.Context, held *backendv1.WalletCredential) *w
 		card.Issuer = parsed.Issuer
 	}
 	card.Claims = claimsOf(parsed)
+	// The consent screen lists what every presentation sends, so consent
+	// equals disclosure (ADR-081).
+	if fixed, ferr := vc.FixedClaims(payload); ferr == nil {
+		card.FixedClaims = fixed
+	}
 	card.Validity = validityOf(parsed)
 	card.Revocation = b.revocation(ctx, parsed)
 	trust := b.trust(ctx, card.GetIssuer(), card.GetType())

@@ -60,3 +60,4 @@ each decision of each record.
 - [ADR-078: The vca command manages the combined templates of a verifier pair](adr/ADR-078-cli-manages-combined-templates.md)
 - [ADR-079: The ingestion service requests and evaluates combined templates](adr/ADR-079-ingest-requests-combined-templates.md)
 - [ADR-080: A required cross rule that cannot run fails the combined verdict](adr/ADR-080-required-cross-rules.md)
+- [ADR-081: Consent equals disclosure on every holder path](adr/ADR-081-consent-equals-disclosure.md)

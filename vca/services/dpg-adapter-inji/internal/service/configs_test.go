@@ -103,7 +103,7 @@ func TestRegisterCreatesConfiguration(t *testing.T) {
 		t.Fatalf("register SD-JWT: %v", rerr)
 	}
 	sd := stored(t, f, "Degree_vc+sd-jwt")
-	if sd.SdJwtVct != "https://u.example/vct/degree" || sd.SignatureAlgo != "ES256" || sd.SdClaim != "name" {
+	if sd.SdJwtVct != "https://u.example/vct/degree" || sd.SignatureAlgo != "ES256" || sd.SdClaim != "$.name,$."+inji.IdentityQRClaim {
 		t.Fatalf("SD-JWT entry %+v", sd)
 	}
 	if _, ok := sd.SdJwtClaims[inji.ValidFromClaim]; ok {

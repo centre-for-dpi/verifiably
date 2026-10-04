@@ -643,6 +643,17 @@ too. The entry signs with the algorithm of its credential key. The
 template writes the first code into the claim `identityQR`, under a
 guard for a credential without a code.
 
+The code carries the identity claims in the clear. So an SD-JWT entry
+names `$.identityQR` in `sdClaim`, and the code travels only to a
+verifier that asks for it (ADR-081). Certify 0.14.0 reads `sdClaim` as
+JSON paths from the root, split at commas, in
+[VelocityTemplatingEngineImpl](https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/vcformatters/VelocityTemplatingEngineImpl.java)
+and [SDJsonUtils](https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/utils/SDJsonUtils.java).
+The adapter writes each selectively disclosable claim `fullName` as
+`$.fullName`. A bare name matches no path, and the claim would travel
+in the clear. A JSON-LD credential has no selective disclosure. The
+wallet consent screen lists its `identityQR` as always sent.
+
 `Issue` reads the claim back from the credential. It checks the text
 with the Claim 169 decoder of `core/ingest` and returns it in
 `claim169_qr`. The issuance service prints it on a document for the

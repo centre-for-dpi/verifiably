@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -846,7 +847,7 @@ func (s *Service) PresentConfirm(ctx context.Context,
 	case s.opts.Holder != nil && !s.inBrowser(ctx, citizen, chosen[0]):
 		answer, shared, err = s.presentWithBackend(ctx, citizen, parsed, chosen, disclosed)
 	default:
-		answer, err = s.presentDirect(ctx, citizen, parsed, choices(req.Msg), req.Msg.GetKeyBinding())
+		answer, shared, err = s.presentDirect(ctx, citizen, parsed, choices(req.Msg), req.Msg.GetKeyBinding())
 	}
 	result := walletportalv1.PresentationRecord_RESULT_FAILED
 	switch {
@@ -855,7 +856,8 @@ func (s *Service) PresentConfirm(ctx context.Context,
 	case err == nil:
 		result = walletportalv1.PresentationRecord_RESULT_REJECTED
 	}
-	// The stack names what it shared. That wins over the ticks.
+	// The stack names what it shared, and the browser store reads what
+	// its tokens reveal. That wins over the ticks (ADR-081).
 	names := shared
 	if len(names) == 0 {
 		names = disclosed
@@ -933,24 +935,31 @@ func (s *Service) presentWithBackend(ctx context.Context, citizen session.Citize
 // chose and posts it with direct_post (ADR-021 decision 5). Every chosen
 // credential goes, so a combined query gets each of its members. One
 // credential goes as it is. Several go as a JSON object of query id to
-// presentations (OID4VP 1.0 section 8.1).
+// presentations (OID4VP 1.0 section 8.1). It returns the claim names
+// the tokens reveal, so the history names what left the wallet.
 func (s *Service) presentDirect(ctx context.Context, citizen session.Citizen,
 	parsed present.Request, picks []choice, keyBinding string,
-) (*walletportalv1.PresentConfirmResponse, error) {
+) (*walletportalv1.PresentConfirmResponse, []string, error) {
 	bindings, single, err := keyBindings(keyBinding)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	tokens := make(map[string][]string, len(picks))
 	var only string
+	var revealed []string
 	for _, c := range picks {
 		rec, gerr := s.get(ctx, KindHeld, citizen.WalletKey(), c.card)
 		if gerr != nil {
-			return nil, recordError(gerr)
+			return nil, nil, recordError(gerr)
 		}
 		token, key, bound, terr := disclosedToken(rec, c.paths)
 		if terr != nil {
-			return nil, terr
+			return nil, nil, terr
+		}
+		for _, name := range present.Revealed(token) {
+			if !slices.Contains(revealed, name) {
+				revealed = append(revealed, name)
+			}
 		}
 		if bound {
 			kb := bindings[c.query]
@@ -961,7 +970,7 @@ func (s *Service) presentDirect(ctx context.Context, citizen session.Citizen,
 			// A holder bound SD-JWT needs the key binding of the browser
 			// (ADR-073).
 			if token, err = bind(token, kb, key, parsed); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 		tokens[c.query] = append(tokens[c.query], token)
@@ -971,17 +980,18 @@ func (s *Service) presentDirect(ctx context.Context, citizen session.Citizen,
 	if len(picks) > 1 {
 		raw, merr := json.Marshal(tokens)
 		if merr != nil {
-			return nil, connect.NewError(connect.CodeInternal, merr)
+			return nil, nil, connect.NewError(connect.CodeInternal, merr)
 		}
 		vpToken = string(raw)
 	}
 	result, err := present.Submit(ctx, parsed, vpToken, s.opts.Post)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, errors.New(result.Message))
+		return nil, nil, connect.NewError(connect.CodeUnavailable, errors.New(result.Message))
 	}
+	slices.Sort(revealed)
 	return &walletportalv1.PresentConfirmResponse{
 		Accepted: result.Accepted, RedirectUri: result.RedirectURI, Message: result.Message,
-	}, nil
+	}, revealed, nil
 }
 
 // recordError maps a record problem to a Connect error.

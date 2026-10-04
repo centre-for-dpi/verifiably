@@ -5,6 +5,7 @@ package portal_test
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"mime/multipart"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/session"
 	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
@@ -238,4 +240,46 @@ func (f *twoHolder) ListCredentials(context.Context, *connect.Request[backendv1.
 func noFragment(location string) string {
 	before, _, _ := strings.Cut(location, "#")
 	return before
+}
+
+// TestConsentListsAlwaysSentClaims shows a claim the credential sends in
+// every answer: ticked, locked, carried by a hidden field, and labelled,
+// although the verifier did not ask for it (ADR-081).
+func TestConsentListsAlwaysSentClaims(t *testing.T) {
+	cred := credential(t)
+	cred.Credential.Payload = []byte(plainToken(t))
+	h := setupShell(t, func(o *serviceOptions) { o.Holder = &fakeHolder{credential: cred} }, holderDeployment())
+	page := h.get(t, "/wallet/present?id="+url.QueryEscape(requestURI)).Body.String()
+	for _, want := range []string{
+		"Always sent. This credential shows it in every answer.", "NCF-CODE",
+		`<input type="hidden" name="claim.licence" value="identityQR">`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("page misses %q\n%s", want, page)
+		}
+	}
+}
+
+// plainToken is an SD-JWT that carries identityQR outside any
+// disclosure.
+func plainToken(t *testing.T) string {
+	t.Helper()
+	payload := map[string]any{
+		"vct": "DriverLicence", "iss": "did:web:issuer.example",
+		"given_name": "Ada", "birth_date": "1990-01-01", "identityQR": "NCF-CODE",
+	}
+	concealed, discs, err := sdjwt.Conceal(payload, []string{"given_name", "birth_date"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(concealed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"ES256"}`)) + "." +
+		base64.RawURLEncoding.EncodeToString(body) + ".sig"
+	for _, d := range discs {
+		token += "~" + d.Encoded
+	}
+	return token + "~"
 }
