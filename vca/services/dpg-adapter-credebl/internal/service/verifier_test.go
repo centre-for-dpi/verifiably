@@ -4,7 +4,9 @@ package service_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -73,13 +75,74 @@ func TestCreateRequestUsesThePinnedVerifier(t *testing.T) {
 	}
 }
 
-func TestCreateRequestRejectsAPresentationExchangeOnlyRequest(t *testing.T) {
-	svc, _ := newService(t, nil)
-	_, err := svc.CreateRequest(context.Background(), connect.NewRequest(&backendv1.CreateRequestRequest{
-		PresentationDefinition: `{"id":"x","input_descriptors":[]}`,
+// farmerDefinition asks for one claim of a farmer credential with a DIF
+// Presentation Exchange definition whose field names no id.
+const farmerDefinition = `{"id":"farmer-check","purpose":"Confirm the farmer.","input_descriptors":[{"id":"farmer",
+  "format":{"vc+sd-jwt":{"sd-jwt_alg_values":["ES256"]}},
+  "constraints":{"limit_disclosure":"required","fields":[{"path":["$.fullName"]},{"id":"vct","path":["$.vct"]}]}}]}`
+
+// TestCreateRequestSendsAPresentationExchangeOverOid4vp: the pinned
+// platform takes a DIF Presentation Exchange definition in
+// presentationExchange.definition of its presentation request, and
+// needs an id on each field. The adapter names each field that has none.
+func TestCreateRequestSendsAPresentationExchangeOverOid4vp(t *testing.T) {
+	svc, f := newService(t, nil)
+	resp, err := svc.CreateRequest(context.Background(), connect.NewRequest(&backendv1.CreateRequestRequest{
+		PresentationDefinition: farmerDefinition,
 	}))
+	if err != nil || !strings.HasPrefix(resp.Msg.GetRequestUri(), "openid4vp://") {
+		t.Fatalf("CreateRequest = %v, %v", resp, err)
+	}
+	var body struct {
+		Dcql                 json.RawMessage `json:"dcql"`
+		PresentationExchange struct {
+			Definition struct {
+				ID               string `json:"id"`
+				InputDescriptors []struct {
+					ID          string         `json:"id"`
+					Format      map[string]any `json:"format"`
+					Constraints struct {
+						Fields []struct {
+							ID   string   `json:"id"`
+							Path []string `json:"path"`
+						} `json:"fields"`
+					} `json:"constraints"`
+				} `json:"input_descriptors"`
+			} `json:"definition"`
+		} `json:"presentationExchange"`
+	}
+	if uerr := json.Unmarshal(f.Request("/v1/orgs/org-1/oid4vp/presentation"), &body); uerr != nil {
+		t.Fatal(uerr)
+	}
+	def := body.PresentationExchange.Definition
+	if len(body.Dcql) != 0 || def.ID != "farmer-check" || len(def.InputDescriptors) != 1 || def.InputDescriptors[0].Format == nil {
+		t.Fatalf("the presentation request = %s", f.Request("/v1/orgs/org-1/oid4vp/presentation"))
+	}
+	fields := def.InputDescriptors[0].Constraints.Fields
+	if len(fields) != 2 || fields[0].ID != "farmer-1" || fields[1].ID != "vct" || fields[0].Path[0] != "$.fullName" {
+		t.Fatalf("the fields = %+v", fields)
+	}
+	caps, err := svc.GetCapabilities(context.Background(), connect.NewRequest(&backendv1.GetCapabilitiesRequest{}))
+	if err != nil || !slices.Contains(caps.Msg.GetProtocols(), backendv1.Protocol_PROTOCOL_OID4VP_PEX) {
+		t.Fatalf("the capabilities name no Presentation Exchange over OID4VP: %v %v", caps, err)
+	}
+}
+
+// TestCreateRequestRefusesABadDefinition names what a definition lacks.
+func TestCreateRequestRefusesABadDefinition(t *testing.T) {
+	svc, _ := newService(t, nil)
+	for _, def := range []string{
+		"{", `{"id":"x","input_descriptors":[]}`, `{"input_descriptors":[{"id":"a","format":{},"constraints":{"fields":[{"path":["$.a"]}]}}]}`,
+		`{"id":"x","input_descriptors":[{"id":"a","constraints":{"fields":[{"path":["$.a"]}]}}]}`,
+		`{"id":"x","input_descriptors":[{"id":"a","format":{"jwt_vc_json":{}},"constraints":{"fields":[{}]}}]}`,
+		`{"id":"x","input_descriptors":["a"]}`,
+	} {
+		_, err := svc.CreateRequest(context.Background(), connect.NewRequest(&backendv1.CreateRequestRequest{PresentationDefinition: def}))
+		wantCode(t, err, connect.CodeInvalidArgument)
+	}
+	_, err := svc.CreateRequest(context.Background(), connect.NewRequest(&backendv1.CreateRequestRequest{}))
 	wantCode(t, err, connect.CodeInvalidArgument)
-	if !strings.Contains(err.Error(), "dcql") {
+	if !strings.Contains(err.Error(), "dcql") || !strings.Contains(err.Error(), "presentation_definition") {
 		t.Fatalf("the error %q does not say what to send", err)
 	}
 }

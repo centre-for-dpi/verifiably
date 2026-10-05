@@ -11,8 +11,9 @@ behind one api gateway. This adapter gives the rest of VCA one small
 contract instead. It issues SD-JWT credentials through the OID4VCI
 pre-authorized code flow, and AnonCreds and W3C JSON-LD credentials
 over DIDComm. It hands a CSV file to the bulk import of the platform.
-It checks presentations with DCQL queries over OID4VP. It asks for
-AnonCreds and DIF Presentation Exchange proofs over DIDComm. It keeps a
+It checks presentations with DCQL queries and DIF Presentation
+Exchange definitions over OID4VP. It asks for AnonCreds and DIF
+Presentation Exchange proofs over DIDComm. It keeps a
 DIDComm wallet for each holder in the shared agent of the stack.
 
 ## What it serves
@@ -22,7 +23,7 @@ DIDComm wallet for each holder in the shared agent of the stack.
 | `CapabilityService` | Always served. |
 | `IssuerBackendService` | Served. |
 | `HolderBackendService` | Served with the address and the API key of the shared agent: a DIDComm wallet per holder (ADR-062). |
-| `VerifierBackendService` | Served: OID4VP with DCQL, and DIDComm proof requests. |
+| `VerifierBackendService` | Served: OID4VP with DCQL or DIF Presentation Exchange, and DIDComm proof requests. |
 | `CatalogBackendService` | Served. |
 | `TenantBackendService` | Served for organisations, with one client credential per organisation (ADR-067) and the ecosystems (ADR-068). |
 | `NotificationBackendService` | Served: the webhook of an organisation and its holder notification address (ADR-067). |
@@ -74,7 +75,7 @@ DIDComm wallet for each holder in the shared agent of the stack.
 | `GET /v1/platform/schemas` | Lists the AnonCreds schemas of the platform for the proof request builder. |
 | `GET /v1/platform/cred-defs` | Lists the credential definitions of those schemas. |
 | `POST /v1/orgs/{org}/oid4vp/verifier` | Creates the OID4VP verifier. |
-| `POST /v1/orgs/{org}/oid4vp/presentation` | Starts an OID4VP transaction. The platform takes no nonce of the caller. The adapter returns the nonce of the signed request in the session record, so VCA checks the answer against it. |
+| `POST /v1/orgs/{org}/oid4vp/presentation` | Starts an OID4VP transaction with `dcql` or with `presentationExchange.definition`. The platform needs an id on each field of a definition, so the adapter names a field that has none. The platform takes no nonce of the caller. The adapter returns the nonce of the signed request in the session record, so VCA checks the answer against it. |
 | `GET /v1/orgs/{org}/oid4vp/verifier-presentation` | Reads the answer of a transaction. |
 | `GET /v1/webhooks/orgs/webhookurl` | Reads the webhook of an organisation. The adapter reads only whether a signing secret exists. |
 | `POST /v1/webhooks/orgs/{org}/register` | Sets the address of the webhook, and the signing secret when the admin names one. |
@@ -102,7 +103,7 @@ The answer of `GetCapabilities` reports what the platform supports.
 | --- | --- |
 | Formats | `dc+sd-jwt`, `vc+sd-jwt`, AnonCreds, W3C JSON-LD |
 | Channels | OID4VCI pre-authorized code for SD-JWT. A DIDComm invitation for AnonCreds and W3C JSON-LD. An email from the stack for the same two, when the stack names a mail provider. |
-| Protocols | OID4VCI, OID4VP, OID4VP with DCQL, DIDComm issue credential 2.0, DIDComm present proof 2.0 |
+| Protocols | OID4VCI, OID4VP, OID4VP with DCQL, OID4VP with Presentation Exchange, DIDComm issue credential 2.0, DIDComm present proof 2.0 |
 | Roles | Issuer and verifier. Holder too with the agent. |
 | Features | `FEATURE_CREDENTIAL_CONFIG_API`, `FEATURE_MULTI_TENANCY`, `FEATURE_ISSUER_IDENTITY_PROVISION`, `FEATURE_ISSUER_IDENTITY_IMPORT_X509`, `FEATURE_ISSUANCE_STATUS`, `FEATURE_ISSUED_LEDGER`, `FEATURE_ANONCREDS_PROOF`, `FEATURE_WEBHOOKS`, `FEATURE_HOLDER_NOTIFICATIONS`, `FEATURE_TENANT_CLIENT_CREDENTIALS`, `FEATURE_ECOSYSTEMS`, `FEATURE_REVOCATION` with the status list host, `FEATURE_BULK_NATIVE` with a mail provider, and `FEATURE_WALLET_DIDCOMM` and `FEATURE_WALLET_DIDS` with the agent |
 | Wallet DID methods | `did:key`, with the agent |

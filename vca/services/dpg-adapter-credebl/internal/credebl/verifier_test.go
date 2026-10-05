@@ -5,6 +5,7 @@ package credebl
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -245,5 +246,39 @@ func TestEnsureVerifierReportsAnEmptyIdentifierAndAFailure(t *testing.T) {
 	status = http.StatusForbidden
 	if _, err := c.EnsureVerifier(context.Background(), "vca", ""); err == nil {
 		t.Fatal("EnsureVerifier accepted a failure")
+	}
+}
+
+// TestCreatePresentationPexSendsTheDefinition posts the definition in
+// presentationExchange.definition, with no DCQL query, and names each
+// field without an id.
+func TestCreatePresentationPexSendsTheDefinition(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(signinHandler(t, func(w http.ResponseWriter, r *http.Request) {
+		if cerr := json.NewDecoder(r.Body).Decode(&body); cerr != nil {
+			t.Fatalf("unexpected error: %v", cerr)
+		}
+		mustWrite(t, w, []byte(`{"data":{"authorizationRequest":"openid4vp://x","verificationSession":{"id":"s-2"}}}`))
+	}))
+	defer srv.Close()
+	def, err := ParsePex(`{"id":"d","input_descriptors":[{"id":"in","format":{"jwt_vc_json":{}},"constraints":{"fields":[{"path":["$.a"]}]}}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := newClient(srv, nil).CreatePresentationPex(context.Background(), "v-1", def)
+	if err != nil || got.State != "s-2" {
+		t.Fatalf("CreatePresentationPex = %+v, %v", got, err)
+	}
+	pe := mustAs[map[string]any](t, body["presentationExchange"])
+	definition := mustAs[map[string]any](t, pe["definition"])
+	descriptor := mustAs[map[string]any](t, mustAs[[]any](t, definition["input_descriptors"])[0])
+	fields := mustAs[[]any](t, mustAs[map[string]any](t, descriptor["constraints"])["fields"])
+	field := mustAs[map[string]any](t, fields[0])
+	if body["dcql"] != nil || field["id"] != "in-1" {
+		t.Fatalf("body = %v", body)
+	}
+	var nilClient *Client
+	if _, err := nilClient.CreatePresentationPex(context.Background(), "v-1", def); !errors.Is(err, ErrNoPlatform) {
+		t.Fatalf("a nil client: %v", err)
 	}
 }

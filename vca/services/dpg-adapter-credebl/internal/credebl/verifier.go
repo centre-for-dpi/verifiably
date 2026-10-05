@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 )
 
@@ -70,8 +71,56 @@ type presentationRequest struct {
 	RequestSigner struct {
 		Method string `json:"method"`
 	} `json:"requestSigner"`
-	ResponseMode string    `json:"responseMode"`
-	Dcql         DcqlQuery `json:"dcql"`
+	ResponseMode string     `json:"responseMode"`
+	Dcql         *DcqlQuery `json:"dcql,omitempty"`
+	// PresentationExchange holds a DIF Presentation Exchange definition.
+	// The platform takes exactly one of the two queries.
+	PresentationExchange *presentationExchange `json:"presentationExchange,omitempty"`
+}
+
+// presentationExchange is the PresentationExchangeDto of the platform.
+type presentationExchange struct {
+	Definition json.RawMessage `json:"definition"`
+}
+
+// ParsePex reads a DIF Presentation Exchange definition for the
+// presentation endpoint. The PexDefinitionDto of the platform needs the
+// id of the definition, and the id, the format and the fields of each
+// input descriptor. Its PexFieldConstraintDto needs an id on each field,
+// so a field without one gets the id of its descriptor and its number.
+func ParsePex(raw string) (json.RawMessage, error) {
+	var def map[string]any
+	if err := json.Unmarshal([]byte(raw), &def); err != nil {
+		return nil, fmt.Errorf("credebl: the presentation definition is not JSON: %w", err)
+	}
+	if anyval.As[string](def["id"]) == "" {
+		return nil, errors.New("credebl: the presentation definition names no id")
+	}
+	descriptors := anyval.As[[]any](def["input_descriptors"])
+	if len(descriptors) == 0 {
+		return nil, errors.New("credebl: the presentation definition names no input descriptor")
+	}
+	for _, item := range descriptors {
+		d, ok := item.(map[string]any)
+		if !ok {
+			return nil, errors.New("credebl: an input descriptor is not an object")
+		}
+		id := anyval.As[string](d["id"])
+		if _, ok := d["format"].(map[string]any); !ok || id == "" {
+			return nil, errors.New("credebl: each input descriptor needs an id and a format")
+		}
+		fields := anyval.As[[]any](anyval.As[map[string]any](d["constraints"])["fields"])
+		for i, f := range fields {
+			field := anyval.As[map[string]any](f)
+			if len(anyval.As[[]any](field["path"])) == 0 {
+				return nil, fmt.Errorf("credebl: a field of the input descriptor %q names no path", id)
+			}
+			if anyval.As[string](field["id"]) == "" {
+				field["id"] = fmt.Sprintf("%s-%d", id, i+1)
+			}
+		}
+	}
+	return json.Marshal(def)
 }
 
 // presentationResponse is the answer of the presentation endpoint.
@@ -128,10 +177,22 @@ func (c *Client) CreatePresentation(ctx context.Context, verifierID string, quer
 	if c == nil {
 		return Presentation{}, ErrNoPlatform
 	}
-	var body presentationRequest
+	return c.createPresentation(ctx, verifierID, presentationRequest{Dcql: &query})
+}
+
+// CreatePresentationPex starts an OID4VP transaction with a DIF
+// Presentation Exchange definition that ParsePex read.
+func (c *Client) CreatePresentationPex(ctx context.Context, verifierID string, definition json.RawMessage) (Presentation, error) {
+	if c == nil {
+		return Presentation{}, ErrNoPlatform
+	}
+	return c.createPresentation(ctx, verifierID, presentationRequest{PresentationExchange: &presentationExchange{Definition: definition}})
+}
+
+// createPresentation posts one presentation request.
+func (c *Client) createPresentation(ctx context.Context, verifierID string, body presentationRequest) (Presentation, error) {
 	body.RequestSigner.Method = "DID"
 	body.ResponseMode = "direct_post"
-	body.Dcql = query
 	path := fmt.Sprintf("/v1/orgs/%s/oid4vp/presentation?verifierId=%s",
 		c.orgID, url.QueryEscape(verifierID))
 	var out presentationResponse

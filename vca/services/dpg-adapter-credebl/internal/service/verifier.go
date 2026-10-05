@@ -15,31 +15,47 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
-// CreateRequest starts an OID4VP transaction with a DCQL query, or a
-// DIDComm proof request (P6-C6).
+// CreateRequest starts an OID4VP transaction with a DCQL query or a
+// DIF Presentation Exchange definition, or a DIDComm proof request
+// (P6-C6).
 //
-// CREDEBL reads DCQL over OID4VP. It reads an AnonCreds request and a
-// Presentation Exchange definition over DIDComm only.
+// CREDEBL reads DCQL and Presentation Exchange over OID4VP. It reads an
+// AnonCreds request over DIDComm only.
 func (s *Service) CreateRequest(
 	ctx context.Context, req *connect.Request[backendv1.CreateRequestRequest],
 ) (*connect.Response[backendv1.CreateRequestResponse], error) {
 	if req.Msg.GetDidcomm() || strings.TrimSpace(req.Msg.GetAnoncredsRequest()) != "" {
 		return s.didcommRequest(ctx, req.Msg)
 	}
-	raw := strings.TrimSpace(req.Msg.GetDcql())
-	if raw == "" {
+	raw, pe := strings.TrimSpace(req.Msg.GetDcql()), strings.TrimSpace(req.Msg.GetPresentationDefinition())
+	if raw == "" && pe == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New(
-			"CREDEBL reads a DCQL query; set dcql"))
+			"CREDEBL reads a DCQL query or a Presentation Exchange definition; set dcql or presentation_definition"))
 	}
-	query, err := credebl.ParseDcql(raw)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	// The platform takes exactly one query, so a DCQL query wins.
+	var create func(verifierID string) (credebl.Presentation, error)
+	if raw != "" {
+		query, err := credebl.ParseDcql(raw)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		create = func(verifierID string) (credebl.Presentation, error) {
+			return s.client.CreatePresentation(ctx, verifierID, query)
+		}
+	} else {
+		definition, err := credebl.ParsePex(pe)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		create = func(verifierID string) (credebl.Presentation, error) {
+			return s.client.CreatePresentationPex(ctx, verifierID, definition)
+		}
 	}
 	verifierID, verr := s.ensureVerifier(ctx)
 	if verr != nil {
 		return nil, verr
 	}
-	presentation, perr := s.client.CreatePresentation(ctx, verifierID, query)
+	presentation, perr := create(verifierID)
 	if perr != nil {
 		return nil, failed("create the presentation request", perr)
 	}
