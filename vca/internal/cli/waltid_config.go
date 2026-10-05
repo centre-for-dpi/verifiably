@@ -57,8 +57,9 @@ type waltidEntry struct {
 
 // waltidCatalogue lists one entry per wire format that VCA issues. The
 // binding methods and the algorithms are the ones the release uses for
-// a type list entry. No entry has display text: the portal shows the
-// schema of the issuer, not the catalogue.
+// a type list entry. No entry has display text: the offer names the
+// configuration the schema registry publishes, and the wallet shows its
+// display and claims. The generic entry is only the fallback.
 func waltidCatalogue() []waltidEntry {
 	w3c := []string{
 		`cryptographic_binding_methods_supported = ["did"]`,

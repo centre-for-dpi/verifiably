@@ -14,6 +14,7 @@ import (
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/waltid"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/offerhint"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
@@ -57,6 +58,10 @@ func (s *Service) CreateOffer(
 	if offerID == "" {
 		offerID = waltid.StateFromAuthorizeURL(uri)
 	}
+	// The catalogue entry is generic (ADR-054), so the issuer metadata of
+	// walt.id names no schema. The offer names the configuration the
+	// schema registry publishes, for the wallet to show before accept.
+	uri = offerhint.Add(uri, spec.GetConfigurationId())
 	return connect.NewResponse(&backendv1.CreateOfferResponse{
 		OfferUri: uri,
 		OfferId:  offerID,

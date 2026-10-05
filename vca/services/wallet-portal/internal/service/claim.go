@@ -15,6 +15,7 @@ import (
 	"connectrpc.com/connect"
 
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/offerhint"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/issuers"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/present"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/session"
@@ -37,7 +38,7 @@ func (s *Service) signIn(ctx context.Context, citizen session.Citizen, msg *wall
 	if s.opts.Endpoints == nil || msg.GetRedirectUri() == "" {
 		return "", false, nil
 	}
-	issuer, config, issuerState, server := msg.GetCredentialIssuer(), msg.GetSchemaId(), "", ""
+	issuer, config, issuerState, server, hint := msg.GetCredentialIssuer(), msg.GetSchemaId(), "", "", ""
 	if id := msg.GetOfferId(); id != "" {
 		offer, err := s.get(ctx, KindOffer, citizen.WalletKey(), id)
 		if err != nil {
@@ -49,6 +50,7 @@ func (s *Service) signIn(ctx context.Context, citizen session.Citizen, msg *wall
 		}
 		issuer, config = grant.Issuer, grant.IDs[0]
 		issuerState, server = grant.Grants.Code.IssuerState, grant.Grants.Code.Server
+		hint = offerhint.Of(offer.URI)
 	}
 	ends, ok := s.authorizationServer(ctx, issuer, server)
 	switch {
@@ -61,7 +63,7 @@ func (s *Service) signIn(ctx context.Context, citizen session.Citizen, msg *wall
 	verifier := randomText()
 	sum := sha256.Sum256([]byte(verifier))
 	rec := record{
-		ID: s.opts.NewID(), Issuer: issuer, Types: []string{config},
+		ID: s.opts.NewID(), Issuer: issuer, Types: []string{config}, Hint: hint,
 		Verifier: verifier, Token: ends.Token, Redirect: msg.GetRedirectUri(),
 	}
 	if err := s.put(ctx, KindSignIn, citizen.WalletKey(), rec); err != nil {
@@ -181,7 +183,7 @@ func (s *Service) authorized(ctx context.Context, citizen session.Citizen, rec r
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	trust := present.TrustOf(ctx, s.opts.Trust, rec.Issuer)
-	view := s.offerDetails(ctx, rec.Issuer, rec.Types)
+	view := s.offerDetails(ctx, rec.Issuer, rec.Types, rec.Hint)
 	return connect.NewResponse(&walletportalv1.ClaimCompleteResponse{OfferId: offer.ID, Offer: &walletportalv1.OfferSummary{
 		CredentialIssuer: rec.Issuer, IssuerName: orName(trust.Name, view.name), Trust: trust.Outcome,
 		Types: rec.Types, Display: view.displays, Claims: view.claims, MetadataRead: view.read,

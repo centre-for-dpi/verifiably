@@ -25,6 +25,39 @@ type Template struct {
 	Format string `json:"format"`
 	// Body holds the type and the attributes of the template.
 	Body TemplateBody `json:"attributes"`
+	// Appearance holds the display of the credential, when the template
+	// has one.
+	Appearance *Appearance `json:"appearance,omitempty"`
+}
+
+// Appearance is the appearance of a template: the OID4VCI display of
+// the credential (AppearanceDto of the platform).
+type Appearance struct {
+	// Display lists the display entries, one per locale.
+	Display []Display `json:"display"`
+}
+
+// Display is one display entry of a template (CredentialDisplayDto).
+type Display struct {
+	// Name is the name of the credential.
+	Name string `json:"name"`
+	// Locale is the language of the entry.
+	Locale string `json:"locale,omitempty"`
+	// Description describes the credential.
+	Description string `json:"description,omitempty"`
+	// BackgroundColor is the card colour.
+	BackgroundColor string `json:"background_color,omitempty"`
+	// TextColor is the text colour of the card.
+	TextColor string `json:"text_color,omitempty"`
+}
+
+// AttributeDisplay is the label of one claim in one locale
+// (CredentialAttributeDisplayDto).
+type AttributeDisplay struct {
+	// Name is the label.
+	Name string `json:"name"`
+	// Locale is the language of the label.
+	Locale string `json:"locale,omitempty"`
 }
 
 // TemplateBody is the shape of one template.
@@ -43,6 +76,8 @@ type Attribute struct {
 	ValueType string `json:"value_type"`
 	// Disclose reports whether the holder can reveal the claim alone.
 	Disclose bool `json:"disclose"`
+	// Display holds the labels of the claim.
+	Display []AttributeDisplay `json:"display,omitempty"`
 }
 
 // templateList is the answer of the template endpoint.
@@ -250,6 +285,7 @@ type templateRequest struct {
 	SignerOption string       `json:"signerOption"`
 	CanBeRevoked bool         `json:"canBeRevoked"`
 	Template     TemplateBody `json:"template"`
+	Appearance   *Appearance  `json:"appearance,omitempty"`
 }
 
 // templateResponse is the answer of the template endpoint.
@@ -260,8 +296,9 @@ type templateResponse struct {
 }
 
 // CreateTemplate stores one credential template and returns its
-// identifier.
-func (c *Client) CreateTemplate(ctx context.Context, name, format, vct string, attributes []Attribute) (string, error) {
+// identifier. The display names the credential in the issuer metadata
+// of the agent; an empty display sends no appearance.
+func (c *Client) CreateTemplate(ctx context.Context, name, format, vct string, attributes []Attribute, display []Display) (string, error) {
 	if c == nil {
 		return "", ErrNoPlatform
 	}
@@ -271,6 +308,9 @@ func (c *Client) CreateTemplate(ctx context.Context, name, format, vct string, a
 		SignerOption: "DID",
 		CanBeRevoked: true,
 		Template:     TemplateBody{Vct: vct, Attributes: attributes},
+	}
+	if len(display) > 0 {
+		body.Appearance = &Appearance{Display: display}
 	}
 	path := fmt.Sprintf("/v1/orgs/%s/oid4vc/%s/template", c.orgID, c.issuerID)
 	var out templateResponse

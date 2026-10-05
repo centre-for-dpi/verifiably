@@ -31,6 +31,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1/walletportalv1connect"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/offerhint"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/cards"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/detect"
@@ -87,6 +88,12 @@ type Options struct {
 	// with no catalogue turns the discovery page and the claimable page
 	// off.
 	Fallback ports.Catalogue
+	// Published returns one credential configuration that a live issuer
+	// pair publishes in its schema registry, as JSON, by its id. The
+	// offer page uses it when the issuer metadata of the stack lists a
+	// generic entry with no display and the offer names the
+	// configuration (package offerhint). Nil leaves the entry as it is.
+	Published func(ctx context.Context, id string) ([]byte, bool)
 	// Methods returns the ways to claim from one issuer. The catalogue
 	// does not carry them, so the service adds them to each catalogue
 	// offering. Nil leaves them out.
@@ -467,7 +474,7 @@ func (s *Service) read(ctx context.Context, text string) (*walletportalv1.Detect
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}
 		trust := present.TrustOf(ctx, s.opts.Trust, got.Offer.CredentialIssuer)
-		view := s.offerDetails(ctx, got.Offer.CredentialIssuer, got.Offer.ConfigurationIDs)
+		view := s.offerDetails(ctx, got.Offer.CredentialIssuer, got.Offer.ConfigurationIDs, offerhint.Of(got.Offer.URI))
 		return &walletportalv1.Detected{
 			Kind:    walletportalv1.Detected_KIND_CREDENTIAL_OFFER,
 			OfferId: id,

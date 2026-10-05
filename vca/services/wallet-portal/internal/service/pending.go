@@ -45,6 +45,9 @@ type record struct {
 	Issuer string `json:"issuer,omitempty"`
 	// Types are the credential types of an offer.
 	Types []string `json:"types,omitempty"`
+	// Hint is the published configuration the offer names (package
+	// offerhint), kept through a sign in at the issuer.
+	Hint string `json:"hint,omitempty"`
 	// NeedsPIN says whether an offer needs a transaction code.
 	NeedsPIN bool `json:"needs_pin,omitempty"`
 	// Payload is the credential bytes of a pasted credential.

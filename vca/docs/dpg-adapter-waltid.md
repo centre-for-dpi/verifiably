@@ -338,6 +338,14 @@ type of the schema, because walt.id signs the credential body it
 receives. The adapter signs through no entry without the prefix. So
 no example type of the release reaches a credential.
 
+**The offer names the schema.** A catalogue entry has no display and no
+claims, so the issuer metadata of walt.id names no schema. The adapter
+adds the parameter `vca_configuration` to the offer URI, with the
+configuration id of the schema registry. The VCA wallet then shows the
+display and the claims that the registry publishes for that
+configuration (see wallet-portal.md). Other wallets ignore the
+parameter.
+
 **The catalogue calls answer from the registrations.**
 `ListCredentialTypes` and the configurations of `GetIssuerMetadata` list
 the schemas that VCA registered (ADR-054 decision 2). An offer names a

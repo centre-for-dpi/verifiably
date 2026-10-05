@@ -183,6 +183,7 @@ func TestRegisterCredentialConfigurationStoresTheSchemaAndTheTemplate(t *testing
 				Type:       "https://credebl.example.org/credentials/NewCredential",
 				JsonSchema: farmerSchema,
 				SdClaims:   []string{"fullName"},
+				Display:    `[{"name":"Farmer registration","locale":"en"}]`,
 			},
 		}))
 	if err != nil {
@@ -209,6 +210,18 @@ func TestRegisterCredentialConfigurationStoresTheSchemaAndTheTemplate(t *testing
 	first := mustAs[map[string]any](t, attributes[0])
 	if first["key"] != "farmerID" {
 		t.Fatalf("the attributes must come in a stable order, got %v", attributes)
+	}
+	// The template carries the display of the schema and of each claim
+	// (CreateCredentialTemplateDto, testdata/doc/SOURCE.md), so the issuer
+	// metadata of the agent names the credential and its claims.
+	appearance := mustAs[map[string]any](t, template["appearance"])
+	display := mustAs[[]any](t, appearance["display"])
+	if entry := mustAs[map[string]any](t, display[0]); entry["name"] != "Farmer registration" || entry["locale"] != "en" {
+		t.Fatalf("appearance = %v", appearance)
+	}
+	labels := mustAs[[]any](t, first["display"])
+	if label := mustAs[map[string]any](t, labels[0]); label["name"] == "" || label["locale"] != "en" {
+		t.Fatalf("attribute display = %v", labels)
 	}
 	var schema map[string]any
 	if err := f.RequestJSON("/v1/orgs/org-1/schemas", &schema); err != nil {
@@ -401,6 +414,17 @@ func TestGetIssuerMetadataBuildsTheDocument(t *testing.T) {
 	entry := mustAs[map[string]any](t, entries["8e5a2c41-9f37-4c0b-b1ad-72d9e6c85f13"])
 	if entry["format"] != "dc+sd-jwt" || entry["vct"] == nil || entry["claims"] == nil {
 		t.Fatalf("entry = %v", entry)
+	}
+	// The appearance and the claim labels of the template name the
+	// credential and its claims.
+	display := mustAs[[]any](t, entry["display"])
+	if d := mustAs[map[string]any](t, display[0]); d["name"] != "Farmer registration" {
+		t.Fatalf("display = %v", display)
+	}
+	claims := mustAs[map[string]any](t, entry["claims"])
+	labels := mustAs[[]any](t, mustAs[map[string]any](t, claims["fullName"])["display"])
+	if l := mustAs[map[string]any](t, labels[0]); l["name"] != "Full name" {
+		t.Fatalf("claim display = %v", labels)
 	}
 }
 

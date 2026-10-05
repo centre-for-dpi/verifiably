@@ -6,10 +6,11 @@
       "id": "8e5a2c41-9f37-4c0b-b1ad-72d9e6c85f13",
       "name": "FarmerCredential",
       "format": "dc+sd-jwt",
+      "appearance": {"display": [{"name": "Farmer registration", "locale": "en"}]},
       "attributes": {
         "vct": "https://credebl.example.org/credentials/FarmerCredential",
         "attributes": [
-          {"key": "fullName", "value_type": "string", "disclose": true},
+          {"key": "fullName", "value_type": "string", "disclose": true, "display": [{"name": "Full name", "locale": "en"}]},
           {"key": "farmerID", "value_type": "string", "disclose": true},
           {"key": "hectares", "value_type": "number", "disclose": false}
         ]

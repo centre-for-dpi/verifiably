@@ -184,9 +184,19 @@ shows the display name and the address of the issuer, and its trust
 state from the trust registry. It shows the display name of each
 offered credential and the display names of its claims. The claims
 come from the claim list of OID4VCI 1.0, the claim map of draft 13, or
-the `credentialSubject` of a W3C configuration. A wallet that cannot
+the `credentialSubject` of a W3C configuration. The display and the
+claims sit at the top of each configuration, or under
+`credential_metadata` as OID4VCI 1.0 nests them. A wallet that cannot
 read the metadata says so, and the page names the address of the
 issuer.
+
+Some stacks list one generic entry per wire format, with no display.
+The adapter of such a stack adds the parameter `vca_configuration` to
+the offer URI. It names the configuration that the schema registry
+publishes for the schema. Say the entry of the stack has no display.
+The page then reads that configuration from the registry of a live
+issuer pair. It shows its display and its claims only when the format
+matches the entry of the stack. Otherwise the page names the entry id.
 
 The offer page shows the button Decline only when the adapter of the own
 pair lists `FEATURE_WALLET_REJECT_OFFER`. Without the feature the

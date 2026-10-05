@@ -64,7 +64,7 @@ func (s *Service) RegisterCredentialConfiguration(
 		}
 	}
 	vct := cfg.GetType()
-	id, cerr := s.client.CreateTemplate(ctx, cfg.GetId(), format, vct, attributes)
+	id, cerr := s.client.CreateTemplate(ctx, cfg.GetId(), format, vct, attributes, displayOf(cfg))
 	if cerr != nil {
 		return nil, failed("store the template", cerr)
 	}
@@ -81,7 +81,8 @@ func attributesOf(cfg *backendv1.CredentialConfiguration) ([]credebl.Attribute, 
 	}
 	var schema struct {
 		Properties map[string]struct {
-			Type string `json:"type"`
+			Type  string `json:"type"`
+			Title string `json:"title"`
 		} `json:"properties"`
 		Required []string `json:"required"`
 	}
@@ -102,8 +103,16 @@ func attributesOf(cfg *backendv1.CredentialConfiguration) ([]credebl.Attribute, 
 		names = append(names, name)
 	}
 	sortNames(names)
+	locale := ""
+	if d := displayOf(cfg); len(d) > 0 {
+		locale = d[0].Locale
+	}
 	out := make([]credebl.Attribute, 0, len(names))
 	for _, name := range names {
+		label := strings.TrimSpace(schema.Properties[name].Title)
+		if label == "" {
+			label = name
+		}
 		valueType := schema.Properties[name].Type
 		if valueType == "" {
 			valueType = "string"
@@ -113,9 +122,29 @@ func attributesOf(cfg *backendv1.CredentialConfiguration) ([]credebl.Attribute, 
 			ValueType: valueType,
 			// Every claim is disclosable when the schema names none.
 			Disclose: len(disclosable) == 0 || disclosable[name],
+			Display:  []credebl.AttributeDisplay{{Name: label, Locale: locale}},
 		})
 	}
 	return out, nil
+}
+
+// displayOf reads the OID4VCI display of a configuration for the
+// appearance of a template. A display that does not parse, or an entry
+// with no name, gives nothing.
+func displayOf(cfg *backendv1.CredentialConfiguration) []credebl.Display {
+	var list []struct {
+		credebl.Display
+	}
+	if json.Unmarshal([]byte(cfg.GetDisplay()), &list) != nil {
+		return nil
+	}
+	var out []credebl.Display
+	for _, d := range list {
+		if strings.TrimSpace(d.Name) != "" {
+			out = append(out, d.Display)
+		}
+	}
+	return out
 }
 
 // sortNames sorts the values in place, so the template is the same on
@@ -323,9 +352,16 @@ func metadataEntries(templates []credebl.Template) map[string]any {
 		if t.Body.Vct != "" {
 			entry["vct"] = t.Body.Vct
 		}
+		if t.Appearance != nil && len(t.Appearance.Display) > 0 {
+			entry["display"] = t.Appearance.Display
+		}
 		claims := map[string]any{}
 		for _, a := range t.Body.Attributes {
-			claims[a.Key] = map[string]any{"mandatory": true}
+			claim := map[string]any{"mandatory": true}
+			if len(a.Display) > 0 {
+				claim["display"] = a.Display
+			}
+			claims[a.Key] = claim
 		}
 		if len(claims) > 0 {
 			entry["claims"] = claims

@@ -200,3 +200,21 @@ nonce and keeps it in the verification session record.
 | File | Call | Source |
 | --- | --- | --- |
 | `agent-did-resolved-indy.json` | `GET /dids/{did}` | `getDidRecordByDid` of [DidController.ts](https://raw.githubusercontent.com/credebl/agent-controller/v2.2.1-alpha-jsonld-vc.2.1/src/controllers/did/DidController.ts), read on 2026-10-04. It answers with the resolution result of the DID resolver of the agent, with `didDocument` as JSON. The indy VDR resolver of Credo gives a ledger DID the key `#verkey` and the key agreement key `#key-agreement-1`. The call also imports the DID into the tenant that asks, so the adapter asks with a tenant of its own |
+
+## The display of a credential template
+
+The adapter sends the display of the schema as `appearance.display`
+and a label per claim as `template.attributes[].display`. The body
+follows `CreateCredentialTemplateDto`, `AppearanceDto`,
+`CredentialDisplayDto`, `CredentialAttributeDto` and
+`CredentialAttributeDisplayDto` of
+[oid4vc-issuer-template.dto.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/api-gateway/src/oid4vc-issuance/dtos/oid4vc-issuer-template.dto.ts),
+read on 2026-10-05. A display entry needs a name. Its locale,
+description and colours are optional. A claim label has a name and an
+optional locale. The issuer metadata of the platform puts both under
+`credential_metadata` of each configuration:
+`buildCredentialConfigurationsSupported` and `buildClaimsFromTemplate`
+of
+[issuer.metadata.ts](https://raw.githubusercontent.com/credebl/platform/main/apps/oid4vc-issuance/libs/helpers/issuer.metadata.ts),
+read on the same day. The first template of `templates.json` carries
+both, as the template listing returns them.

@@ -279,6 +279,13 @@ organisation. `vca dpg bootstrap credebl` sets the address.
 until one minute before its end. A call that gets the status
 unauthorized signs in again once and then gives up.
 
+**A template carries the display of the schema.** The adapter sends the
+display of the schema as the appearance of the template. Each claim
+gets a label: the title of its property in the JSON Schema, else its
+name. The issuer metadata of the platform puts both under
+`credential_metadata`. So a wallet names the credential and its claims
+before it accepts.
+
 **A template reads back under another name.** CREDEBL stores the body of
 a template in a column named `attributes`. A read returns the body under
 that name, although a write sends it under the name `template`.

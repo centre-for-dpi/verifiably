@@ -60,7 +60,7 @@ func TestNewWithoutATransportTurnsEveryRoleOff(t *testing.T) {
 	if _, err := c.CreateSchema(ctx, "n", "d", nil); !errors.Is(err, ErrNoPlatform) {
 		t.Fatalf("CreateSchema error = %v", err)
 	}
-	if _, err := c.CreateTemplate(ctx, "n", "f", "v", nil); !errors.Is(err, ErrNoPlatform) {
+	if _, err := c.CreateTemplate(ctx, "n", "f", "v", nil, nil); !errors.Is(err, ErrNoPlatform) {
 		t.Fatalf("CreateTemplate error = %v", err)
 	}
 	if _, err := c.CreatePresentation(ctx, "v", DcqlQuery{}); !errors.Is(err, ErrNoPlatform) {
@@ -352,11 +352,11 @@ func TestCreateSchemaAndTemplateReadTheIdentifier(t *testing.T) {
 	if _, serr := c.CreateSchema(context.Background(), "Farmer", "", nil); serr == nil {
 		t.Fatal("CreateSchema accepted an answer without an identifier")
 	}
-	if _, serr := c.CreateTemplate(context.Background(), "Farmer", "dc+sd-jwt", "v", nil); serr == nil {
+	if _, serr := c.CreateTemplate(context.Background(), "Farmer", "dc+sd-jwt", "v", nil, []Display{{Name: "Farmer"}}); serr == nil {
 		t.Fatal("CreateTemplate accepted an answer without an identifier")
 	}
 	body = `{"data":{"id":"tpl-1"}}`
-	tpl, err := c.CreateTemplate(context.Background(), "Farmer", "dc+sd-jwt", "v", nil)
+	tpl, err := c.CreateTemplate(context.Background(), "Farmer", "dc+sd-jwt", "v", nil, []Display{{Name: "Farmer"}})
 	if err != nil || tpl != "tpl-1" {
 		t.Fatalf("CreateTemplate = %q, %v", tpl, err)
 	}

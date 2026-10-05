@@ -314,3 +314,38 @@ func TestServerReadsTheInteractiveEndpoint(t *testing.T) {
 		}
 	}
 }
+
+// TestPublishedFindsAConfigurationOfALivePair reads one configuration
+// from the schema registry of the live issuer pairs, as JSON. A pair
+// that does not answer drops out, and an unknown id gives nothing.
+func TestPublishedFindsAConfigurationOfALivePair(t *testing.T) {
+	internal := &docs{body: map[string]string{
+		"http://issuer-b-schema-registry:8084/.well-known/openid-credential-issuer": metadata("https://issuer-b.example", ""),
+	}}
+	c, err := issuers.New(issuers.Options{
+		Peers: func(context.Context) []issuers.Source {
+			return []issuers.Source{
+				{Endpoint: "http://issuer-a-schema-registry:8084", Peer: true},
+				{Endpoint: "http://issuer-b-schema-registry:8084", Peer: true},
+			}
+		},
+		Internal: internal,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, ok := c.Published(context.Background(), "nurse-licence_dc+sd-jwt")
+	if !ok || !strings.Contains(string(raw), `"Nurse licence"`) {
+		t.Fatalf("Published = %s, %v", raw, ok)
+	}
+	if _, ok := c.Published(context.Background(), "missing"); ok {
+		t.Fatal("an unknown id was found")
+	}
+	if _, ok := (&issuers.Crawler{}).Published(context.Background(), "nurse-licence_dc+sd-jwt"); ok {
+		t.Fatal("a crawler without pairs found a configuration")
+	}
+	internal.body["http://issuer-b-schema-registry:8084/.well-known/openid-credential-issuer"] = "not json"
+	if _, ok := c.Published(context.Background(), "nurse-licence_dc+sd-jwt"); ok {
+		t.Fatal("a broken document gave a configuration")
+	}
+}

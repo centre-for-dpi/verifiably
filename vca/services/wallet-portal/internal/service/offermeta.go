@@ -31,24 +31,57 @@ type displayEntry struct {
 	Locale string `json:"locale"`
 }
 
+// configurationView is the part of one credential configuration the
+// offer page reads. OID4VCI 1.0 nests the display and the claims under
+// credential_metadata (section 12.2.4); draft 13 keeps them at the top.
+type configurationView struct {
+	Format     string          `json:"format"`
+	Display    []displayEntry  `json:"display"`
+	Claims     json.RawMessage `json:"claims"`
+	Metadata   *nestedMetadata `json:"credential_metadata"`
+	Definition struct {
+		Subject map[string]struct {
+			Display []displayEntry `json:"display"`
+		} `json:"credentialSubject"`
+	} `json:"credential_definition"`
+}
+
+// nestedMetadata is the credential_metadata object of OID4VCI 1.0.
+type nestedMetadata struct {
+	Display []displayEntry  `json:"display"`
+	Claims  json.RawMessage `json:"claims"`
+}
+
+// display returns the display entries, from the top or else from
+// credential_metadata.
+func (c configurationView) display() []displayEntry {
+	if firstName(c.Display) == "" && c.Metadata != nil {
+		return c.Metadata.Display
+	}
+	return c.Display
+}
+
+// claims returns the claims, from the top or else from
+// credential_metadata.
+func (c configurationView) claims() json.RawMessage {
+	if len(c.Claims) == 0 && c.Metadata != nil {
+		return c.Metadata.Claims
+	}
+	return c.Claims
+}
+
 // offerMetadata is the part of the issuer metadata the offer page reads
 // (OID4VCI 1.0 section 12.2, draft 13 section 11.2).
 type offerMetadata struct {
-	Display        []displayEntry `json:"display"`
-	Configurations map[string]struct {
-		Display    []displayEntry  `json:"display"`
-		Claims     json.RawMessage `json:"claims"`
-		Definition struct {
-			Subject map[string]struct {
-				Display []displayEntry `json:"display"`
-			} `json:"credentialSubject"`
-		} `json:"credential_definition"`
-	} `json:"credential_configurations_supported"`
+	Display        []displayEntry               `json:"display"`
+	Configurations map[string]configurationView `json:"credential_configurations_supported"`
 }
 
 // offerDetails reads the issuer metadata of an offer for the offer page.
 // A wallet that cannot read it says so, and the page names the address.
-func (s *Service) offerDetails(ctx context.Context, issuer string, ids []string) offerView {
+// A generic entry with no display gives way to the configuration the
+// schema registry publishes under hint, when its format is the same.
+func (s *Service) offerDetails(ctx context.Context, issuer string, ids []string, hint string) offerView {
 	if s.opts.Fetch == nil || strings.TrimSpace(issuer) == "" {
 		return offerView{}
 	}
@@ -63,12 +96,15 @@ func (s *Service) offerDetails(ctx context.Context, issuer string, ids []string)
 		if !ok {
 			continue
 		}
-		name := firstName(cfg.Display)
+		if firstName(cfg.display()) == "" {
+			cfg = s.published(ctx, hint, cfg)
+		}
+		name := firstName(cfg.display())
 		if name == "" {
 			name = id
 		}
-		view.displays = append(view.displays, &schemav1.Display{Name: name, Locale: firstLocale(cfg.Display)})
-		names := claimDisplayNames(cfg.Claims)
+		view.displays = append(view.displays, &schemav1.Display{Name: name, Locale: firstLocale(cfg.display())})
+		names := claimDisplayNames(cfg.claims())
 		for claim, d := range cfg.Definition.Subject {
 			names = append(names, orName(firstName(d.Display), claim))
 		}
@@ -79,6 +115,23 @@ func (s *Service) offerDetails(ctx context.Context, issuer string, ids []string)
 		}
 	}
 	return view
+}
+
+// published returns the configuration the schema registry publishes
+// under hint when it has the format of the stack entry, else the entry.
+func (s *Service) published(ctx context.Context, hint string, entry configurationView) configurationView {
+	if hint == "" || s.opts.Published == nil {
+		return entry
+	}
+	raw, ok := s.opts.Published(ctx, hint)
+	if !ok {
+		return entry
+	}
+	var cfg configurationView
+	if json.Unmarshal(raw, &cfg) != nil || cfg.Format != entry.Format {
+		return entry
+	}
+	return cfg
 }
 
 // claimDisplayNames reads the claims of a configuration: the list of

@@ -21,6 +21,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-waltid/internal/waltid"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/dpgclient"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/offerhint"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/store"
 )
 
@@ -388,6 +389,11 @@ func TestCreateOfferUsesTheSdJwtPathAndSetsTheDisclosureMap(t *testing.T) {
 	}
 	if !strings.HasPrefix(resp.Msg.GetOfferUri(), "openid-credential-offer://") {
 		t.Fatalf("offer URI = %q", resp.Msg.GetOfferUri())
+	}
+	// The catalogue entry of walt.id is generic, so the offer names the
+	// configuration of the schema registry for the wallet to show.
+	if got := offerhint.Of(resp.Msg.GetOfferUri()); got != "identity-2026" {
+		t.Fatalf("offer hint = %q in %q, want the configuration id", got, resp.Msg.GetOfferUri())
 	}
 	if resp.Msg.GetChannel() != backendv1.Channel_CHANNEL_OID4VCI_PREAUTH {
 		t.Fatalf("channel = %v", resp.Msg.GetChannel())

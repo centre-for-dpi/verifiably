@@ -541,3 +541,29 @@ func hostOf(raw string) string {
 	}
 	return raw
 }
+
+// Published returns the credential configuration with the id that the
+// schema registry of a live issuer pair publishes, as JSON. It reads the
+// pairs in order and stops at the first that names the id. A pair that
+// does not answer drops out.
+func (c *Crawler) Published(ctx context.Context, id string) ([]byte, bool) {
+	if c.opts.Peers == nil || c.opts.Internal == nil {
+		return nil, false
+	}
+	for _, src := range c.opts.Peers(ctx) {
+		doc, err := get(ctx, c.opts.Internal, strings.TrimRight(src.Endpoint, "/")+MetadataPath)
+		if err != nil {
+			continue
+		}
+		var m struct {
+			Configurations map[string]json.RawMessage `json:"credential_configurations_supported"`
+		}
+		if json.Unmarshal(doc.Body, &m) != nil {
+			continue
+		}
+		if raw, ok := m.Configurations[id]; ok {
+			return raw, true
+		}
+	}
+	return nil, false
+}

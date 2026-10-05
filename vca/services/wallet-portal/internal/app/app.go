@@ -175,6 +175,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Catalogue:       catalogue,
 		Fallback:        ports.Cached(crawl, cfg.CrawlTTL, deps.Now),
 		Methods:         crawl.Methods,
+		Published:       crawl.Published,
 		Endpoints:       crawl.Endpoints,
 		Servers:         crawl.Server,
 		ClientID:        cfg.ClientID,
