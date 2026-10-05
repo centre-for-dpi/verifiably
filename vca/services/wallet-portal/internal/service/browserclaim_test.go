@@ -76,7 +76,9 @@ func (b browserHolder) sign(t *testing.T, input string) string {
 // Its credential endpoint checks the proof and binds the credential to
 // the key of the proof, as an issuer does.
 type claimStack struct {
-	t        *testing.T
+	t *testing.T
+	// request, when set, is the request object of the verifier.
+	request  []byte
 	issuer   crypto.PrivateKey
 	offer    string
 	metadata string
@@ -128,6 +130,9 @@ func (c *claimStack) fetch(_ context.Context, address string) ([]byte, error) {
 		return []byte(`{"issuer":"` + claimIssuer + `","token_endpoint":"` + claimToken + `"}`), nil
 	case "https://verifier.example/r/1":
 		c.fetches++
+		if c.request != nil {
+			return c.request, nil
+		}
 		if c.freshNonce {
 			return requestObjectWith("n-" + strconv.Itoa(c.fetches)), nil
 		}

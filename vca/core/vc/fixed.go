@@ -12,10 +12,18 @@ import (
 // FixedClaims returns the display claims that every presentation of a
 // credential carries, whatever the holder ticks, in name order. An
 // SD-JWT carries the claims of its payload that no disclosure hides. A
-// credential with no selective disclosure carries each claim. A
+// credential with no selective disclosure carries each claim. An mDoc
+// discloses each element alone, so it carries none. A
 // consent screen lists these claims, so consent equals disclosure.
 func FixedClaims(raw []byte) ([]string, error) {
-	if DetectFormat(raw) == FormatSDJWT {
+	switch DetectFormat(raw) {
+	case FormatMdoc:
+		// An mDoc discloses each element alone (ISO/IEC 18013-5).
+		if _, err := FromMdoc(raw); err != nil {
+			return nil, err
+		}
+		return []string{}, nil
+	case FormatSDJWT:
 		p, err := sdjwt.Parse(string(raw))
 		if err != nil {
 			return nil, err

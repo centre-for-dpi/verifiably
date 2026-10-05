@@ -175,7 +175,7 @@ func TestParse(t *testing.T) {
 		}
 	}
 	if _, err := Parse([]byte{0xa1}); err == nil {
-		t.Fatal("mdoc must report not decoded")
+		t.Fatal("a broken mdoc must fail")
 	}
 	if _, err := Parse([]byte("hello")); err == nil {
 		t.Fatal("unknown must fail")

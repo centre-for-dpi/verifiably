@@ -249,7 +249,7 @@ func FromResolvedSDJWT(resolved map[string]any) Credential {
 	}
 }
 
-// Parse detects the format of raw and normalises it. mdoc is not decoded.
+// Parse detects the format of raw and normalises it.
 func Parse(raw []byte) (Credential, error) {
 	switch DetectFormat(raw) {
 	case FormatSDJWT:
@@ -262,7 +262,7 @@ func Parse(raw []byte) (Credential, error) {
 		err := json.Unmarshal(bytes.TrimSpace(raw), &m)
 		return FromObject(m), err
 	case FormatMdoc:
-		return Credential{}, fmt.Errorf("vc: mdoc credentials are not decoded by this package")
+		return FromMdoc(raw)
 	}
 	return Credential{}, fmt.Errorf("vc: unknown credential format")
 }

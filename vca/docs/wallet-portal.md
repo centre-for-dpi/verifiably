@@ -490,6 +490,14 @@ the proof with its key. The store keeps the credential under the
 format that the wallet reads from it. `TestBrowserStoreClaimsJwtVcJsonAndMdoc`
 claims a `jwt_vc_json` and an `mso_mdoc` credential.
 
+The wallet reads an `mso_mdoc` credential with `core/vc`. It reads an
+`IssuerSigned` structure, a `Document` or a `DeviceResponse`, binary or
+base64url. The card names the doctype and each element. A DCQL query
+with the doctype matches it, and a claim path matches by its element
+identifier. The answer keeps only the elements the holder chose. The
+MSO signs a digest of each element, so the issuer signature stays
+valid.
+
 The presentation of the browser store binds an SD-JWT VC only. These
 limits are exact:
 
@@ -497,7 +505,7 @@ limits are exact:
 |---|---|---|
 | `dc+sd-jwt`, `vc+sd-jwt` | The disclosed token with a key binding JWT that the browser signs | Holder binding to the nonce and the audience |
 | `jwt_vc_json` | The credential JWT as the issuer signed it, without a VP JWT | The claims and the issuer signature, with no holder proof. A verifier that asks for holder binding refuses it. |
-| `mso_mdoc` | The `IssuerSigned` structure as the issuer gave it, without a `DeviceResponse` | No device signature over the session transcript. An ISO 18013-7 verifier refuses it. |
+| `mso_mdoc` | The `IssuerSigned` structure with the chosen elements, without a `DeviceResponse` | No device signature over the session transcript. An ISO 18013-7 verifier refuses it. |
 | `ldp_vc` | The credential document as issued | The claims and the issuer proof, with no holder proof |
 
 A stack wallet presents these formats with its own keys, as its

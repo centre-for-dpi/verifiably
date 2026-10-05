@@ -12,6 +12,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
+	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/holderkey"
@@ -121,6 +122,15 @@ func keyBindings(text string) (map[string]string, string, error) {
 // disclosed claims, and its holder key when it names one. Only an SD-JWT
 // discloses claims and names a key that the browser binds.
 func disclosedToken(held record, disclosed []string) (string, jose.JWK, bool, error) {
+	if held.Format == commonv1.Format_FORMAT_MSO_MDOC {
+		// An mDoc keeps the elements the holder chose; the MSO signs a
+		// digest of each, so the issuer signature stays valid.
+		token, err := vc.MdocDisclose(held.Payload, func(element string) bool { return chosenElement(element, disclosed) })
+		if err != nil {
+			return "", jose.JWK{}, false, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		return string(token), jose.JWK{}, false, nil
+	}
 	if held.Format != commonv1.Format_FORMAT_DC_SD_JWT && held.Format != commonv1.Format_FORMAT_VC_SD_JWT {
 		return string(held.Payload), jose.JWK{}, false, nil
 	}
@@ -130,6 +140,20 @@ func disclosedToken(held record, disclosed []string) (string, jose.JWK, bool, er
 	}
 	key, bound := holderkey.Bound(string(held.Payload))
 	return token, key, bound, nil
+}
+
+// chosenElement reports whether the holder chose an mDoc element, named
+// namespace dot identifier. A DCQL path names the namespace of the
+// request, which may differ from the namespace of the issuer, so the
+// element identifier decides.
+func chosenElement(element string, disclosed []string) bool {
+	name := element[strings.LastIndex(element, ".")+1:]
+	for _, path := range disclosed {
+		if path == element || path[strings.LastIndex(path, ".")+1:] == name {
+			return true
+		}
+	}
+	return false
 }
 
 // bind appends the key binding JWT of the browser to a disclosed token,
