@@ -287,7 +287,10 @@ both logs name the same admin.
 `VCA_ADMIN_SERVICES` names. The probes run at the same time. A service
 reports its version in the `X-Vca-Version` header, or in a
 `version=<value>` token in the body. The dashboard at `/admin/` shows the
-result.
+result. Every VCA service sets the header on each answer. The value is
+the version set at link time. Without one, the service reads its build
+info: the module version, then the source revision, then the Go
+toolchain of a development build.
 
 ## Other services keep working
 

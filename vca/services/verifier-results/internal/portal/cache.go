@@ -218,6 +218,11 @@ func (p *Portal) sourceTable(b *blocks, state *policyv1.GetCacheStateResponse) t
 				registry = msg.T("verifier.cache.local.label")
 			}
 			st := b.add("badge", components.Badge{Status: "ok", Text: msg.T("verifier.cache.good.label")})
+			if s.GetSignedBy() == "" {
+				// No key signs the copy. The cache keeps it because the
+				// registry names its address, so the row says that.
+				st = b.add("badge", components.Badge{Status: "warn", Text: msg.T("verifier.cache.pinned.label")})
+			}
 			if e := s.GetLastError(); e != "" {
 				st = b.add("badge", components.Badge{Status: "bad", Text: msg.T("verifier.cache.failed.label")}) +
 					template.HTML(" ") + template.HTML(template.HTMLEscapeString(reason(e, s.GetSource()))) //nolint:gosec // the text is escaped

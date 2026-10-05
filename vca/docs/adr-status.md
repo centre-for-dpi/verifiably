@@ -117,7 +117,7 @@ A row that is not `Done` carries a note.
 
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
-| ADR-009 | 1 Admin operations are RPCs | Done | `vca/proto/vca/admin/v1` | |
+| ADR-009 | 1 Admin operations are RPCs | Done | `vca/proto/vca/admin/v1`, `vca/services/internal/serve` | Every service names its build in `X-Vca-Version`, so the service health fills its version column (`TestVersionHeader`). |
 | ADR-009 | 2 Cobra command tree with man pages | Done | `vca/internal/cli/command.go` | |
 | ADR-009 | 3 Portal help page from the same source | Done | `vca/services/admin/internal/portal` | |
 | ADR-009 | 4 A description option on every RPC | Done | `vca/proto/vca/admin/v1/admin.proto` | |
@@ -294,7 +294,7 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-025 | 1 A stored result per verification | Done | `vca/proto/vca/results/v1` | |
-| ADR-025 | 2 One card per credential with a check list | Done | `vca/services/verifier-results/internal/portal`, `vca/core/summary` | `TestTrustAgreesWithEveryTrustChainCheck` pins the trust badge to every trust chain check. |
+| ADR-025 | 2 One card per credential with a check list | Done | `vca/services/verifier-results/internal/portal`, `vca/core/summary` | `TestTrustAgreesWithEveryTrustChainCheck` pins the trust badge to every trust chain check. `TestVerdictWordIsOneEverywhere` pins one verdict wording. |
 | ADR-025 | 3 Retention window, raw data first | Done | `vca/services/verifier-results/internal/results` | |
 | ADR-025 | 4 Queries and CSV or JSON export | Done | `vca/services/verifier-results/internal/export` | |
 | ADR-025 | 5 A public check page without storage | Done | `vca/services/verifier-results/internal/portal` | |
@@ -461,7 +461,7 @@ A row that is not `Done` carries a note.
 | ADR-041 | 2 A refresh schedule per source | Done | `vca/services/verifier-policy/internal/cache` | Trust list 6 h, keys 24 h, status lists 1 h by default. `SetCachePolicy` changes them. |
 | ADR-041 | 3 An offline window of at most seven days | Done | `vca/services/verifier-policy/internal/cache`, `vca/proto/vca/results/v1` | A check reads a copy only when the source does not answer. The result carries `material_age`. |
 | ADR-041 | 4 A stale status list fails the check | Done | `vca/core/policy`, `vca/services/verifier-policy/internal/cache` | `policy.ErrStale` fails the status check in every fail mode when the policy refuses stale status lists. |
-| ADR-041 | 5 Cache RPCs and a caching page | Done | `vca/proto/vca/policy/v1`, `vca/services/verifier-results/internal/portal` | `/portal/cache/` shows the state, Sync now, and the policy form. The overview card shows the age and the window. Sync now also hands each fresh status list to the document cache of a check. `TestSyncHandsEachFreshStatusListOn` and the CREDEBL walkthrough pin it. |
+| ADR-041 | 5 Cache RPCs and a caching page | Done | `vca/proto/vca/policy/v1`, `vca/services/verifier-results/internal/portal` | `/portal/cache/` shows the state, Sync now, and the policy form. The overview card shows the age and the window. Sync now also hands each fresh status list to the document cache of a check. `TestSyncHandsEachFreshStatusListOn` and the CREDEBL walkthrough pin it. A copy without a signer reads "Unsigned, pinned by address" (`TestCacheSourceWithoutSignerIsNotGood`). |
 
 ## ADR-042: DCQL builder and DIF Presentation Exchange queries
 

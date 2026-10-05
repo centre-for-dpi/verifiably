@@ -55,6 +55,14 @@ Every page test calls `a11ytest.AssertPage`. The assertions cover one
 labelled navigation and the `main` landmark. They also cover named
 buttons and labelled inputs. They reject a placeholder link.
 
+## Verdict words
+
+Every verifier page names a verdict with the same words: "Valid", "Not
+valid", or "Indeterminate". The result card, the results list, the
+report and the request page read them from one catalogue. The CSV and
+JSON exports keep the plain values `valid`, `invalid` and
+`indeterminate`, since a script reads them.
+
 ## Trust words
 
 The card shows one of four words. The `check` package reads them from the

@@ -370,7 +370,7 @@ func TestWalkthroughWaltid(t *testing.T) {
 
 	// The verifier checks the credential. No trust list names the issuer.
 	w.signIn(w.checker, w.verifier).has(t, "Queries you saved, requests in flight and recent results.", "Otieno Kamau")
-	w.check(credential).has(t, "Verdict invalid", "issuer untrusted", "the issuer is not on an enabled trust list")
+	w.check(credential).has(t, "Verdict Not valid", "issuer untrusted", "the issuer is not on an enabled trust list")
 
 	// The admin approves the entry that the issuer asked for.
 	trust := w.operator.get(w.adminSignIn().link(t, "Trust")).must(t).has(t, "1 pending review")
@@ -437,7 +437,7 @@ func TestWalkthroughCredebl(t *testing.T) {
 	}
 	credential := w.claimInBrowser(offer, pin, "No trust list names")
 	w.signIn(w.checker, w.verifier).has(t, "Otieno Kamau")
-	w.check(credential).has(t, "Verdict invalid", "issuer untrusted")
+	w.check(credential).has(t, "Verdict Not valid", "issuer untrusted")
 
 	// The admin adds the DID of the organisation to the trust list.
 	trust := w.operator.get(w.adminSignIn().link(t, "Trust")).must(t)
@@ -474,7 +474,7 @@ func TestWalkthroughCredebl(t *testing.T) {
 		must(t).has(t, "You revoked the credential.", "The stack made the change.")
 	cache := w.checker.get(w.verifier.public + "/portal/cache/").must(t)
 	w.checker.submit(cache.form(t, "/portal/cache/sync")).must(t).has(t, "The cache read every source.")
-	w.check(credential).has(t, "Verdict invalid", "the issuer set the status of the credential")
+	w.check(credential).has(t, "Verdict Not valid", "the issuer set the status of the credential")
 	if len(stack.unknown) != 0 {
 		t.Errorf("the adapter called paths the stack double does not serve: %v", stack.unknown)
 	}

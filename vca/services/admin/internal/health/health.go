@@ -18,10 +18,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/centre-for-dpi/vc-adapters/services/internal/serve"
 )
 
 // VersionHeader carries the version of the running image.
-const VersionHeader = "X-Vca-Version"
+const VersionHeader = serve.VersionHeader
 
 // DefaultTimeout bounds one probe.
 const DefaultTimeout = 5 * time.Second

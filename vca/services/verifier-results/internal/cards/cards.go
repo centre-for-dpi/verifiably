@@ -90,7 +90,7 @@ func (c *Cards) Result(r *resultsv1.VerificationResult) (template.HTML, error) {
 // summary returns the card of the whole presentation.
 func (c *Cards) summary(d *draft, r *resultsv1.VerificationResult) template.HTML {
 	verdict := d.html("badge", components.Badge{
-		Status: verdictStatus(r.GetVerdict()), Text: export.VerdictWord(r.GetVerdict()),
+		Status: verdictStatus(r.GetVerdict()), Text: verdictText(r.GetVerdict()),
 	})
 	inner := &draft{kit: c.kit}
 	inner.add("table", components.Table{
@@ -296,6 +296,21 @@ func outcomeStatus(o policyv1.Outcome) string {
 	case policyv1.Outcome_OUTCOME_SKIP, policyv1.Outcome_OUTCOME_UNSPECIFIED:
 	}
 	return "info"
+}
+
+// verdictText returns the words of a verdict, the same words as the
+// results list and the request page.
+func verdictText(v policyv1.EvaluateResponse_Verdict) string {
+	switch v {
+	case policyv1.EvaluateResponse_VERDICT_VALID:
+		return msg.T("verifier.verdict.valid.label")
+	case policyv1.EvaluateResponse_VERDICT_INVALID:
+		return msg.T("verifier.verdict.invalid.label")
+	case policyv1.EvaluateResponse_VERDICT_INDETERMINATE:
+		return msg.T("verifier.verdict.indeterminate.label")
+	case policyv1.EvaluateResponse_VERDICT_UNSPECIFIED:
+	}
+	return msg.T("common.unknown.label")
 }
 
 // verdictStatus maps a verdict to a badge status.

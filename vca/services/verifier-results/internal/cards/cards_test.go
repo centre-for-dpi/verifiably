@@ -15,6 +15,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	policyv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/policy/v1"
 	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
+	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
@@ -290,5 +291,23 @@ func TestResultCardNamesTheRequiredRules(t *testing.T) {
 	}
 	if strings.Contains(doc, `REQUIRED_MEMBERS <span`) {
 		t.Error("the members check carries a rule mark")
+	}
+}
+
+// TestVerdictWordIsOneEverywhere is review finding 21: the result card,
+// the results list and the request page name a failed verdict with the
+// same words.
+func TestVerdictWordIsOneEverywhere(t *testing.T) {
+	if a, b := msg.T("verifier.verdict.invalid.label"), msg.T("verifier.request.verdict.invalid.label"); a != "Not valid" || b != a {
+		t.Fatalf("the verdict words are %q and %q, want Not valid", a, b)
+	}
+	r := sample()
+	r.Verdict = policyv1.EvaluateResponse_VERDICT_INVALID
+	got, err := newCards(t).Result(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), ">Not valid<") {
+		t.Fatalf("the result card names the verdict otherwise:\n%s", got)
 	}
 }

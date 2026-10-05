@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"runtime/debug"
 	"strings"
 	"testing"
 	"time"
@@ -210,5 +211,45 @@ func TestReadyMessage(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if rec.Code != 200 || rec.Body.String() != "ok providers=2" {
 		t.Fatalf("readyz: %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+// TestVersionHeader is review finding 20: every answer names the
+// version of the running build, so the service health of the admin
+// fills its version column.
+func TestVersionHeader(t *testing.T) {
+	for _, tc := range []struct{ set, want string }{{"1.4.0", "1.4.0"}, {"", BuildVersion()}} {
+		h := Handler(Options{Version: tc.set, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+		for _, path := range []string{"/healthz", "/readyz"} {
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+			if got := rec.Header().Get(VersionHeader); got == "" || got != tc.want {
+				t.Errorf("%s with version %q: header %q, want %q", path, tc.set, got, tc.want)
+			}
+		}
+	}
+}
+
+// TestBuildVersionReadsTheBuildInfo names the version of a release
+// build, the revision of a source build, and the toolchain otherwise.
+func TestBuildVersionReadsTheBuildInfo(t *testing.T) {
+	cases := []struct {
+		info *debug.BuildInfo
+		want string
+	}{
+		{&debug.BuildInfo{GoVersion: "go1.25.0", Main: debug.Module{Version: "v1.2.3"}}, "v1.2.3"},
+		{&debug.BuildInfo{GoVersion: "go1.25.0", Main: debug.Module{Version: "(devel)"}, Settings: []debug.BuildSetting{
+			{Key: "vcs.revision", Value: "4f9f97a9c0ffee1234567890"}, {Key: "vcs.modified", Value: "true"},
+		}}, "4f9f97a9c0ff+dirty"},
+		{&debug.BuildInfo{GoVersion: "go1.25.0", Main: debug.Module{Version: "(devel)"}, Settings: []debug.BuildSetting{
+			{Key: "vcs.revision", Value: "4f9f97a9"},
+		}}, "4f9f97a9"},
+		{&debug.BuildInfo{GoVersion: "go1.25.0", Main: debug.Module{Version: "(devel)"}}, "dev build, go1.25.0"},
+		{nil, "dev build"},
+	}
+	for _, c := range cases {
+		if got := versionOf(c.info, c.info != nil); got != c.want {
+			t.Errorf("versionOf(%+v) = %q, want %q", c.info, got, c.want)
+		}
 	}
 }

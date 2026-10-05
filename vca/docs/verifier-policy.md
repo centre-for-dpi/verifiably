@@ -138,6 +138,10 @@ set time. The cache keeps three kinds of copy.
 | Registry keys | The key set of the trust registry. The `did:web` documents and key sets of the listed issuers. The X.509 anchor chains of the external registries. | A DID document must name the DID it came from and hold a usable key. A key set must hold a key. Each certificate must be valid now and signed by the next one. |
 | Status lists | The status lists that the listed issuers publish, and each list that a check read online. | The keys of its issuer must check the signature of a status list token. A `did:key` or a `did:jwk` issuer carries its key, so the cache reads no network for it. A plain JSON list says `not checked`, as the online check does. |
 
+A copy that no key signs, such as a plain key set, can stay in the
+cache. The registry names its address, which pins it. The caching page marks that
+source "Unsigned, pinned by address", never "Good".
+
 A read that fails, or a copy that fails its check, keeps the last good
 copy. The source then shows the reason in `last_error`. The copies sit
 in the state directory under `cache/`, so they survive a restart.

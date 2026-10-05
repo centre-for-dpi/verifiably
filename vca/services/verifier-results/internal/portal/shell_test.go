@@ -195,7 +195,7 @@ func TestOverviewCards(t *testing.T) {
 		"Open requests", "3 waiting", "QR or link shown, no presentation yet.",
 		"Trust cache", "The policy service did not answer.",
 		"Schemas to ask for", "DrivingLicence", "https://issuer.labs.example", "dc&#43;sd-jwt", "given_name, birth_date, licence_class",
-		"Recent results", "Degree check", "Invalid", "The issuer is not on the trust list.", "Valid",
+		"Recent results", "Degree check", "Not valid", "The issuer is not on the trust list.", "Valid",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("overview lacks %q", want)

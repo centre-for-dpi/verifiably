@@ -72,7 +72,7 @@ func serveOrProbe(ctx context.Context, healthcheck bool, getenv func(string) str
 	defer stop()
 	// The sweep of the expired pending records ends with the service.
 	go func() { anyval.Discard(a.SweepPending(ctx, cfg.PendingSweep)) }()
-	return serve.Run(ctx, serve.Options{
+	return serve.Run(ctx, serve.Options{Version: version,
 		Listen: cfg.Listen, Handler: a.Mux, Ready: a.Ready, Log: log,
 	})
 }

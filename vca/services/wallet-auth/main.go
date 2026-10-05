@@ -56,7 +56,7 @@ func run(args []string) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	opts := serve.Options{
+	opts := serve.Options{Version: version,
 		Listen:       cfg.Listen,
 		Handler:      server.Handler(svc),
 		ReadyMessage: server.ReadyMessage(svc),

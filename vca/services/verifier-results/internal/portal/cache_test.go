@@ -237,3 +237,21 @@ func TestOverviewCacheCard(t *testing.T) {
 		}
 	}
 }
+
+// TestCacheSourceWithoutSignerIsNotGood is review finding 19: a key set
+// that no key signs is pinned by its address alone, and the row says so
+// instead of a good state.
+func TestCacheSourceWithoutSignerIsNotGood(t *testing.T) {
+	f, c := withCache(t)
+	c.state.Sources = []*policyv1.CacheSource{{
+		Kind: policyv1.CacheKind_CACHE_KIND_REGISTRY_KEYS, Source: "http://127.0.0.1:23899/.well-known/jwks.json",
+		SyncedAt: timestamppb.New(testNow.Add(-time.Hour)), ItemCount: 2,
+	}}
+	body := ok(t, f.get(t, DefaultPrefix+"/cache/"))
+	a11ytest.AssertPage(t, body)
+	row := body[strings.Index(body, "jwks.json"):]
+	row = row[:strings.Index(row, "</tr>")]
+	if strings.Contains(row, ">Good<") || !strings.Contains(row, "Unsigned, pinned by address") {
+		t.Fatalf("the row of an unsigned key set reads %s", row)
+	}
+}

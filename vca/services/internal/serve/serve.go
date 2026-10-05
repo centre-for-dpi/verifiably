@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -27,6 +28,10 @@ import (
 
 // RequestIDHeader carries the request id.
 const RequestIDHeader = "X-Request-Id"
+
+// VersionHeader carries the version of the running build on every
+// answer. The service health of the admin reads it.
+const VersionHeader = "X-Vca-Version"
 
 // DefaultShutdownTimeout bounds the graceful shutdown.
 const DefaultShutdownTimeout = 10 * time.Second
@@ -51,6 +56,9 @@ type Options struct {
 	ShutdownTimeout time.Duration
 	// Listener replaces the TCP listener on Listen. Tests use it.
 	Listener net.Listener
+	// Version is the version of the build, set at link time. Empty or
+	// "dev" means the version that the build info names.
+	Version string
 }
 
 func (o Options) withDefaults() Options {
@@ -69,7 +77,46 @@ func (o Options) withDefaults() Options {
 	if o.ShutdownTimeout <= 0 {
 		o.ShutdownTimeout = DefaultShutdownTimeout
 	}
+	if o.Version == "" || o.Version == "dev" {
+		o.Version = BuildVersion()
+	}
 	return o
+}
+
+// BuildVersion returns the version of the running binary from its build
+// info: the module version of a release build, else the source revision,
+// else the toolchain of a development build.
+func BuildVersion() string {
+	return versionOf(debug.ReadBuildInfo())
+}
+
+// versionOf returns the version that a build info names.
+func versionOf(info *debug.BuildInfo, ok bool) string {
+	if !ok || info == nil {
+		return "dev build"
+	}
+	if v := info.Main.Version; v != "" && v != "(devel)" {
+		return v
+	}
+	revision, dirty := "", false
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			revision = s.Value
+		case "vcs.modified":
+			dirty = s.Value == "true"
+		}
+	}
+	if revision == "" {
+		return "dev build, " + info.GoVersion
+	}
+	if len(revision) > 12 {
+		revision = revision[:12]
+	}
+	if dirty {
+		revision += "+dirty"
+	}
+	return revision
 }
 
 // Handler returns the full handler of the server: health endpoints, the
@@ -91,7 +138,12 @@ func Handler(opts Options) http.Handler {
 		anyval.DiscardWrite(w.Write([]byte(opts.ReadyMessage())))
 	})
 	mux.Handle("/", opts.Handler)
-	return RequestID(trace.Middleware(AccessLog(opts.Log, mux)))
+	version := opts.Version
+	versioned := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(VersionHeader, version)
+		mux.ServeHTTP(w, r)
+	})
+	return RequestID(trace.Middleware(AccessLog(opts.Log, versioned)))
 }
 
 // Run serves until ctx ends, then shuts down. It returns nil after a
