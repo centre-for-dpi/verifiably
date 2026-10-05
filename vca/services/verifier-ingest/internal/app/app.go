@@ -180,6 +180,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 		Client: svc, Prefix: cfg.ScannerPrefix, Kit: kit, Shell: shell, SignOut: signOut,
 		Links: links, Stack: deps.Stack, StackTimeout: cfg.StackTimeout, Peer: cfg.Peer,
 		Discovery: discovery, Results: resultsReader(results), Stacks: stacks, Combined: combinedPages(combined),
+		Check: svc.Check,
 	})
 	guard, guardErr := staffsession.Build(cfg.Auth, staffsession.VerifierRealm(), config.Prefix, staffsession.Deps{
 		Keys: deps.SessionKeys, ReadFile: deps.ReadFile, Now: deps.Now, Log: deps.Log, MaxFormBytes: scanner.MaxUploadBytes,

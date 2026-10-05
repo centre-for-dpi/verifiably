@@ -276,7 +276,7 @@ A row that is not `Done` carries a note.
 | ADR-023 | 3 QR, Claim 169, and PixelPass decoding | Done | `vca/core/qr`, `vca/core/pixelpass` | |
 | ADR-023 | 4 XML ingestion through a configured path | Done | `vca/core/ingest/ingest.go` | |
 | ADR-023 | 5 Allowlist and size cap on request fetches | Done | `vca/services/verifier-ingest/internal/oid4vp` | |
-| ADR-023 | 6 Camera scanning stays in the browser | Done | `vca/services/verifier-ingest/internal/scanner` | |
+| ADR-023 | 6 Camera scanning stays in the browser | Done | `vca/services/verifier-ingest/internal/scanner` | A scan, an upload, a link and a paste each reach the checks of VCA. The result names the carrier (`TestScanOrUploadChecksThePresentedCredential`). |
 
 ## ADR-024: Verifier policy checklist
 

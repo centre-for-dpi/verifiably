@@ -167,6 +167,16 @@ private or a loopback address, `http` without `ALLOW_PLAIN_HTTP`, and a
 host off `LINK_HOSTS` when that list names hosts. A pasted text that is one
 `http` or `https` URL counts as a link too. The result names the source.
 
+A decoded input that holds a credential goes through the checks of VCA
+as well. `Check` of the service runs `Evaluate` of the policy service
+with the default policy set. The input answers no request, so no nonce
+binds it. The results service stores the result. The result names how
+the credential arrived: `qr scan` for the camera, `upload` for an image
+or a document, `link` for a fetched link, and `paste` for pasted text.
+The card "VCA checks" shows the verdict and each check, and its button
+opens the stored result. Without a policy service the card names the
+reason, and the decoded answer stays.
+
 When the live adapter of the own pair lists `FEATURE_VERIFY_UPLOAD`,
 each form offers "Check with the stack". The service then sends the
 input to `VerifyCredential` of the adapter as well. The answer shows the

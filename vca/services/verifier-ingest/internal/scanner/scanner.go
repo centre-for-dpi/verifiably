@@ -45,6 +45,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	ingestv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/ingest/v1/ingestv1connect"
+	resultsv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/internal/peerauth"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/qrscan"
@@ -103,6 +104,10 @@ type Options struct {
 	// Combined reads the combined templates of the pair for the request
 	// pages (ADR-079 decision 4). Nil offers none.
 	Combined CombinedTemplates
+	// Check runs the checks of VCA on a decoded presentation and stores
+	// the result. The service satisfies it in process. Nil leaves an
+	// input decoded only.
+	Check func(ctx context.Context, raw *ingestv1.RawPresentation, carrier string) (*resultsv1.VerificationResult, error)
 }
 
 // Getter reads one document. A fetchguard.Fetcher is one.
@@ -265,7 +270,8 @@ func stackChoice(b *blocks, id, stack string) template.HTML {
 // session; the script sends it with the other fields of the scan form.
 func (p *Page) cameraCard(b *blocks, csrf template.HTML, stack string) template.HTML {
 	esc := template.HTMLEscapeString
-	body := template.HTML(`<form id="scan-form" data-ingest="`+esc(p.opts.Prefix+"/ingest")+`">`) + csrf + //nolint:gosec // the values are escaped
+	body := template.HTML(`<form id="scan-form" data-ingest="`+esc(p.opts.Prefix+"/ingest")+`">`+ //nolint:gosec // the values are escaped
+		`<input type="hidden" name="source" value="camera">`) + csrf +
 		stackChoice(b, "camera", stack) +
 		template.HTML(`<div class="form-actions"><button type="button" id="scan-start" class="btn btn-primary">`+ //nolint:gosec // the text is escaped
 			esc(msg.T("verifier.scan.camera.start.label"))+`</button></div></form>`+
@@ -334,6 +340,10 @@ type outcome struct {
 	problem string
 	source  string
 	stack   *stackAnswer
+	// checked is the stored result of the checks of VCA, and
+	// checkErr says why they did not run.
+	checked  *resultsv1.VerificationResult
+	checkErr error
 }
 
 // stackAnswer is the answer of the verifier of the own stack.
@@ -365,10 +375,27 @@ func (p *Page) ingest(w http.ResponseWriter, r *http.Request) error {
 		return p.answer(w, r, outcome{problem: "The service could not read the input: " + connectReason(err)})
 	}
 	out.msg = resp.Msg
+	if p.opts.Check != nil && len(resp.Msg.GetPresentation().GetCredentials()) > 0 {
+		out.checked, out.checkErr = p.opts.Check(r.Context(), resp.Msg.GetPresentation(), carrierOf(r, out.source))
+	}
 	if r.PostFormValue("stack_check") == "on" {
 		out.stack = p.askStack(r.Context(), payload, mediaType)
 	}
 	return p.answer(w, r, out)
+}
+
+// carrierOf names how a presented credential reached the page: a
+// fetched link, an uploaded file, a camera scan, or pasted text.
+func carrierOf(r *http.Request, source string) string {
+	switch {
+	case source != "":
+		return service.CarrierLink
+	case r.MultipartForm != nil && len(r.MultipartForm.File["upload"]) > 0:
+		return service.CarrierUpload
+	case r.PostFormValue("source") == "camera":
+		return service.CarrierScan
+	}
+	return service.CarrierPaste
 }
 
 // linkOf returns the link of the post: the link field, or pasted text
@@ -480,7 +507,7 @@ func readFile(file multipart.File, header *multipart.FileHeader) ([]byte, string
 // post without htmx.
 func (p *Page) answer(w http.ResponseWriter, r *http.Request, out outcome) error {
 	b := &blocks{kit: p.opts.Kit}
-	body := p.resultCard(b, out)
+	body := p.resultCard(b, out) + p.checkCard(b, out)
 	if out.stack != nil {
 		body += p.stackCard(b, out.stack)
 	}
@@ -496,6 +523,39 @@ func (p *Page) answer(w http.ResponseWriter, r *http.Request, out outcome) error
 		Title: msg.T("verifier.scan.result.label"), Lead: msg.T("verifier.scan.result.lead"), Description: msg.T("verifier.scan.result.lead"),
 		Content: components.Join(body, back),
 	})
+}
+
+// checkCard renders the verdict of the checks of VCA with a link to the
+// stored result, or why the checks did not run.
+func (p *Page) checkCard(b *blocks, out outcome) template.HTML {
+	if out.checked == nil && out.checkErr == nil {
+		return ""
+	}
+	title := msg.T("verifier.scan.check.title.label")
+	if out.checkErr != nil {
+		return b.add("card", components.Card{ID: "check-result", Title: title, Text: connectReason(out.checkErr),
+			Body: b.add("badge", components.Badge{Status: "warn", Text: msg.T("verifier.request.verdict.none.label")})})
+	}
+	badge := verdictBadge(out.checked.GetVerdict())
+	var rows []components.Row
+	for _, cred := range out.checked.GetCredentials() {
+		for _, c := range cred.GetChecks() {
+			rows = append(rows, components.Row{{Text: c.GetName()}, {Text: outcomeWord(c.GetOutcome())}, {Text: c.GetDetail()}})
+		}
+	}
+	for _, c := range out.checked.GetChecks() {
+		rows = append(rows, components.Row{{Text: c.GetName()}, {Text: outcomeWord(c.GetOutcome())}, {Text: c.GetDetail()}})
+	}
+	table := b.add("table", components.Table{
+		ID: "check-rows", Caption: msg.T("verifier.scan.check.caption.label"),
+		Columns: []string{msg.T("verifier.scan.stack.column.check.label"), msg.T("verifier.scan.stack.column.outcome.label"), msg.T("verifier.scan.stack.column.reason.label")},
+		Rows:    rows,
+	})
+	body := components.Join(b.add("badge", badge), table)
+	if id := out.checked.GetId(); id != "" {
+		body = components.Join(body, b.add("button", components.Button{Text: msg.T("verifier.scan.check.open.label"), Href: p.opts.ResultsPath + id}))
+	}
+	return b.add("card", components.Card{ID: "check-result", Title: title, Text: msg.T("verifier.scan.check.text"), Body: body})
 }
 
 // stackCard renders the answer of the verifier of the own stack.
