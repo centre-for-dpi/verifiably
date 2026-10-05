@@ -749,6 +749,10 @@ message CredentialConfiguration {
   // The namespace of the ledger of an AnonCreds configuration, as one of
   // the ledgers that GetCapabilities lists. Empty for any other format.
   string ledger = 9;
+  // The JSON-LD context the schema registry publishes for the type of an
+  // ldp_vc configuration. It defines the type and each claim as a term.
+  // Empty for any other format.
+  string type_context = 10;
 }
 
 // RenderTemplate is one render method of a credential, as the DPG hosts

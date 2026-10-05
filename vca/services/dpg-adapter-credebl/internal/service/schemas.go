@@ -4,6 +4,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +14,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/services/dpg-adapter-credebl/internal/credebl"
@@ -155,14 +158,50 @@ func (s *Service) registerJSONLD(
 	if err != nil {
 		return nil, failed("read the schemas of the organisation", err)
 	}
-	if id != "" {
-		return connect.NewResponse(&backendv1.RegisterCredentialConfigurationResponse{Id: id}), nil
+	if id == "" {
+		if id, err = s.client.CreateW3CSchema(ctx, cfg.GetType(), cfg.GetType(), attributes); err != nil {
+			return nil, failed("store the W3C schema", err)
+		}
 	}
-	id, err = s.client.CreateW3CSchema(ctx, cfg.GetType(), cfg.GetType(), attributes)
-	if err != nil {
-		return nil, failed("store the W3C schema", err)
+	// The credential names the type of its schema with the term the
+	// registry publishes (ADR-001 decision 3 keeps the signing with the
+	// stack; the adapter only shapes the credential).
+	if err := s.keepJSONLD(ctx, id, jsonldType{Type: cfg.GetType(), Context: cfg.GetTypeContext()}); err != nil {
+		return nil, err
 	}
 	return connect.NewResponse(&backendv1.RegisterCredentialConfigurationResponse{Id: id}), nil
+}
+
+// jsonldType is what the adapter keeps of a W3C JSON-LD configuration:
+// the type of the schema and the context the registry publishes for it.
+type jsonldType struct {
+	Type    string `json:"type"`
+	Context string `json:"context,omitempty"`
+}
+
+// jsonldKey is the store key of the type of one JSON-LD configuration.
+func jsonldKey(id string) string {
+	sum := sha256.Sum256([]byte(id))
+	return "jsonld/" + hex.EncodeToString(sum[:])
+}
+
+// keepJSONLD stores the type of a JSON-LD configuration.
+func (s *Service) keepJSONLD(ctx context.Context, id string, t jsonldType) error {
+	if err := s.store.Put(ctx, jsonldKey(id), anyval.Must(json.Marshal(t))); err != nil {
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("keep the type of the schema: %w", err))
+	}
+	return nil
+}
+
+// jsonldTypeOf reads the type of a JSON-LD configuration. A
+// configuration from before the adapter kept it gives false.
+func (s *Service) jsonldTypeOf(ctx context.Context, id string) (jsonldType, bool) {
+	raw, err := s.store.Get(ctx, jsonldKey(id))
+	var t jsonldType
+	if err != nil || json.Unmarshal(raw, &t) != nil || t.Type == "" {
+		return jsonldType{}, false
+	}
+	return t, true
 }
 
 // anonCredsType maps a property of a JSON Schema onto a data type of an

@@ -269,3 +269,43 @@ func TestChannelsListed(t *testing.T) {
 		}
 	}
 }
+
+// TestJsonLdOfferCarriesTheTypeOfTheSchema: a W3C JSON-LD credential
+// names the type of its schema, so the $.type filter of a Presentation
+// Exchange request finds it. The context the registry publishes for the
+// type defines the term, and the credential carries it inline, so the
+// agent fetches no document to sign.
+func TestJsonLdOfferCarriesTheTypeOfTheSchema(t *testing.T) {
+	svc, f := newService(t, nil)
+	const published = "https://registry.example/contexts/registration/1"
+	res, err := svc.RegisterCredentialConfiguration(context.Background(), connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{
+		Configuration: &backendv1.CredentialConfiguration{
+			Id: "RegistrationCertificate_ldp_vc", Format: commonv1.Format_FORMAT_LDP_VC, Type: "RegistrationCertificate",
+			JsonSchema: registrationSchema, TypeContext: published,
+		},
+	}))
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if _, err := svc.CreateOffer(context.Background(), connect.NewRequest(
+		didcommOffer(commonv1.Format_FORMAT_LDP_VC, res.Msg.GetId(), backendv1.Channel_CHANNEL_DIDCOMM_OOB))); err != nil {
+		t.Fatalf("CreateOffer: %v", err)
+	}
+	var body struct {
+		Credential struct {
+			Context []any    `json:"@context"`
+			Type    []string `json:"type"`
+		} `json:"credential"`
+	}
+	if err := f.RequestJSON("/v1/orgs/org-1/credentials/oob/offer", &body); err != nil {
+		t.Fatal(err)
+	}
+	c := body.Credential
+	if !slices.Equal(c.Type, []string{"VerifiableCredential", "RegistrationCertificate"}) {
+		t.Fatalf("type = %v, want the type of the schema", c.Type)
+	}
+	terms, ok := c.Context[len(c.Context)-1].(map[string]any)
+	if !ok || terms["RegistrationCertificate"] != published+"#RegistrationCertificate" {
+		t.Fatalf("context = %v, want the term of the type", c.Context)
+	}
+}

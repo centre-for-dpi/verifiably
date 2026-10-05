@@ -518,7 +518,7 @@ func Catalog() []Service {
 			// live at the root of the public URL, so the base URL is bare.
 			Routes: []Route{
 				{Match: "/.well-known/openid-credential-issuer"}, {Match: "/.well-known/vct/*"},
-				{Match: "/vct/*"}, {Match: "/schemas/*"}, {Match: "/api/schemas"},
+				{Match: "/vct/*"}, {Match: "/schemas/*"}, {Match: "/contexts/*"}, {Match: "/api/schemas"},
 				{Match: "/portal/*", Page: "Schemas"},
 			},
 			Callers: map[string][]string{rpcSchema: {"data-source", "issuance", "schema-builder-ui"}}},

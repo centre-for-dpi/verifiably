@@ -5,6 +5,7 @@ package policy
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
@@ -38,7 +39,7 @@ func TestTrustChainUntrusted(t *testing.T) {
 	pc.Trust = func(context.Context, string, string) (Trust, error) {
 		return Trust{Reason: "the accreditation ended"}, nil
 	}
-	got := trustChain(context.Background(), pres(objectCred(vc.FormatJSONLD, nil)), pc)
+	got := trustChain(context.Background(), pres(objectCred(vc.FormatJSONLD, map[string]any{"issuer": "did:web:a"})), pc)
 	wantOutcome(t, got[0], Fail)
 	if got[0].Evidence["reason"] != "the accreditation ended" {
 		t.Fatalf("want the reason as evidence, got %v", got[0].Evidence)
@@ -53,8 +54,31 @@ func TestTrustChainNoLookup(t *testing.T) {
 func TestTrustChainLookupFails(t *testing.T) {
 	pc := base()
 	pc.Trust = func(context.Context, string, string) (Trust, error) { return Trust{}, errors.New("offline") }
-	got := trustChain(context.Background(), pres(objectCred(vc.FormatJSONLD, nil)), pc)
+	got := trustChain(context.Background(), pres(objectCred(vc.FormatJSONLD, map[string]any{"issuer": "did:web:a"})), pc)
 	wantOutcome(t, got[0], Error)
+	if got[0].Detail != "the trust registry is not reachable" {
+		t.Fatalf("detail = %q", got[0].Detail)
+	}
+}
+
+// TestTrustChainTellsAnUnknownIssuerFromAnUnreachableRegistry: a
+// credential that names no issuer, and an issuer the trust registry does
+// not know, decide the check; only a registry that does not answer
+// leaves it open.
+func TestTrustChainTellsAnUnknownIssuerFromAnUnreachableRegistry(t *testing.T) {
+	pc := base()
+	pc.Trust = func(context.Context, string, string) (Trust, error) {
+		return Trust{}, fmt.Errorf("ports: trust lookup: %w", ErrUnknownIssuer)
+	}
+	got := trustChain(context.Background(), pres(objectCred(vc.FormatJSONLD, map[string]any{"issuer": "did:web:a"})), pc)
+	if got[0].Result != Fail || got[0].Detail != "the trust registry does not know the issuer" {
+		t.Fatalf("unknown issuer: %s (%s)", got[0].Result, got[0].Detail)
+	}
+	pc.Trust = trustAll
+	got = trustChain(context.Background(), pres(objectCred(vc.FormatJSONLD, map[string]any{"credentialSubject": map[string]any{"a": "b"}})), pc)
+	if got[0].Result != Fail || got[0].Detail != "the credential names no issuer" {
+		t.Fatalf("no issuer: %s (%s)", got[0].Result, got[0].Detail)
+	}
 }
 
 func TestChainLinkResolved(t *testing.T) {

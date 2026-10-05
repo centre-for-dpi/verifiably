@@ -215,3 +215,26 @@ func TestWriteEncodeFailure(t *testing.T) {
 		t.Fatalf("status %d", rec.Code)
 	}
 }
+
+// TestContextDocument publishes the JSON-LD context of a schema version:
+// the type of the schema and each claim as a term, so a JSON-LD
+// credential can name the type of its schema.
+func TestContextDocument(t *testing.T) {
+	rec := get(t, http.MethodGet, "/contexts/degree/2", nil)
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "application/ld+json" {
+		t.Fatalf("status %d, content type %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	terms, ok := decode(t, rec)["@context"].(map[string]any)
+	if !ok {
+		t.Fatalf("body %s", rec.Body.String())
+	}
+	typ, ok := terms["UniversityDegree"].(map[string]any)
+	if !ok || typ["@id"] != "https://registry.example/contexts/degree/2#UniversityDegree" {
+		t.Fatalf("type term %v", terms["UniversityDegree"])
+	}
+	for _, path := range []string{"/contexts/degree/x", "/contexts/degree/1", "/contexts/other/2"} {
+		if rec := get(t, http.MethodGet, path, nil); rec.Code != http.StatusNotFound {
+			t.Fatalf("%s status %d", path, rec.Code)
+		}
+	}
+}

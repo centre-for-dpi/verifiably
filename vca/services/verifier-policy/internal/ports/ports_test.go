@@ -16,6 +16,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/did"
 	"github.com/centre-for-dpi/vc-adapters/core/fetchguard"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
+	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1/trustv1connect"
 )
@@ -254,8 +255,16 @@ func TestTrustLookup(t *testing.T) {
 	}
 
 	broken := Trust(fakeTrust{err: errors.New("offline")})
-	if _, err := broken(ctx, "did:web:a", ""); err == nil {
-		t.Fatal("want the client error")
+	if _, err := broken(ctx, "did:web:a", ""); err == nil || errors.Is(err, policy.ErrUnknownIssuer) {
+		t.Fatalf("want the client error, got %v", err)
+	}
+	// A registry that answers and does not know the issuer decides the
+	// check; it is not an unreachable registry.
+	for _, code := range []connect.Code{connect.CodeNotFound, connect.CodeInvalidArgument} {
+		refused := Trust(fakeTrust{err: connect.NewError(code, errors.New("no entry"))})
+		if _, err := refused(ctx, "did:web:a", ""); !errors.Is(err, policy.ErrUnknownIssuer) {
+			t.Errorf("%v: want the unknown issuer, got %v", code, err)
+		}
 	}
 
 	if _, err := Trust(nil)(ctx, "did:web:a", ""); err == nil {

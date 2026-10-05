@@ -100,6 +100,7 @@ pure functions, so the RPCs and the HTTP handlers cannot diverge.
 | `GET /.well-known/vct/{vct}` | The SD-JWT VC type metadata of one schema. | `application/vnd.ietf.sd-jwt-vc-type-metadata+json` |
 | `GET /vct/{vct}` | An alias of the type metadata. | the same |
 | `GET /schemas/{id}/{version}` | One JSON Schema document with `$id`. | `application/schema+json` |
+| `GET /contexts/{id}/{version}` | The JSON-LD context of one version. The type and each claim are terms. A claim keeps the IRI of its mapping. Every other term gets a fragment of the context URL. An `ldp_vc` configuration names this URL in `type_context`. | `application/ld+json` |
 
 Every response carries an `ETag` and a `Cache-Control` header. A request
 with a matching `If-None-Match` header gets `304 Not Modified`. The ETag

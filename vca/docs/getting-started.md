@@ -263,6 +263,7 @@ The `issuer` role. Its home page is `/issuer/` on `issuance`.
 | `/.well-known/vct/*` | `schema-registry` |  |
 | `/vct/*` | `schema-registry` |  |
 | `/schemas/*` | `schema-registry` |  |
+| `/contexts/*` | `schema-registry` |  |
 | `/api/schemas` | `schema-registry` |  |
 | `/portal/*` | `schema-registry` | A page: Schemas. |
 | `/status-bitstring/status/*` | `status-bitstring` | The service sees the path without `/status-bitstring`. |

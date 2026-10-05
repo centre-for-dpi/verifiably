@@ -10,6 +10,7 @@
 //	GET /api/schemas                            the published schemas
 //	GET /.well-known/openid-credential-issuer   the OID4VCI issuer metadata
 //	GET /.well-known/vct/{vct}                  the SD-JWT VC type metadata
+//	GET /contexts/{id}/{version}                the JSON-LD context of a version
 //	GET /vct/{vct}                              alias of the type metadata
 //	GET /schemas/{id}/{version}                 one JSON Schema document
 package httpapi
@@ -56,6 +57,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+metadata.VctPrefix+"{vct...}", h.vct)
 	mux.HandleFunc("GET "+metadata.VctAliasPrefix+"{vct...}", h.vct)
 	mux.HandleFunc("GET "+metadata.SchemaPrefix+"{id}/{version}", h.schema)
+	mux.HandleFunc("GET "+metadata.ContextPrefix+"{id}/{version}", h.context)
 }
 
 func (h *Handler) schemas(w http.ResponseWriter, r *http.Request) {
@@ -78,17 +80,31 @@ func (h *Handler) vct(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) schema(w http.ResponseWriter, r *http.Request) {
+	if rec, ok := h.version(w, r); ok {
+		h.write(w, r, metadata.SchemaDocument(rec, h.opts()), "application/schema+json")
+	}
+}
+
+// context serves the JSON-LD context of one schema version.
+func (h *Handler) context(w http.ResponseWriter, r *http.Request) {
+	if rec, ok := h.version(w, r); ok {
+		h.write(w, r, metadata.ContextDocument(rec, h.opts()), "application/ld+json")
+	}
+}
+
+// version reads the schema version of the path, or answers 404.
+func (h *Handler) version(w http.ResponseWriter, r *http.Request) (record.Record, bool) {
 	version, err := strconv.Atoi(r.PathValue("version"))
 	if err != nil || version <= 0 {
 		http.Error(w, "the version must be a positive number", http.StatusNotFound)
-		return
+		return record.Record{}, false
 	}
 	rec, ok := h.src.Get(r.PathValue("id"), version)
 	if !ok || rec.State == record.StateDraft {
 		http.Error(w, "no such schema version", http.StatusNotFound)
-		return
+		return record.Record{}, false
 	}
-	h.write(w, r, metadata.SchemaDocument(rec, h.opts()), "application/schema+json")
+	return rec, true
 }
 
 // write encodes doc, sets the cache headers, and answers 304 when the

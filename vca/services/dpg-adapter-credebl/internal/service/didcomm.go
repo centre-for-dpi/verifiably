@@ -147,9 +147,22 @@ func (s *Service) buildDidcommOffer(ctx context.Context, spec *backendv1.IssueSp
 	if did := strings.TrimSpace(spec.GetSubject().GetDid()); did != "" {
 		subject["id"] = did
 	}
+	contexts, types := []any{credebl.W3CContext, configuration}, []string{"VerifiableCredential"}
+	if t, ok := s.jsonldTypeOf(ctx, configuration); ok {
+		// The type of the schema lets a Presentation Exchange filter on
+		// $.type find the credential. The term comes inline, with the
+		// IRI of the context the registry publishes, so the agent
+		// fetches no document to sign.
+		iri := t.Context
+		if iri == "" {
+			iri = configuration
+		}
+		contexts = append(contexts, map[string]string{t.Type: iri + "#" + t.Type})
+		types = append(types, t.Type)
+	}
 	credential := map[string]any{
-		"@context":          []string{credebl.W3CContext, configuration},
-		"type":              []string{"VerifiableCredential"},
+		"@context":          contexts,
+		"type":              types,
 		"issuer":            map[string]string{"id": issuer},
 		"issuanceDate":      issued.Format(time.RFC3339),
 		"credentialSubject": subject,

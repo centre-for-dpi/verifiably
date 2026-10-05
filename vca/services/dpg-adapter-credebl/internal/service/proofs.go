@@ -308,11 +308,16 @@ func proofRequestOf(msg *backendv1.CreateRequestRequest, connection bool) (crede
 	if strings.TrimSpace(msg.GetPresentationDefinition()) == "" {
 		return credebl.ProofRequest{}, proofRecord{}, errors.New("a DIDComm proof request needs an AnonCreds request or a presentation definition")
 	}
-	definition, names, err := platformDefinition(msg.GetPresentationDefinition())
+	definition, parts, err := platformDefinition(msg.GetPresentationDefinition())
 	if err != nil {
 		return credebl.ProofRequest{}, proofRecord{}, err
 	}
-	return credebl.ProofRequest{Type: credebl.ProofTypePE, Definition: definition, Comment: proofComment}, proofRecord{Names: names}, nil
+	names := make([]string, 0, len(parts))
+	for _, p := range parts {
+		names = append(names, p.Name)
+	}
+	return credebl.ProofRequest{Type: credebl.ProofTypePE, Definition: definition, Comment: proofComment},
+		proofRecord{Names: names, Parts: parts}, nil
 }
 
 // proofRecord is what the adapter keeps of a DIDComm proof request it
@@ -375,16 +380,16 @@ func (s *Service) proofOf(ctx context.Context, id string) (proofRecord, bool, er
 // form the platform takes: each input descriptor names the schema of the
 // credential, which the adapter reads from the type filter of the
 // descriptor when it has none.
-func platformDefinition(raw string) (json.RawMessage, []string, error) {
+func platformDefinition(raw string) (json.RawMessage, []proofPart, error) {
 	var def map[string]any
 	if err := json.Unmarshal([]byte(raw), &def); err != nil {
 		return nil, nil, fmt.Errorf("read the presentation definition: %w", err)
 	}
+	var parts []proofPart
 	descriptors, ok := def["input_descriptors"].([]any)
 	if !ok || len(descriptors) == 0 {
 		return nil, nil, errors.New("the presentation definition has no input descriptor")
 	}
-	var names []string
 	for _, item := range descriptors {
 		d, isObject := item.(map[string]any)
 		if !isObject {
@@ -395,11 +400,12 @@ func platformDefinition(raw string) (json.RawMessage, []string, error) {
 			return nil, nil, fmt.Errorf("the platform reads one claim per input descriptor, and %q asks for %s; "+
 				"put each claim in its own descriptor or ask over OID4VP", text(d["id"]), strings.Join(claims, ", "))
 		}
+		issuer := descriptorIssuer(d)
 		for _, name := range claims {
 			if err := askable(name); err != nil {
 				return nil, nil, err
 			}
-			names = append(names, name)
+			parts = append(parts, proofPart{Name: name, Issuer: issuer})
 		}
 		claimFirst(d)
 		if _, has := d["schema"]; has {
@@ -418,7 +424,7 @@ func platformDefinition(raw string) (json.RawMessage, []string, error) {
 		}
 	}
 	body, err := json.Marshal(out)
-	return body, names, err
+	return body, parts, err
 }
 
 // bracketName reads the name of a path in bracket form, such as
@@ -436,7 +442,7 @@ func claimNames(d map[string]any) []string {
 		f := anyval.As[map[string]any](item)
 		for _, p := range anyval.As[[]any](f["path"]) {
 			path := text(p)
-			if typePath(path) {
+			if typePath(path) || issuerPath(path) {
 				continue
 			}
 			name := path[strings.LastIndex(path, ".")+1:]
@@ -465,7 +471,7 @@ func claimFirst(d map[string]any) {
 	for _, item := range fields {
 		onType := false
 		for _, p := range anyval.As[[]any](anyval.As[map[string]any](item)["path"]) {
-			onType = onType || typePath(text(p))
+			onType = onType || typePath(text(p)) || issuerPath(text(p))
 		}
 		if onType {
 			rest = append(rest, item)
@@ -476,6 +482,32 @@ func claimFirst(d map[string]any) {
 	if len(fields) > 0 {
 		constraints["fields"] = append(claims, rest...)
 	}
+}
+
+// issuerPath reports a path on the issuer of the credential.
+func issuerPath(path string) bool {
+	switch path {
+	case "$.issuer", "$.issuer.id", "$.vc.issuer", "$.vc.issuer.id":
+		return true
+	}
+	return false
+}
+
+// descriptorIssuer returns the issuer a descriptor binds: the constant of
+// a field on the issuer. The agent checks the presentation against the
+// definition, so a verified proof came from that issuer. Empty binds
+// none.
+func descriptorIssuer(d map[string]any) string {
+	constraints := anyval.As[map[string]any](d["constraints"])
+	for _, item := range anyval.As[[]any](constraints["fields"]) {
+		f := anyval.As[map[string]any](item)
+		for _, p := range anyval.As[[]any](f["path"]) {
+			if issuerPath(text(p)) {
+				return text(anyval.As[map[string]any](f["filter"])["const"])
+			}
+		}
+	}
+	return ""
 }
 
 // typePath reports a path on the type of the credential.
@@ -590,9 +622,12 @@ func (s *Service) didcommResult(ctx context.Context, id string) (*connect.Respon
 	var bound bool
 	out.Presented, bound = proofViews(revealed, kept, known)
 	if !bound {
+		reason := "the request bound no credential definition or issuer DID, so a credential of any issuer could answer; the view names no issuer"
+		if !kept.Indy {
+			reason = "the definition bound no issuer, so a credential of any issuer could answer; the view names no issuer"
+		}
 		out.DpgChecks = append(out.DpgChecks, &backendv1.GetResultResponse_DpgCheck{
-			Name: IssuerBoundCheckName, Passed: false,
-			Reason: "the request bound no credential definition or issuer DID, so a credential of any issuer could answer; the view names no issuer",
+			Name: IssuerBoundCheckName, Passed: false, Reason: reason,
 		})
 	}
 	out.ReceivedAt = timestamp(record.UpdatedAt)
@@ -639,12 +674,18 @@ func proofViews(revealed []credebl.Revealed, rec proofRecord, known bool) ([]*co
 	groups := map[string]*group{}
 	for _, r := range revealed {
 		src := group{schema: r.SchemaID}
-		if indy {
+		switch {
+		case indy:
 			p := rec.part(r.Name)
 			src.credDef, src.issuer = p.CredDefID, p.Issuer
 			if p.SchemaID != "" {
 				src.schema = p.SchemaID
 			}
+			bound = bound && src.issuer != ""
+		case known:
+			// A DIF PE view names the issuer the definition bound; the
+			// platform reports none of the presented credential.
+			src.issuer = rec.part(r.Name).Issuer
 			bound = bound && src.issuer != ""
 		}
 		key := src.schema + "|" + src.credDef + "|" + src.issuer

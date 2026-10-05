@@ -28,6 +28,7 @@ const (
 	VctPrefix          = "/.well-known/vct/"
 	VctAliasPrefix     = "/vct/"
 	SchemaPrefix       = "/schemas/"
+	ContextPrefix      = "/contexts/"
 )
 
 // VCDMContext is the JSON-LD context of a W3C VCDM 2.0 credential.
@@ -75,6 +76,33 @@ func (o Options) algs() []string {
 // SchemaURL returns the public URL of one schema version document.
 func SchemaURL(baseURL, id string, version int) string {
 	return strings.TrimRight(baseURL, "/") + SchemaPrefix + url.PathEscape(id) + "/" + strconv.Itoa(version)
+}
+
+// ContextURL returns the public URL of the JSON-LD context of one schema
+// version.
+func ContextURL(baseURL, id string, version int) string {
+	return strings.TrimRight(baseURL, "/") + ContextPrefix + url.PathEscape(id) + "/" + strconv.Itoa(version)
+}
+
+// ContextDocument renders the JSON-LD context of one schema version. The
+// type of the schema and each claim are terms. A claim keeps the IRI of
+// its mapping; any other term gets a fragment of the context URL. A
+// JSON-LD credential that names this context carries the type of its
+// schema, so a Presentation Exchange filter on $.type finds it.
+func ContextDocument(r record.Record, opts Options) map[string]any {
+	base := ContextURL(opts.BaseURL, r.ID, r.Version)
+	terms := map[string]any{"@version": 1.1, r.Type: map[string]any{"@id": base + "#" + r.Type}}
+	for _, c := range Claims(r) {
+		if c.Name == "id" || c.Name == "type" {
+			continue
+		}
+		iri := base + "#" + c.Name
+		if m, ok := r.Mapping(c.Name); ok && m.IRI != "" {
+			iri = m.IRI
+		}
+		terms[c.Name] = map[string]any{"@id": iri}
+	}
+	return map[string]any{"@context": terms}
 }
 
 // VctURL returns the public URL of the type metadata of one vct.

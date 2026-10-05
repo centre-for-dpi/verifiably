@@ -794,3 +794,85 @@ func TestProofCallsReportAPlatformThatFails(t *testing.T) {
 	_, err = svc.ListProofSchemas(ctx, connect.NewRequest(&backendv1.ListProofSchemasRequest{Page: &commonv1.Pagination{PageToken: "0"}}))
 	wantCode(t, err, connect.CodeInvalidArgument)
 }
+
+// peIssuerDefinition binds the issuer of the credential with a filter
+// on $.issuer.id.
+const peIssuerDefinition = `{
+  "id": "farmer-check",
+  "input_descriptors": [{
+    "id": "farmer",
+    "constraints": {"fields": [
+      {"path": ["$.type"], "filter": {"type": "array", "contains": {"const": "FarmerCredential"}}},
+      {"path": ["$.issuer.id", "$.issuer"], "filter": {"type": "string", "const": "did:key:z6MkIssuer"}},
+      {"path": ["$.credentialSubject.fullName"]}
+    ]}
+  }]
+}`
+
+// TestPeProofResultNamesTheIssuerItBound: a verified DIF PE proof names
+// the issuer the request bound, so the trust check of the result is
+// decided. The platform reports no issuer of the presented credential,
+// so a request that binds none gives a view with no issuer and a failed
+// check of the stack that says so.
+func TestPeProofResultNamesTheIssuerItBound(t *testing.T) {
+	for name, tc := range map[string]struct {
+		definition, issuer string
+		bound              bool
+	}{
+		"bound":   {peIssuerDefinition, "did:key:z6MkIssuer", true},
+		"unbound": {peDefinition, "", false},
+	} {
+		svc, f := newService(t, nil)
+		if _, err := svc.CreateRequest(context.Background(), connect.NewRequest(&backendv1.CreateRequestRequest{
+			Didcomm: true, PresentationDefinition: tc.definition,
+		})); err != nil {
+			t.Fatalf("%s: CreateRequest: %v", name, err)
+		}
+		f.SetProof(fake.ProofDone)
+		f.SetVerified(fake.VerifiedPE)
+		m := getResult(t, svc, oobProofID)
+		var view struct {
+			Issuer string `json:"issuer"`
+		}
+		if err := json.Unmarshal(m.GetPresented()[0].GetPayload(), &view); err != nil {
+			t.Fatal(err)
+		}
+		if view.Issuer != tc.issuer {
+			t.Errorf("%s: issuer = %q, want %q", name, view.Issuer, tc.issuer)
+		}
+		boundCheck := true
+		for _, c := range m.GetDpgChecks() {
+			if c.GetName() == service.IssuerBoundCheckName {
+				boundCheck = c.GetPassed()
+			}
+		}
+		if boundCheck != tc.bound {
+			t.Errorf("%s: checks %v", name, m.GetDpgChecks())
+		}
+	}
+	// The filter on the issuer is no claim, so the platform still reads
+	// one claim per descriptor, and the claim goes first.
+	svc, f := newService(t, nil)
+	if _, err := svc.CreateRequest(context.Background(), connect.NewRequest(&backendv1.CreateRequestRequest{
+		Didcomm: true, PresentationDefinition: peIssuerDefinition,
+	})); err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Definition struct {
+			Descriptors []struct {
+				Constraints struct {
+					Fields []struct {
+						Path []string `json:"path"`
+					} `json:"fields"`
+				} `json:"constraints"`
+			} `json:"input_descriptors"`
+		} `json:"presentationDefinition"`
+	}
+	if err := f.RequestJSON("/v1/orgs/org-1/proofs/oob", &body); err != nil {
+		t.Fatal(err)
+	}
+	if fields := body.Definition.Descriptors[0].Constraints.Fields; strings.Join(fields[0].Path, ",") != "$.credentialSubject.fullName" {
+		t.Errorf("fields = %+v", fields)
+	}
+}

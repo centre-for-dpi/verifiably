@@ -180,12 +180,18 @@ func (s *Service) register(ctx context.Context, r record.Record) (map[string]str
 		if f == record.FormatDcSdJwt || f == record.FormatVcSdJwt {
 			typ = metadata.Vct(s.opts.Metadata.BaseURL, r)
 		}
+		// A JSON-LD credential names the type of its schema through the
+		// context the registry publishes for it.
+		typeContext := ""
+		if f == record.FormatLdpVc {
+			typeContext = metadata.ContextURL(s.opts.Metadata.BaseURL, r.ID, r.Version)
+		}
 		if s.opts.Backend != nil {
 			resp, err := s.opts.Backend.RegisterCredentialConfiguration(ctx, connect.NewRequest(&backendv1.RegisterCredentialConfigurationRequest{
 				Configuration: &backendv1.CredentialConfiguration{
 					Id: id, Format: record.FormatToProto(f), Type: typ, JsonSchema: r.JSONSchema,
 					Display: string(display), SdClaims: append([]string(nil), r.SDClaims...),
-					Contexts: append([]string(nil), r.Contexts...), Ledger: ledger,
+					Contexts: append([]string(nil), r.Contexts...), Ledger: ledger, TypeContext: typeContext,
 				},
 			}))
 			if err != nil {

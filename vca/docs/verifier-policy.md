@@ -135,7 +135,13 @@ The deployment sets the default with
 
 The `trust_chain` check calls `TrustLookup` on the trust registry service
 for each credential, with the issuer and the primary credential type. An
-issuer that no enabled list names gives a `FAIL`.
+issuer that no enabled list names gives a `FAIL`. The check tells an
+unknown issuer from a registry that does not answer. A credential that
+names no issuer gives a `FAIL` with the detail "the credential names no
+issuer". A registry that answers `NOT_FOUND` or `INVALID_ARGUMENT` gives
+a `FAIL` with the detail "the trust registry does not know the issuer".
+Only a registry that does not answer gives an `ERROR` with the detail
+"the trust registry is not reachable".
 
 The check then looks at the chain. A credential links to its parent with
 one of these fields: `parentCredential` at the top level, the same field

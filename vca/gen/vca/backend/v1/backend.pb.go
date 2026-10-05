@@ -2685,7 +2685,11 @@ type CredentialConfiguration struct {
 	RenderTemplates []*RenderTemplate `protobuf:"bytes,8,rep,name=render_templates,json=renderTemplates,proto3" json:"render_templates,omitempty"`
 	// The namespace of the ledger of an AnonCreds configuration, as one of
 	// the ledgers that GetCapabilities lists. Empty for any other format.
-	Ledger        string `protobuf:"bytes,9,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	Ledger string `protobuf:"bytes,9,opt,name=ledger,proto3" json:"ledger,omitempty"`
+	// The JSON-LD context the schema registry publishes for the type of an
+	// ldp_vc configuration. It defines the type and each claim as a term.
+	// Empty for any other format.
+	TypeContext   string `protobuf:"bytes,10,opt,name=type_context,json=typeContext,proto3" json:"type_context,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2779,6 +2783,13 @@ func (x *CredentialConfiguration) GetRenderTemplates() []*RenderTemplate {
 func (x *CredentialConfiguration) GetLedger() string {
 	if x != nil {
 		return x.Ledger
+	}
+	return ""
+}
+
+func (x *CredentialConfiguration) GetTypeContext() string {
+	if x != nil {
+		return x.TypeContext
 	}
 	return ""
 }
@@ -11779,7 +11790,7 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\x0erepository_url\x18\x03 \x01(\tR\rrepositoryUrl\x12\x19\n" +
 	"\bdocs_url\x18\x04 \x01(\tR\adocsUrl\x12\x18\n" +
 	"\alicense\x18\x05 \x01(\tR\alicense\x12\x10\n" +
-	"\x03url\x18\x06 \x01(\tR\x03url\"\xc3\x02\n" +
+	"\x03url\x18\x06 \x01(\tR\x03url\"\xe6\x02\n" +
 	"\x17CredentialConfiguration\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12-\n" +
 	"\x06format\x18\x02 \x01(\x0e2\x15.vca.common.v1.FormatR\x06format\x12\x12\n" +
@@ -11790,7 +11801,9 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\tsd_claims\x18\x06 \x03(\tR\bsdClaims\x12\x1a\n" +
 	"\bcontexts\x18\a \x03(\tR\bcontexts\x12I\n" +
 	"\x10render_templates\x18\b \x03(\v2\x1e.vca.backend.v1.RenderTemplateR\x0frenderTemplates\x12\x16\n" +
-	"\x06ledger\x18\t \x01(\tR\x06ledger\"o\n" +
+	"\x06ledger\x18\t \x01(\tR\x06ledger\x12!\n" +
+	"\ftype_context\x18\n" +
+	" \x01(\tR\vtypeContext\"o\n" +
 	"\x0eRenderTemplate\x12\x10\n" +
 	"\x03url\x18\x01 \x01(\tR\x03url\x12\x1d\n" +
 	"\n" +

@@ -439,6 +439,15 @@ func TestPublishSendsContexts(t *testing.T) {
 		if len(c.GetContexts()) != 1 || c.GetContexts()[0] != m.Contexts[0] {
 			t.Fatalf("contexts %v", c.GetContexts())
 		}
+		// An ldp_vc configuration names the context the registry
+		// publishes for the type, so a stack can carry the type.
+		want := ""
+		if c.GetFormat() == commonv1.Format_FORMAT_LDP_VC {
+			want = "https://r/contexts/degree/1"
+		}
+		if c.GetTypeContext() != want {
+			t.Fatalf("%v: type context %q, want %q", c.GetFormat(), c.GetTypeContext(), want)
+		}
 	}
 }
 

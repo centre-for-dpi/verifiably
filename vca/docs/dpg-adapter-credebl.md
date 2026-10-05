@@ -435,8 +435,15 @@ credential exchange. `GetIssuanceStatus` reads that exchange: `done`
 reads as issued, and `abandoned` or `declined` as failed. An AnonCreds
 offer carries each claim as text and no validity window. A W3C JSON-LD
 offer carries the credential with the context of its schema. The
-primary DID of the organisation is the issuer, with Ed25519 proof
-options. A DIDComm credential carries no status entry of VCA.
+credential also names the type of its schema, so the `$.type` filter of
+a Presentation Exchange request finds it. The schema registry publishes
+a JSON-LD context for the type, and the configuration names it. The
+adapter keeps the type and that context per configuration. The
+credential carries the term of the type inline, with the IRI of the
+published context. So the agent fetches no document to sign. A
+configuration from before this keeps the type `VerifiableCredential`
+alone. The primary DID of the organisation is the issuer, with Ed25519
+proof options. A DIDComm credential carries no status entry of VCA.
 
 **The platform mails an offer only with a mail provider.** The offer by
 email needs `EMAIL_PROVIDER` and the values of that provider in the stack
@@ -497,7 +504,12 @@ the first credential of the proof there. Without `any_issuer` the
 adapter refuses a part that binds no issuer. Over a connection it takes
 a credential definition only. A value from a part that binds no issuer
 gives a view with no issuer and the failed check `credebl-issuer-bound`
-(ADR-064). The adapter
+(ADR-064). A DIF PE definition binds the issuer with a field on
+`$.issuer` or `$.issuer.id` and a constant filter. The agent checks the
+presentation against the definition, so the view names that issuer.
+The platform reports no issuer of the presented credential. So a
+definition with no such field gives a view with no issuer. The same
+check then fails. The adapter
 returns one JSON view per credential, with the revealed values under
 `credentialSubject`. A predicate reads as the operator and the number,
 such as `>=10`, and never as the value of the holder. The view carries

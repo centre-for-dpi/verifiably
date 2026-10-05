@@ -14,6 +14,12 @@ import (
 // ParamRequireChain makes a presentation without a chain link fail.
 const ParamRequireChain = "require_chain"
 
+// ErrUnknownIssuer reports a trust registry that answered and does not
+// know the issuer. A port wraps it, and the trust check fails: the
+// registry decided. Any other error of a port leaves the check open,
+// because the registry did not answer.
+var ErrUnknownIssuer = errors.New("the trust registry does not know the issuer")
+
 // trustChain checks that every issuer is on an enabled trust list, and
 // that a chained presentation links up (ADR-024 decision 4).
 func trustChain(ctx context.Context, p Presentation, pc Context) []CheckResult {
@@ -32,11 +38,17 @@ func issuerTrust(ctx context.Context, index int, c Credential, pc Context) Check
 	if pc.Trust == nil {
 		return result(NameTrustChain, Error, index, "the service has no trust list lookup", ev)
 	}
-	t, err := pc.Trust(ctx, c.VC.Issuer, c.VC.PrimaryType())
-	if errors.Is(err, ErrStale) {
-		return result(NameTrustChain, Fail, index, staleTrustDetail, stale(ev))
+	if strings.TrimSpace(c.VC.Issuer) == "" {
+		// No list can name an issuer the credential does not name.
+		return result(NameTrustChain, Fail, index, "the credential names no issuer", ev)
 	}
-	if err != nil {
+	t, err := pc.Trust(ctx, c.VC.Issuer, c.VC.PrimaryType())
+	switch {
+	case errors.Is(err, ErrStale):
+		return result(NameTrustChain, Fail, index, staleTrustDetail, stale(ev))
+	case errors.Is(err, ErrUnknownIssuer):
+		return result(NameTrustChain, Fail, index, ErrUnknownIssuer.Error(), ev)
+	case err != nil:
 		return result(NameTrustChain, Error, index, "the trust registry is not reachable", ev)
 	}
 	if t.ListURL != "" {

@@ -212,6 +212,11 @@ func Trust(client trustv1connect.TrustServiceClient) policy.TrustLookup {
 			CredentialType: credentialType,
 		}))
 		if err != nil {
+			switch connect.CodeOf(err) {
+			case connect.CodeNotFound, connect.CodeInvalidArgument:
+				// The registry answered: it does not know the issuer.
+				return policy.Trust{}, fmt.Errorf("ports: trust lookup: %w: %w", policy.ErrUnknownIssuer, err)
+			}
 			return policy.Trust{}, fmt.Errorf("ports: trust lookup: %w", err)
 		}
 		msg := resp.Msg
