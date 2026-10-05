@@ -21,8 +21,12 @@ For each issuer with a service endpoint the crawler fetches two documents.
 
 The crawler merges the two. The metadata gives the type, the
 configuration id, the format, and the display metadata. The schema list
-gives the claims and the schema document. A type that only the schema
-list names joins the catalogue too.
+gives the claims and the schema document. A schema reaches every type
+that names it: by its vct, by its type name, or by one of its
+configuration ids. So the `jwt_vc_json` entry, which names the type
+array, and the `mso_mdoc` entry, which names the doctype, get the claims
+too. The disclosure rule of each claim follows the format of the type.
+A type that only the schema list names joins the catalogue too.
 
 A failed fetch does not empty the catalogue. The crawler keeps the last
 good record. It writes the error into `last_error`. The pages then stay

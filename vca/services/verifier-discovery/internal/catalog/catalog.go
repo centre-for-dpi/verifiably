@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -67,6 +68,10 @@ type CredentialType struct {
 	Fields []Field `json:"fields,omitempty"`
 	// JSONSchema is the JSON Schema document the fields came from.
 	JSONSchema string `json:"json_schema,omitempty"`
+	// Aliases are the other identifiers of a schema record: the type
+	// name beside the vct, and the configuration id of each format. A
+	// metadata type that names one of them takes the claims too.
+	Aliases []string `json:"-"`
 }
 
 // Display is the display metadata of a credential type.
@@ -342,6 +347,8 @@ type publishedSchema struct {
 	Formats    []string        `json:"formats"`
 	Display    []Display       `json:"display"`
 	JSONSchema json.RawMessage `json:"json_schema"`
+	// ConfigurationIDs maps each format to its configuration id.
+	ConfigurationIDs map[string]string `json:"configuration_ids"`
 }
 
 // ReadSchemas reads the published schema list of an issuer. It returns
@@ -366,6 +373,18 @@ func ReadSchemas(data []byte) (map[string]CredentialType, error) {
 			continue
 		}
 		t := CredentialType{Type: name, SchemaID: s.ID, SchemaVersion: s.Version, Display: s.Display}
+		// A jwt_vc_json entry names the type array and an mso_mdoc
+		// entry the doctype, both the type name; the configuration ids
+		// name every format.
+		if s.Type != "" && s.Type != name {
+			t.Aliases = append(t.Aliases, s.Type)
+		}
+		ids := make([]string, 0, len(s.ConfigurationIDs))
+		for _, id := range s.ConfigurationIDs {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		t.Aliases = append(t.Aliases, ids...)
 		if len(s.Formats) > 0 {
 			t.Format = s.Formats[0]
 		}
@@ -442,20 +461,28 @@ func walk(s jsonSchema, prefix string, selective bool, depth int, out *[]Field) 
 }
 
 // Merge adds the schema records to the metadata records. A schema record
-// fills the fields, the schema id, and the schema version of the type
-// with the same name.
+// fills the fields, the schema id, and the schema version of each type
+// that names it: by the same name, by its type name, or by one of its
+// configuration ids. The fields follow the disclosure rule of the
+// format of the type. A schema record no type names joins the list.
 func Merge(types []CredentialType, schemas map[string]CredentialType) []CredentialType {
 	out := make([]CredentialType, 0, len(types)+len(schemas))
 	seen := map[string]bool{}
 	for _, t := range types {
-		if s, ok := schemas[t.Type]; ok {
+		if key, ok := schemaFor(t, schemas); ok {
+			s := schemas[key]
 			t.Fields, t.JSONSchema = s.Fields, s.JSONSchema
+			if s.JSONSchema != "" && s.Format != "" && t.Format != s.Format {
+				// The disclosure rule follows the format of the type.
+				t.Fields = ReadFields([]byte(s.JSONSchema), t.Format)
+			}
 			if t.SchemaID == "" {
 				t.SchemaID, t.SchemaVersion = s.SchemaID, s.SchemaVersion
 			}
 			if len(t.Display) == 0 {
 				t.Display = s.Display
 			}
+			seen[key] = true
 		}
 		seen[t.Type] = true
 		out = append(out, t)
@@ -471,6 +498,31 @@ func Merge(types []CredentialType, schemas map[string]CredentialType) []Credenti
 		out = append(out, schemas[name])
 	}
 	return out
+}
+
+// schemaFor returns the key of the schema record a type names: the
+// record of the same name first, then a record with the configuration
+// id of the type, then a record whose type name it carries.
+func schemaFor(t CredentialType, schemas map[string]CredentialType) (string, bool) {
+	if _, ok := schemas[t.Type]; ok {
+		return t.Type, true
+	}
+	keys := make([]string, 0, len(schemas))
+	for k := range schemas {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, want := range []string{t.ConfigurationID, t.Type} {
+		if want == "" {
+			continue
+		}
+		for _, k := range keys {
+			if slices.Contains(schemas[k].Aliases, want) {
+				return k, true
+			}
+		}
+	}
+	return "", false
 }
 
 // URLFor joins a service endpoint and a path.

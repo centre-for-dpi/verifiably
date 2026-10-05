@@ -259,3 +259,41 @@ func TestURLFor(t *testing.T) {
 		t.Errorf("URLFor = %q", got)
 	}
 }
+
+// TestMergeReachesEveryFormatOfASchema covers one schema that an issuer
+// offers in three formats: the SD-JWT entry names the vct, the
+// jwt_vc_json entry the type array, and the mso_mdoc entry the doctype.
+// Every entry gets the claims, each with the disclosure rule of its
+// format, and no schema shows up twice.
+func TestMergeReachesEveryFormatOfASchema(t *testing.T) {
+	list := `{"schemas":[{"id":"por","version":1,"type":"ProofOfResidence","vct":"https://registry.example/vct/ProofOfResidence",` +
+		`"formats":["dc+sd-jwt","jwt_vc_json","mso_mdoc"],` +
+		`"configuration_ids":{"FORMAT_DC_SD_JWT":"ProofOfResidence_dc+sd-jwt","FORMAT_JWT_VC_JSON":"ProofOfResidence_jwt_vc_json","FORMAT_MSO_MDOC":"ProofOfResidence_mso_mdoc"},` +
+		`"json_schema":{"type":"object","properties":{"fullName":{"type":"string"},"city":{"type":"string"}}}}]}`
+	schemas, err := catalog.ReadSchemas([]byte(list))
+	if err != nil {
+		t.Fatal(err)
+	}
+	types := []catalog.CredentialType{
+		{Type: "https://registry.example/vct/ProofOfResidence", ConfigurationID: "ProofOfResidence_dc+sd-jwt", Format: "dc+sd-jwt"},
+		{Type: "ProofOfResidence", ConfigurationID: "ProofOfResidence_jwt_vc_json", Format: "jwt_vc_json"},
+		{Type: "ProofOfResidence", ConfigurationID: "ProofOfResidence_mso_mdoc", Format: "mso_mdoc"},
+		{Type: "org.example.other", ConfigurationID: "ProofOfResidence_x", Format: "mso_mdoc"},
+	}
+	out := catalog.Merge(types, schemas)
+	if len(out) != 4 {
+		t.Fatalf("merged = %d types, want 4 and no schema twice: %+v", len(out), out)
+	}
+	for _, got := range out[:3] {
+		if len(got.Fields) != 2 || got.SchemaID != "por" {
+			t.Errorf("%s (%s) has fields %+v, schema %q", got.Type, got.Format, got.Fields, got.SchemaID)
+			continue
+		}
+		if want := got.Format != "jwt_vc_json"; got.Fields[0].SelectivelyDisclosable != want {
+			t.Errorf("%s: selectively disclosable = %v, want %v", got.Format, got.Fields[0].SelectivelyDisclosable, want)
+		}
+	}
+	if len(out[3].Fields) != 0 {
+		t.Errorf("an unrelated type got fields: %+v", out[3])
+	}
+}
