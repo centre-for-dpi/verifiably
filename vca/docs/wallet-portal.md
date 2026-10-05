@@ -505,7 +505,12 @@ adapter document says. A holder who needs holder binding for a
 `jwt_vc_json` or an `mso_mdoc` credential uses a stack wallet.
 
 Each answer leaves a presentation record: the time, the verifier, the
-names of the shared claims, and the result. The result takes one of
+request id, the credentials, the names of the shared claims, and the
+result. The request id is the last path segment of the request URI,
+else the state of the request. A credential goes by the type the
+request asked for, else by the query id. After an answer, the page
+"What left your wallet" names the verifier, the request, the
+credentials and the claims. The result takes one of
 four words: Accepted, Refused, Declined, or Not sent. A record holds no claim value. The
 wallet keeps the newest 100 records of each wallet. The home page lists
 the newest five under "Recent presentations".

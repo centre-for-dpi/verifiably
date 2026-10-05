@@ -913,7 +913,11 @@ func (s *Service) PresentConfirm(ctx context.Context,
 	if len(names) == 0 {
 		names = requestedNames(parsed)
 	}
-	record := s.remember(ctx, citizen, parsed, names, result)
+	queries := make([]string, 0, len(req.Msg.GetSelectedCards()))
+	for query := range req.Msg.GetSelectedCards() {
+		queries = append(queries, query)
+	}
+	record := s.remember(ctx, citizen, parsed, names, answeredTypes(parsed, queries), result)
 	ignored := s.drop(ctx, KindPresentation, citizen.WalletKey(), id)
 	_ = ignored
 	if err != nil {

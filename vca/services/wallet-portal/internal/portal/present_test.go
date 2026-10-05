@@ -308,3 +308,24 @@ func TestConsentOfAStackWalletThatPicksTheClaims(t *testing.T) {
 		t.Fatalf("the history does not word the whole credential\n%s", home)
 	}
 }
+
+// TestOutcomeNamesWhatLeft checks the page after an answer: it names
+// the verifier, the request it answered, the credential, and the claims
+// that left the wallet.
+func TestOutcomeNamesWhatLeft(t *testing.T) {
+	h := setupShell(t, nil, holderDeployment())
+	sent := h.post(t, "/wallet/present", url.Values{
+		"id": {requestURI}, "card.licence": {"c1"}, "claim.licence": {"given_name"},
+	})
+	page := sent.Body.String()
+	if sent.Code != http.StatusOK {
+		t.Fatalf("status = %d", sent.Code)
+	}
+	a11ytest.AssertPage(t, page)
+	left := between(page, `id="left"`, "</table>")
+	for _, want := range []string{"What left your wallet", "Verifier", "Agency A", "Request", ">1<", "Credential", "DriverLicence", "Claims", "given_name"} {
+		if !strings.Contains(left, want) {
+			t.Fatalf("the outcome misses %q\n%s", want, page)
+		}
+	}
+}

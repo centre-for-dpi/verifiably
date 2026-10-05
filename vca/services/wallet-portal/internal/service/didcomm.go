@@ -129,7 +129,7 @@ func (s *Service) answerRequest(ctx context.Context, citizen session.Citizen, pa
 	parsed := present.Request{ClientID: party}
 	resp, err := s.opts.Holder.Present(ctx, connect.NewRequest(msg))
 	if err != nil {
-		s.remember(ctx, citizen, parsed, asked, walletportalv1.PresentationRecord_RESULT_FAILED)
+		s.remember(ctx, citizen, parsed, asked, nil, walletportalv1.PresentationRecord_RESULT_FAILED)
 		return nil, "", connect.NewError(connect.CodeUnavailable, errors.New("the verifier did not take the proof: "+backendMessage(err)))
 	}
 	shared := resp.Msg.GetSharedClaims()
@@ -137,10 +137,10 @@ func (s *Service) answerRequest(ctx context.Context, citizen session.Citizen, pa
 		shared = asked
 	}
 	if !resp.Msg.GetAccepted() {
-		return s.remember(ctx, citizen, parsed, shared, walletportalv1.PresentationRecord_RESULT_REJECTED),
+		return s.remember(ctx, citizen, parsed, shared, nil, walletportalv1.PresentationRecord_RESULT_REJECTED),
 			"The verifier did not accept the proof.", nil
 	}
-	return s.remember(ctx, citizen, parsed, shared, walletportalv1.PresentationRecord_RESULT_ACCEPTED),
+	return s.remember(ctx, citizen, parsed, shared, nil, walletportalv1.PresentationRecord_RESULT_ACCEPTED),
 		"You sent the proof. The verifier has your answer.", nil
 }
 

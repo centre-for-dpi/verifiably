@@ -510,6 +510,12 @@ message PresentationRecord {
   repeated string claims = 5;
   // The result of the answer.
   Result result = 6;
+  // The id of the request the wallet answered: the last path segment of
+  // its request URI, else its state. Empty when the request names none.
+  string request_id = 7;
+  // The credentials the answer carried, by the type the request asked
+  // for, else by the query id.
+  repeated string credentials = 8;
 
   // Result names the outcome of one answer.
   enum Result {

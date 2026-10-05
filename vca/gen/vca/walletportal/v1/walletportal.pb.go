@@ -2395,7 +2395,13 @@ type PresentationRecord struct {
 	// The names of the claims the wallet shared. Empty after a refusal.
 	Claims []string `protobuf:"bytes,5,rep,name=claims,proto3" json:"claims,omitempty"`
 	// The result of the answer.
-	Result        PresentationRecord_Result `protobuf:"varint,6,opt,name=result,proto3,enum=vca.walletportal.v1.PresentationRecord_Result" json:"result,omitempty"`
+	Result PresentationRecord_Result `protobuf:"varint,6,opt,name=result,proto3,enum=vca.walletportal.v1.PresentationRecord_Result" json:"result,omitempty"`
+	// The id of the request the wallet answered: the last path segment of
+	// its request URI, else its state. Empty when the request names none.
+	RequestId string `protobuf:"bytes,7,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	// The credentials the answer carried, by the type the request asked
+	// for, else by the query id.
+	Credentials   []string `protobuf:"bytes,8,rep,name=credentials,proto3" json:"credentials,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2470,6 +2476,20 @@ func (x *PresentationRecord) GetResult() PresentationRecord_Result {
 		return x.Result
 	}
 	return PresentationRecord_RESULT_UNSPECIFIED
+}
+
+func (x *PresentationRecord) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *PresentationRecord) GetCredentials() []string {
+	if x != nil {
+		return x.Credentials
+	}
+	return nil
 }
 
 // PresentDeclineRequest names the request the citizen refuses.
@@ -3753,14 +3773,17 @@ const file_vca_walletportal_v1_walletportal_proto_rawDesc = "" +
 	"\fredirect_uri\x18\x02 \x01(\tR\vredirectUri\x12\x18\n" +
 	"\amessage\x18\x03 \x01(\tR\amessage\x12?\n" +
 	"\x06record\x18\x04 \x01(\v2'.vca.walletportal.v1.PresentationRecordR\x06record\x12-\n" +
-	"\x04card\x18\x05 \x01(\v2\x19.vca.walletportal.v1.CardR\x04card\"\xe5\x02\n" +
+	"\x04card\x18\x05 \x01(\v2\x19.vca.walletportal.v1.CardR\x04card\"\xa6\x03\n" +
 	"\x12PresentationRecord\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12*\n" +
 	"\x02at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x02at\x12\x1a\n" +
 	"\bverifier\x18\x03 \x01(\tR\bverifier\x12#\n" +
 	"\rverifier_name\x18\x04 \x01(\tR\fverifierName\x12\x16\n" +
 	"\x06claims\x18\x05 \x03(\tR\x06claims\x12F\n" +
-	"\x06result\x18\x06 \x01(\x0e2..vca.walletportal.v1.PresentationRecord.ResultR\x06result\"r\n" +
+	"\x06result\x18\x06 \x01(\x0e2..vca.walletportal.v1.PresentationRecord.ResultR\x06result\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\a \x01(\tR\trequestId\x12 \n" +
+	"\vcredentials\x18\b \x03(\tR\vcredentials\"r\n" +
 	"\x06Result\x12\x16\n" +
 	"\x12RESULT_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fRESULT_ACCEPTED\x10\x01\x12\x13\n" +

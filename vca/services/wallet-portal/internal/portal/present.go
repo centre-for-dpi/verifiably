@@ -337,10 +337,40 @@ func (p *Portal) outcome(w http.ResponseWriter, r *http.Request, answer *walletp
 	}
 	card := b.part("card", components.Card{
 		ID: "outcome", Title: title, Text: answer.GetMessage(),
-		Body: components.Join(b.part("badge", badge), back),
+		Body: components.Join(b.part("badge", badge), p.left(b, answer.GetRecord()), back),
 	})
 	return p.render(w, r, b, components.Page{
 		Title: title, Lead: lead, Description: lead, Content: card,
+	})
+}
+
+// left renders what left the wallet with an answer: the verifier, the
+// request, the credentials and the claim names. A refusal or an answer
+// with no record shows nothing.
+func (p *Portal) left(b *pen, rec *walletportalv1.PresentationRecord) template.HTML {
+	if rec == nil || rec.GetResult() == walletportalv1.PresentationRecord_RESULT_DECLINED {
+		return ""
+	}
+	verifier := rec.GetVerifierName()
+	if verifier == "" {
+		verifier = rec.GetVerifier()
+	}
+	none := msg.T("holder.present.left.none.label")
+	row := func(label, value string) components.Row {
+		if strings.TrimSpace(value) == "" {
+			value = none
+		}
+		return components.Row{{Text: label}, {Text: value}}
+	}
+	return b.part("table", components.Table{
+		ID: "left", Caption: msg.T("holder.present.left.caption.label"),
+		Columns: []string{msg.T("holder.present.left.item.label"), msg.T("holder.present.left.value.label")},
+		Rows: []components.Row{
+			row(msg.T("holder.present.left.verifier.label"), verifier),
+			row(msg.T("holder.present.left.request.label"), rec.GetRequestId()),
+			row(msg.T("holder.present.left.credential.label"), strings.Join(rec.GetCredentials(), ", ")),
+			row(msg.T("holder.present.left.claims.label"), strings.Join(rec.GetClaims(), ", ")),
+		},
 	})
 }
 

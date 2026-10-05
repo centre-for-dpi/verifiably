@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path"
 	"slices"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -36,6 +38,8 @@ type history struct {
 	VerifierName string    `json:"verifier_name,omitempty"`
 	Claims       []string  `json:"claims,omitempty"`
 	Result       string    `json:"result"`
+	RequestID    string    `json:"request_id,omitempty"`
+	Credentials  []string  `json:"credentials,omitempty"`
 }
 
 // proto returns the record as the RPC returns it.
@@ -43,6 +47,7 @@ func (h history) proto() *walletportalv1.PresentationRecord {
 	return &walletportalv1.PresentationRecord{
 		Id: h.ID, At: timestamppb.New(h.At), Verifier: h.Verifier, VerifierName: h.VerifierName,
 		Claims: h.Claims, Result: walletportalv1.PresentationRecord_Result(walletportalv1.PresentationRecord_Result_value[h.Result]),
+		RequestId: h.RequestID, Credentials: h.Credentials,
 	}
 }
 
@@ -50,12 +55,13 @@ func (h history) proto() *walletportalv1.PresentationRecord {
 // above MaxHistory. A store fault loses the record but not the answer,
 // which the verifier already has.
 func (s *Service) remember(ctx context.Context, citizen session.Citizen, parsed present.Request,
-	claims []string, result walletportalv1.PresentationRecord_Result,
+	claims, credentials []string, result walletportalv1.PresentationRecord_Result,
 ) *walletportalv1.PresentationRecord {
 	now := s.opts.Now().UTC()
 	h := history{
 		ID: fmt.Sprintf("%020d-%09d-%s", now.UnixNano(), s.seq.Add(1), s.opts.NewID()), At: now, Verifier: parsed.ClientID,
 		VerifierName: present.TrustOf(ctx, s.opts.Trust, parsed.ClientID).Name, Claims: claims, Result: result.String(),
+		RequestID: requestID(parsed), Credentials: credentials,
 	}
 	if k, err := key(KindHistory, citizen.WalletKey(), h.ID); err == nil {
 		if raw, merr := json.Marshal(h); merr == nil && s.opts.Store.Put(ctx, k, raw) == nil {
@@ -77,6 +83,43 @@ func (s *Service) trim(ctx context.Context, citizen session.Citizen) {
 		_ = ignored
 		keys = keys[1:]
 	}
+}
+
+// requestID returns the id of a request: the last path segment of its
+// request URI, else its state.
+func requestID(parsed present.Request) string {
+	if u, err := url.Parse(parsed.RequestURI); err == nil && parsed.RequestURI != "" {
+		if segment := path.Base(strings.TrimRight(u.Path, "/")); segment != "." && segment != "/" {
+			return segment
+		}
+	}
+	return parsed.State
+}
+
+// answeredTypes names the credentials of the answered queries: the type
+// each query asks for, else its id. No query ids means every query.
+func answeredTypes(parsed present.Request, queries []string) []string {
+	var out []string
+	for _, cq := range parsed.Query.Credentials {
+		if len(queries) > 0 && !slices.Contains(queries, cq.ID) {
+			continue
+		}
+		name := cq.ID
+		if m := cq.Meta; m != nil {
+			switch {
+			case len(m.VctValues) > 0:
+				name = m.VctValues[0]
+			case m.DoctypeValue != "":
+				name = m.DoctypeValue
+			case len(m.TypeValues) > 0 && len(m.TypeValues[0]) > 0:
+				name = m.TypeValues[0][len(m.TypeValues[0])-1]
+			}
+		}
+		if name != "" && !slices.Contains(out, name) {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // requestedNames returns every claim name a request asks for.
@@ -116,7 +159,7 @@ func (s *Service) PresentDecline(ctx context.Context, req *connect.Request[walle
 		_, told := s.opts.Post(ctx, parsed.ResponseURI, form)
 		_ = told
 	}
-	record := s.remember(ctx, citizen, parsed, nil, walletportalv1.PresentationRecord_RESULT_DECLINED)
+	record := s.remember(ctx, citizen, parsed, nil, nil, walletportalv1.PresentationRecord_RESULT_DECLINED)
 	ignored := s.drop(ctx, KindPresentation, citizen.WalletKey(), id)
 	_ = ignored
 	return connect.NewResponse(&walletportalv1.PresentDeclineResponse{Record: record}), nil
