@@ -592,6 +592,10 @@ func (s *Service) UpdateAuthProvider(ctx context.Context, req *connect.Request[a
 	in.Scopes = current.Scopes
 	in.InternalAuthority = current.InternalAuthority
 	stored, err := s.d.Providers.Put(in)
+	if err == nil && stored.IsDefault {
+		// One record takes the logins that pick the default.
+		err = s.d.Providers.OnlyDefault(stored.ID)
+	}
 	if serr := s.write(ctx, id.Actor, "admin.UpdateAuthProvider", in.ID, err); serr != nil {
 		return nil, fail(serr)
 	}

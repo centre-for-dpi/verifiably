@@ -35,6 +35,9 @@ func (p *Portal) registerProviders(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+at+"/providers/{id}", p.posted(p.updateProvider))
 	mux.HandleFunc("POST "+at+"/providers/{id}/enable", p.posted(p.toggleProvider))
 	mux.HandleFunc("POST "+at+"/providers/{id}/delete", p.posted(p.deleteProvider))
+	mux.HandleFunc("POST "+at+"/providers/{id}/default", p.posted(p.defaultProvider))
+	mux.HandleFunc("GET "+at+"/providers/{id}/console", p.guarded(p.console))
+	mux.HandleFunc("GET "+at+"/providers/pairs/{pair}/{id}/console", p.guarded(p.pairConsole))
 	p.registerHolders(mux)
 }
 
@@ -77,9 +80,15 @@ func (p *Portal) providersPage(w http.ResponseWriter, r *http.Request, s session
 			Rows: rows,
 		})
 	}
-	// The holder authorization servers keep providers of their own
-	// (ADR-052 decision 2).
-	content = components.Join(content, p.signInBlock(r.Context(), b, f, s))
+	// The auth service of each live pair keeps the providers of its
+	// role, and the holder authorization servers keep providers of their
+	// own (ADR-052 decision 2).
+	own := make([]oidcflow.Provider, 0, len(res.Msg.GetProviders()))
+	for _, m := range res.Msg.GetProviders() {
+		own = append(own, oidcflow.FromAdminProto(m))
+	}
+	pairs := p.pairProviders(r.Context(), f, s)
+	content = components.Join(content, p.consolesCard(b, own, pairs), p.pairBlock(b, pairs), p.signInBlock(r.Context(), b, f, s))
 	if b.err != nil {
 		return b.err
 	}
@@ -110,11 +119,17 @@ func (p *Portal) providerRow(b *blocks, f frame, pr oidcflow.Provider, csrf stri
 	if pr.IsDefault {
 		isDefault = b.add("badge", components.Badge{Status: "info", Text: msg.T("admin.providers.default.label")})
 	}
+	var makeDefault template.HTML
+	if !pr.IsDefault {
+		makeDefault = form(at+"/providers/"+pr.ID+"/default", csrf,
+			b.add("button", components.Button{Text: msg.T("admin.providers.make_default.label"), Type: "submit"}))
+	}
 	actions := components.Join(
 		template.HTML(`<div class="row-actions">`), //nolint:gosec // a literal wrapper
 		form(at+"/providers/"+pr.ID+"/enable", csrf,
 			template.HTML(`<input type="hidden" name="enabled" value="`+next+`">`), //nolint:gosec // a literal value
 			b.add("button", toggle)),
+		makeDefault,
 		form(at+"/providers/"+pr.ID+"/delete", csrf,
 			b.add("button", components.Button{Text: msg.T("admin.providers.remove.label"), Type: "submit", Variant: "danger"})),
 		template.HTML(`</div>`),
@@ -222,6 +237,7 @@ type providerInput struct {
 	RolesClaimPath  string
 	Roles           []string
 	Stacks          []string
+	ConsoleURL      string
 }
 
 // readProviderInput reads the form of a request.
@@ -231,7 +247,7 @@ func readProviderInput(r *http.Request) providerInput {
 		Kind: get("kind"), DisplayName: get("display_name"), Issuer: get("issuer"), Client: get("client"),
 		ClientID: get("client_id"), ClientSecretEnv: get("client_secret_env"), PrivateKeyEnv: get("private_key_env"),
 		TokenAuth: get("token_auth"), Register: get("register"), RolesClaimPath: get("roles_claim_path"),
-		Roles: r.PostForm["roles"], Stacks: r.PostForm["stacks"],
+		Roles: r.PostForm["roles"], Stacks: r.PostForm["stacks"], ConsoleURL: get("console_url"),
 	}
 }
 
@@ -245,7 +261,7 @@ func inputOf(pr oidcflow.Provider) providerInput {
 	return providerInput{
 		Kind: kind, DisplayName: pr.DisplayName, Issuer: issuerOf(pr.DiscoveryURL), Client: "given",
 		ClientID: pr.ClientID, TokenAuth: string(pr.TokenAuthMethod), Register: string(pr.Registration),
-		RolesClaimPath: pr.RolesClaimPath, Roles: pr.Roles, Stacks: pr.Stacks,
+		RolesClaimPath: pr.RolesClaimPath, Roles: pr.Roles, Stacks: pr.Stacks, ConsoleURL: pr.ConsoleURL,
 	}
 }
 
@@ -293,6 +309,10 @@ func (in providerInput) record(current *oidcflow.Provider) (*adminv1.AuthProvide
 		if pr.PrivateKey.IsZero() {
 			pr.PrivateKey = current.PrivateKey
 		}
+	}
+	if console := httpURL(in.ConsoleURL); console != "" {
+		// The admin names the console of a provider of any kind.
+		pr.ConsoleURL = console
 	}
 	preset, _ := onboard.PresetFor(oidcflow.Kind(in.Kind))
 	preset.Apply(&pr)
@@ -380,6 +400,7 @@ func (p *Portal) providerForm(b *blocks, f frame, action string, in providerInpu
 		b.add("field", components.Field{ID: "token_auth", Label: msg.T("admin.providers.token_auth.label"), Type: "select", Options: tokenAuthOptions(in.TokenAuth)}),
 		b.add("field", components.Field{ID: "register", Label: msg.T("admin.providers.register.label"), Type: "select", Options: registerOptions(in.Register)}),
 		b.add("field", components.Field{ID: "roles_claim_path", Label: msg.T("admin.providers.roles_claim_path.label"), Value: in.RolesClaimPath, Hint: msg.T("admin.providers.roles_claim_path.hint")}),
+		b.add("field", components.Field{ID: "console_url", Label: msg.T("admin.providers.console.label"), Value: in.ConsoleURL, Type: "url", Hint: msg.T("admin.providers.console.hint")}),
 		b.add("choice", components.Choice{ID: "roles", Legend: msg.T("admin.providers.roles.label"), Options: roles, Multiple: true}),
 		stacks,
 		template.HTML(`<div id="discovery">`)+result+template.HTML(`</div>`), //nolint:gosec // literal wrappers around kit output

@@ -33,6 +33,7 @@ type counts struct {
 	external    int
 	hasRegistry bool
 	providers   []oidcflow.Provider
+	pairs       []pairHeld
 	tenants     int
 	keys        int
 	events      int
@@ -51,6 +52,7 @@ func (p *Portal) overview(w http.ResponseWriter, r *http.Request, s session) err
 		return err
 	}
 	f := p.frame(ctx)
+	c.pairs = p.pairProviders(ctx, f, s)
 	b := p.blocks()
 	at := p.opts.Prefix
 	var actions template.HTML
@@ -62,7 +64,7 @@ func (p *Portal) overview(w http.ResponseWriter, r *http.Request, s session) err
 			Text: msg.T("admin.stat.trust_list.text"), Href: at + "/trust"}),
 		b.add("stat", components.Stat{Label: msg.T("admin.nav.trust_registries.label"), Value: c.registriesValue(),
 			Text: msg.T("admin.stat.registries.text"), Href: at + "/trust/registries"}),
-		b.add("stat", components.Stat{Label: msg.T("admin.nav.providers.label"), Value: plural(len(c.providers), "admin.stat.providers"),
+		b.add("stat", components.Stat{Label: msg.T("admin.nav.providers.label"), Value: plural(len(c.inUse()), "admin.stat.providers"),
 			Text: plural(c.realms(), "admin.stat.providers.realm") + ". " + msg.T("admin.stat.providers.text"), Href: at + "/providers"}),
 		b.add("stat", components.Stat{Label: msg.T("admin.nav.tenants.label"), Value: plural(c.tenants, "admin.stat.tenants"),
 			Text: msg.T("admin.stat.tenants.text"), Href: at + "/tenants"}),
@@ -75,6 +77,7 @@ func (p *Portal) overview(w http.ResponseWriter, r *http.Request, s session) err
 		ID: "first-run", Title: msg.T("admin.checklist.title.label"), Note: msg.T("admin.checklist.note"),
 		Items: p.checklist(ctx, c),
 	})
+	consoles := p.consolesCard(b, c.providers, c.pairs)
 	health := p.healthTable(b, healthRes.Msg)
 	if b.err != nil {
 		return b.err
@@ -85,7 +88,7 @@ func (p *Portal) overview(w http.ResponseWriter, r *http.Request, s session) err
 		Actions:     actions,
 		Description: msg.T("admin.overview.lead"),
 		Content: components.Join(template.HTML(`<div class="stats">`)+stats+template.HTML(`</div>`), //nolint:gosec // literal wrappers around kit output
-			checklist, health),
+			checklist, consoles, health),
 		Toasts: notice(r.URL.Query().Get("notice")),
 	})
 }
@@ -170,12 +173,44 @@ func (c counts) keysValue() string {
 	return plural(c.keys, "admin.stat.api_keys")
 }
 
-// realms counts the distinct realm labels of the enabled providers.
+// inUse returns every provider in use: the records of this admin and
+// the records of the auth service of each live pair.
+func (c counts) inUse() []oidcflow.Provider {
+	seen := map[string]bool{}
+	var out []oidcflow.Provider
+	add := func(pr oidcflow.Provider) {
+		key := pr.DiscoveryURL + " " + pr.ClientID
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, pr)
+		}
+	}
+	// Each record of this admin counts. A pair holds the records that
+	// the admin pushed to it too, so a pair record counts only when the
+	// admin holds no record with its discovery URL and client id.
+	for _, pr := range c.providers {
+		seen[pr.DiscoveryURL+" "+pr.ClientID] = true
+		out = append(out, pr)
+	}
+	for _, held := range c.pairs {
+		for _, pr := range held.providers {
+			add(pr)
+		}
+	}
+	return out
+}
+
+// realms counts the distinct realms of the enabled providers in use: the
+// realm label, else the Keycloak realm of the discovery URL.
 func (c counts) realms() int {
 	seen := map[string]bool{}
-	for _, pr := range c.providers {
-		if pr.Enabled && pr.Realm != "" {
-			seen[pr.Realm] = true
+	for _, pr := range c.inUse() {
+		realm := pr.Realm
+		if realm == "" {
+			realm, _ = oidcflow.KeycloakRealmOf(pr.DiscoveryURL)
+		}
+		if pr.Enabled && realm != "" {
+			seen[realm] = true
 		}
 	}
 	return len(seen)
@@ -218,6 +253,15 @@ func (p *Portal) checklist(ctx context.Context, c counts) []components.Check {
 		}
 		if p.registers(ctx, pr) {
 			registers = true
+		}
+	}
+	// An enabled provider of the auth service of a pair signs in the role
+	// of that pair.
+	for _, held := range c.pairs {
+		for _, pr := range held.providers {
+			if pr.Enabled {
+				roles[held.role] = true
+			}
 		}
 	}
 	var missing []string

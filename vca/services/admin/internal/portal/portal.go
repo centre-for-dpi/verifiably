@@ -32,6 +32,9 @@
 //	POST /providers/{id}         save the changes and push them
 //	POST /providers/{id}/enable  turn one provider on or off
 //	POST /providers/{id}/delete  remove one provider
+//	POST /providers/{id}/default make one provider the default
+//	GET  /providers/{id}/console the management console of one provider
+//	GET  /providers/pairs/{pair}/{id}/console the console of a provider of a pair
 //	GET  /keys                   the API key list with the create form
 //	POST /keys                   create one API key
 //	POST /keys/{id}/revoke       revoke one API key
@@ -412,6 +415,7 @@ var Notices = map[string]components.Toast{
 	"provider-enabled":         {Level: "ok", Text: "The login provider is on. Its roles can sign in with it."},
 	"provider-disabled":        {Level: "warn", Text: "The login provider is off. New sign ins with it fail."},
 	"provider-removed":         {Level: "warn", Text: "The login provider is removed. Its sessions end."},
+	"provider-default":         {Level: "ok", Text: "The provider is the default now."},
 	"holder-provider-added":    {Level: "ok", Text: msg.T("admin.holders.added")},
 	"holder-provider-saved":    {Level: "ok", Text: msg.T("admin.holders.saved")},
 	"holder-provider-enabled":  {Level: "ok", Text: msg.T("admin.holders.enabled")},

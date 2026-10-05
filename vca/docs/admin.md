@@ -147,7 +147,30 @@ with the result.
 The edit form at `/admin/providers/{id}` shows every field but the
 secret references. An empty reference field keeps the stored one, so the
 form never echoes a reference or a value. The table offers a switch that
-turns one provider on or off and a remove action.
+turns one provider on or off and a remove action. "Make default" moves
+the default flag to one provider. The service then clears the flag of
+every other record. One record then takes the logins that pick the
+default.
+
+The field "Management console" names the console of a provider of any
+kind. The Keycloak preset fills it from the realm. The card "Management
+consoles" on the overview and on the providers page lists each record
+that names one. Its link opens `/admin/providers/{id}/console`, which
+sends the browser to that console. A provider of a pair opens
+`/admin/providers/pairs/{pair}/{id}/console`. A record without a console
+gets no link, and its route answers 404.
+
+### Providers of each pair
+
+Setup writes one realm per role into the auth service of each role pair.
+The admin reads them with its session through `ListAuthProviders` of
+each live pair. The card "Providers of each pair" lists them with the
+pair, the realm, and the state. The overview counts them too. The
+provider card counts each record once. A record that the admin pushed
+to a pair counts with the admin. The realm count reads the realm
+label, else the Keycloak realm of the discovery URL. The first run
+checklist counts an enabled provider of a pair for the role of that
+pair.
 
 A client secret from a registration goes to the vault. With a state
 directory the vault writes one file with mode 0600. Without a state
