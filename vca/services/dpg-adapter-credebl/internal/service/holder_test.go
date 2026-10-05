@@ -424,6 +424,34 @@ func TestPresentOid4vpRefusesAnUntickedClaim(t *testing.T) {
 	}
 }
 
+// TestPresentOid4vpAnswersAPresentationExchangeRequest covers a request
+// with a Presentation Exchange definition. The agent answers it with
+// presentationExchange.credentialsForRequest, not with a DCQL result
+// (testdata/doc/SOURCE.md). The adapter reads the credential the agent
+// picks and the claims it discloses from that shape too.
+func TestPresentOid4vpAnswersAPresentationExchangeRequest(t *testing.T) {
+	ctx := context.Background()
+	svc, agent, _ := newHolder(t, nil)
+	wallet := registerHolder(t, svc)
+	agent.SetResolved(fake.Oid4vpResolvedPE)
+	request := "openid4vp://?client_id=x509_san_dns%3Averifier.example.org&request_uri=https%3A%2F%2Fverifier.example.org%2Frequest%2F1"
+	res, err := svc.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{WalletId: wallet, RequestUri: request,
+		CredentialIds: []string{"sd-jwt:" + fake.SdJwtRecord}, DisclosedClaims: []string{"fullName"}}))
+	if err != nil || !res.Msg.GetAccepted() || strings.Join(res.Msg.GetSharedClaims(), ",") != "fullName" {
+		t.Fatalf("Present = %+v, %v", res, err)
+	}
+	_, err = svc.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{WalletId: wallet, RequestUri: request,
+		CredentialIds: []string{"w3c:" + fake.W3cRecord}, DisclosedClaims: []string{"fullName"}}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), fake.SdJwtRecord) {
+		t.Errorf("another credential: %v", err)
+	}
+	_, err = svc.Present(ctx, connect.NewRequest(&backendv1.PresentRequest{WalletId: wallet, RequestUri: request,
+		CredentialIds: []string{"sd-jwt:" + fake.SdJwtRecord}}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "fullName") {
+		t.Errorf("an unticked claim: %v", err)
+	}
+}
+
 // TestAcceptProofRequest is ADR-062 decision 3: the wallet takes the
 // invitation of the verifier and answers the proof request it carries.
 // The answer names what the wallet shared.

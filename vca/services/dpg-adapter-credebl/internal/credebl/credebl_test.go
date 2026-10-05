@@ -454,3 +454,30 @@ func contains(list []string, value string) bool {
 	}
 	return false
 }
+
+// TestPresentationExchangePicksAndDisclosures reads the Presentation
+// Exchange match of Credo 0.6.2: the first needsCount entries of each
+// requirement with their first credential, the elements of an mDoc, and
+// a W3C credential that goes whole.
+func TestPresentationExchangePicksAndDisclosures(t *testing.T) {
+	raw := `{"presentationExchange":{"credentialsForRequest":{"requirements":[
+	  {"needsCount":1,"submissionEntry":[
+	    {"inputDescriptorId":"licence","verifiableCredentials":[{"claimFormat":"mso_mdoc","credentialRecord":{"id":"m-1"},
+	      "disclosedPayload":{"org.iso.18013.5.1":{"family_name":"x","given_name":"y"}}}]},
+	    {"inputDescriptorId":"spare","verifiableCredentials":[{"claimFormat":"jwt_vc","credentialRecord":{"id":"w-2"}}]}]},
+	  {"needsCount":2,"submissionEntry":[
+	    {"inputDescriptorId":"degree","verifiableCredentials":[{"claimFormat":"jwt_vc","credentialRecord":{"id":"w-1"}}]},
+	    {"inputDescriptorId":"none","verifiableCredentials":[]}]}]}}}`
+	var r ResolvedRequest
+	if err := json.Unmarshal([]byte(raw), &r); err != nil {
+		t.Fatal(err)
+	}
+	picks := r.Picks()
+	if len(picks) != 2 || picks["licence"] != "m-1" || picks["degree"] != "w-1" {
+		t.Fatalf("picks = %v", picks)
+	}
+	got := r.Disclosures()
+	if len(got) != 2 || strings.Join(got[0].Claims, ",") != "family_name,given_name" || got[0].Whole || !got[1].Whole || got[1].Query != "degree" {
+		t.Fatalf("disclosures = %+v", got)
+	}
+}

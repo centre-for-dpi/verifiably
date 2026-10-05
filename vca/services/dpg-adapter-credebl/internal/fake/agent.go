@@ -76,6 +76,9 @@ const (
 	// Oid4vpResolvedPlainClaims is an OID4VP request for one claim of an
 	// SD-JWT that carries two more claims outside any disclosure.
 	Oid4vpResolvedPlainClaims Answer = "doc/agent-oid4vp-request-resolved-plain-claims.json"
+	// Oid4vpResolvedPE is an OID4VP request with a Presentation Exchange
+	// definition, which the agent answers with credentialsForRequest.
+	Oid4vpResolvedPE Answer = "doc/agent-oid4vp-request-resolved-pe.json"
 )
 
 // SdJwtRecord is the stored SD-JWT VC of the agent answers.

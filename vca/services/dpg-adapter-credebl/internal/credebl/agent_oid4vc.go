@@ -183,6 +183,72 @@ type ResolvedRequest struct {
 			Matches map[string]dcqlMatch `json:"credential_matches"`
 		} `json:"queryResult"`
 	} `json:"dcql"`
+	// PresentationExchange is the match of a Presentation Exchange
+	// definition: DifPexCredentialsForRequest of Credo 0.6.2.
+	PresentationExchange *struct {
+		// CredentialsForRequest holds the requirements of the definition.
+		CredentialsForRequest struct {
+			// Requirements are the requirements, each with its entries.
+			Requirements []pexRequirement `json:"requirements"`
+		} `json:"credentialsForRequest"`
+	} `json:"presentationExchange"`
+}
+
+// pexRequirement is one requirement of a Presentation Exchange match.
+type pexRequirement struct {
+	// NeedsCount is the number of entries the answer needs.
+	NeedsCount int `json:"needsCount"`
+	// Entries are the input descriptors, each with its credentials.
+	Entries []pexEntry `json:"submissionEntry"`
+}
+
+// pexEntry is one input descriptor with the credentials that match it.
+type pexEntry struct {
+	// Descriptor is the id of the input descriptor.
+	Descriptor string `json:"inputDescriptorId"`
+	// Credentials match the descriptor, in the order the agent picks.
+	Credentials []pexCredential `json:"verifiableCredentials"`
+}
+
+// pexCredential is one credential that matches an input descriptor.
+type pexCredential struct {
+	// Format is the claim format, for example dc+sd-jwt.
+	Format string `json:"claimFormat"`
+	// Record is the stored credential.
+	Record struct {
+		// ID is the record id.
+		ID string `json:"id"`
+		// Instances hold the stored credential.
+		Instances []struct {
+			// Compact is the compact SD-JWT VC.
+			Compact string `json:"compactSdJwtVc"`
+		} `json:"credentialInstances"`
+	} `json:"credentialRecord"`
+	// Disclosed is what an SD-JWT or an mDoc discloses for the
+	// descriptor. A W3C credential has none and goes whole.
+	Disclosed map[string]json.RawMessage `json:"disclosedPayload"`
+}
+
+// pexPicks returns the entries the agent answers with: the first
+// needsCount entries of each requirement, each with its first
+// credential (selectCredentialsForRequest of Credo 0.6.2).
+func (r ResolvedRequest) pexPicks() []pexEntry {
+	if r.PresentationExchange == nil {
+		return nil
+	}
+	var out []pexEntry
+	for _, req := range r.PresentationExchange.CredentialsForRequest.Requirements {
+		entries := req.Entries
+		if req.NeedsCount >= 0 && req.NeedsCount < len(entries) {
+			entries = entries[:req.NeedsCount]
+		}
+		for _, e := range entries {
+			if len(e.Credentials) > 0 {
+				out = append(out, e)
+			}
+		}
+	}
+	return out
 }
 
 // dcqlMatch is the match of one credential query.
@@ -228,6 +294,9 @@ type dcqlValid struct {
 // first valid credential of the query.
 func (r ResolvedRequest) Picks() map[string]string {
 	out := map[string]string{}
+	for _, e := range r.pexPicks() {
+		out[e.Descriptor] = e.Credentials[0].Record.ID
+	}
 	if r.Dcql == nil {
 		return out
 	}
@@ -257,10 +326,13 @@ type Disclosure struct {
 // of Credo), so a claim that only a later claim set leaves out still
 // travels.
 func (r ResolvedRequest) Disclosures() []Disclosure {
-	if r.Dcql == nil {
-		return nil
-	}
 	var out []Disclosure
+	for _, e := range r.pexPicks() {
+		out = append(out, pexDisclosure(e))
+	}
+	if r.Dcql == nil {
+		return out
+	}
 	for _, id := range sortedIDs(r.Dcql.QueryResult.Matches) {
 		m := r.Dcql.QueryResult.Matches[id]
 		if !m.Success || len(m.Valid) == 0 {
@@ -288,6 +360,33 @@ func disclosureOf(q dcql.CredentialQuery, v dcqlValid) Disclosure {
 	}
 	if len(v.Record.Instances) > 0 {
 		d.Claims = withTopLevel(d.Claims, PlainClaims(v.Record.Instances[0].Compact))
+	}
+	return d
+}
+
+// pexDisclosure returns what the agent sends for one input descriptor:
+// the claims of the disclosed payload of an SD-JWT, with each claim the
+// stored SD-JWT shows in the clear, or the elements of an mDoc. A W3C
+// credential has no disclosed payload, so it goes whole.
+func pexDisclosure(e pexEntry) Disclosure {
+	c := e.Credentials[0]
+	d := Disclosure{Query: e.Descriptor}
+	if c.Disclosed == nil {
+		d.Whole = true
+		return d
+	}
+	for _, name := range sortedIDs(c.Disclosed) {
+		var ns map[string]json.RawMessage
+		switch {
+		case sdJwtEnvelope[name]:
+		case c.Format == "mso_mdoc" && json.Unmarshal(c.Disclosed[name], &ns) == nil:
+			d.Claims = append(d.Claims, sortedIDs(ns)...)
+		default:
+			d.Claims = append(d.Claims, name)
+		}
+	}
+	if len(c.Record.Instances) > 0 {
+		d.Claims = withTopLevel(d.Claims, PlainClaims(c.Record.Instances[0].Compact))
 	}
 	return d
 }
