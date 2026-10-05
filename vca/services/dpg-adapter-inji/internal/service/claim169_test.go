@@ -74,3 +74,30 @@ func TestIssueReturnsTheIdentityQR(t *testing.T) {
 		t.Fatalf("a configuration without qrSettings gives a code: %q", plain.Msg.GetClaim169Qr())
 	}
 }
+
+// TestIssueReturnsTheDisclosedIdentityQR covers a vc+sd-jwt
+// configuration: the code is selectively disclosable, so Certify puts
+// it in a disclosure. Issue still returns it.
+func TestIssueReturnsTheDisclosedIdentityQR(t *testing.T) {
+	svc, _ := newService(t, both)
+	if _, err := register(svc, &backendv1.CredentialConfiguration{
+		Id: "NationalId_vc+sd-jwt", Format: commonv1.Format_FORMAT_VC_SD_JWT, Type: "NationalIdentityCredential",
+		JsonSchema: identitySchema,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := svc.Issue(context.Background(), connect.NewRequest(&backendv1.IssueRequest{Spec: &backendv1.IssueSpec{
+		ConfigurationId: "NationalId_vc+sd-jwt",
+		SubjectData:     `{"fullName":"Wanjiku Njeri","dateOfBirth":"1987-04-12","gender":"Female","mobileNumber":"+254712345678"}`,
+	}}))
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	cwt, steps, err := ingest.DecodeClaim169(resp.Msg.GetClaim169Qr())
+	if err != nil {
+		t.Fatalf("the identity QR must decode: %v (%v)", err, steps)
+	}
+	if cwt.Data["4"] != "Wanjiku Njeri" {
+		t.Fatalf("claim 169 = %v", cwt.Data)
+	}
+}

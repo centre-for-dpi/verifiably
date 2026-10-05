@@ -127,8 +127,27 @@ func TestIdentityQRFromCredential(t *testing.T) {
 	if got := IdentityQR([]byte(sdJwt)); got != text {
 		t.Fatalf("SD-JWT code = %q", got)
 	}
-	for _, none := range []string{"", "{}", `{"credentialSubject":{"fullName":"x"}}`, "a.b", "a.!!.c", "a." +
-		base64.RawURLEncoding.EncodeToString([]byte("[1]")) + ".c"} {
+	// A configuration that makes the code disclosable puts it in a
+	// disclosure; the adapter holds the disclosures at issue time.
+	disclosed, err := os.ReadFile("../../testdata/doc/credential-sdjwt-claim169.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sdAnswer struct {
+		Credential string `json:"credential"`
+	}
+	if jerr := json.Unmarshal(disclosed, &sdAnswer); jerr != nil {
+		t.Fatal(jerr)
+	}
+	if got := IdentityQR([]byte(sdAnswer.Credential)); got != text {
+		t.Fatalf("disclosed code = %q, want the recorded code", got)
+	}
+	for _, none := range []string{"", "{}", `{"credentialSubject":{"fullName":"x"}}`, "a.b", "a.!!.c",
+		"a." + base64.RawURLEncoding.EncodeToString([]byte(`{"vct":"x"}`)) + ".c~!!~" + base64.RawURLEncoding.EncodeToString([]byte(`["s","other","v"]`)) + "~" +
+			base64.RawURLEncoding.EncodeToString([]byte(`{"x":1}`)) + "~",
+		"a." + base64.RawURLEncoding.EncodeToString([]byte(`{"vct":"x"}`)) + ".c~" +
+			base64.RawURLEncoding.EncodeToString([]byte(`["s","`+IdentityQRClaim+`",7]`)) + "~", "a." +
+			base64.RawURLEncoding.EncodeToString([]byte("[1]")) + ".c"} {
 		if got := IdentityQR([]byte(none)); got != "" {
 			t.Errorf("%q gives %q", none, got)
 		}

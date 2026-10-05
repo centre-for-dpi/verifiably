@@ -291,6 +291,7 @@ offer. The CLI test answers the client API from these shapes.
 | File | Source |
 | --- | --- |
 | `credential-ldp-claim169.json` | The credential answer of an `ldp_vc` configuration with `qrSettings`. The template the adapter registers puts the first entry of `claim_169_values` in `credentialSubject.identityQR`: https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/CertifyIssuanceServiceImpl.java. The code is a COSE_Sign1 CWT with claim 169, zlib, and base45. A key that was thrown away signed it. |
+| `credential-sdjwt-claim169.json` | The credential answer of a `vc+sd-jwt` configuration with `qrSettings`. The configuration makes `identityQR` selectively disclosable (`sdClaim`), so the code sits in a disclosure, not in the payload: the same source. The code is the one of `credential-ldp-claim169.json`. The signature is a placeholder. |
 
 Facts the adapter relies on:
 

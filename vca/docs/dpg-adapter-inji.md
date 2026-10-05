@@ -662,7 +662,9 @@ The adapter writes each selectively disclosable claim `fullName` as
 in the clear. A JSON-LD credential has no selective disclosure. The
 wallet consent screen lists its `identityQR` as always sent.
 
-`Issue` reads the claim back from the credential. It checks the text
+`Issue` reads the claim back from the credential. In an SD-JWT the
+code sits in a disclosure. So the adapter reads the payload, then each
+disclosure it got from Certify. It checks the text
 with the Claim 169 decoder of `core/ingest` and returns it in
 `claim169_qr`. The issuance service prints it on a document for the
 channel `CHANNEL_CLAIM169_QR`.

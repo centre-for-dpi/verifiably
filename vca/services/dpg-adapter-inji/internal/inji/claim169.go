@@ -94,7 +94,10 @@ func identityQRPart(settings []map[string]string, indent string) string {
 
 // IdentityQR returns the signed code a credential carries: the claim of
 // the credential subject of a JSON-LD credential, or the claim of the
-// payload of an SD-JWT. It returns the empty string when there is none.
+// payload of an SD-JWT, or the claim of one of its disclosures. A
+// configuration with qrSettings makes the code selectively disclosable,
+// so Certify puts it in a disclosure; the adapter holds every disclosure
+// at issue time. It returns the empty string when there is none.
 func IdentityQR(credential []byte) string {
 	var doc struct {
 		Subject map[string]any `json:"credentialSubject"`
@@ -102,12 +105,12 @@ func IdentityQR(credential []byte) string {
 	if json.Unmarshal(credential, &doc) == nil {
 		return anyval.As[string](doc.Subject[IdentityQRClaim])
 	}
-	jwt, _, _ := strings.Cut(string(credential), "~")
-	parts := strings.Split(jwt, ".")
-	if len(parts) != 3 {
+	parts := strings.Split(string(credential), "~")
+	segments := strings.Split(parts[0], ".")
+	if len(segments) != 3 {
 		return ""
 	}
-	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	raw, err := base64.RawURLEncoding.DecodeString(segments[1])
 	if err != nil {
 		return ""
 	}
@@ -115,5 +118,28 @@ func IdentityQR(credential []byte) string {
 	if json.Unmarshal(raw, &payload) != nil {
 		return ""
 	}
-	return anyval.As[string](payload[IdentityQRClaim])
+	if code := anyval.As[string](payload[IdentityQRClaim]); code != "" {
+		return code
+	}
+	for _, d := range parts[1:] {
+		if code := disclosedQR(d); code != "" {
+			return code
+		}
+	}
+	return ""
+}
+
+// disclosedQR returns the code one SD-JWT disclosure carries: the array
+// [salt, name, value] whose name is IdentityQRClaim and whose value is a
+// string.
+func disclosedQR(disclosure string) string {
+	raw, err := base64.RawURLEncoding.DecodeString(disclosure)
+	if err != nil {
+		return ""
+	}
+	var entry []any
+	if json.Unmarshal(raw, &entry) != nil || len(entry) != 3 || entry[1] != IdentityQRClaim {
+		return ""
+	}
+	return anyval.As[string](entry[2])
 }

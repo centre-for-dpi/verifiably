@@ -214,7 +214,7 @@ func (f *Server) serve(w http.ResponseWriter, r *http.Request) {
 		if f.fromStore(w, r, body) {
 			return
 		}
-		f.send(w, f.identityAnswer(credentialAnswer(body, credential)))
+		f.send(w, f.identityAnswer(credentialAnswer(body, credential), body))
 	case strings.HasPrefix(path, "/v1/certify/rendering-template/"):
 		f.renderingTemplate(w, strings.TrimPrefix(path, "/v1/certify/rendering-template/"))
 	case path == "/v1/verify/vp-request":
