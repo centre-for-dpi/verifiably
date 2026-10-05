@@ -206,6 +206,16 @@ RPC answer carries the stored record and one `PushResult` per target.
 Each result names the pair, the outcome, and the reason of a failure.
 The portal shows one line per target after a save.
 
+A removal reaches the pairs too. The service keeps a ledger of the
+pairs that took each record. A push can update a record the pair held
+already, for example its setup record. The ledger then keeps that
+record as it was. On removal, such a pair gets the old record back.
+Every other pair that took the record loses it. A pair the ledger does
+not name loses a matching record, but never its setup record. Every
+target gets one audit record, `admin.RemoveAuthProvider`. The RPC
+answer carries one `PushResult` per target, with `restored` set where
+the pair got its old record back.
+
 ### Holder providers
 
 The holder authorization server of an issuer stack keeps a provider

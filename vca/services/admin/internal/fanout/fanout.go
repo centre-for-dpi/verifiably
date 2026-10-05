@@ -58,6 +58,9 @@ type Result struct {
 	// Created says whether the push made a new record. False means the
 	// target held the record and got an update.
 	Created bool
+	// Restored says whether a removal gave the target back the record
+	// that the push of the removed provider had updated.
+	Restored bool
 	// Err says why the push failed. Nil means it succeeded.
 	Err error
 }
@@ -106,11 +109,30 @@ type Options struct {
 	// Timeout bounds one call when Client is nil. Zero means
 	// DefaultTimeout.
 	Timeout time.Duration
+	// Ledger keeps, per provider, the pairs that took it and the record
+	// a push updated, so a removal can undo the push. Nil keeps the
+	// ledger in memory.
+	Ledger oidcflow.Persister
 }
+
+// ledgerDoc names the persisted ledger document.
+const ledgerDoc = "provider-pushes"
+
+// pushed is what one pair holds of one admin provider: the id of the
+// record at the pair and, when the first push updated a record the pair
+// held already, that record as it was.
+type pushed struct {
+	HeldID   string             `json:"held_id"`
+	Replaced *oidcflow.Provider `json:"replaced,omitempty"`
+}
+
+// ledger maps an admin provider id to the pairs that hold it.
+type ledger map[string]map[string]pushed
 
 // FanOut pushes provider records to the auth services.
 type FanOut struct {
 	opts Options
+	mu   sync.Mutex
 }
 
 // New returns a fan out. It checks the required options.
@@ -123,6 +145,9 @@ func New(opts Options) (*FanOut, error) {
 	}
 	if opts.Client == nil {
 		opts.Client = &http.Client{Timeout: opts.Timeout}
+	}
+	if opts.Ledger == nil {
+		opts.Ledger = oidcflow.NewMemoryPersister()
 	}
 	return &FanOut{opts: opts}, nil
 }
@@ -152,53 +177,237 @@ func Targets(snap topology.Snapshot, roles []string, stacks []string) []Target {
 
 // Push sends p to the auth service of every target with token as the
 // bearer credential, all targets at once, and reports the outcome at
-// each one in target order.
+// each one in target order. The ledger remembers each pair that took
+// the record and the record a first push updated.
 func (f *FanOut) Push(ctx context.Context, token string, p oidcflow.Provider) Report {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	book, err := f.load()
 	targets := Targets(f.opts.Snapshot(ctx), p.Roles, p.Stacks)
 	report := Report{Results: make([]Result, len(targets))}
+	held := book[p.ID]
+	replaced := make([]*oidcflow.Provider, len(targets))
 	var wg sync.WaitGroup
 	for i, target := range targets {
 		report.Results[i] = Result{Target: target}
-		if token == "" {
+		switch {
+		case err != nil:
+			report.Results[i].Err = err
+			continue
+		case token == "":
 			report.Results[i].Err = ErrNoToken
 			continue
 		}
 		wg.Add(1)
-		go func(i int, target Target) {
+		go func(i int, target Target, prior pushed) {
 			defer wg.Done()
 			res := &report.Results[i]
-			res.ProviderID, res.Created, res.Err = f.pushOne(ctx, target, token, p)
-		}(i, target)
+			res.ProviderID, res.Created, replaced[i], res.Err = f.pushOne(ctx, target, token, p, prior)
+		}(i, target, held[target.Pair])
 	}
 	wg.Wait()
+	if err != nil {
+		return report
+	}
+	entry := book[p.ID]
+	if entry == nil {
+		entry = map[string]pushed{}
+	}
+	for i, res := range report.Results {
+		if res.Err != nil {
+			continue
+		}
+		prior, ok := entry[res.Target.Pair]
+		if !ok {
+			prior.Replaced = replaced[i]
+		}
+		prior.HeldID = res.ProviderID
+		entry[res.Target.Pair] = prior
+	}
+	if len(entry) > 0 {
+		book[p.ID] = entry
+		if serr := f.opts.Ledger.Save(ledgerDoc, book); serr != nil {
+			for i := range report.Results {
+				if report.Results[i].Err == nil {
+					report.Results[i].Err = serr
+				}
+			}
+		}
+	}
 	return report
 }
 
-// pushOne creates or updates the record at one target. A record with
-// the same discovery URL and client id counts as the same record.
-func (f *FanOut) pushOne(ctx context.Context, target Target, token string, p oidcflow.Provider) (string, bool, error) {
+// load reads the ledger.
+func (f *FanOut) load() (ledger, error) {
+	book := ledger{}
+	if err := f.opts.Ledger.Load(ledgerDoc, &book); err != nil {
+		return nil, fmt.Errorf("fanout: read the push ledger: %w", err)
+	}
+	if book == nil {
+		book = ledger{}
+	}
+	return book, nil
+}
+
+// pushOne creates or updates the record at one target. The record the
+// ledger names comes first; else a record with the same discovery URL
+// and client id counts as the same record. It returns the id at the
+// target, whether the push made the record, and the record it updated
+// when the ledger named none.
+func (f *FanOut) pushOne(ctx context.Context, target Target, token string, p oidcflow.Provider, prior pushed) (string, bool, *oidcflow.Provider, error) {
+	client := adminv1connect.NewAdminServiceClient(f.opts.Client, target.AuthURL)
+	list, err := client.ListAuthProviders(ctx, withToken(&adminv1.ListAuthProvidersRequest{}, token))
+	if err != nil {
+		return "", false, nil, err
+	}
+	record := oidcflow.ToAdminProto(p)
+	held, known := find(list.Msg.GetProviders(), p, prior.HeldID)
+	if held != nil {
+		record.Id = held.GetId()
+		updated, uerr := client.UpdateAuthProvider(ctx, withToken(&adminv1.UpdateAuthProviderRequest{Provider: record}, token))
+		if uerr != nil {
+			return "", false, nil, uerr
+		}
+		var replaced *oidcflow.Provider
+		if !known {
+			was := oidcflow.FromAdminProto(held)
+			replaced = &was
+		}
+		return updated.Msg.GetProvider().GetId(), false, replaced, nil
+	}
+	record.Id = ""
+	created, err := client.CreateAuthProvider(ctx, withToken(&adminv1.CreateAuthProviderRequest{Provider: record}, token))
+	if err != nil {
+		return "", false, nil, err
+	}
+	return created.Msg.GetProvider().GetId(), true, nil, nil
+}
+
+// find returns the record of the list that stands for p: the one with
+// the id the ledger names, else the one with the discovery URL and the
+// client id of p. It reports whether the ledger named it.
+func find(list []*adminv1.AuthProvider, p oidcflow.Provider, heldID string) (*adminv1.AuthProvider, bool) {
+	if heldID != "" {
+		for _, held := range list {
+			if held.GetId() == heldID {
+				return held, true
+			}
+		}
+	}
+	for _, held := range list {
+		if held.GetDiscoveryUrl() == p.DiscoveryURL && held.GetClientId() == p.ClientID {
+			return held, false
+		}
+	}
+	return nil, false
+}
+
+// Remove takes p off every live pair that took it or that it names. A
+// pair whose record a first push updated gets that record back, so a
+// pair never loses its setup record to a provider the admin removed. A
+// pair the ledger does not name loses a matching record, except its
+// setup record, which nothing can restore. The ledger forgets the pairs
+// that answered.
+func (f *FanOut) Remove(ctx context.Context, token string, p oidcflow.Provider) Report {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	book, err := f.load()
+	snap := f.opts.Snapshot(ctx)
+	held := book[p.ID]
+	targets := Targets(snap, p.Roles, p.Stacks)
+	for _, t := range Targets(snap, allRoles(snap), nil) {
+		if _, ok := held[t.Pair]; ok && !hasPair(targets, t.Pair) {
+			targets = append(targets, t)
+		}
+	}
+	report := Report{Results: make([]Result, len(targets))}
+	var wg sync.WaitGroup
+	for i, target := range targets {
+		report.Results[i] = Result{Target: target}
+		switch {
+		case err != nil:
+			report.Results[i].Err = err
+			continue
+		case token == "":
+			report.Results[i].Err = ErrNoToken
+			continue
+		}
+		wg.Add(1)
+		go func(i int, target Target, prior pushed) {
+			defer wg.Done()
+			res := &report.Results[i]
+			res.ProviderID, res.Restored, res.Err = f.removeOne(ctx, target, token, p, prior)
+		}(i, target, held[target.Pair])
+	}
+	wg.Wait()
+	if err != nil || held == nil {
+		return report
+	}
+	for _, res := range report.Results {
+		if res.Err == nil {
+			delete(held, res.Target.Pair)
+		}
+	}
+	if len(held) == 0 {
+		delete(book, p.ID)
+	}
+	if serr := f.opts.Ledger.Save(ledgerDoc, book); serr != nil {
+		for i := range report.Results {
+			if report.Results[i].Err == nil {
+				report.Results[i].Err = serr
+			}
+		}
+	}
+	return report
+}
+
+// removeOne restores or deletes the record of p at one target. It
+// returns the id at the target and whether it restored a record.
+func (f *FanOut) removeOne(ctx context.Context, target Target, token string, p oidcflow.Provider, prior pushed) (string, bool, error) {
 	client := adminv1connect.NewAdminServiceClient(f.opts.Client, target.AuthURL)
 	list, err := client.ListAuthProviders(ctx, withToken(&adminv1.ListAuthProvidersRequest{}, token))
 	if err != nil {
 		return "", false, err
 	}
-	record := oidcflow.ToAdminProto(p)
-	for _, held := range list.Msg.GetProviders() {
-		if held.GetDiscoveryUrl() == p.DiscoveryURL && held.GetClientId() == p.ClientID {
-			record.Id = held.GetId()
-			updated, uerr := client.UpdateAuthProvider(ctx, withToken(&adminv1.UpdateAuthProviderRequest{Provider: record}, token))
-			if uerr != nil {
-				return "", false, uerr
-			}
-			return updated.Msg.GetProvider().GetId(), false, nil
+	held, known := find(list.Msg.GetProviders(), p, prior.HeldID)
+	switch {
+	case held == nil:
+		return "", false, nil
+	case known && prior.Replaced != nil:
+		record := oidcflow.ToAdminProto(*prior.Replaced)
+		record.Id = held.GetId()
+		if _, uerr := client.UpdateAuthProvider(ctx, withToken(&adminv1.UpdateAuthProviderRequest{Provider: record}, token)); uerr != nil {
+			return "", false, uerr
+		}
+		return held.GetId(), true, nil
+	case !known && held.GetId() == oidcflow.SeedID:
+		// The setup record without a ledger entry: nothing can restore
+		// it, so it stays.
+		return "", false, nil
+	}
+	if _, derr := client.DeleteAuthProvider(ctx, withToken(&adminv1.DeleteAuthProviderRequest{Id: held.GetId()}, token)); derr != nil {
+		return "", false, derr
+	}
+	return held.GetId(), false, nil
+}
+
+// allRoles lists the short names of the roles of the snapshot.
+func allRoles(snap topology.Snapshot) []string {
+	var out []string
+	for _, status := range snap.Peers {
+		out = append(out, roleName(status.Peer.Role))
+	}
+	return out
+}
+
+// hasPair reports whether targets holds the pair.
+func hasPair(targets []Target, pair string) bool {
+	for _, t := range targets {
+		if t.Pair == pair {
+			return true
 		}
 	}
-	record.Id = ""
-	created, err := client.CreateAuthProvider(ctx, withToken(&adminv1.CreateAuthProviderRequest{Provider: record}, token))
-	if err != nil {
-		return "", false, err
-	}
-	return created.Msg.GetProvider().GetId(), true, nil
+	return false
 }
 
 // withToken wraps a message in a request that carries the token.

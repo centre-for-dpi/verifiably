@@ -480,23 +480,8 @@ func (s *Service) push(ctx context.Context, id login.Identity, h http.Header, p 
 	if s.d.FanOut == nil {
 		return nil
 	}
-	token := ""
-	if id.Session.Subject != "" {
-		token = oidcflow.TokenFromRequest(&http.Request{Header: h}, s.d.Cfg.CookieName)
-	}
-	report := s.d.FanOut.Push(ctx, token, p)
-	out := make([]*adminv1.PushResult, 0, len(report.Results))
-	for _, r := range report.Results {
-		// The RPC answer stays the stored record; the push outcome rides
-		// beside it and in the audit log.
-		anyval.Discard(s.write(ctx, id.Actor, "admin.PushAuthProvider", r.Target.Pair+" "+p.ID, r.Err))
-		res := &adminv1.PushResult{Pair: r.Target.Pair, Ok: r.Err == nil, Created: r.Created}
-		if r.Err != nil {
-			res.Error = r.Err.Error()
-		}
-		out = append(out, res)
-	}
-	return out
+	report := s.d.FanOut.Push(ctx, s.forward(id, h), p)
+	return s.results(ctx, id, "admin.PushAuthProvider", p, report)
 }
 
 // OnboardProvider implements AdminServiceHandler. It registers one OIDC
@@ -609,11 +594,52 @@ func (s *Service) DeleteAuthProvider(ctx context.Context, req *connect.Request[a
 	if err != nil {
 		return nil, err
 	}
-	err = s.d.Providers.Delete(req.Msg.GetId())
+	current, err := s.d.Providers.Get(req.Msg.GetId())
+	if err == nil {
+		err = s.d.Providers.Delete(req.Msg.GetId())
+	}
 	if serr := s.write(ctx, id.Actor, "admin.DeleteAuthProvider", req.Msg.GetId(), err); serr != nil {
 		return nil, fail(serr)
 	}
-	return connect.NewResponse(&adminv1.DeleteAuthProviderResponse{}), nil
+	return connect.NewResponse(&adminv1.DeleteAuthProviderResponse{Pushes: s.remove(ctx, id, req.Header(), current)}), nil
+}
+
+// remove takes a removed provider off the auth service of every pair
+// that took it (ADR-035 decision 5). A pair whose record the push had
+// updated gets that record back. One audit record per target names the
+// pair and the outcome.
+func (s *Service) remove(ctx context.Context, id login.Identity, h http.Header, p oidcflow.Provider) []*adminv1.PushResult {
+	if s.d.FanOut == nil {
+		return nil
+	}
+	report := s.d.FanOut.Remove(ctx, s.forward(id, h), p)
+	return s.results(ctx, id, "admin.RemoveAuthProvider", p, report)
+}
+
+// forward returns the admin session token of the caller, or nothing for
+// an API key.
+func (s *Service) forward(id login.Identity, h http.Header) string {
+	if id.Session.Subject == "" {
+		return ""
+	}
+	return oidcflow.TokenFromRequest(&http.Request{Header: h}, s.d.Cfg.CookieName)
+}
+
+// results writes one audit record per target of a fan out and returns
+// the outcome per target for the RPC answer.
+func (s *Service) results(ctx context.Context, id login.Identity, action string, p oidcflow.Provider, report fanout.Report) []*adminv1.PushResult {
+	out := make([]*adminv1.PushResult, 0, len(report.Results))
+	for _, r := range report.Results {
+		// The RPC answer stays the stored record; the outcome rides
+		// beside it and in the audit log.
+		anyval.Discard(s.write(ctx, id.Actor, action, r.Target.Pair+" "+p.ID, r.Err))
+		res := &adminv1.PushResult{Pair: r.Target.Pair, Ok: r.Err == nil, Created: r.Created, Restored: r.Restored}
+		if r.Err != nil {
+			res.Error = r.Err.Error()
+		}
+		out = append(out, res)
+	}
+	return out
 }
 
 // CreateApiKey implements AdminServiceHandler. The response shows the

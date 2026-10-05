@@ -626,6 +626,9 @@ message PushResult {
   bool created = 3;
   // Why the push failed. Empty when ok is true.
   string error = 4;
+  // True when a removal gave the pair back its old record, for example
+  // its setup record. A push of the removed provider had updated it.
+  bool restored = 5;
 }
 
 // OnboardProviderRequest carries the issuer of one OIDC provider.
@@ -694,8 +697,13 @@ message DeleteAuthProviderRequest {
   string id = 1;
 }
 
-// DeleteAuthProviderResponse has no fields.
-message DeleteAuthProviderResponse {}
+// DeleteAuthProviderResponse returns the outcome of the removal at the
+// auth service of every pair that held the record.
+message DeleteAuthProviderResponse {
+  // The outcome at every pair that took the record or that the record
+  // names (ADR-035 decision 5).
+  repeated PushResult pushes = 1;
+}
 
 // ApiKey is one machine credential without its secret value.
 message ApiKey {

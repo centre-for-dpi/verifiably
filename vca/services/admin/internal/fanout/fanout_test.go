@@ -223,3 +223,106 @@ func TestNewNeedsASnapshot(t *testing.T) {
 		t.Fatal("a fan out without a snapshot built")
 	}
 }
+
+// brokenLedger fails every read or every write.
+type brokenLedger struct{ load, save bool }
+
+func (b brokenLedger) Load(string, any) error {
+	if b.load {
+		return errors.New("disk gone")
+	}
+	return nil
+}
+
+func (b brokenLedger) Save(string, any) error {
+	if b.save {
+		return errors.New("disk full")
+	}
+	return nil
+}
+
+func TestRemoveDeletesAndRestores(t *testing.T) {
+	d := newDeployment(t, nil, nil)
+	f := d.fanout(t)
+	setup := oidcflow.SeedProvider(oidcflow.Seed{DiscoveryURL: provider().DiscoveryURL, ClientID: "vca"})
+	if err := d.auth["issuer-waltid"].registry.Seed(setup); err != nil {
+		t.Fatal(err)
+	}
+	if report := f.Push(context.Background(), token, provider()); !report.OK() {
+		t.Fatalf("push %s", report)
+	}
+	// The record leaves the holder pair later; the ledger still names it.
+	p := provider()
+	p.Roles = []string{"issuer"}
+	report := f.Remove(context.Background(), token, p)
+	if got := pairs(report.Results); strings.Join(got, ",") != "issuer-waltid,holder-waltid" || !report.OK() {
+		t.Fatalf("removal %v %s", got, report)
+	}
+	if !report.Results[0].Restored || report.Results[1].Restored {
+		t.Fatalf("results %+v", report.Results)
+	}
+	if list := d.auth["issuer-waltid"].registry.List(); len(list) != 1 || list[0].DisplayName != setup.DisplayName || !list[0].IsDefault {
+		t.Fatalf("issuer-waltid holds %+v", list)
+	}
+	if list := d.auth["holder-waltid"].registry.List(); len(list) != 0 {
+		t.Fatalf("holder-waltid holds %+v", list)
+	}
+	// The ledger forgot the provider: a second removal finds nothing.
+	again := f.Remove(context.Background(), token, p)
+	if len(again.Results) != 1 || !again.OK() || again.Results[0].ProviderID != "" {
+		t.Fatalf("second removal %+v", again.Results)
+	}
+}
+
+func TestRemoveKeepsAnUnknownSetupRecord(t *testing.T) {
+	d := newDeployment(t, nil, nil)
+	setup := oidcflow.SeedProvider(oidcflow.Seed{DiscoveryURL: provider().DiscoveryURL, ClientID: "vca"})
+	if err := d.auth["issuer-waltid"].registry.Seed(setup); err != nil {
+		t.Fatal(err)
+	}
+	// A fresh fan out has no ledger entry, so it cannot restore the
+	// setup record and leaves it in place.
+	report := d.fanout(t).Remove(context.Background(), token, provider())
+	if !report.OK() {
+		t.Fatalf("removal %s", report)
+	}
+	if list := d.auth["issuer-waltid"].registry.List(); len(list) != 1 || list[0].ID != oidcflow.SeedID {
+		t.Fatalf("issuer-waltid holds %+v", list)
+	}
+}
+
+func TestRemoveReportsFailures(t *testing.T) {
+	d := newDeployment(t, nil, map[string]bool{"holder-waltid": true})
+	f := d.fanout(t)
+	f.Push(context.Background(), token, provider())
+	report := f.Remove(context.Background(), token, provider())
+	if failed := report.Failed(); len(failed) != 1 || failed[0].Target.Pair != "holder-waltid" {
+		t.Fatalf("failed %+v", failed)
+	}
+	if report = f.Remove(context.Background(), "", provider()); !errors.Is(report.Failed()[0].Err, fanout.ErrNoToken) {
+		t.Fatalf("no token: %s", report)
+	}
+	if report = f.Remove(context.Background(), "wrong", provider()); connect.CodeOf(report.Failed()[0].Err) != connect.CodeUnauthenticated {
+		t.Fatalf("wrong token: %s", report)
+	}
+}
+
+func TestLedgerFailuresReachTheReport(t *testing.T) {
+	d := newDeployment(t, nil, nil)
+	for name, l := range map[string]brokenLedger{"load": {load: true}, "save": {save: true}} {
+		f, err := fanout.New(fanout.Options{Snapshot: func(context.Context) topology.Snapshot { return d.snap }, Ledger: l})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report := f.Push(context.Background(), token, provider()); report.OK() {
+			t.Errorf("%s: push %s, want a failure", name, report)
+		}
+		if name == "save" {
+			// The save failure needs a ledger entry to write.
+			continue
+		}
+		if report := f.Remove(context.Background(), token, provider()); report.OK() {
+			t.Errorf("%s: removal %s, want a failure", name, report)
+		}
+	}
+}

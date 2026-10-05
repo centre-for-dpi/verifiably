@@ -152,7 +152,7 @@ func Build(cfg config.Config, deps Deps) (*App, error) {
 	var dpgs *stacks.Directory
 	if prober != nil {
 		dpgs = stacks.New(prober.Snapshot, peer)
-		if push, err = fanout.New(fanout.Options{Snapshot: prober.Snapshot, Client: deps.Client, Timeout: cfg.Timeout}); err != nil {
+		if push, err = fanout.New(fanout.Options{Snapshot: prober.Snapshot, Client: deps.Client, Timeout: cfg.Timeout, Ledger: Persister{KV: backend}}); err != nil {
 			return nil, err
 		}
 	} else {

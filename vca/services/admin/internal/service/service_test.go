@@ -954,6 +954,103 @@ func TestCreateAuthProviderPushesToTheLivePairs(t *testing.T) {
 	}
 }
 
+// withSession wraps msg in a request that carries an admin session.
+func withSession[T any](t *testing.T, h *harness, msg *T) *connect.Request[T] {
+	t.Helper()
+	req := connect.NewRequest(msg)
+	req.Header().Set("Authorization", "Bearer "+h.session(t))
+	return req
+}
+
+// TestDeleteAuthProviderRemovesItFromThePairs is ADR-035 decision 5 for
+// a removal: the pairs that took the record lose it too, so no pair
+// signs in with a provider the admin removed.
+func TestDeleteAuthProviderRemovesItFromThePairs(t *testing.T) {
+	h := newHarness(t)
+	issuer, holder := withFanOut(t, h)
+	ctx := context.Background()
+	created, err := h.svc.CreateAuthProvider(ctx, withSession(t, h, &adminv1.CreateAuthProviderRequest{Provider: &adminv1.AuthProvider{
+		DisplayName: "Spare IdP", DiscoveryUrl: h.idp.DiscoveryURL(), ClientId: "spare", Enabled: true,
+		Roles: []commonv1.Role{commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_HOLDER},
+	}}))
+	if err != nil {
+		t.Fatalf("CreateAuthProvider: %v", err)
+	}
+	if len(issuer.registry.List()) != 1 || len(holder.registry.List()) != 1 {
+		t.Fatalf("the pairs hold %+v and %+v", issuer.registry.List(), holder.registry.List())
+	}
+	res, err := h.svc.DeleteAuthProvider(ctx, withSession(t, h, &adminv1.DeleteAuthProviderRequest{Id: created.Msg.GetProvider().GetId()}))
+	if err != nil {
+		t.Fatalf("DeleteAuthProvider: %v", err)
+	}
+	for name, pair := range map[string]*pairAuth{"issuer-waltid": issuer, "holder-waltid": holder} {
+		if list := pair.registry.List(); len(list) != 0 {
+			t.Errorf("%s still holds the removed provider: %+v", name, list)
+		}
+	}
+	pushes := res.Msg.GetPushes()
+	if len(pushes) != 2 || !pushes[0].GetOk() || !pushes[1].GetOk() || pushes[0].GetRestored() {
+		t.Fatalf("removal pushes %+v, want two removals", pushes)
+	}
+	if recs := auditActions(t, h, "admin.RemoveAuthProvider"); len(recs) != 2 || !recs[0].OK {
+		t.Fatalf("audit = %+v", recs)
+	}
+}
+
+// TestDeleteAuthProviderRestoresTheSetupRecordItReplaced covers a
+// provider that names the issuer and client a pair got from setup: the
+// push updated the setup record of the pair, so the removal gives the
+// pair its setup record back instead of leaving it without a sign in.
+func TestDeleteAuthProviderRestoresTheSetupRecordItReplaced(t *testing.T) {
+	h := newHarness(t)
+	issuer, holder := withFanOut(t, h)
+	ctx := context.Background()
+	setup := oidcflow.SeedProvider(oidcflow.Seed{DiscoveryURL: h.idp.DiscoveryURL(), ClientID: "vca", Roles: []string{"issuer"}})
+	if err := issuer.registry.Seed(setup); err != nil {
+		t.Fatal(err)
+	}
+	created, err := h.svc.CreateAuthProvider(ctx, withSession(t, h, &adminv1.CreateAuthProviderRequest{Provider: &adminv1.AuthProvider{
+		DisplayName: "Regional IdP", DiscoveryUrl: h.idp.DiscoveryURL(), ClientId: "vca", Enabled: true,
+		Roles: []commonv1.Role{commonv1.Role_ROLE_ISSUER, commonv1.Role_ROLE_HOLDER},
+	}}))
+	if err != nil {
+		t.Fatalf("CreateAuthProvider: %v", err)
+	}
+	if list := issuer.registry.List(); len(list) != 1 || list[0].ID != oidcflow.SeedID || list[0].DisplayName != "Regional IdP" {
+		t.Fatalf("issuer-waltid after the push holds %+v, want the setup record updated", list)
+	}
+	// A later edit keeps the setup record to restore.
+	p := created.Msg.GetProvider()
+	p.DisplayName = "Regional IdP (renamed)"
+	if _, uerr := h.svc.UpdateAuthProvider(ctx, withSession(t, h, &adminv1.UpdateAuthProviderRequest{Provider: p})); uerr != nil {
+		t.Fatalf("UpdateAuthProvider: %v", uerr)
+	}
+	res, err := h.svc.DeleteAuthProvider(ctx, withSession(t, h, &adminv1.DeleteAuthProviderRequest{Id: p.GetId()}))
+	if err != nil {
+		t.Fatalf("DeleteAuthProvider: %v", err)
+	}
+	list := issuer.registry.List()
+	if len(list) != 1 {
+		t.Fatalf("issuer-waltid after the removal holds %+v, want its setup record", list)
+	}
+	got := list[0]
+	if got.ID != oidcflow.SeedID || got.DisplayName != setup.DisplayName || !got.IsDefault || !got.Enabled || got.ClientID != "vca" {
+		t.Fatalf("issuer-waltid holds %+v, want the setup record back", got)
+	}
+	if list := holder.registry.List(); len(list) != 0 {
+		t.Fatalf("holder-waltid still holds %+v", list)
+	}
+	var restored bool
+	for _, push := range res.Msg.GetPushes() {
+		if push.GetPair() == "issuer-waltid" {
+			restored = push.GetOk() && push.GetRestored()
+		}
+	}
+	if !restored {
+		t.Fatalf("pushes %+v, want issuer-waltid restored", res.Msg.GetPushes())
+	}
+}
+
 // pendingEntry is an issuer that asked for trust and waits for review.
 func pendingEntry(did string) *trustv1.TrustEntry {
 	return &trustv1.TrustEntry{

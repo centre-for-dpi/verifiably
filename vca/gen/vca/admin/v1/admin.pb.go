@@ -2534,7 +2534,10 @@ type PushResult struct {
 	// True when the push made a new record. False means an update.
 	Created bool `protobuf:"varint,3,opt,name=created,proto3" json:"created,omitempty"`
 	// Why the push failed. Empty when ok is true.
-	Error         string `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	Error string `protobuf:"bytes,4,opt,name=error,proto3" json:"error,omitempty"`
+	// True when a removal gave the pair back its old record, for example
+	// its setup record. A push of the removed provider had updated it.
+	Restored      bool `protobuf:"varint,5,opt,name=restored,proto3" json:"restored,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2595,6 +2598,13 @@ func (x *PushResult) GetError() string {
 		return x.Error
 	}
 	return ""
+}
+
+func (x *PushResult) GetRestored() bool {
+	if x != nil {
+		return x.Restored
+	}
+	return false
 }
 
 // OnboardProviderRequest carries the issuer of one OIDC provider.
@@ -3058,9 +3068,13 @@ func (x *DeleteAuthProviderRequest) GetId() string {
 	return ""
 }
 
-// DeleteAuthProviderResponse has no fields.
+// DeleteAuthProviderResponse returns the outcome of the removal at the
+// auth service of every pair that held the record.
 type DeleteAuthProviderResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The outcome at every pair that took the record or that the record
+	// names (ADR-035 decision 5).
+	Pushes        []*PushResult `protobuf:"bytes,1,rep,name=pushes,proto3" json:"pushes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3093,6 +3107,13 @@ func (x *DeleteAuthProviderResponse) ProtoReflect() protoreflect.Message {
 // Deprecated: Use DeleteAuthProviderResponse.ProtoReflect.Descriptor instead.
 func (*DeleteAuthProviderResponse) Descriptor() ([]byte, []int) {
 	return file_vca_admin_v1_admin_proto_rawDescGZIP(), []int{51}
+}
+
+func (x *DeleteAuthProviderResponse) GetPushes() []*PushResult {
+	if x != nil {
+		return x.Pushes
+	}
+	return nil
 }
 
 // ApiKey is one machine credential without its secret value.
@@ -5997,13 +6018,14 @@ const file_vca_admin_v1_admin_proto_rawDesc = "" +
 	"\x14dynamic_registration\x18\x02 \x01(\bR\x13dynamicRegistration\"\x86\x01\n" +
 	"\x1aCreateAuthProviderResponse\x126\n" +
 	"\bprovider\x18\x01 \x01(\v2\x1a.vca.admin.v1.AuthProviderR\bprovider\x120\n" +
-	"\x06pushes\x18\x02 \x03(\v2\x18.vca.admin.v1.PushResultR\x06pushes\"`\n" +
+	"\x06pushes\x18\x02 \x03(\v2\x18.vca.admin.v1.PushResultR\x06pushes\"|\n" +
 	"\n" +
 	"PushResult\x12\x12\n" +
 	"\x04pair\x18\x01 \x01(\tR\x04pair\x12\x0e\n" +
 	"\x02ok\x18\x02 \x01(\bR\x02ok\x12\x18\n" +
 	"\acreated\x18\x03 \x01(\bR\acreated\x12\x14\n" +
-	"\x05error\x18\x04 \x01(\tR\x05error\"\xc6\x01\n" +
+	"\x05error\x18\x04 \x01(\tR\x05error\x12\x1a\n" +
+	"\brestored\x18\x05 \x01(\bR\brestored\"\xc6\x01\n" +
 	"\x16OnboardProviderRequest\x12\x1d\n" +
 	"\n" +
 	"issuer_url\x18\x01 \x01(\tR\tissuerUrl\x12\x1b\n" +
@@ -6027,8 +6049,9 @@ const file_vca_admin_v1_admin_proto_rawDesc = "" +
 	"\bprovider\x18\x01 \x01(\v2\x1a.vca.admin.v1.AuthProviderR\bprovider\x120\n" +
 	"\x06pushes\x18\x02 \x03(\v2\x18.vca.admin.v1.PushResultR\x06pushes\"+\n" +
 	"\x19DeleteAuthProviderRequest\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"\x1c\n" +
-	"\x1aDeleteAuthProviderResponse\"\xcc\x02\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"N\n" +
+	"\x1aDeleteAuthProviderResponse\x120\n" +
+	"\x06pushes\x18\x01 \x03(\v2\x18.vca.admin.v1.PushResultR\x06pushes\"\xcc\x02\n" +
 	"\x06ApiKey\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x1b\n" +
@@ -6471,142 +6494,143 @@ var file_vca_admin_v1_admin_proto_depIdxs = []int32{
 	42,  // 58: vca.admin.v1.UpdateAuthProviderRequest.provider:type_name -> vca.admin.v1.AuthProvider
 	42,  // 59: vca.admin.v1.UpdateAuthProviderResponse.provider:type_name -> vca.admin.v1.AuthProvider
 	45,  // 60: vca.admin.v1.UpdateAuthProviderResponse.pushes:type_name -> vca.admin.v1.PushResult
-	110, // 61: vca.admin.v1.ApiKey.roles:type_name -> vca.common.v1.Role
-	102, // 62: vca.admin.v1.ApiKey.created_at:type_name -> google.protobuf.Timestamp
-	102, // 63: vca.admin.v1.ApiKey.expires_at:type_name -> google.protobuf.Timestamp
-	102, // 64: vca.admin.v1.ApiKey.revoked_at:type_name -> google.protobuf.Timestamp
-	110, // 65: vca.admin.v1.CreateApiKeyRequest.roles:type_name -> vca.common.v1.Role
-	102, // 66: vca.admin.v1.CreateApiKeyRequest.expires_at:type_name -> google.protobuf.Timestamp
-	56,  // 67: vca.admin.v1.CreateApiKeyResponse.key:type_name -> vca.admin.v1.ApiKey
-	106, // 68: vca.admin.v1.ListApiKeysRequest.page:type_name -> vca.common.v1.Pagination
-	56,  // 69: vca.admin.v1.ListApiKeysResponse.keys:type_name -> vca.admin.v1.ApiKey
-	107, // 70: vca.admin.v1.ListApiKeysResponse.page:type_name -> vca.common.v1.PageResult
-	103, // 71: vca.admin.v1.StackCredential.stack:type_name -> vca.config.v1.Dpg
-	115, // 72: vca.admin.v1.StackCredential.credential:type_name -> vca.backend.v1.ClientCredential
-	63,  // 73: vca.admin.v1.ListStackCredentialsResponse.credentials:type_name -> vca.admin.v1.StackCredential
-	103, // 74: vca.admin.v1.CreateStackCredentialRequest.stack:type_name -> vca.config.v1.Dpg
-	63,  // 75: vca.admin.v1.CreateStackCredentialResponse.credential:type_name -> vca.admin.v1.StackCredential
-	103, // 76: vca.admin.v1.DeleteStackCredentialRequest.stack:type_name -> vca.config.v1.Dpg
-	103, // 77: vca.admin.v1.StackWebhook.stack:type_name -> vca.config.v1.Dpg
-	116, // 78: vca.admin.v1.StackWebhook.webhook:type_name -> vca.backend.v1.Webhook
-	117, // 79: vca.admin.v1.StackWebhook.notification:type_name -> vca.backend.v1.NotificationEndpoint
-	70,  // 80: vca.admin.v1.ListStackWebhooksResponse.webhooks:type_name -> vca.admin.v1.StackWebhook
-	103, // 81: vca.admin.v1.SetStackWebhookRequest.stack:type_name -> vca.config.v1.Dpg
-	103, // 82: vca.admin.v1.SetStackNotificationEndpointRequest.stack:type_name -> vca.config.v1.Dpg
-	70,  // 83: vca.admin.v1.SetStackNotificationEndpointResponse.webhook:type_name -> vca.admin.v1.StackWebhook
-	103, // 84: vca.admin.v1.EcosystemStack.stack:type_name -> vca.config.v1.Dpg
-	118, // 85: vca.admin.v1.StackEcosystemMember.member:type_name -> vca.backend.v1.EcosystemMember
-	103, // 86: vca.admin.v1.StackEcosystem.stack:type_name -> vca.config.v1.Dpg
-	119, // 87: vca.admin.v1.StackEcosystem.ecosystem:type_name -> vca.backend.v1.Ecosystem
-	77,  // 88: vca.admin.v1.StackEcosystem.members:type_name -> vca.admin.v1.StackEcosystemMember
-	76,  // 89: vca.admin.v1.ListStackEcosystemsResponse.stacks:type_name -> vca.admin.v1.EcosystemStack
-	78,  // 90: vca.admin.v1.ListStackEcosystemsResponse.ecosystems:type_name -> vca.admin.v1.StackEcosystem
-	103, // 91: vca.admin.v1.SetStackEcosystemsRequest.stack:type_name -> vca.config.v1.Dpg
-	76,  // 92: vca.admin.v1.SetStackEcosystemsResponse.stack:type_name -> vca.admin.v1.EcosystemStack
-	103, // 93: vca.admin.v1.CreateStackEcosystemRequest.stack:type_name -> vca.config.v1.Dpg
-	78,  // 94: vca.admin.v1.CreateStackEcosystemResponse.ecosystem:type_name -> vca.admin.v1.StackEcosystem
-	103, // 95: vca.admin.v1.AddStackEcosystemMemberRequest.stack:type_name -> vca.config.v1.Dpg
-	103, // 96: vca.admin.v1.RemoveStackEcosystemMemberRequest.stack:type_name -> vca.config.v1.Dpg
-	70,  // 97: vca.admin.v1.SetStackWebhookResponse.webhook:type_name -> vca.admin.v1.StackWebhook
-	99,  // 98: vca.admin.v1.GetServiceHealthResponse.services:type_name -> vca.admin.v1.GetServiceHealthResponse.ServiceHealth
-	102, // 99: vca.admin.v1.AuditRecord.at:type_name -> google.protobuf.Timestamp
-	106, // 100: vca.admin.v1.QueryAuditLogRequest.page:type_name -> vca.common.v1.Pagination
-	102, // 101: vca.admin.v1.QueryAuditLogRequest.from:type_name -> google.protobuf.Timestamp
-	102, // 102: vca.admin.v1.QueryAuditLogRequest.to:type_name -> google.protobuf.Timestamp
-	92,  // 103: vca.admin.v1.QueryAuditLogResponse.records:type_name -> vca.admin.v1.AuditRecord
-	107, // 104: vca.admin.v1.QueryAuditLogResponse.page:type_name -> vca.common.v1.PageResult
-	100, // 105: vca.admin.v1.ListCommandsResponse.commands:type_name -> vca.admin.v1.ListCommandsResponse.Command
-	102, // 106: vca.admin.v1.GetServiceHealthResponse.ServiceHealth.checked_at:type_name -> google.protobuf.Timestamp
-	101, // 107: vca.admin.v1.ListCommandsResponse.Command.flags:type_name -> vca.admin.v1.ListCommandsResponse.Flag
-	6,   // 108: vca.admin.v1.AdminService.CreateTenant:input_type -> vca.admin.v1.CreateTenantRequest
-	8,   // 109: vca.admin.v1.AdminService.GetTenant:input_type -> vca.admin.v1.GetTenantRequest
-	10,  // 110: vca.admin.v1.AdminService.ListTenants:input_type -> vca.admin.v1.ListTenantsRequest
-	12,  // 111: vca.admin.v1.AdminService.UpdateTenant:input_type -> vca.admin.v1.UpdateTenantRequest
-	14,  // 112: vca.admin.v1.AdminService.DeleteTenant:input_type -> vca.admin.v1.DeleteTenantRequest
-	16,  // 113: vca.admin.v1.AdminService.BindTenant:input_type -> vca.admin.v1.BindTenantRequest
-	18,  // 114: vca.admin.v1.AdminService.UnbindTenant:input_type -> vca.admin.v1.UnbindTenantRequest
-	20,  // 115: vca.admin.v1.AdminService.SetTenantPrimaryDid:input_type -> vca.admin.v1.SetTenantPrimaryDidRequest
-	22,  // 116: vca.admin.v1.AdminService.UpsertTrustEntry:input_type -> vca.admin.v1.UpsertTrustEntryRequest
-	24,  // 117: vca.admin.v1.AdminService.GetTrustEntry:input_type -> vca.admin.v1.GetTrustEntryRequest
-	26,  // 118: vca.admin.v1.AdminService.ListTrustEntries:input_type -> vca.admin.v1.ListTrustEntriesRequest
-	28,  // 119: vca.admin.v1.AdminService.DeleteTrustEntry:input_type -> vca.admin.v1.DeleteTrustEntryRequest
-	30,  // 120: vca.admin.v1.AdminService.ApproveTrustEntry:input_type -> vca.admin.v1.ApproveTrustEntryRequest
-	32,  // 121: vca.admin.v1.AdminService.RejectTrustEntry:input_type -> vca.admin.v1.RejectTrustEntryRequest
-	34,  // 122: vca.admin.v1.AdminService.AddTrustRegistry:input_type -> vca.admin.v1.AddTrustRegistryRequest
-	36,  // 123: vca.admin.v1.AdminService.ListTrustRegistries:input_type -> vca.admin.v1.ListTrustRegistriesRequest
-	38,  // 124: vca.admin.v1.AdminService.RemoveTrustRegistry:input_type -> vca.admin.v1.RemoveTrustRegistryRequest
-	40,  // 125: vca.admin.v1.AdminService.SyncTrustRegistry:input_type -> vca.admin.v1.SyncTrustRegistryRequest
-	43,  // 126: vca.admin.v1.AdminService.CreateAuthProvider:input_type -> vca.admin.v1.CreateAuthProviderRequest
-	48,  // 127: vca.admin.v1.AdminService.GetAuthProvider:input_type -> vca.admin.v1.GetAuthProviderRequest
-	50,  // 128: vca.admin.v1.AdminService.ListAuthProviders:input_type -> vca.admin.v1.ListAuthProvidersRequest
-	52,  // 129: vca.admin.v1.AdminService.UpdateAuthProvider:input_type -> vca.admin.v1.UpdateAuthProviderRequest
-	54,  // 130: vca.admin.v1.AdminService.DeleteAuthProvider:input_type -> vca.admin.v1.DeleteAuthProviderRequest
-	46,  // 131: vca.admin.v1.AdminService.OnboardProvider:input_type -> vca.admin.v1.OnboardProviderRequest
-	57,  // 132: vca.admin.v1.AdminService.CreateApiKey:input_type -> vca.admin.v1.CreateApiKeyRequest
-	59,  // 133: vca.admin.v1.AdminService.ListApiKeys:input_type -> vca.admin.v1.ListApiKeysRequest
-	61,  // 134: vca.admin.v1.AdminService.RevokeApiKey:input_type -> vca.admin.v1.RevokeApiKeyRequest
-	64,  // 135: vca.admin.v1.AdminService.ListStackCredentials:input_type -> vca.admin.v1.ListStackCredentialsRequest
-	66,  // 136: vca.admin.v1.AdminService.CreateStackCredential:input_type -> vca.admin.v1.CreateStackCredentialRequest
-	68,  // 137: vca.admin.v1.AdminService.DeleteStackCredential:input_type -> vca.admin.v1.DeleteStackCredentialRequest
-	71,  // 138: vca.admin.v1.AdminService.ListStackWebhooks:input_type -> vca.admin.v1.ListStackWebhooksRequest
-	73,  // 139: vca.admin.v1.AdminService.SetStackWebhook:input_type -> vca.admin.v1.SetStackWebhookRequest
-	74,  // 140: vca.admin.v1.AdminService.SetStackNotificationEndpoint:input_type -> vca.admin.v1.SetStackNotificationEndpointRequest
-	79,  // 141: vca.admin.v1.AdminService.ListStackEcosystems:input_type -> vca.admin.v1.ListStackEcosystemsRequest
-	81,  // 142: vca.admin.v1.AdminService.SetStackEcosystems:input_type -> vca.admin.v1.SetStackEcosystemsRequest
-	83,  // 143: vca.admin.v1.AdminService.CreateStackEcosystem:input_type -> vca.admin.v1.CreateStackEcosystemRequest
-	85,  // 144: vca.admin.v1.AdminService.AddStackEcosystemMember:input_type -> vca.admin.v1.AddStackEcosystemMemberRequest
-	87,  // 145: vca.admin.v1.AdminService.RemoveStackEcosystemMember:input_type -> vca.admin.v1.RemoveStackEcosystemMemberRequest
-	90,  // 146: vca.admin.v1.AdminService.GetServiceHealth:input_type -> vca.admin.v1.GetServiceHealthRequest
-	93,  // 147: vca.admin.v1.AdminService.QueryAuditLog:input_type -> vca.admin.v1.QueryAuditLogRequest
-	95,  // 148: vca.admin.v1.AdminService.OnboardAdmin:input_type -> vca.admin.v1.OnboardAdminRequest
-	97,  // 149: vca.admin.v1.AdminService.ListCommands:input_type -> vca.admin.v1.ListCommandsRequest
-	7,   // 150: vca.admin.v1.AdminService.CreateTenant:output_type -> vca.admin.v1.CreateTenantResponse
-	9,   // 151: vca.admin.v1.AdminService.GetTenant:output_type -> vca.admin.v1.GetTenantResponse
-	11,  // 152: vca.admin.v1.AdminService.ListTenants:output_type -> vca.admin.v1.ListTenantsResponse
-	13,  // 153: vca.admin.v1.AdminService.UpdateTenant:output_type -> vca.admin.v1.UpdateTenantResponse
-	15,  // 154: vca.admin.v1.AdminService.DeleteTenant:output_type -> vca.admin.v1.DeleteTenantResponse
-	17,  // 155: vca.admin.v1.AdminService.BindTenant:output_type -> vca.admin.v1.BindTenantResponse
-	19,  // 156: vca.admin.v1.AdminService.UnbindTenant:output_type -> vca.admin.v1.UnbindTenantResponse
-	21,  // 157: vca.admin.v1.AdminService.SetTenantPrimaryDid:output_type -> vca.admin.v1.SetTenantPrimaryDidResponse
-	23,  // 158: vca.admin.v1.AdminService.UpsertTrustEntry:output_type -> vca.admin.v1.UpsertTrustEntryResponse
-	25,  // 159: vca.admin.v1.AdminService.GetTrustEntry:output_type -> vca.admin.v1.GetTrustEntryResponse
-	27,  // 160: vca.admin.v1.AdminService.ListTrustEntries:output_type -> vca.admin.v1.ListTrustEntriesResponse
-	29,  // 161: vca.admin.v1.AdminService.DeleteTrustEntry:output_type -> vca.admin.v1.DeleteTrustEntryResponse
-	31,  // 162: vca.admin.v1.AdminService.ApproveTrustEntry:output_type -> vca.admin.v1.ApproveTrustEntryResponse
-	33,  // 163: vca.admin.v1.AdminService.RejectTrustEntry:output_type -> vca.admin.v1.RejectTrustEntryResponse
-	35,  // 164: vca.admin.v1.AdminService.AddTrustRegistry:output_type -> vca.admin.v1.AddTrustRegistryResponse
-	37,  // 165: vca.admin.v1.AdminService.ListTrustRegistries:output_type -> vca.admin.v1.ListTrustRegistriesResponse
-	39,  // 166: vca.admin.v1.AdminService.RemoveTrustRegistry:output_type -> vca.admin.v1.RemoveTrustRegistryResponse
-	41,  // 167: vca.admin.v1.AdminService.SyncTrustRegistry:output_type -> vca.admin.v1.SyncTrustRegistryResponse
-	44,  // 168: vca.admin.v1.AdminService.CreateAuthProvider:output_type -> vca.admin.v1.CreateAuthProviderResponse
-	49,  // 169: vca.admin.v1.AdminService.GetAuthProvider:output_type -> vca.admin.v1.GetAuthProviderResponse
-	51,  // 170: vca.admin.v1.AdminService.ListAuthProviders:output_type -> vca.admin.v1.ListAuthProvidersResponse
-	53,  // 171: vca.admin.v1.AdminService.UpdateAuthProvider:output_type -> vca.admin.v1.UpdateAuthProviderResponse
-	55,  // 172: vca.admin.v1.AdminService.DeleteAuthProvider:output_type -> vca.admin.v1.DeleteAuthProviderResponse
-	47,  // 173: vca.admin.v1.AdminService.OnboardProvider:output_type -> vca.admin.v1.OnboardProviderResponse
-	58,  // 174: vca.admin.v1.AdminService.CreateApiKey:output_type -> vca.admin.v1.CreateApiKeyResponse
-	60,  // 175: vca.admin.v1.AdminService.ListApiKeys:output_type -> vca.admin.v1.ListApiKeysResponse
-	62,  // 176: vca.admin.v1.AdminService.RevokeApiKey:output_type -> vca.admin.v1.RevokeApiKeyResponse
-	65,  // 177: vca.admin.v1.AdminService.ListStackCredentials:output_type -> vca.admin.v1.ListStackCredentialsResponse
-	67,  // 178: vca.admin.v1.AdminService.CreateStackCredential:output_type -> vca.admin.v1.CreateStackCredentialResponse
-	69,  // 179: vca.admin.v1.AdminService.DeleteStackCredential:output_type -> vca.admin.v1.DeleteStackCredentialResponse
-	72,  // 180: vca.admin.v1.AdminService.ListStackWebhooks:output_type -> vca.admin.v1.ListStackWebhooksResponse
-	89,  // 181: vca.admin.v1.AdminService.SetStackWebhook:output_type -> vca.admin.v1.SetStackWebhookResponse
-	75,  // 182: vca.admin.v1.AdminService.SetStackNotificationEndpoint:output_type -> vca.admin.v1.SetStackNotificationEndpointResponse
-	80,  // 183: vca.admin.v1.AdminService.ListStackEcosystems:output_type -> vca.admin.v1.ListStackEcosystemsResponse
-	82,  // 184: vca.admin.v1.AdminService.SetStackEcosystems:output_type -> vca.admin.v1.SetStackEcosystemsResponse
-	84,  // 185: vca.admin.v1.AdminService.CreateStackEcosystem:output_type -> vca.admin.v1.CreateStackEcosystemResponse
-	86,  // 186: vca.admin.v1.AdminService.AddStackEcosystemMember:output_type -> vca.admin.v1.AddStackEcosystemMemberResponse
-	88,  // 187: vca.admin.v1.AdminService.RemoveStackEcosystemMember:output_type -> vca.admin.v1.RemoveStackEcosystemMemberResponse
-	91,  // 188: vca.admin.v1.AdminService.GetServiceHealth:output_type -> vca.admin.v1.GetServiceHealthResponse
-	94,  // 189: vca.admin.v1.AdminService.QueryAuditLog:output_type -> vca.admin.v1.QueryAuditLogResponse
-	96,  // 190: vca.admin.v1.AdminService.OnboardAdmin:output_type -> vca.admin.v1.OnboardAdminResponse
-	98,  // 191: vca.admin.v1.AdminService.ListCommands:output_type -> vca.admin.v1.ListCommandsResponse
-	150, // [150:192] is the sub-list for method output_type
-	108, // [108:150] is the sub-list for method input_type
-	108, // [108:108] is the sub-list for extension type_name
-	108, // [108:108] is the sub-list for extension extendee
-	0,   // [0:108] is the sub-list for field type_name
+	45,  // 61: vca.admin.v1.DeleteAuthProviderResponse.pushes:type_name -> vca.admin.v1.PushResult
+	110, // 62: vca.admin.v1.ApiKey.roles:type_name -> vca.common.v1.Role
+	102, // 63: vca.admin.v1.ApiKey.created_at:type_name -> google.protobuf.Timestamp
+	102, // 64: vca.admin.v1.ApiKey.expires_at:type_name -> google.protobuf.Timestamp
+	102, // 65: vca.admin.v1.ApiKey.revoked_at:type_name -> google.protobuf.Timestamp
+	110, // 66: vca.admin.v1.CreateApiKeyRequest.roles:type_name -> vca.common.v1.Role
+	102, // 67: vca.admin.v1.CreateApiKeyRequest.expires_at:type_name -> google.protobuf.Timestamp
+	56,  // 68: vca.admin.v1.CreateApiKeyResponse.key:type_name -> vca.admin.v1.ApiKey
+	106, // 69: vca.admin.v1.ListApiKeysRequest.page:type_name -> vca.common.v1.Pagination
+	56,  // 70: vca.admin.v1.ListApiKeysResponse.keys:type_name -> vca.admin.v1.ApiKey
+	107, // 71: vca.admin.v1.ListApiKeysResponse.page:type_name -> vca.common.v1.PageResult
+	103, // 72: vca.admin.v1.StackCredential.stack:type_name -> vca.config.v1.Dpg
+	115, // 73: vca.admin.v1.StackCredential.credential:type_name -> vca.backend.v1.ClientCredential
+	63,  // 74: vca.admin.v1.ListStackCredentialsResponse.credentials:type_name -> vca.admin.v1.StackCredential
+	103, // 75: vca.admin.v1.CreateStackCredentialRequest.stack:type_name -> vca.config.v1.Dpg
+	63,  // 76: vca.admin.v1.CreateStackCredentialResponse.credential:type_name -> vca.admin.v1.StackCredential
+	103, // 77: vca.admin.v1.DeleteStackCredentialRequest.stack:type_name -> vca.config.v1.Dpg
+	103, // 78: vca.admin.v1.StackWebhook.stack:type_name -> vca.config.v1.Dpg
+	116, // 79: vca.admin.v1.StackWebhook.webhook:type_name -> vca.backend.v1.Webhook
+	117, // 80: vca.admin.v1.StackWebhook.notification:type_name -> vca.backend.v1.NotificationEndpoint
+	70,  // 81: vca.admin.v1.ListStackWebhooksResponse.webhooks:type_name -> vca.admin.v1.StackWebhook
+	103, // 82: vca.admin.v1.SetStackWebhookRequest.stack:type_name -> vca.config.v1.Dpg
+	103, // 83: vca.admin.v1.SetStackNotificationEndpointRequest.stack:type_name -> vca.config.v1.Dpg
+	70,  // 84: vca.admin.v1.SetStackNotificationEndpointResponse.webhook:type_name -> vca.admin.v1.StackWebhook
+	103, // 85: vca.admin.v1.EcosystemStack.stack:type_name -> vca.config.v1.Dpg
+	118, // 86: vca.admin.v1.StackEcosystemMember.member:type_name -> vca.backend.v1.EcosystemMember
+	103, // 87: vca.admin.v1.StackEcosystem.stack:type_name -> vca.config.v1.Dpg
+	119, // 88: vca.admin.v1.StackEcosystem.ecosystem:type_name -> vca.backend.v1.Ecosystem
+	77,  // 89: vca.admin.v1.StackEcosystem.members:type_name -> vca.admin.v1.StackEcosystemMember
+	76,  // 90: vca.admin.v1.ListStackEcosystemsResponse.stacks:type_name -> vca.admin.v1.EcosystemStack
+	78,  // 91: vca.admin.v1.ListStackEcosystemsResponse.ecosystems:type_name -> vca.admin.v1.StackEcosystem
+	103, // 92: vca.admin.v1.SetStackEcosystemsRequest.stack:type_name -> vca.config.v1.Dpg
+	76,  // 93: vca.admin.v1.SetStackEcosystemsResponse.stack:type_name -> vca.admin.v1.EcosystemStack
+	103, // 94: vca.admin.v1.CreateStackEcosystemRequest.stack:type_name -> vca.config.v1.Dpg
+	78,  // 95: vca.admin.v1.CreateStackEcosystemResponse.ecosystem:type_name -> vca.admin.v1.StackEcosystem
+	103, // 96: vca.admin.v1.AddStackEcosystemMemberRequest.stack:type_name -> vca.config.v1.Dpg
+	103, // 97: vca.admin.v1.RemoveStackEcosystemMemberRequest.stack:type_name -> vca.config.v1.Dpg
+	70,  // 98: vca.admin.v1.SetStackWebhookResponse.webhook:type_name -> vca.admin.v1.StackWebhook
+	99,  // 99: vca.admin.v1.GetServiceHealthResponse.services:type_name -> vca.admin.v1.GetServiceHealthResponse.ServiceHealth
+	102, // 100: vca.admin.v1.AuditRecord.at:type_name -> google.protobuf.Timestamp
+	106, // 101: vca.admin.v1.QueryAuditLogRequest.page:type_name -> vca.common.v1.Pagination
+	102, // 102: vca.admin.v1.QueryAuditLogRequest.from:type_name -> google.protobuf.Timestamp
+	102, // 103: vca.admin.v1.QueryAuditLogRequest.to:type_name -> google.protobuf.Timestamp
+	92,  // 104: vca.admin.v1.QueryAuditLogResponse.records:type_name -> vca.admin.v1.AuditRecord
+	107, // 105: vca.admin.v1.QueryAuditLogResponse.page:type_name -> vca.common.v1.PageResult
+	100, // 106: vca.admin.v1.ListCommandsResponse.commands:type_name -> vca.admin.v1.ListCommandsResponse.Command
+	102, // 107: vca.admin.v1.GetServiceHealthResponse.ServiceHealth.checked_at:type_name -> google.protobuf.Timestamp
+	101, // 108: vca.admin.v1.ListCommandsResponse.Command.flags:type_name -> vca.admin.v1.ListCommandsResponse.Flag
+	6,   // 109: vca.admin.v1.AdminService.CreateTenant:input_type -> vca.admin.v1.CreateTenantRequest
+	8,   // 110: vca.admin.v1.AdminService.GetTenant:input_type -> vca.admin.v1.GetTenantRequest
+	10,  // 111: vca.admin.v1.AdminService.ListTenants:input_type -> vca.admin.v1.ListTenantsRequest
+	12,  // 112: vca.admin.v1.AdminService.UpdateTenant:input_type -> vca.admin.v1.UpdateTenantRequest
+	14,  // 113: vca.admin.v1.AdminService.DeleteTenant:input_type -> vca.admin.v1.DeleteTenantRequest
+	16,  // 114: vca.admin.v1.AdminService.BindTenant:input_type -> vca.admin.v1.BindTenantRequest
+	18,  // 115: vca.admin.v1.AdminService.UnbindTenant:input_type -> vca.admin.v1.UnbindTenantRequest
+	20,  // 116: vca.admin.v1.AdminService.SetTenantPrimaryDid:input_type -> vca.admin.v1.SetTenantPrimaryDidRequest
+	22,  // 117: vca.admin.v1.AdminService.UpsertTrustEntry:input_type -> vca.admin.v1.UpsertTrustEntryRequest
+	24,  // 118: vca.admin.v1.AdminService.GetTrustEntry:input_type -> vca.admin.v1.GetTrustEntryRequest
+	26,  // 119: vca.admin.v1.AdminService.ListTrustEntries:input_type -> vca.admin.v1.ListTrustEntriesRequest
+	28,  // 120: vca.admin.v1.AdminService.DeleteTrustEntry:input_type -> vca.admin.v1.DeleteTrustEntryRequest
+	30,  // 121: vca.admin.v1.AdminService.ApproveTrustEntry:input_type -> vca.admin.v1.ApproveTrustEntryRequest
+	32,  // 122: vca.admin.v1.AdminService.RejectTrustEntry:input_type -> vca.admin.v1.RejectTrustEntryRequest
+	34,  // 123: vca.admin.v1.AdminService.AddTrustRegistry:input_type -> vca.admin.v1.AddTrustRegistryRequest
+	36,  // 124: vca.admin.v1.AdminService.ListTrustRegistries:input_type -> vca.admin.v1.ListTrustRegistriesRequest
+	38,  // 125: vca.admin.v1.AdminService.RemoveTrustRegistry:input_type -> vca.admin.v1.RemoveTrustRegistryRequest
+	40,  // 126: vca.admin.v1.AdminService.SyncTrustRegistry:input_type -> vca.admin.v1.SyncTrustRegistryRequest
+	43,  // 127: vca.admin.v1.AdminService.CreateAuthProvider:input_type -> vca.admin.v1.CreateAuthProviderRequest
+	48,  // 128: vca.admin.v1.AdminService.GetAuthProvider:input_type -> vca.admin.v1.GetAuthProviderRequest
+	50,  // 129: vca.admin.v1.AdminService.ListAuthProviders:input_type -> vca.admin.v1.ListAuthProvidersRequest
+	52,  // 130: vca.admin.v1.AdminService.UpdateAuthProvider:input_type -> vca.admin.v1.UpdateAuthProviderRequest
+	54,  // 131: vca.admin.v1.AdminService.DeleteAuthProvider:input_type -> vca.admin.v1.DeleteAuthProviderRequest
+	46,  // 132: vca.admin.v1.AdminService.OnboardProvider:input_type -> vca.admin.v1.OnboardProviderRequest
+	57,  // 133: vca.admin.v1.AdminService.CreateApiKey:input_type -> vca.admin.v1.CreateApiKeyRequest
+	59,  // 134: vca.admin.v1.AdminService.ListApiKeys:input_type -> vca.admin.v1.ListApiKeysRequest
+	61,  // 135: vca.admin.v1.AdminService.RevokeApiKey:input_type -> vca.admin.v1.RevokeApiKeyRequest
+	64,  // 136: vca.admin.v1.AdminService.ListStackCredentials:input_type -> vca.admin.v1.ListStackCredentialsRequest
+	66,  // 137: vca.admin.v1.AdminService.CreateStackCredential:input_type -> vca.admin.v1.CreateStackCredentialRequest
+	68,  // 138: vca.admin.v1.AdminService.DeleteStackCredential:input_type -> vca.admin.v1.DeleteStackCredentialRequest
+	71,  // 139: vca.admin.v1.AdminService.ListStackWebhooks:input_type -> vca.admin.v1.ListStackWebhooksRequest
+	73,  // 140: vca.admin.v1.AdminService.SetStackWebhook:input_type -> vca.admin.v1.SetStackWebhookRequest
+	74,  // 141: vca.admin.v1.AdminService.SetStackNotificationEndpoint:input_type -> vca.admin.v1.SetStackNotificationEndpointRequest
+	79,  // 142: vca.admin.v1.AdminService.ListStackEcosystems:input_type -> vca.admin.v1.ListStackEcosystemsRequest
+	81,  // 143: vca.admin.v1.AdminService.SetStackEcosystems:input_type -> vca.admin.v1.SetStackEcosystemsRequest
+	83,  // 144: vca.admin.v1.AdminService.CreateStackEcosystem:input_type -> vca.admin.v1.CreateStackEcosystemRequest
+	85,  // 145: vca.admin.v1.AdminService.AddStackEcosystemMember:input_type -> vca.admin.v1.AddStackEcosystemMemberRequest
+	87,  // 146: vca.admin.v1.AdminService.RemoveStackEcosystemMember:input_type -> vca.admin.v1.RemoveStackEcosystemMemberRequest
+	90,  // 147: vca.admin.v1.AdminService.GetServiceHealth:input_type -> vca.admin.v1.GetServiceHealthRequest
+	93,  // 148: vca.admin.v1.AdminService.QueryAuditLog:input_type -> vca.admin.v1.QueryAuditLogRequest
+	95,  // 149: vca.admin.v1.AdminService.OnboardAdmin:input_type -> vca.admin.v1.OnboardAdminRequest
+	97,  // 150: vca.admin.v1.AdminService.ListCommands:input_type -> vca.admin.v1.ListCommandsRequest
+	7,   // 151: vca.admin.v1.AdminService.CreateTenant:output_type -> vca.admin.v1.CreateTenantResponse
+	9,   // 152: vca.admin.v1.AdminService.GetTenant:output_type -> vca.admin.v1.GetTenantResponse
+	11,  // 153: vca.admin.v1.AdminService.ListTenants:output_type -> vca.admin.v1.ListTenantsResponse
+	13,  // 154: vca.admin.v1.AdminService.UpdateTenant:output_type -> vca.admin.v1.UpdateTenantResponse
+	15,  // 155: vca.admin.v1.AdminService.DeleteTenant:output_type -> vca.admin.v1.DeleteTenantResponse
+	17,  // 156: vca.admin.v1.AdminService.BindTenant:output_type -> vca.admin.v1.BindTenantResponse
+	19,  // 157: vca.admin.v1.AdminService.UnbindTenant:output_type -> vca.admin.v1.UnbindTenantResponse
+	21,  // 158: vca.admin.v1.AdminService.SetTenantPrimaryDid:output_type -> vca.admin.v1.SetTenantPrimaryDidResponse
+	23,  // 159: vca.admin.v1.AdminService.UpsertTrustEntry:output_type -> vca.admin.v1.UpsertTrustEntryResponse
+	25,  // 160: vca.admin.v1.AdminService.GetTrustEntry:output_type -> vca.admin.v1.GetTrustEntryResponse
+	27,  // 161: vca.admin.v1.AdminService.ListTrustEntries:output_type -> vca.admin.v1.ListTrustEntriesResponse
+	29,  // 162: vca.admin.v1.AdminService.DeleteTrustEntry:output_type -> vca.admin.v1.DeleteTrustEntryResponse
+	31,  // 163: vca.admin.v1.AdminService.ApproveTrustEntry:output_type -> vca.admin.v1.ApproveTrustEntryResponse
+	33,  // 164: vca.admin.v1.AdminService.RejectTrustEntry:output_type -> vca.admin.v1.RejectTrustEntryResponse
+	35,  // 165: vca.admin.v1.AdminService.AddTrustRegistry:output_type -> vca.admin.v1.AddTrustRegistryResponse
+	37,  // 166: vca.admin.v1.AdminService.ListTrustRegistries:output_type -> vca.admin.v1.ListTrustRegistriesResponse
+	39,  // 167: vca.admin.v1.AdminService.RemoveTrustRegistry:output_type -> vca.admin.v1.RemoveTrustRegistryResponse
+	41,  // 168: vca.admin.v1.AdminService.SyncTrustRegistry:output_type -> vca.admin.v1.SyncTrustRegistryResponse
+	44,  // 169: vca.admin.v1.AdminService.CreateAuthProvider:output_type -> vca.admin.v1.CreateAuthProviderResponse
+	49,  // 170: vca.admin.v1.AdminService.GetAuthProvider:output_type -> vca.admin.v1.GetAuthProviderResponse
+	51,  // 171: vca.admin.v1.AdminService.ListAuthProviders:output_type -> vca.admin.v1.ListAuthProvidersResponse
+	53,  // 172: vca.admin.v1.AdminService.UpdateAuthProvider:output_type -> vca.admin.v1.UpdateAuthProviderResponse
+	55,  // 173: vca.admin.v1.AdminService.DeleteAuthProvider:output_type -> vca.admin.v1.DeleteAuthProviderResponse
+	47,  // 174: vca.admin.v1.AdminService.OnboardProvider:output_type -> vca.admin.v1.OnboardProviderResponse
+	58,  // 175: vca.admin.v1.AdminService.CreateApiKey:output_type -> vca.admin.v1.CreateApiKeyResponse
+	60,  // 176: vca.admin.v1.AdminService.ListApiKeys:output_type -> vca.admin.v1.ListApiKeysResponse
+	62,  // 177: vca.admin.v1.AdminService.RevokeApiKey:output_type -> vca.admin.v1.RevokeApiKeyResponse
+	65,  // 178: vca.admin.v1.AdminService.ListStackCredentials:output_type -> vca.admin.v1.ListStackCredentialsResponse
+	67,  // 179: vca.admin.v1.AdminService.CreateStackCredential:output_type -> vca.admin.v1.CreateStackCredentialResponse
+	69,  // 180: vca.admin.v1.AdminService.DeleteStackCredential:output_type -> vca.admin.v1.DeleteStackCredentialResponse
+	72,  // 181: vca.admin.v1.AdminService.ListStackWebhooks:output_type -> vca.admin.v1.ListStackWebhooksResponse
+	89,  // 182: vca.admin.v1.AdminService.SetStackWebhook:output_type -> vca.admin.v1.SetStackWebhookResponse
+	75,  // 183: vca.admin.v1.AdminService.SetStackNotificationEndpoint:output_type -> vca.admin.v1.SetStackNotificationEndpointResponse
+	80,  // 184: vca.admin.v1.AdminService.ListStackEcosystems:output_type -> vca.admin.v1.ListStackEcosystemsResponse
+	82,  // 185: vca.admin.v1.AdminService.SetStackEcosystems:output_type -> vca.admin.v1.SetStackEcosystemsResponse
+	84,  // 186: vca.admin.v1.AdminService.CreateStackEcosystem:output_type -> vca.admin.v1.CreateStackEcosystemResponse
+	86,  // 187: vca.admin.v1.AdminService.AddStackEcosystemMember:output_type -> vca.admin.v1.AddStackEcosystemMemberResponse
+	88,  // 188: vca.admin.v1.AdminService.RemoveStackEcosystemMember:output_type -> vca.admin.v1.RemoveStackEcosystemMemberResponse
+	91,  // 189: vca.admin.v1.AdminService.GetServiceHealth:output_type -> vca.admin.v1.GetServiceHealthResponse
+	94,  // 190: vca.admin.v1.AdminService.QueryAuditLog:output_type -> vca.admin.v1.QueryAuditLogResponse
+	96,  // 191: vca.admin.v1.AdminService.OnboardAdmin:output_type -> vca.admin.v1.OnboardAdminResponse
+	98,  // 192: vca.admin.v1.AdminService.ListCommands:output_type -> vca.admin.v1.ListCommandsResponse
+	151, // [151:193] is the sub-list for method output_type
+	109, // [109:151] is the sub-list for method input_type
+	109, // [109:109] is the sub-list for extension type_name
+	109, // [109:109] is the sub-list for extension extendee
+	0,   // [0:109] is the sub-list for field type_name
 }
 
 func init() { file_vca_admin_v1_admin_proto_init() }
