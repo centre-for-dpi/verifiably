@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -121,7 +122,7 @@ func (p *Portal) card(b *pen, card *walletportalv1.Card, index int) components.C
 		Text:   "Credential: " + cards.RevocationWord(card.GetRevocation()),
 		Status: cards.RevocationStatus(card.GetRevocation()),
 	})
-	text := b.raw("<p>" + template.HTMLEscapeString(card.GetStatusText()) + "</p>")
+	text := b.raw("<p>" + withFullDID(template.HTMLEscapeString(card.GetStatusText()), card.GetIssuerName()) + "</p>")
 	// A card the stack lists by name only has no claims and no dates to
 	// show. Its document shows them.
 	var table template.HTML
@@ -146,11 +147,28 @@ func (p *Portal) card(b *pen, card *walletportalv1.Card, index int) components.C
 	if issuer == "" {
 		issuer = card.GetIssuer()
 	}
+	// A long DID breaks the card, so the card names a short form and
+	// keeps the whole DID in the title.
+	issuerTitle := ""
+	if short := cards.ShortDID(issuer); short != issuer {
+		issuer, issuerTitle = short, issuer
+	}
 	return components.CredentialCard{
-		ID: id, Issuer: issuer, Title: title, Status: status, StatusText: word,
+		ID: id, Issuer: issuer, IssuerTitle: issuerTitle, Title: title, Status: status, StatusText: word,
 		Meta: cardMeta(card), Summary: msg.T("holder.card.more.label"),
 		Body: components.Join(trust, state, text, window, table, p.documentLink(b, card), remove),
 	}
+}
+
+// withFullDID wraps the short form of a long issuer DID in an escaped
+// status text with a span whose title is the whole DID.
+func withFullDID(escaped, name string) string {
+	short := cards.ShortDID(name)
+	if short == name {
+		return escaped
+	}
+	return strings.Replace(escaped, template.HTMLEscapeString(short),
+		`<span title="`+template.HTMLEscapeString(name)+`">`+template.HTMLEscapeString(short)+`</span>`, 1)
 }
 
 // cardStatus returns the badge status and the word of a credential: a

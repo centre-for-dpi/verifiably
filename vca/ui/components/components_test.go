@@ -78,7 +78,8 @@ func samples(t *testing.T, k *Kit) map[string]any {
 		"credentials": Credentials{Label: "Your credentials", Items: []CredentialCard{
 			{ID: "cred-1", Issuer: "Ministry of Health", Title: "Nurse licence", Status: "ok", StatusText: "Valid", Meta: "Expires 1 Oct 2027",
 				Summary: "What it says", Body: mustHTML(t, k, "badge", Badge{Status: "info", Text: "Two fields"})},
-			{ID: "cred-2", Issuer: "Ministry of Agriculture", Title: "Farmer registration", Status: "warn", StatusText: "Suspended"}},
+			{ID: "cred-2", Issuer: "did:key:z6Mk…APjqrf", IssuerTitle: "did:key:z6MksE9FrDEMgX62GjquSt8oKHhWR9mxavDkSKJLEzAPjqrf",
+				Title: "Farmer registration", Status: "warn", StatusText: "Suspended"}},
 			Add: Link{Href: "/wallet/discover", Text: "Discover what you can claim"}},
 		"fieldset": Fieldset{ID: "address", Legend: "Address", Hint: "Where the farm is",
 			Body: mustHTML(t, k, "field", Field{ID: "address-county", Name: "claim.address.county", Label: "County", Required: true})},
@@ -1269,6 +1270,7 @@ func TestCredentialCardsCarryTheirTone(t *testing.T) {
 		`<p class="credential-meta">Expires 1 Oct 2027</p>`,
 		`<details class="credential-more"><summary>What it says</summary>`,
 		`<article class="credential credential-warn" id="cred-2"`,
+		`<span class="credential-issuer" title="did:key:z6MksE9FrDEMgX62GjquSt8oKHhWR9mxavDkSKJLEzAPjqrf">did:key:z6Mk…APjqrf</span>`,
 		`<a class="credential-add" href="/wallet/discover"><span aria-hidden="true">+</span> Discover what you can claim</a>`,
 	} {
 		if !strings.Contains(doc, want) {

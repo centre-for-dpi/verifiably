@@ -528,6 +528,11 @@ A card carries these parts (ADR-021 decision 6):
 | Claims | The credential claims, with the SD-JWT disclosures resolved. |
 | Status line | One sentence per part, in Simplified Technical English. |
 
+A long issuer DID breaks a card, so the card names a short form: the
+method, the first eight characters of the identifier, an ellipsis and
+the last six. The whole DID rides in the title of the issuer line and
+of the trust sentence.
+
 A card of a credential that the stack wallet cannot remove has no
 remove button. The adapter marks it `permanent`, as the CREDEBL adapter
 does for an AnonCreds credential (ADR-062 decision 5).

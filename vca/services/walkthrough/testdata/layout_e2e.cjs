@@ -35,6 +35,14 @@ async function measure(page) {
         out.push(label(el) + " scrolls: " + el.scrollWidth + " > " + el.clientWidth);
       }
     }
+    // A block of text whose words do not fit spills into its neighbour
+    // even inside the column, for example a long DID in a narrow card.
+    for (const el of main.querySelectorAll("p, li, dd, dt, h2, h3, summary, .credential-issuer")) {
+      if (el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1) {
+        out.push(label(el) + " spills: " + el.scrollWidth + " > " + el.clientWidth +
+          " (" + JSON.stringify(el.textContent.trim().slice(0, 80)) + ")");
+      }
+    }
     const edge = main.getBoundingClientRect().right;
     for (const el of main.querySelectorAll("*")) {
       const box = el.getBoundingClientRect();

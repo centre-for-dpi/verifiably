@@ -454,3 +454,17 @@ func TestCardTitleReadsAsWords(t *testing.T) {
 		t.Errorf("display name: title %q", shown.GetTitle())
 	}
 }
+
+func TestShortDID(t *testing.T) {
+	for in, want := range map[string]string{
+		"did:key:z6MksE9FrDEMgX62GjquSt8oKHhWR9mxavDkSKJLEzAPjqrf": "did:key:z6MksE9F…APjqrf",
+		"did:web:issuer.example":                                   "did:web:issuer.example",
+		"Ministry of Agriculture and Livestock Development, Kenya": "Ministry of Agriculture and Livestock Development, Kenya",
+		"did:nocolonatallinthisverylongidentifiervalue1234567890":  "did:nocolonatallinthisverylongidentifiervalue1234567890",
+		"did:averyveryveryveryverylongmethodname:short":            "did:averyveryveryveryverylongmethodname:short",
+	} {
+		if got := cards.ShortDID(in); got != want {
+			t.Errorf("ShortDID(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

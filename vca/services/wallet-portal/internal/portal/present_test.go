@@ -19,6 +19,8 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
+	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/cards"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/session"
 	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
 )
@@ -326,6 +328,36 @@ func TestOutcomeNamesWhatLeft(t *testing.T) {
 	for _, want := range []string{"What left your wallet", "Verifier", "Agency A", "Request", ">1<", "Credential", "DriverLicence", "Claims", "given_name"} {
 		if !strings.Contains(left, want) {
 			t.Fatalf("the outcome misses %q\n%s", want, page)
+		}
+	}
+}
+
+// longDID is a did:key issuer with no break in it.
+const longDID = "did:key:z6MksE9FrDEMgX62GjquSt8oKHhWR9mxavDkSKJLEzAPjqrf"
+
+// TestCardShortensALongIssuerDID checks a card whose issuer is a long
+// DID: the card names a short form, and the full DID rides in the title
+// so the holder can still read it.
+func TestCardShortensALongIssuerDID(t *testing.T) {
+	didTrust := func(context.Context, string, string) (cards.Trust, error) {
+		return cards.Trust{Outcome: trustv1.TrustLookupResponse_OUTCOME_TRUSTED, Name: longDID}, nil
+	}
+	h := setup(t, func(o *serviceOptions) {
+		o.Cards = cards.New(cards.Options{Trust: didTrust, Now: now})
+		o.Trust = didTrust
+	})
+	page := h.get(t, "/wallet/").Body.String()
+	a11ytest.AssertPage(t, page)
+	if strings.Contains(page, ">"+longDID+"<") || strings.Contains(page, longDID+" is on the trust list") {
+		t.Fatalf("the card shows the whole DID as text\n%s", page)
+	}
+	short := cards.ShortDID(longDID)
+	if short == longDID || len(short) > 32 {
+		t.Fatalf("ShortDID = %q", short)
+	}
+	for _, want := range []string{`title="` + longDID + `">` + short + "<", short + "</span> is on the trust list."} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the card misses %q\n%s", want, page)
 		}
 	}
 }

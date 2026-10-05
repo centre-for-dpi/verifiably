@@ -335,7 +335,7 @@ func validitySentence(window *commonv1.ValidityWindow, now time.Time) string {
 // issuer with no name reads as "The issuer" at the start of a sentence
 // and as "the issuer" in its middle.
 func trustSentence(outcome trustv1.TrustLookupResponse_Outcome, name string) string {
-	who, whom := strings.TrimSpace(name), strings.TrimSpace(name)
+	who, whom := ShortDID(strings.TrimSpace(name)), ShortDID(strings.TrimSpace(name))
 	if who == "" {
 		who, whom = "The issuer", "the issuer"
 	}
@@ -351,6 +351,25 @@ func trustSentence(outcome trustv1.TrustLookupResponse_Outcome, name string) str
 		return "The wallet could not check the trust list."
 	}
 	return "The wallet could not check the trust list."
+}
+
+// ShortDID returns a DID short enough for a card: the method, the
+// first eight characters of the identifier, an ellipsis and the last six.
+// A value that is not a DID, or a short one, stays as it is.
+func ShortDID(value string) string {
+	const keep = 32
+	if !strings.HasPrefix(value, "did:") || len(value) <= keep {
+		return value
+	}
+	cut := strings.Index(value[len("did:"):], ":")
+	if cut < 0 {
+		return value
+	}
+	method, id := value[:len("did:")+cut+1], value[len("did:")+cut+1:]
+	if len(id) <= 14 {
+		return value
+	}
+	return method + id[:8] + "…" + id[len(id)-6:]
 }
 
 // day formats a time as a plain date.

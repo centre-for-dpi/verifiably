@@ -85,7 +85,7 @@ func TestLayout(t *testing.T) {
 	synced := w.checker.submit(cache.form(t, "/portal/cache/sync")).must(t)
 	pages := []layoutPage{
 		{Name: "trust list", URL: trusted.url.String(), HTML: trusted.body},
-		{Name: "wallet card", URL: w.holder.public + "/wallet/", HTML: w.citizen.get(w.holder.public+"/wallet/").must(t).has(t, longFarmerID).body},
+		{Name: "wallet card", URL: w.holder.public + "/wallet/", HTML: w.citizen.get(w.holder.public+"/wallet/").must(t).has(t, longFarmerID, "did:key:").body},
 		{Name: "request result", URL: result.url.String(), HTML: result.body},
 		{Name: "check page", URL: w.verifier.public + "/verify/", HTML: w.check(credential).has(t, longFarmerID).body},
 		{Name: "caching", URL: synced.url.String(), HTML: synced.body},

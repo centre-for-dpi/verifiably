@@ -1160,14 +1160,15 @@ func (f Figure) normalize() (any, error) {
 // the status as a badge word, and one meta line such as the expiry. The
 // stripe on top of the card takes the tone of the status.
 type CredentialCard struct {
-	ID         string        // required
-	Issuer     string        // the issuer name
-	Title      string        // required, the credential type
-	Status     string        // one of Statuses
-	StatusText string        // required, the word of the status
-	Meta       string        // for example "Expires 1 Oct 2027"
-	Summary    string        // required with Body, the text of the disclosure
-	Body       template.HTML // optional detail inside a disclosure
+	ID          string        // required
+	Issuer      string        // the issuer name
+	IssuerTitle string        // the whole issuer name, when Issuer is a short form
+	Title       string        // required, the credential type
+	Status      string        // one of Statuses
+	StatusText  string        // required, the word of the status
+	Meta        string        // for example "Expires 1 Oct 2027"
+	Summary     string        // required with Body, the text of the disclosure
+	Body        template.HTML // optional detail inside a disclosure
 }
 
 // Credentials is the grid of credential cards of a wallet. Add is an
