@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-082, one row per decision.
+ADR-083, one row per decision.
 
 The status values are:
 
@@ -868,12 +868,23 @@ A row that is not `Done` carries a note.
 | ADR-082 | 5 The laptop reads of the wallet | Done | `vca/internal/cli/services.go` | `TestLaptopSetupOpensTheLocalReads` pins it. |
 | ADR-082 | 6 The Inji client of the VCA wallet | Done | `vca/internal/cli/inji_public.go` | `TestSetupWritesTheAuthzIssuer` pins it. |
 
+## ADR-083: A verifier policy requires holder binding
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-083 | 1 A policy asks for holder binding, on by default | Done | `vca/core/policy/keybinding.go` | `TestPolicyRequiresHolderBinding` pins it. |
+| ADR-083 | 2 An unbound OID4VP answer reads Not valid | Done | `vca/core/policy/keybinding.go`, `vca/services/verifier-policy/internal/service/convert.go` | `TestPolicyRequiresHolderBinding` and `TestToPresentationCarriesTheHolderBinding` pin it. |
+| ADR-083 | 3 The consent screen names an unbound answer | Done | `vca/services/wallet-portal/internal/portal/present.go`, `vca/services/wallet-portal/internal/cards/cards.go` | `TestConsentSaysWhenTheAnswerIsUnbound` pins it. |
+| ADR-083 | 4 A stack verifier that accepted an answer checked its binding | Done | `vca/services/verifier-ingest/internal/service/request.go` | `TestStackRequestLifecycle` pins it. |
+| ADR-083 | 5 The browser store signs a VP JWT around a bound jwt_vc_json credential | Done | `vca/services/wallet-portal/internal/holderkey/holderkey.go`, `vca/services/wallet-portal/internal/service/binding.go` | `TestBrowserStoreSignsAVPJWTForJwtVcJson` pins it. wallet.js signs the input the portal hands it. |
+| ADR-083 | 6 An mDoc of the browser store stays unbound | Done | `vca/docs/wallet-portal.md`, `vca/docs/verifier-policy.md` | VCA skips an mDoc with a device signature and leaves it to the stack verifier. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 414 |
+| Done | 420 |
 | Partial | 19 |
 | Deferred | 3 |
 | Not started | 5 |
-| Total | 441 |
+| Total | 447 |

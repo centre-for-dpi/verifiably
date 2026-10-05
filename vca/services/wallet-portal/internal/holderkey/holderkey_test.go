@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/centre-for-dpi/vc-adapters/core/did"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/holderkey"
@@ -336,4 +337,103 @@ func notJSON(t *testing.T, priv *ecdsa.PrivateKey) string {
 	enc := base64.RawURLEncoding
 	input := enc.EncodeToString([]byte(`{"alg":"ES256","typ":"kb+jwt"}`)) + "." + enc.EncodeToString([]byte("[1]"))
 	return input + "." + signES256(t, priv, input)
+}
+
+// TestVPJWTOfAJwtCredential is ADR-083 decision 5: the holder key of a
+// jwt_vc_json credential comes from cnf.jwk or from a did:jwk or did:key
+// subject, the VP JWT names the holder, and CheckVP takes only the VP
+// JWT of that key, audience, nonce and credential.
+func TestVPJWTOfAJwtCredential(t *testing.T) {
+	priv, raw := browserKey(t)
+	key, err := holderkey.ParseKey(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := jose.JWKToMap(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jwkDID, err := did.FromJWK(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyDID, err := did.FromPublicKey(priv.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuer, err := jose.GenerateKey(jose.ES256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cred := func(claims map[string]any) string {
+		signed, serr := jose.Sign(issuer, "k", "JWT", claims)
+		if serr != nil {
+			t.Fatal(serr)
+		}
+		return signed
+	}
+	for name, tc := range map[string]struct {
+		claims map[string]any
+		holder string
+		kid    string
+	}{
+		"cnf":     {map[string]any{"sub": "urn:holder", "cnf": map[string]any{"jwk": m}}, "urn:holder", ""},
+		"did:jwk": {map[string]any{"sub": jwkDID}, jwkDID, jwkDID + "#0"},
+		"did:key": {map[string]any{"vc": map[string]any{"credentialSubject": map[string]any{"id": keyDID}}}, keyDID, keyDID + "#" + strings.TrimPrefix(keyDID, "did:key:")},
+	} {
+		token := cred(tc.claims)
+		got, holder, ok := holderkey.BoundJWT(token)
+		if !ok || holder != tc.holder || thumb(t, got) != thumb(t, key) || !holderkey.Binds(token) {
+			t.Fatalf("%s: BoundJWT = %q, %v", name, holder, ok)
+		}
+		input, err := holderkey.VPInput(token, holder, got, "https://verifier.example", "n-1", time.Unix(1_800_000_000, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		hdr, payload := parts(t, input)
+		if hdr["kid"] != nil && hdr["kid"] != tc.kid || (tc.kid != "" && hdr["kid"] != tc.kid) || payload["iss"] != tc.holder {
+			t.Fatalf("%s: header %v payload %v", name, hdr, payload)
+		}
+		vp := input + "." + signES256(t, priv, input)
+		if err := holderkey.CheckVP(vp, token, "https://verifier.example", "n-1", key); err != nil {
+			t.Fatalf("%s: CheckVP: %v", name, err)
+		}
+		other, _ := browserKey(t)
+		for why, bad := range map[string]error{
+			"another key":        holderkey.CheckVP(input+"."+signES256(t, other, input), token, "https://verifier.example", "n-1", key),
+			"another audience":   holderkey.CheckVP(vp, token, "https://other.example", "n-1", key),
+			"another credential": holderkey.CheckVP(vp, "other", "https://verifier.example", "n-1", key),
+		} {
+			if bad == nil {
+				t.Errorf("%s: %s passed", name, why)
+			}
+		}
+	}
+	// No holder id leaves iss out of the VP JWT.
+	if input, err := holderkey.VPInput("t", "", key, "a", "n", time.Unix(0, 0)); err != nil {
+		t.Fatal(err)
+	} else if _, payload := parts(t, input); payload["iss"] != nil {
+		t.Fatalf("payload %v", payload)
+	}
+	if _, err := holderkey.VPInput("t", "", jose.JWK{}, "a", "n", time.Unix(0, 0)); err == nil {
+		t.Fatal("VPInput took an empty key")
+	}
+	for name, token := range map[string]string{
+		"no key":    cred(map[string]any{"sub": "did:web:holder.example"}),
+		"bad cnf":   cred(map[string]any{"cnf": map[string]any{"jwk": map[string]any{"kty": "nope"}}}),
+		"not a jwt": "nope",
+		"an sd-jwt": cred(map[string]any{"sub": jwkDID}) + "~",
+	} {
+		if _, _, ok := holderkey.BoundJWT(token); ok {
+			t.Errorf("%s: BoundJWT found a key", name)
+		}
+	}
+	if holderkey.Binds("nope") {
+		t.Fatal("Binds took a broken credential")
+	}
+	// A payload that is no JSON object fails the check.
+	broken := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"ES256"}`)) + "." + base64.RawURLEncoding.EncodeToString([]byte(`[1]`))
+	if err := holderkey.CheckVP(broken+"."+signES256(t, priv, broken), "t", "a", "n", key); !errors.Is(err, holderkey.ErrVP) {
+		t.Fatalf("broken payload: %v", err)
+	}
 }

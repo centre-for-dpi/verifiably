@@ -403,6 +403,9 @@ func (s *Service) poll(ctx context.Context, id string) (txn.Transaction, error) 
 			nonce = answered
 		}
 		record.Presentation = presentationOf(msg.GetPresented(), record.ID, nonce, record.AnsweredAt)
+		// A stack that accepted the answer checked its holder binding,
+		// which VCA cannot see in the bare credentials (ADR-083).
+		record.Presentation.StackCheckedHolder = msg.GetState() == backendv1.GetResultResponse_STATE_ACCEPTED
 		s.finish(ctx, &record)
 	default:
 		return record, nil

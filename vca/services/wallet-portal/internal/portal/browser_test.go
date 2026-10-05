@@ -20,6 +20,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/service"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/session"
+	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
 )
 
 // The offer of the issuer that the browser store claims.
@@ -65,6 +66,13 @@ func (s signer) sign(t *testing.T, input string) string {
 // withIssuer turns the harness into a browser store wired to an issuer
 // that binds each credential to the key of the proof.
 func withIssuer(t *testing.T) func(*service.Options) {
+	t.Helper()
+	return withIssuerBinding(t, true)
+}
+
+// withIssuerBinding is withIssuer with an issuer that binds the
+// credential to the key of the proof, or not.
+func withIssuerBinding(t *testing.T, bind bool) func(*service.Options) {
 	t.Helper()
 	issuerKey, err := jose.GenerateKey(jose.ES256)
 	if err != nil {
@@ -113,7 +121,10 @@ func withIssuer(t *testing.T) func(*service.Options) {
 			if err != nil {
 				return nil, err
 			}
-			claims["iss"], claims["vct"], claims["cnf"] = "https://issuer.example", "DriverLicence", map[string]any{"jwk": hdr.JWK}
+			claims["iss"], claims["vct"] = "https://issuer.example", "DriverLicence"
+			if bind {
+				claims["cnf"] = map[string]any{"jwk": hdr.JWK}
+			}
 			jwt, err := jose.Sign(issuerKey, "k", "dc+sd-jwt", claims)
 			if err != nil {
 				return nil, err
@@ -248,4 +259,28 @@ func (h *harness) jsonPost(t *testing.T, path string, want int, form url.Values)
 		t.Fatalf("%s: the answer is not JSON: %s", path, rec.Body.String())
 	}
 	return out
+}
+
+// TestConsentSaysWhenTheAnswerIsUnbound is ADR-083 decision 3: the
+// consent screen says plainly that the browser store sends a credential
+// with no holder binding, and says nothing for a bound one.
+func TestConsentSaysWhenTheAnswerIsUnbound(t *testing.T) {
+	const unbound = "This answer is not bound to your key."
+	for _, bind := range []bool{false, true} {
+		h := setup(t, withIssuerBinding(t, bind))
+		body := h.post(t, "/wallet/claim/offer", url.Values{"offer": {browserOffer}}).Body.String()
+		browser := newSigner(t)
+		step := h.jsonPost(t, "/wallet/claim/proof", http.StatusOK, url.Values{
+			"offer_id": {offerIDOf(t, body)}, "pin": {"1234"}, "jwk": {browser.jwk},
+		})
+		h.jsonPost(t, "/wallet/claim/finish", http.StatusOK, url.Values{
+			"claim": {step["claim"]}, "signature": {browser.sign(t, step["signing_input"])},
+		})
+		opened := h.post(t, "/wallet/claim/offer", url.Values{"offer": {requestURI}})
+		consent := h.get(t, strings.TrimSuffix(opened.Header().Get("Location"), "#request")).Body.String()
+		a11ytest.AssertPage(t, consent)
+		if got := strings.Contains(consent, unbound); got == bind {
+			t.Errorf("bound %v: the consent page says %q: %v", bind, unbound, got)
+		}
+	}
 }

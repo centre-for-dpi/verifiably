@@ -312,3 +312,21 @@ func sortedKeys[V any](m map[string]V) []string {
 	slices.Sort(out)
 	return out
 }
+
+// MdocDeviceSigned reports whether an mDoc answer is a DeviceResponse
+// whose first document carries a device signature (ISO/IEC 18013-5
+// section 8.3.2.1.2.2). An IssuerSigned structure alone carries none.
+func MdocDeviceSigned(raw []byte) bool {
+	b, _, err := mdocBytes(raw)
+	if err != nil {
+		return false
+	}
+	var top struct {
+		Documents []map[string]cbor.RawMessage `cbor:"documents"`
+	}
+	if cbor.Unmarshal(b, &top) != nil || len(top.Documents) == 0 {
+		return false
+	}
+	_, ok := top.Documents[0]["deviceSigned"]
+	return ok
+}

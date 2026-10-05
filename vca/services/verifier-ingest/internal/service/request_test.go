@@ -42,6 +42,8 @@ type evaluator struct {
 	err    error
 	sets   []string
 	nonces []string
+	// checked holds the stack note of each evaluated presentation.
+	checked []bool
 }
 
 func (f *evaluator) Evaluate(_ context.Context, req *connect.Request[policyv1.EvaluateRequest]) (*connect.Response[policyv1.EvaluateResponse], error) {
@@ -49,6 +51,7 @@ func (f *evaluator) Evaluate(_ context.Context, req *connect.Request[policyv1.Ev
 		return nil, f.err
 	}
 	f.sets = append(f.sets, req.Msg.GetPolicySetId())
+	f.checked = append(f.checked, req.Msg.GetPresentation().GetStackCheckedHolder())
 	f.nonces = append(f.nonces, req.Msg.GetNonce())
 	return connect.NewResponse(&policyv1.EvaluateResponse{Verdict: policyv1.EvaluateResponse_VERDICT_VALID, Checks: []*policyv1.CheckResult{
 		{Name: "nonce", CredentialIndex: -1}, {Name: "signature", CredentialIndex: 0},
@@ -223,6 +226,11 @@ func TestStackRequestLifecycle(t *testing.T) {
 	get()
 	if len(pol.sets) != 1 {
 		t.Error("a second poll evaluated again")
+	}
+	// The stack accepted the answer, so it checked the holder binding
+	// that VCA cannot see (ADR-083 decision 4).
+	if len(pol.checked) != 1 || !pol.checked[0] || !record.Presentation.StackCheckedHolder {
+		t.Errorf("the accepted stack answer carries no stack note: %v", pol.checked)
 	}
 	if res.kept.GetStack() != "DCQL stack" || len(res.kept.GetStackChecks()) != 1 || res.kept.GetStackChecks()[0].GetReason() != "bad" {
 		t.Errorf("kept stack checks %+v", res.kept)

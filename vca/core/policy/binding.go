@@ -30,7 +30,7 @@ func echoed(p Presentation, name, label, want, carried, claim string) []CheckRes
 	}
 	var out []CheckResult
 	for i, c := range p.Credentials {
-		got, ok := kbClaim(c, claim)
+		got, ok := kbClaim(c, p, claim, want)
 		if !ok {
 			continue
 		}
@@ -54,9 +54,13 @@ func compare(name, label string, index int, want, got string) CheckResult {
 	return result(name, Fail, index, "the presentation names another "+label, ev)
 }
 
-// kbClaim reads one string claim of the key binding JWT of c. The
-// signature of that JWT is the work of the key binding check.
-func kbClaim(c Credential, name string) (string, bool) {
+// kbClaim reads one string claim of the key binding JWT of c, or of
+// the VP JWT around a JWT credential. The signature of that JWT is the
+// work of the key binding check.
+func kbClaim(c Credential, p Presentation, name, want string) (string, bool) {
+	if c.Format == vc.FormatJWT {
+		return envelopeClaim(c, p, name, want)
+	}
 	if c.Format != vc.FormatSDJWT {
 		return "", false
 	}

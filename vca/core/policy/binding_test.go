@@ -54,17 +54,17 @@ func TestNonceChecks(t *testing.T) {
 
 func TestKBClaimShapes(t *testing.T) {
 	b := newBuilder(t)
-	if _, ok := kbClaim(objectCred(vc.FormatJSONLD, nil), "aud"); ok {
+	if _, ok := kbClaim(objectCred(vc.FormatJSONLD, nil), Presentation{}, "aud", ""); ok {
 		t.Fatal("want no claim from a JSON-LD credential")
 	}
-	if _, ok := kbClaim(Credential{Format: vc.FormatSDJWT, Token: "bad~"}, "aud"); ok {
+	if _, ok := kbClaim(Credential{Format: vc.FormatSDJWT, Token: "bad~"}, Presentation{}, "aud", ""); ok {
 		t.Fatal("want no claim from a broken token")
 	}
-	if _, ok := kbClaim(b.sdjwtCred(t, sdjwtOptions{}), "aud"); ok {
+	if _, ok := kbClaim(b.sdjwtCred(t, sdjwtOptions{}), Presentation{}, "aud", ""); ok {
 		t.Fatal("want no claim without key binding")
 	}
 	c := signKB(t, b, b.sdjwtCred(t, sdjwtOptions{keyBinding: true}), map[string]any{"aud": 7})
-	if _, ok := kbClaim(c, "aud"); ok {
+	if _, ok := kbClaim(c, Presentation{}, "aud", ""); ok {
 		t.Fatal("want no claim when the value is not text")
 	}
 	plain := b.sdjwtCred(t, sdjwtOptions{})
@@ -74,7 +74,7 @@ func TestKBClaimShapes(t *testing.T) {
 	}
 	parsed.KeyBindingJWT = "x.y.z"
 	bad := Credential{Format: vc.FormatSDJWT, Token: sdjwt.Serialize(parsed)}
-	if _, ok := kbClaim(bad, "aud"); ok {
+	if _, ok := kbClaim(bad, Presentation{}, "aud", ""); ok {
 		t.Fatal("want no claim when the key binding JWT does not parse")
 	}
 }

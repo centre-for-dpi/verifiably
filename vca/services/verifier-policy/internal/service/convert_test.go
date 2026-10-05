@@ -3,6 +3,8 @@
 package service
 
 import (
+	"encoding/base64"
+	"slices"
 	"testing"
 
 	"github.com/centre-for-dpi/vc-adapters/core/policy"
@@ -124,5 +126,40 @@ func TestToCoreSet(t *testing.T) {
 	}
 	if !got.Settings[0].Blocking || got.Settings[0].Params[policy.ParamFailMode] != policy.FailOpen {
 		t.Fatalf("unexpected setting: %+v", got.Settings[0])
+	}
+}
+
+// TestToPresentationCarriesTheHolderBinding is ADR-083: an OID4VP answer
+// keeps its carrier word, the VP JWTs of its vp_token, an mDoc token, and
+// the note that a stack verifier checked the holder binding.
+func TestToPresentationCarriesTheHolderBinding(t *testing.T) {
+	enc := base64.RawURLEncoding
+	jwt := func(payload string) string {
+		return enc.EncodeToString([]byte(`{"alg":"ES256"}`)) + "." + enc.EncodeToString([]byte(payload)) + ".c2ln"
+	}
+	vp := jwt(`{"vp":{"verifiableCredential":["x"]}}`)
+	plain := jwt(`{"iss":"a"}`)
+	for name, tc := range map[string]struct {
+		payload string
+		want    []string
+	}{
+		"one VP JWT":   {vp, []string{vp}},
+		"a query map":  {`{"a":["` + vp + `"],"b":"` + plain + `"}`, []string{vp}},
+		"a list":       {`["` + vp + `",1]`, []string{vp}},
+		"a credential": {plain, nil},
+		"broken json":  {`{"a":`, nil},
+		"no vp member": {`{"a":"b"}`, nil},
+	} {
+		got := ToPresentation(&ingestv1.RawPresentation{Carrier: ingestv1.Carrier_CARRIER_OID4VP_RESPONSE, Payload: []byte(tc.payload)})
+		if got.Carrier != policy.CarrierOID4VP || !slices.Equal(got.Envelopes, tc.want) {
+			t.Errorf("%s: carrier %q, envelopes %v, want %v", name, got.Carrier, got.Envelopes, tc.want)
+		}
+	}
+	stack := ToPresentation(&ingestv1.RawPresentation{
+		Carrier: ingestv1.Carrier_CARRIER_OID4VP_RESPONSE, StackCheckedHolder: true,
+		Credentials: []*commonv1.Credential{{Format: commonv1.Format_FORMAT_MSO_MDOC, Payload: []byte("o2Fh")}},
+	})
+	if stack.Holder == nil || !stack.Holder.Confirmed || stack.Credentials[0].Token != "o2Fh" {
+		t.Fatalf("stack answer = %+v", stack)
 	}
 }

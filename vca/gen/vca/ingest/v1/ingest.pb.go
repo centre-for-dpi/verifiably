@@ -317,9 +317,13 @@ type RawPresentation struct {
 	// The time of ingestion.
 	ReceivedAt *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=received_at,json=receivedAt,proto3" json:"received_at,omitempty"`
 	// The SHA-256 hash of the input bytes, hex encoded.
-	InputHash     string `protobuf:"bytes,11,opt,name=input_hash,json=inputHash,proto3" json:"input_hash,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	InputHash string `protobuf:"bytes,11,opt,name=input_hash,json=inputHash,proto3" json:"input_hash,omitempty"`
+	// True when the verifier of a stack accepted the answer. The stack
+	// checked the holder binding itself, and VCA sees only the
+	// credentials (ADR-083 decision 4).
+	StackCheckedHolder bool `protobuf:"varint,12,opt,name=stack_checked_holder,json=stackCheckedHolder,proto3" json:"stack_checked_holder,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *RawPresentation) Reset() {
@@ -427,6 +431,13 @@ func (x *RawPresentation) GetInputHash() string {
 		return x.InputHash
 	}
 	return ""
+}
+
+func (x *RawPresentation) GetStackCheckedHolder() bool {
+	if x != nil {
+		return x.StackCheckedHolder
+	}
+	return false
 }
 
 // XmlConfig says where a credential sits in an XML document (ADR-023 decision 4).
@@ -1570,7 +1581,7 @@ var File_vca_ingest_v1_ingest_proto protoreflect.FileDescriptor
 
 const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	"\n" +
-	"\x1avca/ingest/v1/ingest.proto\x12\rvca.ingest.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cvca/backend/v1/backend.proto\x1a\x1avca/common/v1/common.proto\x1a vca/discovery/v1/discovery.proto\"\xd7\x03\n" +
+	"\x1avca/ingest/v1/ingest.proto\x12\rvca.ingest.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cvca/backend/v1/backend.proto\x1a\x1avca/common/v1/common.proto\x1a vca/discovery/v1/discovery.proto\"\x89\x04\n" +
 	"\x0fRawPresentation\x12\x10\n" +
 	"\x03ref\x18\x01 \x01(\tR\x03ref\x120\n" +
 	"\acarrier\x18\x02 \x01(\x0e2\x16.vca.ingest.v1.CarrierR\acarrier\x12-\n" +
@@ -1586,7 +1597,8 @@ const file_vca_ingest_v1_ingest_proto_rawDesc = "" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"receivedAt\x12\x1d\n" +
 	"\n" +
-	"input_hash\x18\v \x01(\tR\tinputHash\"\xb7\x02\n" +
+	"input_hash\x18\v \x01(\tR\tinputHash\x120\n" +
+	"\x14stack_checked_holder\x18\f \x01(\bR\x12stackCheckedHolder\"\xb7\x02\n" +
 	"\tXmlConfig\x12\x14\n" +
 	"\x05xpath\x18\x01 \x01(\tR\x05xpath\x12=\n" +
 	"\bencoding\x18\x02 \x01(\x0e2!.vca.ingest.v1.XmlConfig.EncodingR\bencoding\x12H\n" +

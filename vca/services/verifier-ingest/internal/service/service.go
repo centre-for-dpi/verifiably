@@ -500,6 +500,8 @@ func RecordToProto(p *txn.Presentation, transactionID string) *ingestv1.RawPrese
 		KeyBinding:    p.KeyBinding,
 		ReceivedAt:    timestamppb.New(p.ReceivedAt),
 		InputHash:     p.InputHash,
+
+		StackCheckedHolder: p.StackCheckedHolder,
 	}
 	for _, c := range p.Credentials {
 		out.Credentials = append(out.Credentials, &commonv1.Credential{Format: ProtoFormat(c.Format), Payload: c.Payload})

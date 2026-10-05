@@ -1812,6 +1812,7 @@ var en = map[string]string{
 	"holder.present.outcome.label":            "The verifier answered",
 	"holder.present.outcome.lead":             "What the verifier said about your credential.",
 	"holder.present.issuer.text":              "The issuer asks you to show a credential before it gives you the new one.",
+	"holder.present.unbound":                  "This answer is not bound to your key. A verifier that needs holder binding refuses it.",
 	"holder.present.left.caption.label":       "What left your wallet",
 	"holder.present.left.item.label":          "Item",
 	"holder.present.left.value.label":         "Value",

@@ -162,7 +162,7 @@ func (p *Portal) matched(b *pen, index int, entry *walletportalv1.PresentStartRe
 		return b.raw(`<p class="error">` + esc(msg.T("holder.present.nomatch")) + `</p>`), false
 	case 1:
 		return b.hidden(name, matches[0].GetId()) + b.raw(`<p><span class="hint">`+esc(msg.T("holder.present.matched.label"))+
-			`</span><br><strong>`+esc(matchName(matches[0]))+`</strong></p>`), true
+			`</span><br><strong>`+esc(matchName(matches[0]))+`</strong></p>`) + unboundNote(b, matches), true
 	}
 	options := make([]components.Option, 0, len(matches))
 	for i, m := range matches {
@@ -171,7 +171,18 @@ func (p *Portal) matched(b *pen, index int, entry *walletportalv1.PresentStartRe
 	return b.part("field", components.Field{
 		ID: fmt.Sprintf("query-%d", index), Name: name, Label: msg.T("holder.present.matched.label"), Type: "select",
 		Options: options, Hint: msg.T("holder.present.pick.hint"),
-	}), true
+	}) + unboundNote(b, matches), true
+}
+
+// unboundNote says plainly that the browser store sends a matched
+// credential with no holder binding (ADR-083 decision 3).
+func unboundNote(b *pen, matches []*walletportalv1.Card) template.HTML {
+	for _, m := range matches {
+		if m.GetInBrowser() && m.GetHolderUnbound() {
+			return b.raw(`<p class="hint">` + template.HTMLEscapeString(msg.T("holder.present.unbound")) + `</p>`)
+		}
+	}
+	return ""
 }
 
 // asked renders the claims one requested credential asks for. A locked

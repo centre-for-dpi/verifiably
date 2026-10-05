@@ -31,6 +31,7 @@ import (
 	schemav1 "github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1"
 	trustv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/trust/v1"
 	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/holderkey"
 )
 
 // Trust is the trust outcome of one issuer, with its display name.
@@ -115,6 +116,7 @@ func (b *Builder) Card(ctx context.Context, held *backendv1.WalletCredential) *w
 		card.Issuer = parsed.Issuer
 	}
 	card.Claims = claimsOf(parsed)
+	card.HolderUnbound = !holderkey.Binds(string(payload))
 	// The consent screen lists what every presentation sends, so consent
 	// equals disclosure (ADR-081).
 	if fixed, ferr := vc.FixedClaims(payload); ferr == nil {

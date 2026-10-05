@@ -361,7 +361,11 @@ type Card struct {
 	// The claims that every presentation of the credential sends, whatever
 	// the holder ticks: an SD-JWT claim outside any disclosure, or each
 	// claim of a format the wallet cannot disclose in part.
-	FixedClaims   []string `protobuf:"bytes,16,rep,name=fixed_claims,json=fixedClaims,proto3" json:"fixed_claims,omitempty"`
+	FixedClaims []string `protobuf:"bytes,16,rep,name=fixed_claims,json=fixedClaims,proto3" json:"fixed_claims,omitempty"`
+	// True when the browser store sends the credential with no holder
+	// binding: an mDoc, a JSON-LD credential, or one that names no holder
+	// key. The consent screen says so (ADR-083 decision 3).
+	HolderUnbound bool `protobuf:"varint,17,opt,name=holder_unbound,json=holderUnbound,proto3" json:"holder_unbound,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -506,6 +510,13 @@ func (x *Card) GetFixedClaims() []string {
 		return x.FixedClaims
 	}
 	return nil
+}
+
+func (x *Card) GetHolderUnbound() bool {
+	if x != nil {
+		return x.HolderUnbound
+	}
+	return false
 }
 
 // Offering is one schema an issuer offers.
@@ -3590,7 +3601,7 @@ var File_vca_walletportal_v1_walletportal_proto protoreflect.FileDescriptor
 
 const file_vca_walletportal_v1_walletportal_proto_rawDesc = "" +
 	"\n" +
-	"&vca/walletportal/v1/walletportal.proto\x12\x13vca.walletportal.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\x1a\x1avca/schema/v1/schema.proto\x1a\x18vca/trust/v1/trust.proto\"\xa2\a\n" +
+	"&vca/walletportal/v1/walletportal.proto\x12\x13vca.walletportal.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1avca/common/v1/common.proto\x1a\x1avca/schema/v1/schema.proto\x1a\x18vca/trust/v1/trust.proto\"\xc9\a\n" +
 	"\x04Card\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x12\n" +
@@ -3614,7 +3625,8 @@ const file_vca_walletportal_v1_walletportal_proto_rawDesc = "" +
 	"\n" +
 	"in_browser\x18\x0e \x01(\bR\tinBrowser\x12\x1c\n" +
 	"\tpermanent\x18\x0f \x01(\bR\tpermanent\x12!\n" +
-	"\ffixed_claims\x18\x10 \x03(\tR\vfixedClaims\x1a9\n" +
+	"\ffixed_claims\x18\x10 \x03(\tR\vfixedClaims\x12%\n" +
+	"\x0eholder_unbound\x18\x11 \x01(\bR\rholderUnbound\x1a9\n" +
 	"\vClaimsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc6\x01\n" +

@@ -250,3 +250,21 @@ func TestMdocDiscloseKeepsTheChosenElements(t *testing.T) {
 		t.Fatal("MdocDisclose took broken input")
 	}
 }
+
+func TestMdocDeviceSigned(t *testing.T) {
+	signed := sampleIssuerSigned(t, false)
+	doc := map[string]any{"docType": "x", "issuerSigned": signed, "deviceSigned": map[string]any{}}
+	if !MdocDeviceSigned(mustCBOR(t, map[string]any{"documents": []any{doc}})) {
+		t.Fatal("a DeviceResponse with a device signature reads unbound")
+	}
+	for name, raw := range map[string][]byte{
+		"issuer signed": mustCBOR(t, signed),
+		"no documents":  mustCBOR(t, map[string]any{"documents": []any{}}),
+		"not cbor":      []byte("!!"),
+		"no signature":  mustCBOR(t, map[string]any{"documents": []any{map[string]any{"docType": "x"}}}),
+	} {
+		if MdocDeviceSigned(raw) {
+			t.Errorf("%s reads device signed", name)
+		}
+	}
+}

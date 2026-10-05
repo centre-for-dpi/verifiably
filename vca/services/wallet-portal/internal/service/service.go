@@ -1004,7 +1004,7 @@ func (s *Service) presentDirect(ctx context.Context, citizen session.Citizen,
 		if gerr != nil {
 			return nil, nil, recordError(gerr)
 		}
-		token, key, bound, terr := disclosedToken(rec, c.paths)
+		token, binding, terr := disclosedToken(rec, c.paths)
 		if terr != nil {
 			return nil, nil, terr
 		}
@@ -1013,15 +1013,15 @@ func (s *Service) presentDirect(ctx context.Context, citizen session.Citizen,
 				revealed = append(revealed, name)
 			}
 		}
-		if bound {
+		if binding.kind != bindNone {
 			kb := bindings[c.query]
 			if bindings == nil {
 				// One key binding covers the one bound credential.
 				kb, single = single, ""
 			}
 			// A holder bound SD-JWT needs the key binding of the browser
-			// (ADR-073).
-			if token, err = bind(token, kb, key, parsed); err != nil {
+			// (ADR-073), and a bound jwt_vc_json its VP JWT (ADR-083).
+			if token, err = bind(token, kb, binding, parsed); err != nil {
 				return nil, nil, err
 			}
 		}

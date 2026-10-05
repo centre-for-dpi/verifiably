@@ -105,6 +105,10 @@ message Card {
   // the holder ticks: an SD-JWT claim outside any disclosure, or each
   // claim of a format the wallet cannot disclose in part.
   repeated string fixed_claims = 16;
+  // True when the browser store sends the credential with no holder
+  // binding: an mDoc, a JSON-LD credential, or one that names no holder
+  // key. The consent screen says so (ADR-083 decision 3).
+  bool holder_unbound = 17;
 
   // RevocationState names what the status list says.
   enum RevocationState {

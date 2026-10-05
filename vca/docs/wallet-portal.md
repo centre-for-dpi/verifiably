@@ -498,18 +498,20 @@ identifier. The answer keeps only the elements the holder chose. The
 MSO signs a digest of each element, so the issuer signature stays
 valid.
 
-The presentation of the browser store binds an SD-JWT VC only. These
-limits are exact:
+The browser store binds what it can (ADR-083). These limits are
+exact:
 
 | Format | What the browser store sends | What a verifier sees |
 |---|---|---|
 | `dc+sd-jwt`, `vc+sd-jwt` | The disclosed token with a key binding JWT that the browser signs | Holder binding to the nonce and the audience |
-| `jwt_vc_json` | The credential JWT as the issuer signed it, without a VP JWT | The claims and the issuer signature, with no holder proof. A verifier that asks for holder binding refuses it. |
-| `mso_mdoc` | The `IssuerSigned` structure with the chosen elements, without a `DeviceResponse` | No device signature over the session transcript. An ISO 18013-7 verifier refuses it. |
+| `jwt_vc_json` | A VP JWT that the browser signs around the credential. The credential names the browser key in `cnf.jwk`, or as a `did:jwk` or `did:key` subject. Else the credential goes as issued. | Holder binding to the nonce and the audience. An unbound credential fails a verifier that asks for holder binding. |
+| `mso_mdoc` | The `IssuerSigned` structure with the chosen elements, without a `DeviceResponse` | No device signature over the session transcript. The default policy of VCA and an ISO 18013-7 verifier refuse it. |
 | `ldp_vc` | The credential document as issued | The claims and the issuer proof, with no holder proof |
 
-A stack wallet presents these formats with its own keys, as its
-adapter document says. A holder who needs holder binding for a
+The consent screen says plainly when an answer will go unbound: "This
+answer is not bound to your key." The card of such a credential
+carries `holder_unbound`. A stack wallet presents these formats with
+its own keys, as its adapter document says. A holder who needs holder binding for a
 `jwt_vc_json` or an `mso_mdoc` credential uses a stack wallet.
 
 Each answer leaves a presentation record: the time, the verifier, the

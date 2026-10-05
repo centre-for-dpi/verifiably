@@ -111,8 +111,13 @@ type Presentation struct {
 	Nonce string
 	// Audience is the audience the wallet echoed, for OID4VP.
 	Audience string
-	// Holder is the key the presenter proved control of.
+	// Holder is the key the presenter proved control of. Confirmed
+	// means the verifier of a stack accepted the answer and checked the
+	// holder binding itself.
 	Holder *vc.HolderBinding
+	// Envelopes are the VP JWTs of the answer, which a holder signs
+	// around jwt_vc_json credentials.
+	Envelopes []string
 	// Credentials are the credentials the ingestion service split out.
 	Credentials []Credential
 }
@@ -239,9 +244,12 @@ func Checks() []Check {
 		},
 		{
 			Name:        NameKeyBinding,
-			Description: "Check the SD-JWT disclosure digests and the key binding JWT.",
+			Description: "Check the holder binding: the SD-JWT key binding JWT, the VP JWT of a JWT credential, or the device signature of an mDoc.",
 			Mandatory:   true,
-			Run:         keyBinding,
+			Params: map[string]string{
+				ParamRequireHolderBinding: "true, the default, makes an OID4VP answer in a format that can carry holder binding fail without it; false accepts it",
+			},
+			Run: keyBinding,
 		},
 		{
 			Name:        NameNotBefore,

@@ -3,8 +3,12 @@
 package service
 
 import (
+	"encoding/json"
 	"math"
+	"sort"
+	"strings"
 
+	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/policy"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -33,8 +37,14 @@ func FormatOf(f commonv1.Format) vc.Format {
 // view, so the signature check reports the problem.
 func ToPresentation(raw *ingestv1.RawPresentation) policy.Presentation {
 	out := policy.Presentation{
-		Carrier: carrierName(raw.GetCarrier()),
-		Nonce:   raw.GetNonce(),
+		Carrier:   carrierName(raw.GetCarrier()),
+		Nonce:     raw.GetNonce(),
+		Envelopes: envelopes(raw.GetPayload()),
+	}
+	if raw.GetStackCheckedHolder() {
+		// The verifier of the stack accepted the answer, holder binding
+		// included (ADR-083 decision 4).
+		out.Holder = &vc.HolderBinding{Confirmed: true}
 	}
 	for _, c := range raw.GetCredentials() {
 		out.Credentials = append(out.Credentials, toCredential(FormatOf(c.GetFormat()), c.GetPayload()))
@@ -51,7 +61,7 @@ func toCredential(format vc.Format, payload []byte) policy.Credential {
 		format = vc.DetectFormat(payload)
 	}
 	out := policy.Credential{Format: format}
-	if format != vc.FormatJSONLD && format != vc.FormatJSON && format != vc.FormatMdoc {
+	if format != vc.FormatJSONLD && format != vc.FormatJSON {
 		out.Token = string(payload)
 	}
 	if parsed, err := vc.Parse(payload); err == nil {
@@ -60,11 +70,40 @@ func toCredential(format vc.Format, payload []byte) policy.Credential {
 	return out
 }
 
-// carrierName returns the plain word of a carrier.
+// envelopes returns the VP JWTs of a vp_token: the token itself, or the
+// entries of a list or of a query id map, that carry a vp claim.
+func envelopes(payload []byte) []string {
+	text := strings.TrimSpace(string(payload))
+	var tokens []string
+	var list []any
+	var byQuery map[string]any
+	switch {
+	case json.Unmarshal([]byte(text), &list) == nil:
+		tokens = vc.AsStringSlice(list)
+	case json.Unmarshal([]byte(text), &byQuery) == nil:
+		for _, v := range byQuery {
+			tokens = append(tokens, vc.AsStringSlice(v)...)
+		}
+	default:
+		tokens = []string{text}
+	}
+	var out []string
+	for _, tok := range tokens {
+		if claims, err := jose.PeekPayload(tok); err == nil && claims["vp"] != nil {
+			out = append(out, tok)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// carrierName returns the plain word of a carrier. Both directions of
+// OID4VP are an OID4VP answer to the checks.
 func carrierName(c ingestv1.Carrier) string {
 	switch c {
-	case ingestv1.Carrier_CARRIER_OID4VP: //nolint:staticcheck // SA1019: the service still reads the old carrier value
-		return "oid4vp"
+	case ingestv1.Carrier_CARRIER_OID4VP, //nolint:staticcheck // SA1019: the service still reads the old carrier value
+		ingestv1.Carrier_CARRIER_OID4VP_RESPONSE:
+		return policy.CarrierOID4VP
 	case ingestv1.Carrier_CARRIER_IMAGE:
 		return "image"
 	case ingestv1.Carrier_CARRIER_PDF:

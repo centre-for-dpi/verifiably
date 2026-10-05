@@ -6,9 +6,10 @@
 // the signing input of a JWT, the page signs it with ES256 through
 // WebCrypto, and the portal joins the two parts after it checks them.
 //
-// Two JWTs need the key: the proof of an OID4VCI credential request
-// (OID4VCI 1.0 appendix F.1), and the key binding JWT of an SD-JWT
-// presentation (RFC 9901 section 4.3).
+// Three JWTs need the key: the proof of an OID4VCI credential request
+// (OID4VCI 1.0 appendix F.1), the key binding JWT of an SD-JWT
+// presentation (RFC 9901 section 4.3), and the VP JWT around a
+// jwt_vc_json credential (ADR-083 decision 5).
 package holderkey
 
 import (
@@ -23,8 +24,10 @@ import (
 	"time"
 
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
+	"github.com/centre-for-dpi/vc-adapters/core/did"
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
+	"github.com/centre-for-dpi/vc-adapters/core/vc"
 )
 
 // TypeProof is the typ of an OID4VCI proof JWT.
@@ -156,6 +159,98 @@ func CheckBinding(kb, presentation, audience, nonce string, key jose.JWK) error 
 	}
 	if claims.Aud != audience || claims.Nonce != nonce || claims.SDHash != SDHash(presentation) {
 		return ErrBinding
+	}
+	return nil
+}
+
+// ErrVP reports a VP JWT that does not cover the answer: another
+// credential, audience, or nonce.
+var ErrVP = errors.New("holderkey: the VP JWT does not cover the answer")
+
+// BoundJWT returns the holder key that a jwt_vc_json credential names,
+// and its holder id: cnf.jwk, else the key of a did:jwk or did:key
+// subject. ok is false for a credential with no holder key.
+func BoundJWT(credential string) (jose.JWK, string, bool) {
+	payload, err := jose.PeekPayload(credential)
+	if err != nil || strings.Contains(credential, "~") {
+		return jose.JWK{}, "", false
+	}
+	subject := vc.FromObject(payload).SubjectID
+	if cnf, ok := payload["cnf"].(map[string]any); ok {
+		if m, isMap := cnf["jwk"].(map[string]any); isMap {
+			key, kerr := jose.JWKFromMap(m)
+			return key, subject, kerr == nil
+		}
+	}
+	doc, err := did.KeyDocument(subject)
+	if err != nil {
+		if doc, err = did.JWKDocument(subject); err != nil {
+			return jose.JWK{}, "", false
+		}
+	}
+	key, err := jose.JWKFromMap(doc.VerificationMethod[0].PublicKeyJWK)
+	return key, subject, err == nil
+}
+
+// Binds reports whether the browser store can bind a credential to its
+// key: an SD-JWT or a JWT credential that names a holder key. An mDoc
+// and a JSON-LD credential go as issued (ADR-083 decision 3).
+func Binds(credential string) bool {
+	if _, ok := Bound(credential); ok {
+		return true
+	}
+	_, _, ok := BoundJWT(credential)
+	return ok
+}
+
+// VPInput returns the signing input of the VP JWT that carries a
+// jwt_vc_json credential (OID4VP 1.0 appendix B.1.3.1). The header
+// names the key, the payload the holder, the audience, the nonce and
+// the time.
+func VPInput(credential, holder string, key jose.JWK, audience, nonce string, now time.Time) (string, error) {
+	jwk, err := jose.JWKToMap(key)
+	if err != nil {
+		return "", err
+	}
+	header := map[string]any{"alg": string(jose.ES256), "typ": "JWT", "jwk": jwk}
+	switch {
+	case strings.HasPrefix(holder, "did:jwk:"):
+		header["kid"] = holder + "#0"
+	case strings.HasPrefix(holder, "did:key:"):
+		header["kid"] = holder + "#" + strings.TrimPrefix(holder, "did:key:")
+	}
+	vp := map[string]any{
+		"@context":             []string{"https://www.w3.org/2018/credentials/v1"},
+		"type":                 []string{"VerifiablePresentation"},
+		"verifiableCredential": []string{credential},
+	}
+	payload := map[string]any{"aud": audience, "nonce": nonce, "iat": now.Unix(), "vp": vp}
+	if holder != "" {
+		payload["iss"], vp["holder"] = holder, holder
+	}
+	return input(header, payload), nil
+}
+
+// CheckVP reports whether a VP JWT of the browser covers an answer: the
+// holder key signed it, and it names the audience, the nonce, and the
+// credential.
+func CheckVP(vp, credential, audience, nonce string, key jose.JWK) error {
+	raw, _, err := jose.Verify(vp, key.Key, []jose.Algorithm{jose.ES256})
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrSignature, err)
+	}
+	var claims struct {
+		Aud   string `json:"aud"`
+		Nonce string `json:"nonce"`
+		VP    struct {
+			Credentials []string `json:"verifiableCredential"`
+		} `json:"vp"`
+	}
+	if err := json.Unmarshal(raw, &claims); err != nil {
+		return fmt.Errorf("%w: %w", ErrVP, err)
+	}
+	if claims.Aud != audience || claims.Nonce != nonce || len(claims.VP.Credentials) != 1 || claims.VP.Credentials[0] != credential {
+		return ErrVP
 	}
 	return nil
 }

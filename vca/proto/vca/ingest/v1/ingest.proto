@@ -103,6 +103,10 @@ message RawPresentation {
   google.protobuf.Timestamp received_at = 10;
   // The SHA-256 hash of the input bytes, hex encoded.
   string input_hash = 11;
+  // True when the verifier of a stack accepted the answer. The stack
+  // checked the holder binding itself, and VCA sees only the
+  // credentials (ADR-083 decision 4).
+  bool stack_checked_holder = 12;
 }
 
 // XmlConfig says where a credential sits in an XML document (ADR-023 decision 4).

@@ -297,10 +297,13 @@ const VCA = (() => {
     return done;
   }
 
-  // bindAnswer returns the key binding JWT of the answer of a consent
-  // form, or "" when the chosen credential names no holder key. An
-  // answer with several bound credentials gets a JSON object of query id
-  // to key binding JWT, one per credential.
+  // bindAnswer returns the holder binding of the answer of a consent
+  // form: the key binding JWT of an SD-JWT, or the VP JWT around a
+  // jwt_vc_json credential (ADR-083). It returns "" when the chosen
+  // credential names no holder key. An answer with several bound
+  // credentials gets a JSON object of query id to JWT, one per
+  // credential. The portal builds each signing input; the browser key
+  // signs it.
   async function bindAnswer(form) {
     const step = await post("/present/binding", new URLSearchParams(new FormData(form)));
     const prefix = "signing_input.";

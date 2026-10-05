@@ -46,7 +46,7 @@ Everything else gives `VALID`.
 | Name | Mandatory | What it does |
 |---|---|---|
 | `signature` | yes | Verifies the issuer JWS of each credential with the keys of the issuer. |
-| `key_binding` | yes | Resolves the SD-JWT disclosure digests and verifies the key binding JWT. |
+| `key_binding` | yes | Checks the holder binding of each credential (ADR-083). The parameter `require_holder_binding` defaults to `true`. |
 | `nbf` | yes | Compares the start of validity with the evaluation time. |
 | `exp` | yes | Compares the end of validity with the evaluation time. |
 | `audience` | yes | Compares the audience of the presentation with the verifier client id. |
@@ -60,6 +60,32 @@ Everything else gives `VALID`.
 A mandatory check always runs, and a `FAIL` of it always blocks
 (ADR-024 decision 2). A policy set adds the optional checks and says
 whether each one blocks.
+
+## Holder binding
+
+An OID4VP answer in a format that can carry holder binding must carry
+it (ADR-083). These formats are `dc+sd-jwt`, `vc+sd-jwt`, `jwt_vc_json`
+and `mso_mdoc`. An unbound answer fails `key_binding` with the detail
+"the presentation carries no holder binding". The verdict then reads
+Not valid. A pasted, scanned or uploaded credential is no
+presentation, so the rule does not apply to it.
+
+The holder binding of each format:
+
+| Format | Binding | What the check does |
+|---|---|---|
+| `dc+sd-jwt`, `vc+sd-jwt` | A key binding JWT of the `cnf.jwk` key | Verifies the signature, the type, the `sd_hash` and the time. |
+| `jwt_vc_json` | A VP JWT that carries the credential | Verifies the VP JWT with the `cnf.jwk` key, or the key of a `did:jwk` or `did:key` subject. The VP JWT names the holder. The audience and nonce checks read the VP JWT. |
+| `mso_mdoc` | The device signature of a `DeviceResponse` | VCA does not check it yet. It skips an mDoc with a device signature, and the stack verifier checks it. An `IssuerSigned` structure alone fails. |
+
+The verifier of a stack sees the binding, while VCA gets only the
+credentials. An answer that a stack verifier accepted carries
+`stack_checked_holder`. The check then skips with the detail "the stack
+verifier checked the holder binding".
+
+A policy set turns the rule off with the parameter
+`require_holder_binding` set to `false` on `key_binding`. An unbound
+answer then skips, as before ADR-083.
 
 ## Key resolution
 

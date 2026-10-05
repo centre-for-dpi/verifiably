@@ -145,6 +145,9 @@ type Presentation struct {
 	InputHash string `json:"input_hash,omitempty"`
 	// ReceivedAt is the time of ingestion.
 	ReceivedAt time.Time `json:"received_at"`
+	// StackCheckedHolder says the verifier of a stack accepted the
+	// answer and checked its holder binding (ADR-083 decision 4).
+	StackCheckedHolder bool `json:"stack_checked_holder,omitempty"`
 }
 
 // Credential is one credential of a presentation.

@@ -42,10 +42,11 @@ func (s *Service) BindingInput(ctx context.Context, req *walletportalv1.PresentC
 	return "", nil
 }
 
-// BindingInputs returns the signing input of the key binding JWT of each
+// BindingInputs returns the signing input of the holder binding of each
 // chosen credential of the browser store that names a holder key, keyed
-// by query id. A credential with no holder key, and one of the stack
-// wallet, has no entry.
+// by query id: the key binding JWT of an SD-JWT, or the VP JWT around a
+// jwt_vc_json credential (ADR-083 decision 5). A credential with no
+// holder key, and one of the stack wallet, has no entry.
 func (s *Service) BindingInputs(ctx context.Context, req *walletportalv1.PresentConfirmRequest) (map[string]string, error) {
 	citizen, err := session.Require(ctx)
 	if err != nil {
@@ -65,20 +66,44 @@ func (s *Service) BindingInputs(ctx context.Context, req *walletportalv1.Present
 			// A credential of the stack wallet binds itself.
 			continue
 		}
-		token, _, bound, terr := disclosedToken(held, c.paths)
+		token, binding, terr := disclosedToken(held, c.paths)
 		if terr != nil {
 			return nil, terr
 		}
-		if !bound {
+		var input string
+		var ierr error
+		switch binding.kind {
+		case bindNone:
 			continue
+		case bindVP:
+			input, ierr = holderkey.VPInput(token, binding.holder, binding.key, parsed.ClientID, parsed.Nonce, s.opts.Now())
+		default:
+			input, ierr = holderkey.BindingInput(token, parsed.ClientID, parsed.Nonce, s.opts.Now())
 		}
-		input, ierr := holderkey.BindingInput(token, parsed.ClientID, parsed.Nonce, s.opts.Now())
 		if ierr != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, ierr)
 		}
 		out[c.query] = input
 	}
 	return out, nil
+}
+
+// The kinds of holder binding of a credential of the browser store.
+const (
+	// bindNone sends the credential as issued.
+	bindNone = iota
+	// bindKB appends a key binding JWT to an SD-JWT.
+	bindKB
+	// bindVP wraps a jwt_vc_json credential in a VP JWT.
+	bindVP
+)
+
+// holderBinding is how the browser store binds one credential: the kind,
+// the holder key, and the holder id a VP JWT names.
+type holderBinding struct {
+	kind   int
+	key    jose.JWK
+	holder string
 }
 
 // choice is one chosen credential of an answer: the query it answers,
@@ -119,27 +144,39 @@ func keyBindings(text string) (map[string]string, string, error) {
 }
 
 // disclosedToken returns the token a held credential presents with the
-// disclosed claims, and its holder key when it names one. Only an SD-JWT
-// discloses claims and names a key that the browser binds.
-func disclosedToken(held record, disclosed []string) (string, jose.JWK, bool, error) {
-	if held.Format == commonv1.Format_FORMAT_MSO_MDOC {
+// disclosed claims, and how the browser binds it. An SD-JWT discloses
+// claims and names the key of a key binding JWT, an mDoc keeps the
+// chosen elements, and a jwt_vc_json credential names the key of a VP
+// JWT.
+func disclosedToken(held record, disclosed []string) (string, holderBinding, error) {
+	switch held.Format {
+	case commonv1.Format_FORMAT_MSO_MDOC:
 		// An mDoc keeps the elements the holder chose; the MSO signs a
 		// digest of each, so the issuer signature stays valid.
 		token, err := vc.MdocDisclose(held.Payload, func(element string) bool { return chosenElement(element, disclosed) })
 		if err != nil {
-			return "", jose.JWK{}, false, connect.NewError(connect.CodeInvalidArgument, err)
+			return "", holderBinding{}, connect.NewError(connect.CodeInvalidArgument, err)
 		}
-		return string(token), jose.JWK{}, false, nil
+		return string(token), holderBinding{}, nil
+	case commonv1.Format_FORMAT_JWT_VC_JSON:
+		token := string(held.Payload)
+		key, holder, bound := holderkey.BoundJWT(token)
+		if !bound {
+			return token, holderBinding{}, nil
+		}
+		return token, holderBinding{kind: bindVP, key: key, holder: holder}, nil
+	case commonv1.Format_FORMAT_DC_SD_JWT, commonv1.Format_FORMAT_VC_SD_JWT:
+		token, err := present.Disclosed(string(held.Payload), disclosed)
+		if err != nil {
+			return "", holderBinding{}, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		key, bound := holderkey.Bound(string(held.Payload))
+		if !bound {
+			return token, holderBinding{}, nil
+		}
+		return token, holderBinding{kind: bindKB, key: key}, nil
 	}
-	if held.Format != commonv1.Format_FORMAT_DC_SD_JWT && held.Format != commonv1.Format_FORMAT_VC_SD_JWT {
-		return string(held.Payload), jose.JWK{}, false, nil
-	}
-	token, err := present.Disclosed(string(held.Payload), disclosed)
-	if err != nil {
-		return "", jose.JWK{}, false, connect.NewError(connect.CodeInvalidArgument, err)
-	}
-	key, bound := holderkey.Bound(string(held.Payload))
-	return token, key, bound, nil
+	return string(held.Payload), holderBinding{}, nil
 }
 
 // chosenElement reports whether the holder chose an mDoc element, named
@@ -156,16 +193,23 @@ func chosenElement(element string, disclosed []string) bool {
 	return false
 }
 
-// bind appends the key binding JWT of the browser to a disclosed token,
-// once it covers the token and the request.
-func bind(token, kb string, key jose.JWK, parsed present.Request) (string, error) {
-	if kb == "" {
+// bind joins the holder binding of the browser to a disclosed token,
+// once it covers the token and the request: a key binding JWT after an
+// SD-JWT, or the VP JWT that carries a jwt_vc_json credential.
+func bind(token, signed string, b holderBinding, parsed present.Request) (string, error) {
+	if signed == "" {
 		return "", errNoBinding
 	}
-	if err := holderkey.CheckBinding(kb, token, parsed.ClientID, parsed.Nonce, key); err != nil {
+	if b.kind == bindVP {
+		if err := holderkey.CheckVP(signed, token, parsed.ClientID, parsed.Nonce, b.key); err != nil {
+			return "", connect.NewError(connect.CodeInvalidArgument, errors.New("the VP JWT of the browser does not cover this answer"))
+		}
+		return signed, nil
+	}
+	if err := holderkey.CheckBinding(signed, token, parsed.ClientID, parsed.Nonce, b.key); err != nil {
 		return "", connect.NewError(connect.CodeInvalidArgument, errors.New("the key binding of the browser does not cover this answer"))
 	}
-	return token + kb, nil
+	return token + signed, nil
 }
 
 // getHeld returns one credential of the browser store, when it holds it.
