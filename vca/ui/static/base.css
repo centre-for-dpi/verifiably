@@ -426,7 +426,7 @@ h1,h2,h3,h4{overflow-wrap:break-word}
 .choice-card input{margin:.25rem 0 0;accent-color:var(--primary)}
 .choice-body{display:flex;flex-direction:column;gap:.15rem;min-width:0}
 .choice-title{font-weight:600}
-.choice-text{font-size:.9rem;line-height:1.5;color:var(--secondary)}
+.choice-text{font-size:.9rem;line-height:1.5;color:var(--secondary);overflow-wrap:anywhere}
 .choice-meta{
   grid-column:2;font-family:var(--font-body);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
 }
@@ -529,6 +529,9 @@ caption{
   font-family:var(--font-heading);font-weight:420;letter-spacing:.06em;text-transform:uppercase;
 }
 th,td{text-align:left;padding:var(--space-3);border-bottom:1px solid var(--line);vertical-align:top}
+/* A long value, such as a DID, a link or a claim with no break, wraps
+   inside its cell, so no table reaches past the content column. */
+td{overflow-wrap:anywhere}
 td time{white-space:nowrap}
 th{
   font-family:var(--font-body);font-weight:400;font-size:.75rem;
@@ -599,6 +602,7 @@ dialog[open]:not(:modal){position:static;margin:0 0 var(--space-6);max-width:40r
 .json pre{
   overflow:auto;padding:var(--space-3);border:1px solid var(--line);border-radius:var(--radius-m);
   font-size:.9rem;line-height:1.4;max-height:24rem;
+  white-space:pre-wrap;overflow-wrap:anywhere;
 }
 
 /* ---------- button ---------- */

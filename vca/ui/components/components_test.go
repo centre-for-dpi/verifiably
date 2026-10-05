@@ -1297,3 +1297,19 @@ func TestCredentialCardsCarryTheirTone(t *testing.T) {
 		}
 	}
 }
+
+// TestClipped keeps a short value whole and clips a long one to its
+// first runes, with the whole value in the title (review finding 7).
+func TestClipped(t *testing.T) {
+	if got := Clipped("Demo <City>", 20); got != "Demo &lt;City&gt;" {
+		t.Fatalf("short value = %s", got)
+	}
+	long := strings.Repeat("ab\"c", 30)
+	got := string(Clipped(long, 10))
+	if got != `<span title="`+template.HTMLEscapeString(long)+`">ab&#34;cab&#34;cab…</span>` {
+		t.Fatalf("long value = %s", got)
+	}
+	if got := Clipped("ééééé", 3); got != `<span title="ééééé">ééé…</span>` {
+		t.Fatalf("runes = %s", got)
+	}
+}

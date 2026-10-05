@@ -87,6 +87,28 @@ func TestBrowserDirFindsChromium(t *testing.T) {
 	}
 }
 
+// needChromium returns the directory of the browsers of Playwright, or
+// skips the test with the variable that is missing.
+func needChromium(t *testing.T) string {
+	t.Helper()
+	if os.Getenv(playwrightEnv) == "" {
+		t.Skip(playwrightEnv + " is not set: set " + playwrightEnv + "=1 to drive the pages in Chromium")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
+	}
+	browsers, looked, ok := browserDir(os.Getenv, home, runtime.GOOS)
+	if !ok {
+		t.Skip(playwrightEnv + " is set, but " + looked + " holds no Chromium of Playwright: set " + browsersEnv +
+			" to the directory of the browsers")
+	}
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip(playwrightEnv + " is set, but node is not on PATH: add the directory of node to PATH")
+	}
+	return browsers
+}
+
 // chromium runs one phase of testdata/wallet_e2e.cjs in a headless
 // Chromium and returns the JSON line it prints.
 func chromium(ctx context.Context, t *testing.T, browsers string, input map[string]string) map[string]any {
@@ -128,21 +150,7 @@ func chromium(ctx context.Context, t *testing.T, browsers string, input map[stri
 // browser through PLAYWRIGHT_BROWSERS_PATH, or in the default cache of
 // Playwright, and a skip names the variable that is missing.
 func TestWalletScriptInChromium(t *testing.T) {
-	if os.Getenv(playwrightEnv) == "" {
-		t.Skip(playwrightEnv + " is not set: set " + playwrightEnv + "=1 to drive wallet.js in Chromium")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = ""
-	}
-	browsers, looked, ok := browserDir(os.Getenv, home, runtime.GOOS)
-	if !ok {
-		t.Skip(playwrightEnv + " is set, but " + looked + " holds no Chromium of Playwright: set " + browsersEnv +
-			" to the directory of the browsers")
-	}
-	if _, err := exec.LookPath("node"); err != nil {
-		t.Skip(playwrightEnv + " is set, but node is not on PATH: add the directory of node to PATH")
-	}
+	browsers := needChromium(t)
 	api := newWaltidIssuer(t)
 	w := newWalk(t, configv1.Dpg_DPG_WALTID, "walt.id Community Stack", map[string]string{"http://waltid-issuer-api:7002": api.srv.URL})
 	defer w.begin(4 * budget)()

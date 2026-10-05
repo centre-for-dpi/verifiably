@@ -413,6 +413,14 @@ fails a page where two nav landmarks share a label.
 `Option`: `Value`, `Text`, `Selected`.
 
 `Table`: `ID`, `Caption`, `Columns`, `Rows`, `Empty` (default `No rows`).
+A long value in a cell wraps at any point, so no table reaches past
+the content column at 1280 px. `Clipped(value, ClipLength)` keeps a
+claim with no break, such as the text of a Claim 169 code, to its first
+96 runes. Its `title` holds the whole value. `TestLayout` renders six
+pages in Chromium at 1280 px: the trust list, the wallet card, a
+request result, the check page, the caching page and the issued list.
+It fails when
+an element reaches past `main` or a table frame scrolls sideways.
 `Row` is a slice of `Cell`. `Cell`: `Text` or `HTML`.
 
 `Badge`: `Status`, `Text`. `Toast`: `ID`, `Level`, `Text`, `OOB`.

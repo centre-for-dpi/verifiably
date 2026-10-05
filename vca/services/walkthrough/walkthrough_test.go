@@ -54,6 +54,9 @@ type walk struct {
 	// key is the signing key that wallet.js keeps in the browser of the
 	// farmer (ADR-073).
 	key holderKey
+	// farmerID is the farmer id that the issue wizard sends. Empty
+	// means FM-0042.
+	farmerID string
 }
 
 // newWalk prepares the four pairs of one DPG. The holder pair names no
@@ -196,8 +199,12 @@ func (w *walk) issue(delivery ...string) (string, string) {
 	start := b.get(w.issuer.public + "/issue/").must(w.t)
 	source := b.submit(start.form(w.t, "/issue/source")).must(w.t)
 	claims := b.submit(source.form(w.t, "/issue/source"), "source", "single").must(w.t)
+	farmerID := w.farmerID
+	if farmerID == "" {
+		farmerID = "FM-0042"
+	}
 	deliveryPage := b.submit(claims.form(w.t, "/issue/delivery"),
-		"claim.fullName", "Wanjiku Njeri", "claim.farmerID", "FM-0042", "claim.county", "Kiambu").must(w.t)
+		"claim.fullName", "Wanjiku Njeri", "claim.farmerID", farmerID, "claim.county", "Kiambu").must(w.t)
 	review := b.submit(deliveryPage.form(w.t, "/issue/review"), delivery...).must(w.t).has(w.t, w.stack)
 	result := b.submit(review.form(w.t, "/issue/offers")).must(w.t).has(w.t, "Credential offer ready")
 	offer := html.UnescapeString(regexp.MustCompile(`openid-credential-offer://[^"<\s]+`).FindString(result.body))

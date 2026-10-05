@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	walletportalv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/walletportal/v1"
+	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/portal"
 	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
 )
 
@@ -36,5 +38,20 @@ func TestHelpRendersTheHolderDocuments(t *testing.T) {
 		if got := h.get(t, path); got.Code != http.StatusNotFound {
 			t.Errorf("%s: %d, want 404", path, got.Code)
 		}
+	}
+}
+
+// TestLongClaimValueIsClippedOnTheCard keeps a claim with no break to
+// one short line with the whole value in its title (review finding 7).
+func TestLongClaimValueIsClippedOnTheCard(t *testing.T) {
+	long := "NCFKVN" + strings.Repeat("Q2xhaW0xNjk", 40)
+	table := portal.ClaimTable("card-0", &walletportalv1.Card{Claims: map[string]string{"identityQR": long, "city": "Demo City"}})
+	var cells []string
+	for _, row := range table.Rows {
+		cells = append(cells, string(row[1].HTML)+row[1].Text)
+	}
+	joined := strings.Join(cells, " ")
+	if !strings.Contains(joined, `<span title="`+long+`">`) || !strings.Contains(joined, "Demo City") {
+		t.Fatalf("the cells are %v", cells)
 	}
 }

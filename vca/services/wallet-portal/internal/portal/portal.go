@@ -308,7 +308,7 @@ func claimTable(id string, card *walletportalv1.Card) components.Table {
 		Empty:   "This credential shows no field",
 	}
 	for _, name := range cards.ClaimNames(card) {
-		table.Rows = append(table.Rows, components.Row{{Text: name}, {Text: card.GetClaims()[name]}})
+		table.Rows = append(table.Rows, components.Row{{Text: name}, {HTML: components.Clipped(card.GetClaims()[name], components.ClipLength)}})
 	}
 	return table
 }

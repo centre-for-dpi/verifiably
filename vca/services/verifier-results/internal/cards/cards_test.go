@@ -311,3 +311,19 @@ func TestVerdictWordIsOneEverywhere(t *testing.T) {
 		t.Fatalf("the result card names the verdict otherwise:\n%s", got)
 	}
 }
+
+// TestLongClaimValueIsClipped keeps a claim with no break, such as the
+// identityQR text of a Claim 169 credential, to one short line with the
+// whole value in its title (review finding 7).
+func TestLongClaimValueIsClipped(t *testing.T) {
+	r := sample()
+	long := "NCFKVN" + strings.Repeat("Q2xhaW0xNjk", 40)
+	r.Credentials[0].DisplayFields["identityQR"] = long
+	got, err := newCards(t).Result(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), `<span title="`+long+`">`) || strings.Contains(string(got), ">"+long+"<") {
+		t.Fatalf("the long value is not clipped:\n%s", got)
+	}
+}

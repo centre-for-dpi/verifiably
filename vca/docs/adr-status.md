@@ -315,7 +315,7 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-027 | 1 WCAG 2.2 AA with WAI-ARIA 1.2 | Partial | `vca/ui`, `vca/docs/ui.md` | The kit meets the structural criteria. Nobody has audited each portal page against all criteria. |
-| ADR-027 | 2 Fix the measured failures | Partial | `vca/ui/static/base.css` | The new kit has none of the named faults. The legacy pages in `verifiably-go/` keep them. |
+| ADR-027 | 2 Fix the measured failures | Partial | `vca/ui/static/base.css` | The new kit has none of the named faults. The legacy pages in `verifiably-go/` keep them. No table of the kit overflows at 1280 px (`TestLayout`). |
 | ADR-027 | 3 Go and HTMX kit with no third-party module | Done | `vca/ui/components` | |
 | ADR-027 | 4 Theme package with a contrast test | Done | `vca/ui/theme` | Superseded in part by ADR-032. |
 | ADR-027 | 5 CSS tokens equal the Go constants | Done | `vca/ui/theme` | |

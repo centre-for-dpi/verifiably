@@ -152,6 +152,23 @@ func (k *Kit) HTML(name string, data any) (template.HTML, error) {
 	return template.HTML(buf.String()), nil //nolint:gosec // output of html/template
 }
 
+// ClipLength is the number of runes a table cell shows of a long
+// value before Clipped cuts it.
+const ClipLength = 96
+
+// Clipped returns a value for a table cell. A value of at most max runes
+// stays whole. A longer one shows its first max runes and an ellipsis,
+// and its title holds the whole value, so a claim with no break, such as
+// the text of a Claim 169 code, keeps the row short.
+func Clipped(value string, max int) template.HTML {
+	runes := []rune(value)
+	if len(runes) <= max {
+		return template.HTML(template.HTMLEscapeString(value)) //nolint:gosec // the value is escaped
+	}
+	return template.HTML(`<span title="` + template.HTMLEscapeString(value) + `">` + //nolint:gosec // both parts are escaped
+		template.HTMLEscapeString(string(runes[:max])) + "\u2026</span>")
+}
+
 // Join concatenates trusted HTML fragments, for example the output of HTML.
 func Join(parts ...template.HTML) template.HTML {
 	var b strings.Builder

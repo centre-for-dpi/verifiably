@@ -144,7 +144,7 @@ func (c *Cards) credential(d *draft, index int, cred *resultsv1.CredentialSummar
 		)
 	}
 	for _, name := range export.SortedKeys(cred.GetDisplayFields()) {
-		rows = append(rows, components.Row{{Text: name}, {Text: cred.GetDisplayFields()[name]}})
+		rows = append(rows, components.Row{{Text: name}, {HTML: components.Clipped(cred.GetDisplayFields()[name], components.ClipLength)}})
 	}
 	inner := &draft{kit: c.kit}
 	inner.add("table", components.Table{
