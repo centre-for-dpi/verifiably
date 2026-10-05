@@ -151,10 +151,12 @@ func statusBinding(session credebl.IssuanceSession, credType string) *backendv1.
 
 // sessionType returns the credential type of the first credential of a
 // session that has the type, or any type when typ is empty, and carries
-// every attribute with its value.
+// every attribute with its value. The type is the template id, the vct,
+// or the type name of the schema: the last segment of the vct.
 func sessionType(session credebl.IssuanceSession, typ string, attributes map[string]string) (string, bool) {
 	for _, c := range session.Metadata.Credentials {
-		if typ != "" && c.SupportedID != typ && claimText(c.Payload["vct"]) != typ {
+		vct := claimText(c.Payload["vct"])
+		if typ != "" && c.SupportedID != typ && vct != typ && typeName(vct) != typ {
 			continue
 		}
 		if !hasClaims(c.Payload, attributes) {
@@ -163,6 +165,12 @@ func sessionType(session credebl.IssuanceSession, typ string, attributes map[str
 		return c.SupportedID, true
 	}
 	return "", false
+}
+
+// typeName returns the last segment of a vct URL or URN: the type name
+// of the schema that the registry puts at its end.
+func typeName(vct string) string {
+	return vct[strings.LastIndexAny(vct, "/:#")+1:]
 }
 
 // hasClaims reports whether the payload carries each attribute with the

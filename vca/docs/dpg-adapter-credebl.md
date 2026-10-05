@@ -420,7 +420,8 @@ in the state `Error` failed, with the message of the agent. Every other
 session is pending until its end, and expired after it.
 
 **The issued list reads the sessions.** The adapter lists the completed
-sessions of a credential type, oldest first. A session matches when its
+sessions of a credential type, oldest first. The type is the template
+id, the vct, or the type name of the schema, which ends the vct. A session matches when its
 offer carries each attribute of the query with the same value. An entry
 carries the session id, the type and the issue time, and no claim value.
 
