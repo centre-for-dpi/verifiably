@@ -98,6 +98,9 @@ type claimStack struct {
 	freshNonce bool
 	// fetches counts the reads of the request of the verifier.
 	fetches int
+	// issue makes the credential for the key of the proof. Nil makes
+	// the SD-JWT VC of the driver licence.
+	issue func(jwk map[string]any) string
 }
 
 func newClaimStack(t *testing.T) *claimStack {
@@ -188,6 +191,9 @@ func (c *claimStack) credential(_ context.Context, address, token string, body [
 	if err = json.Unmarshal(payload, &claims); err != nil || claims["aud"] != claimIssuer ||
 		(claims["nonce"] != "nonce-1" && claims["nonce"] != "nonce-2") {
 		return nil, &ports.StatusError{Status: 400, Body: []byte(`{"error":"invalid_nonce"}`)}
+	}
+	if c.issue != nil {
+		return json.Marshal(map[string]any{"credential": c.issue(header.JWK)})
 	}
 	disclosed, discs, err := sdjwt.Conceal(map[string]any{"given_name": "Wanjiku"}, []string{"given_name"})
 	if err != nil {

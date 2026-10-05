@@ -471,6 +471,29 @@ portal refuses a request by value through a stack wallet and says why. The brows
 The response mode is `direct_post` only. The wallet refuses another
 response mode.
 
+### Formats of the browser store
+
+The browser store claims every format a stack issues over OID4VCI. The
+credential request names the format of the configuration, with its
+`vct`, its `credential_definition` or its `doctype`. The browser signs
+the proof with its key. The store keeps the credential under the
+format that the wallet reads from it. `TestBrowserStoreClaimsJwtVcJsonAndMdoc`
+claims a `jwt_vc_json` and an `mso_mdoc` credential.
+
+The presentation of the browser store binds an SD-JWT VC only. These
+limits are exact:
+
+| Format | What the browser store sends | What a verifier sees |
+|---|---|---|
+| `dc+sd-jwt`, `vc+sd-jwt` | The disclosed token with a key binding JWT that the browser signs | Holder binding to the nonce and the audience |
+| `jwt_vc_json` | The credential JWT as the issuer signed it, without a VP JWT | The claims and the issuer signature, with no holder proof. A verifier that asks for holder binding refuses it. |
+| `mso_mdoc` | The `IssuerSigned` structure as the issuer gave it, without a `DeviceResponse` | No device signature over the session transcript. An ISO 18013-7 verifier refuses it. |
+| `ldp_vc` | The credential document as issued | The claims and the issuer proof, with no holder proof |
+
+A stack wallet presents these formats with its own keys, as its
+adapter document says. A holder who needs holder binding for a
+`jwt_vc_json` or an `mso_mdoc` credential uses a stack wallet.
+
 Each answer leaves a presentation record: the time, the verifier, the
 names of the shared claims, and the result. The result takes one of
 four words: Accepted, Refused, Declined, or Not sent. A record holds no claim value. The
