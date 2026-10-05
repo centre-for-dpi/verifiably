@@ -119,7 +119,7 @@ A row that is not `Done` carries a note.
 |---|---|---|---|---|
 | ADR-009 | 1 Admin operations are RPCs | Done | `vca/proto/vca/admin/v1`, `vca/services/internal/serve` | Every service names its build in `X-Vca-Version`, so the service health fills its version column (`TestVersionHeader`). |
 | ADR-009 | 2 Cobra command tree with man pages | Done | `vca/internal/cli/command.go` | |
-| ADR-009 | 3 Portal help page from the same source | Done | `vca/services/admin/internal/portal` | |
+| ADR-009 | 3 Portal help page from the same source | Done | `vca/services/admin/internal/portal`, `vca/services/internal/helpdoc` | The help page of each role renders the documents of that role from the embedded `docs` folder. `TestHelpRendersTheAdminDocuments` and its peers in the issuer, holder and verifier portals pin it. |
 | ADR-009 | 4 A description option on every RPC | Done | `vca/proto/vca/admin/v1/admin.proto` | |
 | ADR-009 | 5 OIDC replaces the shared password | Done | `vca/services/admin/internal/login` | |
 | ADR-009 | 6 Append-only audit log | Done | `vca/services/internal/auditlog` | The admin service and the auth services share the store. |

@@ -176,6 +176,27 @@ The landing is the front door that uses the same list
 Each role signs in at its own realm of the provider of the pair, such as
 `vca-issuer-realm` (ADR-035).
 
+## Help documents
+
+The help page of each role lists the documents of that role. Each opens
+as a page of the portal at `<help>/doc/<name>`. The package `docs`
+embeds the Markdown files of this folder, and
+`services/internal/helpdoc` renders them. The renderer takes headings,
+paragraphs, lists, tables, fenced code, inline code, bold text and
+links. It escapes every text. Every heading moves one level down, so
+the page keeps one `h1`. A link to another document of the role opens
+its page. A link to a web page keeps its address. Any other link
+becomes plain text. A role reads only its own documents, and any other
+name answers 404. The kit styles the page with the `doc` and `doc-list`
+classes.
+
+| Role | Documents |
+|---|---|
+| Admin | admin, getting-started, deploy, trust-registry, cli, glossary |
+| Issuer | issuance, issued-credentials, schema-registry, schema-builder-ui, data-source, issuer-auth, glossary |
+| Holder | wallet-portal, wallet-auth, glossary |
+| Verifier | verifier-results, verifier-ingest, verifier-discovery, verifier-combined, verifier-policy, verifier-auth, glossary |
+
 ## Brand
 
 `brand.Brand` holds the brand data. `brand.CSS` writes it as custom

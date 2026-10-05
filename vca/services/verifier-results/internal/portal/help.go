@@ -3,6 +3,7 @@
 package portal
 
 import (
+	"errors"
 	"html/template"
 	"net/http"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/results/v1/resultsv1connect"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/internal/rolenav"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/helpdoc"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/helptext"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
@@ -54,7 +56,13 @@ var helpPages = map[string]struct{ key, doc string }{
 // decision 3).
 func (p *Portal) help(w http.ResponseWriter, r *http.Request) error {
 	b := &blocks{kit: p.opts.Cards.Kit()}
-	parts := []template.HTML{p.helpPages(r, b)}
+	list, err := helpdoc.Links("verifier", p.docPath)
+	if err != nil {
+		return err
+	}
+	parts := []template.HTML{b.add("card", components.Card{
+		ID: "documents", Title: msg.T("common.help.docs.label"), Text: msg.T("common.help.docs.text"), Body: list,
+	}), p.helpPages(r, b)}
 	for i, s := range helpServices {
 		entries := helptext.Service(s.name)
 		rows := make([]components.Row, 0, len(entries))
@@ -109,5 +117,29 @@ func (p *Portal) helpPages(r *http.Request, b *blocks) template.HTML {
 			},
 			Rows: rows,
 		}),
+	})
+}
+
+// docPath is the page of one document of the verifier help.
+func (p *Portal) docPath(name string) string { return p.opts.Prefix + "/help/doc/" + name }
+
+// helpDoc renders one document of the verifier role.
+func (p *Portal) helpDoc(w http.ResponseWriter, r *http.Request) error {
+	doc, err := helpdoc.Render("verifier", r.PathValue("name"), p.docPath)
+	if errors.Is(err, helpdoc.ErrNotFound) {
+		http.NotFound(w, r)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	b := &blocks{kit: p.opts.Cards.Kit()}
+	back := b.add("button", components.Button{Text: msg.T("common.help.back.label"), Href: p.opts.Prefix + "/help/"})
+	if b.err != nil {
+		return b.err
+	}
+	return p.render(w, r, "help", components.Page{
+		Title: doc.Title, Lead: msg.T("common.help.doc.lead"), Description: msg.T("common.help.doc.lead"),
+		Actions: back, Content: helpdoc.Article(doc),
 	})
 }

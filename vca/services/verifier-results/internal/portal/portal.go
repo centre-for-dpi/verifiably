@@ -16,6 +16,7 @@
 //	POST /cache/sync   Sync now: read the cache sources at once
 //	POST /cache/policy store the cache policy
 //	GET  /help/        what each verifier page does, and every RPC
+//	GET  /help/doc/{name} one document of the verifier role
 //	POST /signout      end the session at verifier-auth
 //
 // Citizen page, under the public prefix:
@@ -173,6 +174,7 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+p.opts.Prefix+"/cache/sync", p.handle(p.syncNow))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/cache/policy", p.handle(p.savePolicy))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/help/{$}", p.handle(p.help))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/help/doc/{name}", p.handle(p.helpDoc))
 	if p.opts.SignOut != nil {
 		mux.Handle("POST "+p.opts.Prefix+"/signout", p.opts.SignOut)
 	}

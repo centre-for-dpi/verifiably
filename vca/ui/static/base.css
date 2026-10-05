@@ -513,6 +513,14 @@ h1,h2,h3,h4{overflow-wrap:break-word}
 .error{font-size:.9rem;color:var(--bad);font-weight:600}
 .required{color:var(--bad)}
 
+/* ---------- doc: one document of a help page ---------- */
+.doc{max-width:46rem}
+.doc pre{
+  overflow-x:auto;padding:var(--space-4);border:1px solid var(--line);border-radius:var(--radius-m);
+  white-space:pre-wrap;overflow-wrap:anywhere;
+}
+.doc-list{margin:0;padding-left:var(--space-5)}
+
 /* ---------- table ---------- */
 .table-wrap{overflow-x:auto;margin:0 0 var(--space-5)}
 table{border-collapse:collapse;width:100%}

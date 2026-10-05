@@ -3,9 +3,12 @@
 package pages
 
 import (
+	"errors"
 	"html/template"
 	"strconv"
 	"strings"
+
+	"connectrpc.com/connect"
 
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/datasource/v1/datasourcev1connect"
@@ -14,6 +17,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/schema/v1/schemav1connect"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/internal/rolenav"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/helpdoc"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/helptext"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
 )
@@ -53,7 +57,13 @@ var helpPages = map[string]struct{ key, doc string }{
 // decision 3). The CLI shows the same sentences.
 func (p *Pages) help(pg page) error {
 	b := p.blocks()
-	parts := []template.HTML{p.helpPages(b, pg), b.add("card", components.Card{
+	list, err := helpdoc.Links("issuer", docPath)
+	if err != nil {
+		return err
+	}
+	parts := []template.HTML{b.add("card", components.Card{
+		ID: "documents", Title: msg.T("common.help.docs.label"), Text: msg.T("common.help.docs.text"), Body: list,
+	}), p.helpPages(b, pg), b.add("card", components.Card{
 		ID: "intro", Title: msg.T("issuer.help.intro.label"), Text: msg.T("issuer.help.intro.text"),
 	})}
 	for i, s := range helpServices {
@@ -106,5 +116,28 @@ func (p *Pages) helpPages(b *blocks, pg page) template.HTML {
 			},
 			Rows: rows,
 		}),
+	})
+}
+
+// docPath is the page of one document of the issuer help.
+func docPath(name string) string { return HelpPath + "doc/" + name }
+
+// helpDoc renders one document of the issuer role.
+func (p *Pages) helpDoc(pg page) error {
+	doc, err := helpdoc.Render("issuer", pg.r.PathValue("name"), docPath)
+	if errors.Is(err, helpdoc.ErrNotFound) {
+		return connect.NewError(connect.CodeNotFound, err)
+	}
+	if err != nil {
+		return err
+	}
+	b := p.blocks()
+	back := b.add("button", components.Button{Text: msg.T("common.help.back.label"), Href: HelpPath})
+	if b.err != nil {
+		return b.err
+	}
+	return p.render(pg, components.Page{
+		Title: doc.Title, Lead: msg.T("common.help.doc.lead"), Description: msg.T("common.help.doc.lead"),
+		Actions: back, Content: helpdoc.Article(doc),
 	})
 }

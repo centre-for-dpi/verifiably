@@ -11,6 +11,7 @@
 //
 //	GET  /           the credentials of the citizen, with trust and status
 //	GET  /help       what each wallet page does
+//	GET  /help/doc/{name} one document of the holder role
 //	GET  /keys       the holder identifier and key, when the stack manages keys
 //	POST /signout    end the wallet session
 //	GET  /discover   the credentials issuers publish (decision 1)
@@ -174,6 +175,7 @@ func (p *Portal) Script() http.Handler { return p.script }
 func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p.opts.Prefix+"/{$}", p.handle(p.mine))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/help", p.handle(p.help))
+	mux.HandleFunc("GET "+p.opts.Prefix+"/help/doc/{name}", p.handle(p.helpDoc))
 	mux.HandleFunc("GET "+p.opts.Prefix+"/keys", p.handle(p.keys))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/keys/key", p.handle(p.createKey))
 	mux.HandleFunc("POST "+p.opts.Prefix+"/keys/did", p.handle(p.createDid))

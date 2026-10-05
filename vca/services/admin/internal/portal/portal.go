@@ -73,6 +73,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/auditfed"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/login"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/service"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/helpdoc"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/helptext"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/reason"
@@ -189,6 +190,7 @@ func (p *Portal) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+at+"/{$}", p.guarded(p.overview))
 	mux.HandleFunc("GET "+at+"/login", p.chooser.Page)
 	mux.HandleFunc("GET "+at+"/help", p.open(p.help))
+	mux.HandleFunc("GET "+at+"/help/doc/{name}", p.open(p.helpDoc))
 	p.registerTenants(mux)
 	p.registerEcosystems(mux)
 	p.registerTrust(mux)
@@ -535,13 +537,45 @@ func (p *Portal) help(w http.ResponseWriter, r *http.Request) error {
 		Text: "Each sentence below comes from the description option of the RPC in the proto file. " +
 			"The CLI help, the man pages, this page, and the OpenAPI document read the same source.",
 	})
+	list, err := helpdoc.Links("admin", p.docPath)
+	if err != nil {
+		return err
+	}
+	documents := b.add("card", components.Card{
+		ID: "documents", Title: msg.T("common.help.docs.label"), Text: msg.T("common.help.docs.text"), Body: list,
+	})
 	if b.err != nil {
 		return b.err
 	}
 	return p.render(w, r, s, components.Page{
 		Title:       "Admin help",
 		Description: "Every vca admin command and every admin RPC with its help text.",
-		Content:     components.Join(intro, commandTable, rpcTable),
+		Content:     components.Join(documents, intro, commandTable, rpcTable),
+	})
+}
+
+// docPath is the page of one document of the admin help.
+func (p *Portal) docPath(name string) string { return p.opts.Prefix + "/help/doc/" + name }
+
+// helpDoc renders one document of the admin role. The page needs no
+// session, as the help page does.
+func (p *Portal) helpDoc(w http.ResponseWriter, r *http.Request) error {
+	s, _ := p.session(r)
+	doc, err := helpdoc.Render("admin", r.PathValue("name"), p.docPath)
+	if errors.Is(err, helpdoc.ErrNotFound) {
+		return connect.NewError(connect.CodeNotFound, err)
+	}
+	if err != nil {
+		return err
+	}
+	b := p.blocks()
+	back := b.add("button", components.Button{Text: msg.T("common.help.back.label"), Href: p.opts.Prefix + "/help"})
+	if b.err != nil {
+		return b.err
+	}
+	return p.render(w, r, s, components.Page{
+		Title: doc.Title, Lead: msg.T("common.help.doc.lead"), Description: msg.T("common.help.doc.lead"),
+		Actions: back, Content: helpdoc.Article(doc),
 	})
 }
 

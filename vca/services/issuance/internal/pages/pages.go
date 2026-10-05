@@ -22,6 +22,7 @@
 //	GET  /issue/offers/{id} the result: QR code, code, link, document
 //	GET  /notifications/   the delivery channels of the issuer
 //	GET  /help/            every issuer RPC with its help text
+//	GET  /help/doc/{name}  one document of the issuer role
 //
 // The guard of the service checks the session and the synchronizer
 // token before a request reaches a page.
@@ -161,6 +162,7 @@ func (p *Pages) Register(mux *http.ServeMux) {
 	p.registerBulk(mux)
 	mux.HandleFunc("GET "+NotificationsPath+"{$}", p.handle(p.notifications))
 	mux.HandleFunc("GET "+HelpPath+"{$}", p.handle(p.help))
+	mux.HandleFunc("GET "+HelpPath+"doc/{name}", p.handle(p.helpDoc))
 	if p.opts.SignOut != nil {
 		mux.Handle("POST "+SignOutPath, p.opts.SignOut)
 	}

@@ -4,6 +4,7 @@ package portal
 
 import (
 	"context"
+	"errors"
 	"html/template"
 	"net/http"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
 	"github.com/centre-for-dpi/vc-adapters/internal/msg"
 	"github.com/centre-for-dpi/vc-adapters/internal/rolenav"
+	"github.com/centre-for-dpi/vc-adapters/services/internal/helpdoc"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/staffshell"
 	"github.com/centre-for-dpi/vc-adapters/services/wallet-portal/internal/session"
 	"github.com/centre-for-dpi/vc-adapters/ui/components"
@@ -80,8 +82,36 @@ func (p *Portal) help(w http.ResponseWriter, r *http.Request) error {
 		Columns: []string{msg.T("holder.help.column.page.label"), msg.T("holder.help.column.text.label")},
 		Rows:    rows,
 	})
+	list, err := helpdoc.Links("holder", p.docPath)
+	if err != nil {
+		return err
+	}
+	documents := b.part("card", components.Card{
+		ID: "documents", Title: msg.T("common.help.docs.label"), Text: msg.T("common.help.docs.text"), Body: list,
+	})
 	return p.render(w, r, b, components.Page{
 		Title: msg.T("common.help.label"), Lead: msg.T("holder.help.lead"), Description: msg.T("holder.help.lead"),
-		Content: table,
+		Content: components.Join(documents, table),
+	})
+}
+
+// docPath is the page of one document of the holder help.
+func (p *Portal) docPath(name string) string { return p.opts.Prefix + "/help/doc/" + name }
+
+// helpDoc renders one document of the holder role.
+func (p *Portal) helpDoc(w http.ResponseWriter, r *http.Request) error {
+	doc, err := helpdoc.Render("holder", r.PathValue("name"), p.docPath)
+	if errors.Is(err, helpdoc.ErrNotFound) {
+		http.NotFound(w, r)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	b := p.pen(r)
+	back := b.part("button", components.Button{Text: msg.T("common.help.back.label"), Href: p.opts.Prefix + "/help"})
+	return p.render(w, r, b, components.Page{
+		Title: doc.Title, Lead: msg.T("common.help.doc.lead"), Description: msg.T("common.help.doc.lead"),
+		Actions: back, Content: helpdoc.Article(doc),
 	})
 }
