@@ -24,6 +24,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/app"
 	"github.com/centre-for-dpi/vc-adapters/services/admin/internal/config"
 	"github.com/centre-for-dpi/vc-adapters/services/internal/oidcflow"
+	"github.com/centre-for-dpi/vc-adapters/ui/a11ytest"
 )
 
 // stackStub answers GetCapabilities with a display name, so the shell
@@ -357,5 +358,21 @@ func TestOverviewCountsOnlyTrustedIssuers(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Errorf("the overview misses %q", want)
 		}
+	}
+}
+
+// TestOverviewNamesNoRealmForGenericProviders: a generic OIDC provider
+// has no realm, so the providers card drops the realm figure instead of
+// reading "0 realms".
+func TestOverviewNamesNoRealmForGenericProviders(t *testing.T) {
+	h := newHarness(t, true)
+	h.signIn(t)
+	page := h.page(t, "/admin/")
+	a11ytest.AssertPage(t, page)
+	if strings.Contains(page, "0 realms") || strings.Contains(page, "One realm per role") {
+		t.Fatalf("the overview names realms for generic providers\n%s", page)
+	}
+	if !strings.Contains(page, "Add another OIDC provider.") {
+		t.Fatalf("the providers card lost its text\n%s", page)
 	}
 }

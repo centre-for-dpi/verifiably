@@ -168,7 +168,9 @@ each live pair. The card "Providers of each pair" lists them with the
 pair, the realm, and the state. The overview counts them too. The
 provider card counts each record once. A record that the admin pushed
 to a pair counts with the admin. The realm count reads the realm
-label, else the Keycloak realm of the discovery URL. The first run
+label, else the Keycloak realm of the discovery URL. A generic OIDC
+provider has no realm. When no provider has one, the card names no
+realm figure. The first run
 checklist counts an enabled provider of a pair for the role of that
 pair.
 

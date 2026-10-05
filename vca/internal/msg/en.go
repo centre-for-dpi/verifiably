@@ -305,6 +305,7 @@ var en = map[string]string{
 	"admin.stat.providers.realm.value.label":    "{1} realms",
 	"admin.stat.providers.realm.one.label":      "1 realm",
 	"admin.stat.providers.text":                 "One realm per role. Add another OIDC provider.",
+	"admin.stat.providers.generic.text":         "Add another OIDC provider.",
 	"admin.stat.tenants.value.label":            "{1} tenants",
 	"admin.stat.tenants.one.label":              "1 tenant",
 	"admin.stat.tenants.text":                   "Add tenants where a stack supports them.",

@@ -65,7 +65,7 @@ func (p *Portal) overview(w http.ResponseWriter, r *http.Request, s session) err
 		b.add("stat", components.Stat{Label: msg.T("admin.nav.trust_registries.label"), Value: c.registriesValue(),
 			Text: msg.T("admin.stat.registries.text"), Href: at + "/trust/registries"}),
 		b.add("stat", components.Stat{Label: msg.T("admin.nav.providers.label"), Value: plural(len(c.inUse()), "admin.stat.providers"),
-			Text: plural(c.realms(), "admin.stat.providers.realm") + ". " + msg.T("admin.stat.providers.text"), Href: at + "/providers"}),
+			Text: c.providersText(), Href: at + "/providers"}),
 		b.add("stat", components.Stat{Label: msg.T("admin.nav.tenants.label"), Value: plural(c.tenants, "admin.stat.tenants"),
 			Text: msg.T("admin.stat.tenants.text"), Href: at + "/tenants"}),
 		b.add("stat", components.Stat{Label: msg.T("admin.nav.api_keys.label"), Value: c.keysValue(),
@@ -214,6 +214,17 @@ func (c counts) realms() int {
 		}
 	}
 	return len(seen)
+}
+
+// providersText is the text of the providers card: the number of realms
+// when a provider has a realm, else only the call to add a provider. A
+// generic OIDC provider has no realm, so the card names none.
+func (c counts) providersText() string {
+	n := c.realms()
+	if n == 0 {
+		return msg.T("admin.stat.providers.generic.text")
+	}
+	return plural(n, "admin.stat.providers.realm") + ". " + msg.T("admin.stat.providers.text")
 }
 
 // plural returns the catalogue phrase of a count: the ".one.label" key
