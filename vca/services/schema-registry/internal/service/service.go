@@ -139,31 +139,42 @@ func (s *Service) Publish(ctx context.Context, req *connect.Request[schemav1.Pub
 	if err != nil {
 		return nil, err
 	}
-	ids, err := s.register(ctx, r)
+	reg, err := s.register(ctx, r)
 	if err != nil {
 		// The issuer can publish again later, whatever the stack said.
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
 	now := s.opts.Now()
 	stored, err := s.opts.Store.Transition(r.ID, r.Version, func(cur record.Record) (record.Record, error) {
-		return cur.Publish(now, ids)
+		next, perr := cur.Publish(now, reg.ids)
+		next.Doctype = reg.doctype
+		return next, perr
 	})
 	if err != nil {
 		return nil, storeError(err)
 	}
 	resp := &schemav1.PublishResponse{Schema: record.ToProto(stored)}
 	if len(stored.Formats) > 0 {
-		resp.ConfigurationId = ids[stored.Formats[0]]
+		resp.ConfigurationId = reg.ids[stored.Formats[0]]
 	}
 	return connect.NewResponse(resp), nil
 }
 
+// registered is what the stack answered for the formats of a version.
+type registered struct {
+	// ids holds the configuration id of each format.
+	ids map[string]string
+	// doctype is the doctype the stack signs into an mDoc, when the
+	// stack named one.
+	doctype string
+}
+
 // register calls the issuer backend once per format and returns the
-// configuration id of each format. An error keeps the code of the
-// backend, so a caller can tell a refusal that time heals from one it
-// does not.
-func (s *Service) register(ctx context.Context, r record.Record) (map[string]string, error) {
-	ids := map[string]string{}
+// configuration id of each format, and the doctype of an mDoc when the
+// stack names one. An error keeps the code of the backend, so a caller
+// can tell a refusal that time heals from one it does not.
+func (s *Service) register(ctx context.Context, r record.Record) (registered, error) {
+	out := registered{ids: map[string]string{}}
 	display, ignored := json.Marshal(metadata.Display(r.Display))
 	_ = ignored
 	for _, f := range r.Formats {
@@ -195,15 +206,35 @@ func (s *Service) register(ctx context.Context, r record.Record) (map[string]str
 				},
 			}))
 			if err != nil {
-				return nil, fmt.Errorf("service: the issuer backend did not register %s: %w", id, err)
+				return registered{}, fmt.Errorf("service: the issuer backend did not register %s: %w", id, err)
 			}
 			if got := resp.Msg.GetId(); got != "" {
 				id = got
 			}
+			if f == record.FormatMsoMdoc {
+				// A stack that reads the doctype from its own catalogue
+				// signs that doctype, so the metadata must name it.
+				out.doctype = resp.Msg.GetDoctype()
+			}
 		}
-		ids[f] = id
+		out.ids[f] = id
 	}
-	return ids, nil
+	return out, nil
+}
+
+// keepDoctype records the doctype the stack named for a published
+// version, when it changed. A version that an earlier release published
+// kept none, so the registration at start writes it.
+func (s *Service) keepDoctype(k Key, doctype string) error {
+	cur, ok := s.opts.Store.Get(k.ID, k.Version)
+	if !ok || cur.Doctype == doctype {
+		return nil
+	}
+	_, err := s.opts.Store.Transition(k.ID, k.Version, func(cur record.Record) (record.Record, error) {
+		cur.Doctype = doctype
+		return cur, nil
+	})
+	return err
 }
 
 // Retire moves one or every published version to retired.

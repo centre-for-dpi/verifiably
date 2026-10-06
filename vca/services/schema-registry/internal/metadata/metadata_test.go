@@ -333,3 +333,22 @@ func TestIssuerMetadataLeavesOutAnonCreds(t *testing.T) {
 		t.Errorf("the public schema does not name the ledger: %v", doc)
 	}
 }
+
+// TestConfigurationNamesTheDoctypeOfTheStack publishes the doctype the
+// stack signs into an mDoc, when the stack named one at registration.
+// A wallet sends that doctype in its credential request and a verifier
+// asks for it, so all three agree. Without one the doctype is the type.
+func TestConfigurationNamesTheDoctypeOfTheStack(t *testing.T) {
+	opts := Options{BaseURL: "https://r"}
+	r := published()
+	r.Doctype = "vca.mdoc"
+	if got := Configurations([]record.Record{r}, opts)["UniversityDegree_mso_mdoc"]["doctype"]; got != "vca.mdoc" {
+		t.Fatalf("doctype = %v, want the doctype the stack signs", got)
+	}
+	if got := Configurations([]record.Record{r}, opts)["UniversityDegree_jwt_vc_json"]["doctype"]; got != nil {
+		t.Fatalf("a jwt_vc_json entry names the doctype %v", got)
+	}
+	if got := Doctype(published()); got != "UniversityDegree" {
+		t.Fatalf("Doctype = %q, want the type", got)
+	}
+}

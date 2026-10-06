@@ -117,7 +117,11 @@ carries `format`, `scope`, the binding methods, and the signing
 algorithms. It also carries the display metadata and the claims with
 their `mandatory` flag. The `credential_metadata.schema_uri` field points
 at the version document. An SD-JWT VC entry carries `vct`. An mdoc entry
-carries `doctype`. A VCDM entry carries `credential_definition`. The
+carries `doctype`. The doctype is the one the stack named when it took
+the registration, else the type. A stack that signs the doctype of its
+catalogue entry names it (see dpg-adapter-waltid.md). The registration
+at start records the doctype for a version of an earlier release. A
+VCDM entry carries `credential_definition`. The
 `@context` of an `ldp_vc` entry holds the VCDM 2.0 context, then each
 context extension in order. When a claim maps to a term IRI, one object
 with the term of each such claim comes last. The claim display of an

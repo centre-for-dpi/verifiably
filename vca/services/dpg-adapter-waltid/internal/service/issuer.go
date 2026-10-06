@@ -122,7 +122,10 @@ func (s *Service) buildIssuance(ctx context.Context, spec *backendv1.IssueSpec, 
 		request.SelectiveDisclosure = waltid.BuildSelectiveDisclosure(subject)
 		request.Vct = reg.Vct
 	case format == waltid.FormatMsoMdoc:
-		body, berr := waltid.BuildMdocData(reg.Doctype, subject)
+		// A registration of an earlier release has no type. The schema
+		// registry registers every published version again at start
+		// (ADR-077), which writes it.
+		body, berr := waltid.BuildMdocData(reg.MdocType, subject)
 		if berr != nil {
 			return built{}, connect.NewError(connect.CodeInvalidArgument, berr)
 		}

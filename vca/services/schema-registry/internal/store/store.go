@@ -153,6 +153,7 @@ func fresh(r record.Record, id string, version int, now time.Time) record.Record
 	r.PublishedAt = time.Time{}
 	r.RetiredAt = time.Time{}
 	r.ConfigurationIDs = nil
+	r.Doctype = ""
 	return r
 }
 

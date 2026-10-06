@@ -127,17 +127,36 @@ func BuildSdJwtCredential(subject map[string]any, status StatusEntry, v Validity
 }
 
 // BuildMdocData returns the namespace keyed body the mdoc issuer wants.
-// The namespace is the doctype without its last dot part, so the
-// doctype org.iso.18013.5.1.mDL uses the namespace org.iso.18013.5.1.
-func BuildMdocData(doctype string, subject map[string]any) ([]byte, error) {
-	if strings.TrimSpace(doctype) == "" {
-		return nil, fmt.Errorf("waltid: an mdoc needs a doctype")
+// The namespace comes from the credential type of the schema: the type
+// without its last dot part, so the type org.iso.18013.5.1.mDL uses the
+// namespace org.iso.18013.5.1, and a type without a dot is the
+// namespace. The doctype is not part of the body: walt.id 0.18.2 signs
+// the doctype of the catalogue entry (EntryDoctype).
+func BuildMdocData(credentialType string, subject map[string]any) ([]byte, error) {
+	if strings.TrimSpace(credentialType) == "" {
+		return nil, fmt.Errorf("waltid: an mdoc needs a credential type")
 	}
-	namespace := doctype
-	if i := strings.LastIndex(doctype, "."); i > 0 {
-		namespace = doctype[:i]
+	namespace := credentialType
+	if i := strings.LastIndex(credentialType, "."); i > 0 {
+		namespace = credentialType[:i]
 	}
 	return json.Marshal(map[string]any{namespace: subject})
+}
+
+// EntryDoctype returns the doctype of one mso_mdoc entry of the
+// catalogue. walt.id 0.18.2 takes no doctype in the issue request. The
+// wallet names the doctype of the entry in its credential request, the
+// issuer API refuses a request with any other doctype, and it signs that
+// doctype into the mobile security object (CIProvider.kt of the issuer
+// API, testdata/doc/SOURCE.md). So every mDoc of the entry carries it,
+// whatever the schema. An entry without a doctype issues no mDoc.
+func EntryDoctype(meta IssuerMetadata, id string) (string, error) {
+	doctype := strings.TrimSpace(meta.CredentialConfigurationsSupported[id].Doctype)
+	if doctype == "" {
+		return "", fmt.Errorf("waltid: the catalogue entry %q names no doctype, so walt.id refuses every mDoc request; "+
+			"run vca setup for the walt.id issuer and restart the issuer API", id)
+	}
+	return doctype, nil
 }
 
 // BuildSelectiveDisclosure returns the walt.id SDMap. Every top level

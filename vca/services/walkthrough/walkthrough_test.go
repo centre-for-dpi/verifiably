@@ -16,6 +16,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	"github.com/centre-for-dpi/vc-adapters/core/vc"
 	backendv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1"
 	"github.com/centre-for-dpi/vc-adapters/gen/vca/backend/v1/backendv1connect"
 	commonv1 "github.com/centre-for-dpi/vc-adapters/gen/vca/common/v1"
@@ -181,11 +182,15 @@ func (w *walk) landing() {
 	}
 }
 
-// publish uploads the schema and publishes it on the stack.
-func (w *walk) publish() {
+// publish uploads the schema and publishes it on the stack, in the
+// formats the form ticks, or else in the given formats.
+func (w *walk) publish(formats ...string) {
 	w.t.Helper()
 	schemas := w.staff.get(w.issuer.public + "/portal/").must(w.t)
 	form := w.staff.get(schemas.link(w.t, "Publish schema")).must(w.t).form(w.t, "/portal/publish")
+	if len(formats) > 0 {
+		form.values["formats"] = formats
+	}
 	w.staff.upload(form, "farmer-registration.json", farmerSchema, "type", "FarmerRegistration", "name", "Farmer registration").
 		must(w.t).has(w.t, "The version is published. The DPG can issue it now.")
 }
@@ -294,14 +299,15 @@ func (w *walk) adminSignIn() page {
 }
 
 // query crawls the trusted issuers and saves a DCQL query for the
-// credential, with the trusted issuer and the status rules.
-func (w *walk) query() {
+// credential, with the trusted issuer and the status rules. The type is
+// the first one whose name holds the words, else Farmer registration.
+func (w *walk) query(words ...string) {
 	w.t.Helper()
 	b := w.checker
 	discover := b.get(w.verifier.public + "/discovery/").must(w.t)
 	b.submit(discover.form(w.t, "/discovery/crawl")).must(w.t).has(w.t, "Trusted issuers, 1 found", "The crawl finished.")
 	builder := b.get(w.verifier.public + "/discovery/dcql/").must(w.t)
-	pick := builder.option(w.t, "pick", "Farmer registration")
+	pick := builder.option(w.t, "pick", strings.Join(append(words, "Farmer registration")[:1], ""))
 	builder = b.submit(builder.form(w.t, "/discovery/dcql/"), "pick", pick, "action", "preview").must(w.t)
 	form := builder.form(w.t, "/discovery/dcql/")
 	form.values["claim"] = []string{"fullName", "farmerID"}
@@ -329,6 +335,79 @@ func (w *walk) request() page {
 	}
 	w.citizen.submit(answer, "key_binding", input+"."+w.key.sign(w.t, input)).must(w.t).has(w.t, "The verifier has your answer.")
 	return w.checker.get(sent.url.String()).must(w.t)
+}
+
+// claimMdoc claims an mDoc offer into the browser store. The browser
+// already holds its key, so it signs the proof of possession at once.
+// The card reads the elements of the mDoc.
+func (w *walk) claimMdoc(offer, pin string) {
+	w.t.Helper()
+	paste := w.citizen.get(w.holder.public+"/wallet/claim").must(w.t).form(w.t, "/wallet/claim/offer")
+	offerPage := w.citizen.submit(paste, "offer", offer).must(w.t).has(w.t, "data-browser-claim", "Farmer registration")
+	accept := offerPage.form(w.t, "/wallet/accept")
+	if pin != "" {
+		accept.values.Set("pin", pin)
+	}
+	step := w.citizen.script(accept, "/wallet/claim/proof", "jwk", w.key.jwk)
+	done := w.citizen.script(accept, "/wallet/claim/finish",
+		"claim", step["claim"], "signature", w.key.sign(w.t, step["signing_input"]))
+	got, err := vc.FromMdoc([]byte(done["credential"]))
+	if err != nil {
+		w.t.Fatalf("the claim answered no mDoc: %v (%v)", err, done)
+	}
+	want, err := catalogueDoctype()
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	if len(got.Types) != 1 || got.Types[0] != want || got.Claims["fullName"] != "Wanjiku Njeri" {
+		w.t.Fatalf("the mDoc names the doctype %v and the claims %v, want %s", got.Types, got.Claims, want)
+	}
+}
+
+// queryMdoc saves a DCQL query for the mDoc of the credential type, as
+// the catalogue of the verifier names it.
+func (w *walk) queryMdoc() {
+	w.t.Helper()
+	b := w.checker
+	builder := b.get(w.verifier.public + "/discovery/dcql/").must(w.t)
+	pick := builder.option(w.t, "pick", "mso_mdoc")
+	builder = b.submit(builder.form(w.t, "/discovery/dcql/"), "pick", pick, "action", "preview").must(w.t).has(w.t, "doctype_value")
+	form := builder.form(w.t, "/discovery/dcql/")
+	form.values["claim"] = []string{"fullName", "farmerID"}
+	form.values["trust"] = []string{"issuer", "status"}
+	b.submit(form, "display_name", "Farmer registration check (mso_mdoc)",
+		"purpose", "Confirm the farmer registration from the mobile document.", "action", "save").
+		must(w.t).has(w.t, "The template is saved.")
+}
+
+// requestMdoc sends the mDoc query as a link. The browser store matches
+// the mDoc and names the elements it holds. The browser signs no device
+// response, so the consent screen says the answer is not bound.
+func (w *walk) requestMdoc() {
+	w.t.Helper()
+	want, err := catalogueDoctype()
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	page := w.checker.get(w.verifier.public + "/scan/requests/new").must(w.t)
+	form := page.form(w.t, "/scan/requests/")
+	sent := w.checker.submit(form, "template", page.option(w.t, "template", "(mso_mdoc)"), "through", "vca", "deliver", "link").
+		must(w.t).has(w.t, "No wallet has answered yet.")
+	link := html.UnescapeString(regexp.MustCompile(`openid4vp://[^"<\s]+`).FindString(sent.body))
+	paste := w.citizen.get(w.holder.public+"/wallet/claim").must(w.t).form(w.t, "/wallet/claim/offer")
+	consent := w.citizen.submit(paste, "offer", link).must(w.t)
+	if strings.Contains(consent.body, "You hold no credential that matches this request.") {
+		w.t.Fatalf("the browser store matched no credential to the mDoc query:\n%s", text(consent.body))
+	}
+	consent.has(w.t, "Matched credential", "Wanjiku Njeri", "FM-0042",
+		"This answer is not bound to your key. A verifier that needs holder binding refuses it.")
+	// The answer reaches the VCA verifier with the elements the holder
+	// shared. It carries no device signature, so the holder binding
+	// check fails, as the consent screen said.
+	w.citizen.submit(consent.form(w.t, "/wallet/present")).must(w.t).
+		has(w.t, "The verifier has your answer.", "Credential "+want, "Claims farmerID, fullName")
+	w.checker.get(sent.url.String()).must(w.t).
+		has(w.t, "Verified at", "farmerID FM-0042", "fullName Wanjiku Njeri", "the presentation carries no holder binding")
 }
 
 // done checks the time budget and counts the pages that passed the
@@ -366,10 +445,12 @@ func TestWalkthroughWaltid(t *testing.T) {
 	// asks for an entry in the trust list.
 	overview := w.signIn(w.staff, w.issuer).has(t, "Your issuer on walt.id Community Stack.", "Amina Odhiambo")
 	identity := w.staff.get(overview.link(t, "Set up the identity")).must(t)
-	identity = w.staff.submit(identity.form(t, "/identity/provision"), "method", "did:key", "key_type", "Ed25519").must(t)
+	// walt.id signs an mDoc with an EC P-256 key only, so the issuer
+	// makes a secp256r1 key, which signs the SD-JWT VC too.
+	identity = w.staff.submit(identity.form(t, "/identity/provision"), "method", "did:key", "key_type", "secp256r1").must(t)
 	identity.has(t, "The trust registry holds a pending entry for did:key:")
-	w.publish()
-	offer, pin := w.issue()
+	w.publish("dc+sd-jwt", "mso_mdoc")
+	offer, pin := w.issue("format", "FORMAT_DC_SD_JWT")
 
 	// The farmer claims the offer into the browser store of the wallet.
 	// The browser signs the proof with its own key (ADR-073).
@@ -386,7 +467,7 @@ func TestWalkthroughWaltid(t *testing.T) {
 	// The verifier asks the farmer for the credential. The wallet signs
 	// the key binding of the answer, and the verdict is valid. The check
 	// of the same credential turns to issuer trusted too.
-	w.query()
+	w.query("Farmer registration (dc+sd-jwt)")
 	w.request().has(t, "Verified at", "Valid", "the issuer is on an enabled trust list",
 		"the issuer did not set the status of the credential")
 	// A pasted credential carries no key binding, so the check page
@@ -394,6 +475,15 @@ func TestWalkthroughWaltid(t *testing.T) {
 	// the wallet above holds the binding and reads valid.
 	w.check(credential).has(t, "issuer trusted", "the presentation carries no key binding JWT")
 	w.citizen.get(w.holder.public+"/wallet/").must(t).has(t, "Issuer: trusted")
+
+	// The issuer offers the credential as an mDoc. walt.id signs the
+	// doctype of its catalogue into it, the registry publishes that
+	// doctype, and the DCQL query of the verifier asks for it, so the
+	// browser store matches the mDoc to the request.
+	mdocOffer, mdocPin := w.issue("format", "FORMAT_MSO_MDOC")
+	w.claimMdoc(mdocOffer, mdocPin)
+	w.queryMdoc()
+	w.requestMdoc()
 
 	// The issuer offers the credential with the authorization code
 	// grant. The farmer signs in at the issuer, and the browser claims

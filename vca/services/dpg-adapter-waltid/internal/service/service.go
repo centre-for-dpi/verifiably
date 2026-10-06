@@ -238,8 +238,12 @@ type registration struct {
 	Types []string `json:"types,omitempty"`
 	// Vct is the SD-JWT VC type.
 	Vct string `json:"vct,omitempty"`
-	// Doctype is the mdoc doctype.
+	// Doctype is the mdoc doctype walt.id signs: the one of the catalogue
+	// entry.
 	Doctype string `json:"doctype,omitempty"`
+	// MdocType is the credential type of an mdoc schema. The claims go
+	// in its namespace (waltid.BuildMdocData).
+	MdocType string `json:"mdoc_type,omitempty"`
 }
 
 // registrationPrefix starts the store key of every registration.
@@ -264,8 +268,11 @@ func storeSafe(value string) string {
 // The adapter must not write that file or restart the container
 // (ADR-002 decision 4). vca setup writes one entry per wire format
 // (ADR-054). The adapter therefore records the credential type of the
-// schema and signs it through the entry of its format. The signed
-// credential carries the type of the schema.
+// schema and signs it through the entry of its format. A W3C or SD-JWT
+// credential carries the type of the schema. An mDoc carries the doctype
+// of the entry, as walt.id takes no doctype in the issue request, so the
+// answer names that doctype for the schema registry to publish. The
+// claims of the mDoc go in the namespace of the schema type.
 func (s *Service) RegisterCredentialConfiguration(
 	ctx context.Context, req *connect.Request[backendv1.RegisterCredentialConfigurationRequest],
 ) (*connect.Response[backendv1.RegisterCredentialConfigurationResponse], error) {
@@ -294,7 +301,13 @@ func (s *Service) RegisterCredentialConfiguration(
 	case waltid.IsSdJwt(format):
 		reg.Vct = vctFor(cfg)
 	case format == waltid.FormatMsoMdoc:
-		reg.Doctype = cfg.GetType()
+		// walt.id signs the doctype of the entry into every mDoc, so the
+		// answer names it for the schema registry to publish (ADR-054).
+		doctype, derr := waltid.EntryDoctype(meta, configurationID)
+		if derr != nil {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, derr)
+		}
+		reg.Doctype, reg.MdocType = doctype, cfg.GetType()
 	default:
 		reg.Types = []string{cfg.GetType()}
 	}
@@ -305,7 +318,7 @@ func (s *Service) RegisterCredentialConfiguration(
 	if err := s.store.Put(ctx, registrationKey(cfg.GetId()), raw); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&backendv1.RegisterCredentialConfigurationResponse{Id: cfg.GetId()}), nil
+	return connect.NewResponse(&backendv1.RegisterCredentialConfigurationResponse{Id: cfg.GetId(), Doctype: reg.Doctype}), nil
 }
 
 // vctFor returns the SD-JWT VC type of one configuration: the type the

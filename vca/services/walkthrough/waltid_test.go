@@ -40,6 +40,7 @@ import (
 //	GET  /draft13/.well-known/oauth-authorization-server
 //	POST /onboard/issuer
 //	POST /openid4vc/sdjwt/issue
+//	POST /openid4vc/mdoc/issue
 //	GET  /draft13/credentialOffer?id=
 //	POST /draft13/par
 //	GET  /draft13/authorize
@@ -47,7 +48,8 @@ import (
 //	POST /draft13/credential
 //
 // It signs an SD-JWT VC with the key of the issue request, as walt.id
-// does, and posts the session events to the callback address of the
+// does, or an mDoc of the doctype the catalogue names (waltid_mdoc_test.go),
+// and posts the session events to the callback address of the
 // request. A credential request with a proof gets a credential bound to
 // the key of the proof, as the browser store of the wallet claims it
 // (ADR-073). One without a proof gets no holder key. An issue request
@@ -95,6 +97,8 @@ type waltidIssue struct {
 	Vct                       string          `json:"vct"`
 	SelectiveDisclosure       json.RawMessage `json:"selectiveDisclosure"`
 	AuthenticationMethod      string          `json:"authenticationMethod"`
+	// MdocData holds the claims of an mDoc by namespace.
+	MdocData map[string]map[string]any `json:"mdocData"`
 }
 
 const waltidDraft = "/draft13"
@@ -109,6 +113,7 @@ func newWaltidIssuer(t *testing.T) *waltidIssuer {
 	mux.HandleFunc("GET "+waltidDraft+"/.well-known/openid-configuration", w.authServer)
 	mux.HandleFunc("POST /onboard/issuer", w.onboard)
 	mux.HandleFunc("POST /openid4vc/sdjwt/issue", w.issue)
+	mux.HandleFunc("POST /openid4vc/mdoc/issue", w.issue)
 	mux.HandleFunc("GET "+waltidDraft+"/credentialOffer", w.offer)
 	mux.HandleFunc("POST "+waltidDraft+"/par", w.par)
 	mux.HandleFunc("GET "+waltidDraft+"/authorize", w.authorize)
@@ -377,6 +382,10 @@ func (w *waltidIssuer) credential(rw http.ResponseWriter, r *http.Request) {
 		rw.Header().Set("Content-Type", "application/json")
 		rw.WriteHeader(http.StatusBadRequest)
 		writeJSON(rw, map[string]any{"error": "invalid_proof", "error_description": err.Error()})
+		return
+	}
+	if o.request.CredentialConfigurationID == mdocConfiguration {
+		w.mdocCredential(rw, o, body, holder)
 		return
 	}
 	cred, err := o.sign(time.Now(), holder)

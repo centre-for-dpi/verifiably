@@ -109,6 +109,11 @@ type Record struct {
 	ClaimMappings    []ClaimMapping    `json:"claim_mappings,omitempty"`
 	// Ledger is the namespace of the ledger of the anoncreds format.
 	Ledger string `json:"ledger,omitempty"`
+	// Doctype is the doctype the stack signs into an mso_mdoc credential
+	// of the version, when the stack named one at registration. A stack
+	// that reads the doctype from its own catalogue names it. Empty means
+	// the stack signs the type.
+	Doctype string `json:"doctype,omitempty"`
 }
 
 // Mapping returns the mapping of one claim, when the version has one.

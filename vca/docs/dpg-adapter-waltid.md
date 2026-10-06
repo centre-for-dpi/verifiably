@@ -338,6 +338,21 @@ type of the schema, because walt.id signs the credential body it
 receives. The adapter signs through no entry without the prefix. So
 no example type of the release reaches a credential.
 
+**An mDoc carries the doctype of the catalogue entry.** walt.id 0.18.2
+takes no doctype in the issue request. The wallet names the doctype of
+the entry in its credential request. The issuer API refuses any other
+doctype, and it signs that doctype into the mDoc. So every mDoc of the
+`vca_mso_mdoc` entry carries `vca.mdoc`, whatever the schema.
+`RegisterCredentialConfiguration` reads the doctype of the entry and
+names it in its answer. The schema registry publishes it in the issuer
+metadata. The verifier catalogue and the DCQL builder then ask for
+`vca.mdoc`, and the browser store matches the mDoc. The claims go in
+the namespace of the schema type, so `ProofOfResidence` uses the
+namespace `ProofOfResidence`. An entry without a doctype issues no
+mDoc, so the registration answers `failed_precondition`. Two mDoc
+schemas of one walt.id issuer share the doctype. The namespace tells
+them apart. The source is in `testdata/doc/SOURCE.md`.
+
 **The offer names the schema.** A catalogue entry has no display and no
 claims, so the issuer metadata of walt.id names no schema. The adapter
 adds the parameter `vca_configuration` to the offer URI, with the

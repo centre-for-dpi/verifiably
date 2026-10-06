@@ -82,3 +82,25 @@ Wallet presentation notes (release 0.18.2):
   to the document of each selected SD-JWT, in
   `generatePresentationForVPToken` of
   https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-services/waltid-wallet-api/src/main/kotlin/id/walt/webwallet/service/oidc4vc/TestCredentialWallet.kt
+
+mDoc notes (release 0.18.2), read on 2026-10-06:
+
+- The issue request takes no doctype. `IssuanceRequest` of
+  https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-services/waltid-issuer-api/src/main/kotlin/id/walt/issuer/issuance/IssuanceRequests.kt
+  has `credentialConfigurationId`, `credentialData`, `vct` and
+  `mdocData`, a map of namespace to elements. It has no `docType`.
+  `POST /openid4vc/mdoc/issue` of issuance/IssuerApi.kt at the same tag
+  reads that class.
+- The doctype comes from the credential request of the wallet.
+  `doGenerateMDoc` of
+  https://raw.githubusercontent.com/walt-id/waltid-identity/v0.18.2/waltid-services/waltid-issuer-api/src/main/kotlin/id/walt/issuer/issuance/CIProvider.kt
+  builds the mDoc with `MDocBuilder(credentialRequest.docType)` and adds
+  each element of `mdocData` under its namespace.
+- `findMatchingIssuanceRequest` of the same file matches the request
+  only when `credentialRequest.docType` equals the `docType` of the
+  catalogue entry of the session. A request with any other doctype finds
+  no issuance request. So every mDoc of the entry `vca_mso_mdoc` carries
+  the doctype of that entry, `vca.mdoc` (`issuer-metadata-vca.json`).
+- `doGenerateMDoc` turns the issuer key into an EC key, and answers the
+  `IssuerSigned` structure as base64url with `credential_encoding`
+  `issuer-signed`. The callback `generated_mdoc` carries the mDoc in hex.

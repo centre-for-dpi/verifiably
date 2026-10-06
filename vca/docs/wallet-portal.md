@@ -494,7 +494,11 @@ The wallet reads an `mso_mdoc` credential with `core/vc`. It reads an
 `IssuerSigned` structure, a `Document` or a `DeviceResponse`, binary or
 base64url. The card names the doctype and each element. A DCQL query
 with the doctype matches it, and a claim path matches by its element
-identifier. The answer keeps only the elements the holder chose. The
+identifier. The doctype is the one the issuer metadata names, which is
+the doctype the stack signs. A stack can sign one doctype of its
+catalogue for every schema (see dpg-adapter-waltid.md). The schema
+registry publishes that value, so the query of the verifier names it
+too. The answer keeps only the elements the holder chose. The
 MSO signs a digest of each element, so the issuer signature stays
 valid.
 

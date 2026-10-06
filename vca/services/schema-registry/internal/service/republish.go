@@ -63,11 +63,11 @@ func (s *Service) Republish(ctx context.Context, only []Key) Outcome {
 	}
 	for _, r := range s.targets(only) {
 		k := Key{ID: r.ID, Version: r.Version}
-		_, err := s.register(ctx, r)
+		reg, err := s.register(ctx, r)
 		switch {
 		case err == nil:
 			out.Done++
-			if ferr := s.forget(k); ferr != nil {
+			if ferr := errors.Join(s.keepDoctype(k, reg.doctype), s.forget(k)); ferr != nil {
 				out.Failed = append(out.Failed, Failure{Key: k, Err: ferr})
 			}
 		case Transient(err):
@@ -135,13 +135,14 @@ func (s *Service) RetryRegistration(ctx context.Context, id string, version int3
 		return err
 	}
 	k := Key{ID: r.ID, Version: r.Version}
-	if _, err := s.register(ctx, r); err != nil {
+	reg, err := s.register(ctx, r)
+	if err != nil {
 		if rerr := s.remember(k, err); rerr != nil {
 			return connect.NewError(connect.CodeInternal, rerr)
 		}
 		return connect.NewError(connect.CodeOf(err), err)
 	}
-	if ferr := s.forget(k); ferr != nil {
+	if ferr := errors.Join(s.keepDoctype(k, reg.doctype), s.forget(k)); ferr != nil {
 		return connect.NewError(connect.CodeInternal, ferr)
 	}
 	return nil

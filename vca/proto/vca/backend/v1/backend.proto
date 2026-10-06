@@ -778,6 +778,12 @@ message RegisterCredentialConfigurationRequest {
 message RegisterCredentialConfigurationResponse {
   // The configuration id as the DPG stores it.
   string id = 1;
+  // The doctype the DPG signs into an mso_mdoc credential of this
+  // configuration. A DPG that reads the doctype from its own catalogue
+  // names it here. The issuer metadata, the wallet and the verifier then
+  // use the same value. Empty for any other format, or when the DPG
+  // signs the type of the request.
+  string doctype = 2;
 }
 
 // StatusListBinding points at the status entry of one credential.

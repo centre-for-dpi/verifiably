@@ -132,7 +132,20 @@ func TestBuildMdocDataStripsTheLastPartOfTheDoctype(t *testing.T) {
 		t.Fatalf("a doctype without a dot keeps its name, got %s", flat)
 	}
 	if _, err := BuildMdocData("  ", nil); err == nil {
-		t.Fatal("BuildMdocData accepted an empty doctype")
+		t.Fatal("BuildMdocData accepted an empty type")
+	}
+}
+
+func TestEntryDoctypeReadsTheCatalogue(t *testing.T) {
+	meta := IssuerMetadata{CredentialConfigurationsSupported: map[string]ConfigurationEntry{
+		"vca_mso_mdoc": {Format: "mso_mdoc", Doctype: "vca.mdoc"},
+		"vca_bare":     {Format: "mso_mdoc"},
+	}}
+	if got, err := EntryDoctype(meta, "vca_mso_mdoc"); err != nil || got != "vca.mdoc" {
+		t.Fatalf("EntryDoctype = %q, %v", got, err)
+	}
+	if _, err := EntryDoctype(meta, "vca_bare"); err == nil || !strings.Contains(err.Error(), "run vca setup") {
+		t.Fatalf("an entry without a doctype gave %v", err)
 	}
 }
 

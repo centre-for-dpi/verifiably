@@ -233,7 +233,7 @@ func Configuration(r record.Record, format string, opts Options) map[string]any 
 	case record.FormatVcSdJwt, record.FormatDcSdJwt:
 		e["vct"] = Vct(opts.BaseURL, r)
 	case record.FormatMsoMdoc:
-		e["doctype"] = r.Type
+		e["doctype"] = Doctype(r)
 	case record.FormatLdpVc:
 		e["credential_definition"] = map[string]any{
 			"@context": LdpContext(r),
@@ -243,6 +243,17 @@ func Configuration(r record.Record, format string, opts Options) map[string]any 
 		e["credential_definition"] = map[string]any{"type": []string{"VerifiableCredential", r.Type}}
 	}
 	return e
+}
+
+// Doctype returns the doctype of the mso_mdoc credential of r: the
+// doctype the stack signs, when it named one at registration, else the
+// type. The wallet sends this doctype in its credential request and the
+// verifier asks for it, so issuer, holder and verifier agree.
+func Doctype(r record.Record) string {
+	if r.Doctype != "" {
+		return r.Doctype
+	}
+	return r.Type
 }
 
 // LdpContext returns the @context of an ldp_vc credential of r: the

@@ -2918,7 +2918,13 @@ func (x *RegisterCredentialConfigurationRequest) GetConfiguration() *CredentialC
 type RegisterCredentialConfigurationResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The configuration id as the DPG stores it.
-	Id            string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// The doctype the DPG signs into an mso_mdoc credential of this
+	// configuration. A DPG that reads the doctype from its own catalogue
+	// names it here. The issuer metadata, the wallet and the verifier then
+	// use the same value. Empty for any other format, or when the DPG
+	// signs the type of the request.
+	Doctype       string `protobuf:"bytes,2,opt,name=doctype,proto3" json:"doctype,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2956,6 +2962,13 @@ func (*RegisterCredentialConfigurationResponse) Descriptor() ([]byte, []int) {
 func (x *RegisterCredentialConfigurationResponse) GetId() string {
 	if x != nil {
 		return x.Id
+	}
+	return ""
+}
+
+func (x *RegisterCredentialConfigurationResponse) GetDoctype() string {
+	if x != nil {
+		return x.Doctype
 	}
 	return ""
 }
@@ -11811,9 +11824,10 @@ const file_vca_backend_v1_backend_proto_rawDesc = "" +
 	"\acontent\x18\x03 \x01(\tR\acontent\x12\x12\n" +
 	"\x04name\x18\x04 \x01(\tR\x04name\"w\n" +
 	"&RegisterCredentialConfigurationRequest\x12M\n" +
-	"\rconfiguration\x18\x01 \x01(\v2'.vca.backend.v1.CredentialConfigurationR\rconfiguration\"9\n" +
+	"\rconfiguration\x18\x01 \x01(\v2'.vca.backend.v1.CredentialConfigurationR\rconfiguration\"S\n" +
 	"'RegisterCredentialConfigurationResponse\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"\xfc\x01\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
+	"\adoctype\x18\x02 \x01(\tR\adoctype\"\xfc\x01\n" +
 	"\x11StatusListBinding\x12:\n" +
 	"\x04kind\x18\x01 \x01(\x0e2&.vca.backend.v1.StatusListBinding.KindR\x04kind\x12\x17\n" +
 	"\alist_id\x18\x02 \x01(\tR\x06listId\x12\x14\n" +

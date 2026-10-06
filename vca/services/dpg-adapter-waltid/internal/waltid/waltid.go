@@ -152,6 +152,9 @@ type ConfigurationEntry struct {
 	Format string `json:"format"`
 	// Vct is the SD-JWT VC type. It is empty for the W3C formats.
 	Vct string `json:"vct,omitempty"`
+	// Doctype is the doctype of an mso_mdoc entry. walt.id signs it into
+	// every mDoc of the entry.
+	Doctype string `json:"doctype,omitempty"`
 	// Display holds the display metadata of the configuration.
 	Display []json.RawMessage `json:"display,omitempty"`
 	// CredentialDefinition carries the W3C type names.
