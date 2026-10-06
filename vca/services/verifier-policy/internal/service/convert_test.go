@@ -39,7 +39,7 @@ func TestCarrierName(t *testing.T) {
 		ingestv1.Carrier_CARRIER_XML:         "xml",
 		ingestv1.Carrier_CARRIER_JSON:        "json",
 		ingestv1.Carrier_CARRIER_QR:          "qr",
-		ingestv1.Carrier_CARRIER_QR_CLAIM169: "qr-claim169",
+		ingestv1.Carrier_CARRIER_QR_CLAIM169: policy.CarrierClaim169,
 		ingestv1.Carrier_CARRIER_UNSPECIFIED: "unknown",
 	}
 	for in, want := range cases {

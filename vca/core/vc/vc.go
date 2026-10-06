@@ -8,6 +8,8 @@
 //   - W3C VC Data Model 1.1 (https://www.w3.org/TR/vc-data-model/)
 //   - IETF SD-JWT VC (https://datatracker.ietf.org/doc/draft-ietf-oauth-sd-jwt-vc/)
 //   - ISO/IEC 18013-5 mdoc (format detection only)
+//   - A CWT with claim 169 in a COSE_Sign1 message, the identity QR code
+//     of the 169 QR code specification (RFC 8392, RFC 9052)
 //
 // Lifted from the legacy backend/normalized.go, internal/vp and vctypes.
 package vc
@@ -49,6 +51,8 @@ const (
 //	JWT:    three base64url segments separated by "."
 //	JSON-LD: a JSON object with "@context"
 //	JSON:   any other JSON object
+//	Claim 169: a COSE_Sign1 message whose payload is a CWT with claim
+//	        169, binary or base64url
 //	mdoc:   a CBOR map or tag as the first byte (binary), or its base64url form
 func DetectFormat(raw []byte) Format {
 	b := bytes.TrimSpace(raw)
@@ -64,6 +68,11 @@ func DetectFormat(raw []byte) Format {
 			return FormatJSONLD
 		}
 		return FormatJSON
+	}
+	if isClaim169(raw) {
+		// A COSE_Sign1 message is a tag or an array, so it comes before
+		// the mdoc rule.
+		return FormatClaim169
 	}
 	if isCBORMapOrTag(b[0]) {
 		return FormatMdoc
@@ -263,6 +272,8 @@ func Parse(raw []byte) (Credential, error) {
 		return FromObject(m), err
 	case FormatMdoc:
 		return FromMdoc(raw)
+	case FormatClaim169:
+		return FromClaim169(raw)
 	}
 	return Credential{}, fmt.Errorf("vc: unknown credential format")
 }

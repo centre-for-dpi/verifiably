@@ -20,6 +20,10 @@ import (
 // presentation.
 const CarrierOID4VP = "oid4vp"
 
+// CarrierClaim169 is the carrier word of an identity QR code that holds
+// a CWT with claim 169.
+const CarrierClaim169 = "claim169"
+
 // ParamRequireHolderBinding is the parameter of the key binding check
 // that turns the holder binding rule on or off (ADR-083 decision 1).
 const ParamRequireHolderBinding = "require_holder_binding"

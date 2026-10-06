@@ -8,6 +8,7 @@ import (
 
 	"github.com/centre-for-dpi/vc-adapters/core/jose"
 	"github.com/centre-for-dpi/vc-adapters/core/sdjwt"
+	"github.com/centre-for-dpi/vc-adapters/core/statuslist/token"
 	"github.com/centre-for-dpi/vc-adapters/core/vc"
 )
 
@@ -40,6 +41,8 @@ func signatureOf(ctx context.Context, index int, c Credential, pc Context) Check
 		return result(NameSignature, Skip, index, notImplementedLDP, ev)
 	case vc.FormatMdoc:
 		return result(NameSignature, Skip, index, notImplementedMdoc, ev)
+	case vc.FormatClaim169:
+		return claim169SignatureOf(ctx, index, c, pc, ev)
 	case vc.FormatSDJWT, vc.FormatJWT:
 	default:
 		return result(NameSignature, Skip, index, "the credential carries no signed token", ev)
@@ -54,15 +57,9 @@ func signatureOf(ctx context.Context, index int, c Credential, pc Context) Check
 	}
 	ev["alg"] = string(hdr.Alg)
 	ev["kid"] = hdr.Kid
-	if pc.Keys == nil {
-		return result(NameSignature, Error, index, "the service has no key resolver", ev)
-	}
-	set, err := pc.Keys(ctx, c.VC.Issuer, hdr.Kid)
-	if errors.Is(err, ErrStale) {
-		return result(NameSignature, Fail, index, staleKeysDetail, stale(ev))
-	}
-	if err != nil {
-		return result(NameSignature, Error, index, "the issuer keys are not available", ev)
+	set, failed := issuerKeys(ctx, index, c.VC.Issuer, hdr.Kid, pc, ev)
+	if failed != nil {
+		return *failed
 	}
 	_, _, err = jose.VerifyWithJWKS(token, set, jose.SigningAlgorithms)
 	switch {
@@ -73,6 +70,59 @@ func signatureOf(ctx context.Context, index int, c Credential, pc Context) Check
 	default:
 		return result(NameSignature, Fail, index, "the issuer signature is not valid", ev)
 	}
+}
+
+// issuerKeys resolves the keys of an issuer for one key id. It returns
+// the result of the check when the keys are not there.
+func issuerKeys(ctx context.Context, index int, issuer, kid string, pc Context, ev map[string]string) (jose.JWKS, *CheckResult) {
+	fail := func(o Outcome, detail string, ev map[string]string) (jose.JWKS, *CheckResult) {
+		r := result(NameSignature, o, index, detail, ev)
+		return jose.JWKS{}, &r
+	}
+	if pc.Keys == nil {
+		return fail(Error, "the service has no key resolver", ev)
+	}
+	set, err := pc.Keys(ctx, issuer, kid)
+	if errors.Is(err, ErrStale) {
+		return fail(Fail, staleKeysDetail, stale(ev))
+	}
+	if err != nil {
+		return fail(Error, "the issuer keys are not available", ev)
+	}
+	return set, nil
+}
+
+// coseAlgorithms names the COSE algorithms of a Claim 169 code as the
+// JOSE algorithms of the same keys (RFC 9053).
+var coseAlgorithms = map[int64]jose.Algorithm{token.COSEAlgES256: jose.ES256, token.COSEAlgEdDSA: jose.EdDSA}
+
+// claim169SignatureOf checks the COSE_Sign1 signature of a Claim 169
+// code. The keys come from the issuer of the iss claim and the kid of the
+// protected header, the same resolution as the issuer of a JWT.
+func claim169SignatureOf(ctx context.Context, index int, c Credential, pc Context, ev map[string]string) CheckResult {
+	s, err := vc.Claim169Signature([]byte(c.Token))
+	if err != nil {
+		return result(NameSignature, Fail, index, "the credential is not a signed CWT with claim 169", ev)
+	}
+	ev["alg"] = string(coseAlgorithms[s.Algorithm])
+	ev["kid"] = s.KeyID
+	set, failed := issuerKeys(ctx, index, c.VC.Issuer, s.KeyID, pc, ev)
+	if failed != nil {
+		return *failed
+	}
+	candidates := set.Keys
+	if s.KeyID != "" {
+		candidates = set.Key(s.KeyID)
+	}
+	if len(candidates) == 0 {
+		return result(NameSignature, Error, index, "the issuer publishes no key with this key id", ev)
+	}
+	for _, k := range candidates {
+		if token.KeyVerifier(k.Key)(s.Algorithm, nil, s.ToBeSigned, s.Signature) == nil {
+			return result(NameSignature, Pass, index, "the issuer signature is valid", ev)
+		}
+	}
+	return result(NameSignature, Fail, index, "the issuer signature is not valid", ev)
 }
 
 // issuerToken returns the compact JWS that carries the issuer claims.

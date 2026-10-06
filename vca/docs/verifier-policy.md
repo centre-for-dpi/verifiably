@@ -45,7 +45,7 @@ Everything else gives `VALID`.
 
 | Name | Mandatory | What it does |
 |---|---|---|
-| `signature` | yes | Verifies the issuer JWS of each credential with the keys of the issuer. |
+| `signature` | yes | Verifies the issuer JWS of each credential with the keys of the issuer. For a Claim 169 code it verifies the COSE_Sign1 signature, as the next section says. |
 | `key_binding` | yes | Checks the holder binding of each credential (ADR-083). The parameter `require_holder_binding` defaults to `true`. |
 | `nbf` | yes | Compares the start of validity with the evaluation time. |
 | `exp` | yes | Compares the end of validity with the evaluation time. |
@@ -60,6 +60,23 @@ Everything else gives `VALID`.
 A mandatory check always runs, and a `FAIL` of it always blocks
 (ADR-024 decision 2). A policy set adds the optional checks and says
 whether each one blocks.
+
+## Claim 169 codes
+
+An identity QR code holds a CBOR Web Token with claim 169 in a
+COSE_Sign1 message (RFC 8392, RFC 9052). The format is `claim169`.
+`core/vc` reads it. The issuer is the `iss` claim, often a `did:web`.
+Each attribute of claim 169 becomes a
+claim with its name in the 169 QR code specification, such as
+`Full Name`. A coded gender or marital status reads as a word. An
+image or a biometric stays out of the claims. The `nbf` and `exp`
+claims give the validity window.
+
+The `signature` check resolves the keys of the issuer with the `kid` of
+the protected header. That is the same resolver as for the issuer of a
+JWT. It verifies ES256 and EdDSA signatures. The `status` check finds no
+status list. The `trust_chain` check looks the issuer up on the trust
+lists.
 
 ## Holder binding
 

@@ -283,9 +283,11 @@ func withSteps(res Result, err error, steps ...string) (Result, error) {
 	return res, nil
 }
 
-// decodeClaim169Text decodes a Claim 169 QR text. A legacy PixelPass
-// code decodes with the same first two steps, so the decoder falls back
-// to it (ADR-023 decision 3).
+// decodeClaim169Text decodes a Claim 169 QR text. The credential is the
+// signed COSE_Sign1 message, so the policy service checks the signature
+// of the issuer. The payload is claim 169 as JSON, for the operator. A
+// legacy PixelPass code decodes with the same first two steps, so the
+// decoder falls back to it (ADR-023 decision 3).
 func decodeClaim169Text(text string) (Result, error) {
 	cwt, steps, err := DecodeClaim169(text)
 	if err == nil {
@@ -295,7 +297,7 @@ func decodeClaim169Text(text string) (Result, error) {
 		}
 		return Result{
 			Format: vc.FormatJSON, Payload: payload, Detected: TypeCWTClaim169, Steps: steps,
-			Credentials: []Credential{{Format: vc.FormatJSON, Payload: payload}},
+			Credentials: []Credential{{Format: vc.FormatClaim169, Payload: cwt.Message}},
 		}, nil
 	}
 	raw, pixelErr := pixelpass.Decode(text)

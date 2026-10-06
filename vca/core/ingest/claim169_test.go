@@ -14,6 +14,7 @@ import (
 	"github.com/centre-for-dpi/vc-adapters/core/anyval"
 	"github.com/centre-for-dpi/vc-adapters/core/ingest"
 	"github.com/centre-for-dpi/vc-adapters/core/pixelpass"
+	"github.com/centre-for-dpi/vc-adapters/core/vc"
 )
 
 func TestDecodeClaim169(t *testing.T) {
@@ -239,5 +240,27 @@ func TestDecodeClaim169ReadsAnyKeyOrder(t *testing.T) {
 				t.Fatalf("order %d/%d: claim 169 = %s, issuer %q", i, j, got, cwt.Issuer)
 			}
 		}
+	}
+}
+
+// TestDecodeClaim169HandsOverTheSignedCWT keeps the COSE_Sign1 message as
+// the credential, so the verifier policy service can check the
+// signature of the issuer. The payload of the result stays the claims as
+// JSON for the operator.
+func TestDecodeClaim169HandsOverTheSignedCWT(t *testing.T) {
+	text := claim169QR(t, map[any]any{uint64(4): "Asha"}, true)
+	res, err := ingest.Decode([]byte(text), ingest.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Credentials) != 1 || res.Credentials[0].Format != vc.FormatClaim169 {
+		t.Fatalf("credentials = %+v", res.Credentials)
+	}
+	c, err := vc.Parse(res.Credentials[0].Payload)
+	if err != nil || c.Issuer != "did:web:issuer.test" || c.Claims["Full Name"] != "Asha" {
+		t.Fatalf("the credential reads as %+v, %v", c, err)
+	}
+	if !strings.Contains(string(res.Payload), "Asha") {
+		t.Fatalf("payload = %s", res.Payload)
 	}
 }

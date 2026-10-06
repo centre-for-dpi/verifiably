@@ -84,6 +84,9 @@ type CWT struct {
 	Data map[string]any
 	// Sign1 is the COSE_Sign1 envelope the claims came from.
 	Sign1 Sign1
+	// Message is the COSE_Sign1 message as the issuer signed it. The
+	// verifier policy service checks its signature.
+	Message []byte
 }
 
 // JSON returns claim 169 as a JSON document.
@@ -137,7 +140,7 @@ func decodeClaim169(text string) (CWT, []string, error) {
 	if err != nil {
 		return CWT{}, steps, err
 	}
-	c.Sign1 = s
+	c.Sign1, c.Message = s, inflated
 	return c, steps, nil
 }
 

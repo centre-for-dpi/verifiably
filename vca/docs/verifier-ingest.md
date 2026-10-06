@@ -40,9 +40,15 @@ A MOSIP 169 QR code carries a CBOR Web Token inside a COSE_Sign1 message
 4. Read the CWT claim set (RFC 8392) and take claim 169.
 
 The decoder reads the structure. It never checks the signature. The
-verifier policy service checks the signature with a trusted key. The
-result carries the algorithm, the key id, the signature, and the
-`Signature1` structure.
+credential of the result is the COSE_Sign1 message as the issuer signed
+it, in the format `claim169`. The payload of the result is claim 169 as
+JSON, for the operator. The verifier policy service checks the
+signature with the key of the issuer (see verifier-policy.md).
+
+A check of the scan page names the carrier `claim169` for such a code.
+The code is the carrier, whether it came as a scan, a file, a link or
+a paste. The result names the issuer of the `iss` claim and each
+attribute of claim 169 by its name in the specification.
 
 A legacy PixelPass code shares the first two steps. The decoder falls
 back to the PixelPass reader of `core/pixelpass` when the CWT reader

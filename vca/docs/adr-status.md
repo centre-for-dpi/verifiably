@@ -273,7 +273,7 @@ A row that is not `Done` carries a note.
 |---|---|---|---|---|
 | ADR-023 | 1 All listed carriers | Done | `vca/services/verifier-ingest/internal/service` | |
 | ADR-023 | 2 One normalised message from pure decoders | Done | `vca/core/ingest` | |
-| ADR-023 | 3 QR, Claim 169, and PixelPass decoding | Done | `vca/core/qr`, `vca/core/pixelpass` | |
+| ADR-023 | 3 QR, Claim 169, and PixelPass decoding | Done | `vca/core/qr`, `vca/core/pixelpass`, `vca/core/ingest`, `vca/core/vc/claim169.go` | The credential of a Claim 169 code is the signed COSE_Sign1 message. The policy service verifies its signature with the key of the `iss` issuer. `TestDecodeClaim169HandsOverTheSignedCWT`, `TestSignatureVerifiesAClaim169Code` and `TestCheckOfAClaim169CodeNamesTheIssuerAndClaims` pin it. |
 | ADR-023 | 4 XML ingestion through a configured path | Done | `vca/core/ingest/ingest.go` | |
 | ADR-023 | 5 Allowlist and size cap on request fetches | Done | `vca/services/verifier-ingest/internal/oid4vp` | |
 | ADR-023 | 6 Camera scanning stays in the browser | Done | `vca/services/verifier-ingest/internal/scanner` | A scan, an upload, a link and a paste each reach the checks of VCA. The result names the carrier (`TestScanOrUploadChecksThePresentedCredential`). |

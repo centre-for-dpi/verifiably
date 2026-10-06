@@ -26,6 +26,9 @@ const (
 	CarrierLink = "link"
 	// CarrierPaste names pasted text.
 	CarrierPaste = "paste"
+	// CarrierClaim169 names an identity QR code that holds a CWT with
+	// claim 169, whatever brought it to the page.
+	CarrierClaim169 = "claim169"
 )
 
 // Check evaluates a presentation that staff scanned, uploaded, linked
@@ -48,6 +51,11 @@ func (s *Service) Check(ctx context.Context, raw *ingestv1.RawPresentation, carr
 	}
 	result := ResultOf(raw, resp.Msg, &txn.Transaction{})
 	result.Carrier = carrier
+	if raw.GetDetectedType() == ingestv1.DetectedType_DETECTED_TYPE_CWT_CLAIM169 {
+		// The code is the carrier, whether it came as a scan, a file, a
+		// link or a paste.
+		result.Carrier = CarrierClaim169
+	}
 	if s.opts.Results == nil {
 		return result, nil
 	}

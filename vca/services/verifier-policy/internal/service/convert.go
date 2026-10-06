@@ -115,7 +115,7 @@ func carrierName(c ingestv1.Carrier) string {
 	case ingestv1.Carrier_CARRIER_QR:
 		return "qr"
 	case ingestv1.Carrier_CARRIER_QR_CLAIM169:
-		return "qr-claim169"
+		return policy.CarrierClaim169
 	case ingestv1.Carrier_CARRIER_UNSPECIFIED:
 	}
 	return "unknown"
