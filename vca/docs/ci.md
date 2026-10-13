@@ -7,27 +7,39 @@ code start with `vca-`. The legacy monolith under `verifiably-go/` keeps its
 own workflows (`quality.yml`, `image.yml`, `k8s.yml`).
 
 Every check either passes or blocks. No job uses `continue-on-error`.
-No check is report-only.
+Two outputs feed reports only, and the check behind each one blocks. The
+lint job writes a checkstyle report for Sonar, and the golangci-lint step
+of the same job blocks. The gosec job sends its findings to the Security
+tab, and the gosec linter of golangci-lint blocks.
 
 ## Workflows
 
 | Workflow | File | Runs when | Purpose |
 | --- | --- | --- | --- |
-| vca-ci | `.github/workflows/vca-ci.yml` | Pull request or push to `main` or `vc-adapter` that changes `vca/**` | The merge gate |
+| vca-ci | `.github/workflows/vca-ci.yml` | Each pull request or push to `main` or `vc-adapter`, or a manual start | The merge gate |
 | vca-release | `.github/workflows/vca-release.yml` | Push of a tag that matches `v*` | Build, sign and publish a release |
 | vca-nightly | `.github/workflows/vca-nightly.yml` | Every day at 02:30 UTC, or manual start | Slow checks that do not fit a PR |
 
 ## vca-ci: the merge gate
 
-Each job runs alone. A failure in one job blocks the merge.
+Each job runs alone, except `sonarcloud`, which waits for `lint` and
+`test`. A failure in one job blocks the merge.
+
+The workflow has no path filter. It is a required status check. A
+required check that filters itself out by path leaves a pull request
+without its status. A manual start (`workflow_dispatch`) runs it on any
+branch. A new push to a branch cancels the run in progress on that
+branch (concurrency group `vca-ci-<ref>`).
 
 | Job | What it checks | Tool |
 | --- | --- | --- |
 | conventional commits | Every commit subject in the PR follows Conventional Commits 1.0.0 | `vca/hack/check-commits.sh` |
-| shellcheck | Every script under `vca/hack/` is clean at the `style` level, and `check-commits_test.sh` passes | `shellcheck` |
-| gofmt + go vet + golangci-lint | Formatting, vet, and the linters in `vca/.golangci.yml` (`gosec` and `errcheck` included, no exclusions) | golangci-lint v2 |
+| shellcheck | Every `*.sh` file under `vca/` and `deploy/vca/` is clean at the `style` level, and `check-commits_test.sh` passes | `shellcheck` |
+| gofmt + go vet + golangci-lint | Formatting, vet, and the linters in `vca/.golangci.yml` (`gosec` and `errcheck` included, no exclusions). A second step writes the checkstyle report for Sonar and never fails the job | golangci-lint v2.5.0 (`GOLANGCI_LINT_VERSION`) |
 | buf lint + breaking | Proto style, and no breaking change against the last `v*` tag or the merge base with `main` | `buf`, `vca/hack/buf-breaking.sh` |
-| go test + coverage gate | Unit tests with the race detector; each package at 90 percent or more, `vca/core/...` at 100 | `go test`, `vca/hack/coverage.sh` |
+| go test + coverage gate | Unit tests with the race detector; each package at 90 percent or more, `vca/core/...` at 100; the total at or above `COVERAGE_FLOOR`. The job writes a coverage summary to the run page | `go test`, `vca/hack/coverage.sh` |
+| SonarCloud | The SonarCloud quality gate of project `centre-for-dpi_verifiably_vca` passes. The job skips a pull request from a fork | `sonarqube-scan-action`, `sonarqube-quality-gate-action` |
+| gosec SARIF (report for the Security tab) | Sends every gosec finding to the Security tab, category `gosec-vca`. It fails only when gosec cannot run | gosec v2.29.0 |
 | secret scan (blocking) | No key store, PEM private key, 64 hex API key, or literal password in the tracked tree | `vca/hack/secret-scan.sh` |
 | trivy fs (blocking) | No HIGH or CRITICAL vulnerability, secret, or misconfiguration under `vca/` | Trivy |
 | wallet.js in Chromium (Playwright) | `TestWalletScriptInChromium` drives the wallet pages in a headless Chromium against the walt.id walkthrough | Playwright 1.56.1, Chromium |
@@ -48,6 +60,17 @@ Notes:
   package numbers. Packages under `gen/` and `cmd/` are not gated. A
   package that holds tests only, such as the walkthrough, has no
   statements, so the gate skips it.
+- The test step names `shell: bash`. The default shell of a step has no
+  `pipefail`, so `go test | tee` would report a failed suite as a pass.
+- The test step writes `coverage.out` with `-coverpkg=./...`. A line
+  counts when the tests of any package reach it. The step also writes
+  `test-output.txt`, the `go test -json` stream that Sonar reads. The job
+  uploads both files as the artifact `vca-coverage`.
+- The coverage summary of the run page shows the total and the 40
+  functions with the lowest coverage. The total leaves out `gen/`, every
+  `cmd/` package and the kit example page `ui/example/`.
+- The coverage floor is a ratchet. The total must not drop below
+  `COVERAGE_FLOOR` in the test job. See "Raise the coverage floor".
 - The secret scan reads the files that git tracks, in the whole
   repository (ADR-029 decision 6). It never reads the history, because the
   history purge is a release step, see
@@ -63,10 +86,57 @@ make lint          # buf lint, go vet, gofmt
 golangci-lint run ./...
 make test
 make cover
-shellcheck hack/*.sh
+find . ../deploy/vca -name '*.sh' -type f -print0 | xargs -0 -r shellcheck -S style
 ./hack/secret-scan.sh
 ./hack/check-commits.sh origin/main..HEAD
 ```
+
+### Raise the coverage floor
+
+`COVERAGE_FLOOR` sits in the step "Coverage floor (ratchet)" of the test
+job. Raise it in the change that raises the coverage. Never lower it. To
+read the total, run these lines in `vca/`:
+
+```sh
+go test -race -count=1 -covermode=atomic -coverprofile=coverage.out -coverpkg=./... ./...
+grep -vE '/(gen|cmd)/|/ui/example/' coverage.out > coverage-gated.out
+go tool cover -func=coverage-gated.out | tail -1
+```
+
+Round the total down to one decimal, and set `COVERAGE_FLOOR` to that
+value. The floor was 95.6 when the ratchet started.
+
+### SonarCloud
+
+The analysis root is `vca/`. The configuration is
+`vca/sonar-project.properties`. The scan reads three reports from the
+other jobs: `coverage.out`, `test-output.txt` and
+`golangci-lint-report.xml`. The quality gate step waits for the result
+and blocks the merge when the gate fails.
+
+The owner must do these steps once, before the job can pass:
+
+1. Create the project `centre-for-dpi_verifiably_vca` in the organisation
+   `centre-for-dpi` in SonarCloud. It is separate from
+   `centre-for-dpi_verifiably`, the project of `verifiably-go/`.
+2. Turn Automatic Analysis off for the project (Administration, Analysis
+   Method). Automatic Analysis cannot read the Go coverage report.
+3. Keep the quality gate "Sonar way" on new code, or set a stricter one.
+
+The repository secret `SONAR_TOKEN` already exists. If the token is a
+project analysis token, give it access to the new project too. Until the
+project exists, the SonarCloud job fails, and the merge stays blocked.
+A pull request from a fork gets no secret, so the job skips it.
+
+### gosec
+
+The gosec job runs gosec v2.29.0 from `vca/`, with `-no-fail`. It leaves
+out rule G104, because errcheck in golangci-lint covers it. It also
+leaves out generated files, as `vca/.golangci.yml` does. The job sends
+the SARIF file to the Security tab, category `gosec-vca`. A pull request
+from a fork has a read only token, so the job skips the upload there. To
+move gosec to a new release, change the version in the step. Read the
+tags with `git ls-remote --tags https://github.com/securego/gosec.git`.
 
 ## The walkthrough
 

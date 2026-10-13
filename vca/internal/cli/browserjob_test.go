@@ -10,7 +10,9 @@ import (
 )
 
 // pinnedAction matches an action pinned to a commit with its version.
-var pinnedAction = regexp.MustCompile(`^[\w.-]+/[\w.-]+@[0-9a-f]{40} # v\d+(\.\d+)*$`)
+// An action may sit in a folder of its repository, as in
+// github/codeql-action/upload-sarif.
+var pinnedAction = regexp.MustCompile(`^[\w.-]+/[\w.-]+(?:/[\w.-]+)*@[0-9a-f]{40} # v\d+(\.\d+)*$`)
 
 // TestTheBrowserJobDrivesWalletJS is ADR-004 decision 6: vca-ci runs
 // the Playwright test of wallet.js in Chromium on every pull request,

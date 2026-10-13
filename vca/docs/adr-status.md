@@ -57,7 +57,7 @@ A row that is not `Done` carries a note.
 | ADR | Decision | Status | Where | Note |
 |---|---|---|---|---|
 | ADR-004 | 1 Each RPC starts with a test | Done | `vca/services/*/internal` | |
-| ADR-004 | 2 Coverage gate at 90 percent, core at 100 | Done | `vca/hack/coverage.sh` | |
+| ADR-004 | 2 Coverage gate at 90 percent, core at 100 | Done | `vca/hack/coverage.sh`, `.github/workflows/vca-ci.yml` | The test job also holds a floor for the total, `COVERAGE_FLOOR`, that only moves up. SonarCloud reads the same coverage report. |
 | ADR-004 | 3 Functional style, no package state | Done | `vca/core`, `vca/.golangci.yml` | |
 | ADR-004 | 4 Contract tests with fixtures and a nightly run | Done | `vca/hack/contract-tests.sh` | |
 | ADR-004 | 5 Property and fuzz tests for decoders | Done | `vca/core/ingest/fuzz_test.go` | |
@@ -85,7 +85,7 @@ A row that is not `Done` carries a note.
 | ADR-006 | 2 Conventional Commits checked in CI | Done | `vca/hack/check-commits.sh` | |
 | ADR-006 | 3 Release workflow on a `v*` tag | Done | `.github/workflows/vca-release.yml` | |
 | ADR-006 | 4 One version for all services | Done | `.github/workflows/vca-release.yml` | |
-| ADR-006 | 5 PR workflow with the full check list | Partial | `.github/workflows/vca-ci.yml` | The workflow has no browser test job and no axe job. Linter fixes run on another branch. |
+| ADR-006 | 5 PR workflow with the full check list | Partial | `.github/workflows/vca-ci.yml`, `vca/sonar-project.properties` | The workflow has no axe job. It has no path filter, so it can be a required check. It runs the SonarCloud quality gate, shellcheck on every script, and a gosec SARIF report. The gosec linter of golangci-lint is the blocking gosec check. Linter fixes run on another branch. |
 | ADR-006 | 6 Workflows at the repository root | Done | `.github/workflows` | |
 | ADR-006 | 7 Nightly contract tests and a kind deploy | Done | `.github/workflows/vca-nightly.yml` | |
 
