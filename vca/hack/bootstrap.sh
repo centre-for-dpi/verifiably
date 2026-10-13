@@ -74,8 +74,9 @@ clone google/go-cmp v0.7.0 go-cmp
 clone golang/net v0.59.0 net
 clone golang/crypto v0.57.0 crypto
 # x/text v0.42.0 needs Go 1.26. gozxing needs x/text, so the mirror stays
-# on v0.30.0, which builds with Go 1.25.
-clone golang/text v0.30.0 text-v0.30
+# on v0.39.0, which builds with Go 1.25 and carries the fix for
+# CVE-2026-56852 (versions before 0.39.0 fail the Trivy gate).
+clone golang/text v0.39.0 text-v0.39
 clone golang/sync v0.23.0 sync
 clone golang/sys v0.48.0 sys
 # gozxing needs x/xerrors. The repository publishes no tags.
@@ -116,7 +117,7 @@ replace (
 	github.com/google/go-cmp => $MIRRORS/go-cmp
 	golang.org/x/net => $MIRRORS/net
 	golang.org/x/crypto => $MIRRORS/crypto
-	golang.org/x/text => $MIRRORS/text-v0.30
+	golang.org/x/text => $MIRRORS/text-v0.39
 	golang.org/x/xerrors => $MIRRORS/xerrors
 	golang.org/x/sync => $MIRRORS/sync
 	golang.org/x/sys => $MIRRORS/sys
