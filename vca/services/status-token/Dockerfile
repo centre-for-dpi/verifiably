@@ -3,12 +3,14 @@
 #   docker build -f services/status-token/Dockerfile -t ghcr.io/centre-for-dpi/vca-status-token .
 FROM golang:1.25 AS build
 WORKDIR /src
-# go.sum is absent until "make tidy" runs on a networked machine.
+# go.sum is absent until "make tidy" runs on a networked machine, and a
+# go.sum of an earlier tidy lacks newer modules. -mod=mod fetches and
+# records what the sum lacks, as the CI does.
 COPY go.mod go.su[m] ./
 RUN go mod download
 COPY . .
 ARG VERSION=dev
-RUN CGO_ENABLED=0 GOFLAGS=-trimpath go build -ldflags="-s -w -X main.version=${VERSION}" \
+RUN CGO_ENABLED=0 GOFLAGS="-trimpath -mod=mod" go build -ldflags="-s -w -X main.version=${VERSION}" \
     -o /out/status-token ./services/status-token
 RUN mkdir -p /out/data
 

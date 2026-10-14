@@ -5,7 +5,7 @@ WORKDIR /src
 COPY go.mod go.sum* ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOFLAGS=-trimpath go build -ldflags="-s -w" -o /out/landing ./services/landing
+RUN CGO_ENABLED=0 GOFLAGS="-trimpath -mod=mod" go build -ldflags="-s -w" -o /out/landing ./services/landing
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/landing /landing

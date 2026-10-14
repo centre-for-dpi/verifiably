@@ -400,7 +400,7 @@ The volumes stay, so the data survives.
 | What you see | Why | The fix |
 |---|---|---|
 | `Command 'vca' not found` | No binary is on your path. | Build it and copy it to `/usr/local/bin/`. See "Get the binary". |
-| `missing go.sum entry` | The repository ships no `go.sum`. | Run `go mod tidy` in `vca/` before the build. |
+| `missing go.sum entry` | A `go.sum` from an earlier `go mod tidy` lacks a newer module. The image builds fetch what the sum lacks since 0.1; a host build does not. | Run `go mod tidy` in `vca/`, or delete the stale `go.sum`, then build again. |
 | `pull access denied` or `manifest unknown` | No release published the images yet. | Add `--build` to `vca deploy`, or run `vca images build`. |
 | `port is already allocated` | Another program holds a host port. | Stop that program. Or set `VCA_HOST_PORT_<SERVICE>` in the `.env` file of the pair. |
 | `no such host` in the browser | The DNS name does not point at the server. | Add the DNS record. Wait for the old answer to expire. |

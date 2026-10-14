@@ -314,3 +314,21 @@ func TestImagesBuildCommandNeedsAPair(t *testing.T) {
 		t.Errorf("status = %d, err = %s", status, errOut)
 	}
 }
+
+// TestEveryDockerfileBuildsWithoutACompleteGoSum pins the build step of
+// every image: the repository ships no go.sum, and a go.sum of an
+// earlier run of go mod tidy on the host lacks the entries of newer
+// modules. The build therefore runs with -mod=mod, which fetches and
+// records what the sum lacks, as the CI does.
+func TestEveryDockerfileBuildsWithoutACompleteGoSum(t *testing.T) {
+	for _, s := range Catalog() {
+		path := filepath.Join(repoRoot(), "vca", DockerfilePath(s))
+		text, err := os.ReadFile(path) // #nosec G304 -- the test reads the Dockerfiles of its own checkout
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(text), "GOFLAGS=\"-trimpath -mod=mod\" go build") {
+			t.Errorf("%s: go build runs without -mod=mod, so a stale go.sum on the host fails the build", DockerfilePath(s))
+		}
+	}
+}

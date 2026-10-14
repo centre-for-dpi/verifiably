@@ -6,7 +6,7 @@ WORKDIR /src
 COPY go.mod go.sum* ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOFLAGS=-trimpath go build -ldflags="-s -w" -o /out/dpg-adapter-credebl ./services/dpg-adapter-credebl
+RUN CGO_ENABLED=0 GOFLAGS="-trimpath -mod=mod" go build -ldflags="-s -w" -o /out/dpg-adapter-credebl ./services/dpg-adapter-credebl
 RUN mkdir -p /out/data
 
 FROM gcr.io/distroless/static-debian12:nonroot
