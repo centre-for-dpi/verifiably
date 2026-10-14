@@ -230,8 +230,15 @@ func TestBrowserFlow(t *testing.T) {
 		if verr != nil {
 			t.Fatalf("unexpected error: %v", verr)
 		}
-		if strings.Contains(string(enc), "user-1") || strings.Contains(string(enc), f.idp.Issuer()) || strings.Contains(string(enc), "at-") {
+		if strings.Contains(string(enc), "user-1") || strings.Contains(string(enc), f.idp.Issuer()) {
 			t.Fatalf("%s leaks personal data: %s", doc, enc)
+		}
+		// The whole token, not its prefix: three characters recur in
+		// random ciphertext.
+		for _, access := range f.idp.AccessTokens() {
+			if strings.Contains(string(enc), access) {
+				t.Fatalf("%s leaks the access token: %s", doc, enc)
+			}
 		}
 	}
 	// A second login reuses the wallet. The backend opens it again with

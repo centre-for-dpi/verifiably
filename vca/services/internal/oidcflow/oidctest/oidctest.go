@@ -153,6 +153,18 @@ func (p *Provider) Close() { p.Server.Close() }
 // Issuer returns the issuer URL.
 func (p *Provider) Issuer() string { return p.Server.URL }
 
+// AccessTokens returns every access token the token endpoint issued, so
+// a test checks that none of them is persisted.
+func (p *Provider) AccessTokens() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make([]string, 0, len(p.tokens))
+	for access := range p.tokens {
+		out = append(out, access)
+	}
+	return out
+}
+
 // DiscoveryURL returns the well-known URL.
 func (p *Provider) DiscoveryURL() string { return oidc.DiscoveryURL(p.Server.URL) }
 
