@@ -489,18 +489,24 @@ func TestSeedMovesTheLegacyRealmRecordToTheRealmOfTheRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := reg.Seed(oidcflow.SeedProvider(legacy)); err != nil {
-		t.Fatal(err)
+	if seedErr := reg.Seed(oidcflow.SeedProvider(legacy)); seedErr != nil {
+		t.Fatal(seedErr)
 	}
-	stored, _ := reg.Get(oidcflow.SeedID)
+	stored, getErr := reg.Get(oidcflow.SeedID)
+	if getErr != nil {
+		t.Fatal(getErr)
+	}
 	stored.DisplayName = "Edited"
-	if _, err := reg.Put(stored); err != nil {
-		t.Fatal(err)
+	if _, putErr := reg.Put(stored); putErr != nil {
+		t.Fatal(putErr)
 	}
-	if err := reg.Seed(oidcflow.SeedProvider(current)); err != nil {
-		t.Fatal(err)
+	if seedErr := reg.Seed(oidcflow.SeedProvider(current)); seedErr != nil {
+		t.Fatal(seedErr)
 	}
-	got, _ := reg.Get(oidcflow.SeedID)
+	got, getErr := reg.Get(oidcflow.SeedID)
+	if getErr != nil {
+		t.Fatal(getErr)
+	}
 	if got.DiscoveryURL != current.DiscoveryURL || got.Realm != "vca-issuer-realm" ||
 		got.ConsoleURL != "http://localhost:17010/admin/vca-issuer-realm/console/" || got.DisplayName != "Edited" {
 		t.Errorf("after the move: %+v", got)
@@ -508,23 +514,27 @@ func TestSeedMovesTheLegacyRealmRecordToTheRealmOfTheRole(t *testing.T) {
 	// Another realm of the admin's choice stays.
 	other := current
 	other.DiscoveryURL = "http://waltid-keycloak:8080/realms/corporate/.well-known/openid-configuration"
-	if err := reg.Seed(oidcflow.SeedProvider(other)); err != nil {
-		t.Fatal(err)
+	if seedErr := reg.Seed(oidcflow.SeedProvider(other)); seedErr != nil {
+		t.Fatal(seedErr)
 	}
-	if got, _ := reg.Get(oidcflow.SeedID); got.DiscoveryURL != current.DiscoveryURL {
-		t.Errorf("a seed of another realm replaced the stored record: %s", got.DiscoveryURL)
+	kept, getErr := reg.Get(oidcflow.SeedID)
+	if getErr != nil || kept.DiscoveryURL != current.DiscoveryURL {
+		t.Errorf("a seed of another realm replaced the stored record: %s %v", kept.DiscoveryURL, getErr)
 	}
 	// The legacy realm at another Keycloak is not the one setup wrote.
-	fresh, _ := oidcflow.NewRegistry(nil, nil)
+	fresh, freshErr := oidcflow.NewRegistry(nil, nil)
+	if freshErr != nil {
+		t.Fatal(freshErr)
+	}
 	elsewhere := legacy
 	elsewhere.DiscoveryURL = "https://idp.example/realms/vca/.well-known/openid-configuration"
-	if err := fresh.Seed(oidcflow.SeedProvider(elsewhere)); err != nil {
-		t.Fatal(err)
+	for _, seed := range []oidcflow.Seed{elsewhere, current} {
+		if seedErr := fresh.Seed(oidcflow.SeedProvider(seed)); seedErr != nil {
+			t.Fatal(seedErr)
+		}
 	}
-	if err := fresh.Seed(oidcflow.SeedProvider(current)); err != nil {
-		t.Fatal(err)
-	}
-	if got, _ := fresh.Get(oidcflow.SeedID); got.DiscoveryURL != elsewhere.DiscoveryURL {
-		t.Errorf("a seed at another Keycloak moved the record: %s", got.DiscoveryURL)
+	far, getErr := fresh.Get(oidcflow.SeedID)
+	if getErr != nil || far.DiscoveryURL != elsewhere.DiscoveryURL {
+		t.Errorf("a seed at another Keycloak moved the record: %s %v", far.DiscoveryURL, getErr)
 	}
 }

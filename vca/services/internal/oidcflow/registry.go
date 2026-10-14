@@ -157,8 +157,8 @@ func (r *Registry) Put(p Provider) (Provider, error) {
 func (r *Registry) Seed(p Provider) error {
 	stored, err := r.Get(p.ID)
 	if err != nil {
-		_, err := r.Put(p)
-		return err
+		_, putErr := r.Put(p)
+		return putErr
 	}
 	if !namesLegacyRealm(stored.DiscoveryURL, p.DiscoveryURL) {
 		return nil
