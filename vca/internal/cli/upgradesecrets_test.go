@@ -128,8 +128,8 @@ func TestDoctorFindsAVolumeOlderThanTheSecrets(t *testing.T) {
 	values := writeStackEnvAt(t, deploy, configv1.Dpg_DPG_INJI, secretsTime, nil)
 	probe := healthyProbe()
 	probe.volumes = map[string]time.Time{
-		"vca_inji-certify-db": secretsTime.Add(-24 * time.Hour),
-		"vca_inji-verify-db":  secretsTime.Add(time.Hour),
+		"vca_inji-certify-keys": secretsTime.Add(-24 * time.Hour),
+		"vca_inji-mimoto-db":    secretsTime.Add(time.Hour),
 	}
 	stacks := map[configv1.Dpg]map[string]string{configv1.Dpg_DPG_INJI: values}
 	pairs := []Pair{injiPair(commonv1.Role_ROLE_ISSUER)}
@@ -138,19 +138,27 @@ func TestDoctorFindsAVolumeOlderThanTheSecrets(t *testing.T) {
 		t.Fatalf("checks = %+v", checks)
 	}
 	c := checks[0]
-	if c.OK || !strings.Contains(c.Detail, "vca_inji-certify-db") || strings.Contains(c.Detail, "vca_inji-verify-db") ||
+	if c.OK || !strings.Contains(c.Detail, "vca_inji-certify-keys") || strings.Contains(c.Detail, "vca_inji-mimoto-db") ||
 		!strings.Contains(c.Fix, "vca dpg upgrade-secrets --dpg inji") {
 		t.Errorf("check = %+v", c)
 	}
 	// With the old password in place the check passes and asks for a
 	// rotation.
-	values["INJI_DB_PASSWORD"] = "certify"
+	generated := values["INJI_CERTIFY_KEYSTORE_PASSWORD"]
+	values["INJI_CERTIFY_KEYSTORE_PASSWORD"] = "certify"
 	c = stackVolumeChecks(DoctorOptions{Pairs: pairs, Probe: probe, Stacks: stacks})[0]
 	if !c.OK || !strings.Contains(c.Detail, "rotate") {
 		t.Errorf("check with the old password = %+v", c)
 	}
-	// No old volume passes quietly.
+	// The old password with no volume left would start a new volume on
+	// it (ADR-084).
 	probe.volumes = nil
+	c = stackVolumeChecks(DoctorOptions{Pairs: pairs, Probe: probe, Stacks: stacks})[0]
+	if c.OK || !strings.Contains(c.Detail, "INJI_CERTIFY_KEYSTORE_PASSWORD") || !strings.Contains(c.Fix, "vca setup") {
+		t.Errorf("check with the old password and no volume = %+v", c)
+	}
+	// No old volume and no old password passes quietly.
+	values["INJI_CERTIFY_KEYSTORE_PASSWORD"] = generated
 	c = stackVolumeChecks(DoctorOptions{Pairs: pairs, Probe: probe, Stacks: stacks})[0]
 	if !c.OK || c.Name != "stack secrets inji" {
 		t.Errorf("check with no volume = %+v", c)
@@ -189,9 +197,9 @@ func TestUpgradeSecretsWritesTheOldPasswords(t *testing.T) {
 	before := writeStackEnvAt(t, deploy, configv1.Dpg_DPG_INJI, secretsTime, nil)
 	probe := healthyProbe()
 	probe.volumes = map[string]time.Time{
-		"vca_inji-certify-db":   secretsTime.Add(-time.Hour),
+		"vca_inji-esignet-db":   secretsTime.Add(-time.Hour),
 		"vca_inji-certify-keys": secretsTime.Add(-time.Hour),
-		"vca_inji-verify-db":    secretsTime.Add(time.Hour),
+		"vca_inji-mimoto-db":    secretsTime.Add(time.Hour),
 	}
 	var out bytes.Buffer
 	changed, err := UpgradeSecrets(UpgradeOptions{
@@ -208,10 +216,10 @@ func TestUpgradeSecretsWritesTheOldPasswords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after["INJI_DB_PASSWORD"] != "certify" || after["INJI_CERTIFY_KEYSTORE_PASSWORD"] != "certify" {
-		t.Errorf("old passwords = %q %q", after["INJI_DB_PASSWORD"], after["INJI_CERTIFY_KEYSTORE_PASSWORD"])
+	if after["INJI_ESIGNET_DB_PASSWORD"] != "esignet" || after["INJI_CERTIFY_KEYSTORE_PASSWORD"] != "certify" {
+		t.Errorf("old passwords = %q %q", after["INJI_ESIGNET_DB_PASSWORD"], after["INJI_CERTIFY_KEYSTORE_PASSWORD"])
 	}
-	for _, name := range []string{"INJI_VERIFY_DB_PASSWORD", "INJI_MIMOTO_DB_PASSWORD", StackSecretsSinceEnv} {
+	for _, name := range []string{"INJI_DB_PASSWORD", "INJI_VERIFY_DB_PASSWORD", "INJI_MIMOTO_DB_PASSWORD", StackSecretsSinceEnv} {
 		if after[name] != before[name] {
 			t.Errorf("%s changed from %q to %q", name, before[name], after[name])
 		}
@@ -221,12 +229,12 @@ func TestUpgradeSecretsWritesTheOldPasswords(t *testing.T) {
 		t.Errorf("mode = %v %v", info, err)
 	}
 	text := out.String()
-	for _, want := range []string{"INJI_DB_PASSWORD", "vca_inji-certify-db", "Rotate", "docs/deploy.md"} {
+	for _, want := range []string{"INJI_ESIGNET_DB_PASSWORD", "vca_inji-esignet-db", "Rotate", "docs/deploy.md"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the output lacks %q:\n%s", want, text)
 		}
 	}
-	if strings.Contains(text, "certify\n") || strings.Contains(text, before["INJI_DB_PASSWORD"]) {
+	if strings.Contains(text, "certify\n") || strings.Contains(text, before["INJI_ESIGNET_DB_PASSWORD"]) {
 		t.Errorf("the output shows a password:\n%s", text)
 	}
 	out.Reset()
@@ -369,7 +377,7 @@ func TestSetupKeepsTheOldPasswordsOfExistingVolumes(t *testing.T) {
 	probe := healthyProbe()
 	// The volumes are a year older than the run.
 	old := time.Now().UTC().AddDate(-1, 0, 0)
-	probe.volumes = map[string]time.Time{"vca_inji-certify-db": old, "vca_inji-mimoto-keys": old}
+	probe.volumes = map[string]time.Time{"vca_inji-esignet-db": old, "vca_inji-mimoto-keys": old}
 	env := Environment{Root: root, NewProbe: func(context.Context) Probe { return probe }}
 	status, out, errOut := run(t, env, "setup", "--role", "issuer", "--dpg", "inji", "--non-interactive")
 	if status != 0 {
@@ -379,7 +387,7 @@ func TestSetupKeepsTheOldPasswordsOfExistingVolumes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inji["INJI_DB_PASSWORD"] != "certify" || inji["INJI_MIMOTO_KEYSTORE_PASSWORD"] != "mimoto" {
+	if inji["INJI_ESIGNET_DB_PASSWORD"] != "esignet" || inji["INJI_MIMOTO_KEYSTORE_PASSWORD"] != "mimoto" {
 		t.Fatalf("the old passwords are lost: %v", inji)
 	}
 	if inji["INJI_VERIFY_DB_PASSWORD"] == "injiverify" || len(inji["INJI_VERIFY_DB_PASSWORD"]) != stackSecretLength {
@@ -389,12 +397,12 @@ func TestSetupKeepsTheOldPasswordsOfExistingVolumes(t *testing.T) {
 	if err != nil || waltid["WALTID_DB_PASSWORD"] == "waltid" {
 		t.Fatalf("waltid = %v %v", waltid, err)
 	}
-	for _, want := range []string{"INJI_DB_PASSWORD", "vca_inji-certify-db", "INJI_MIMOTO_KEYSTORE_PASSWORD", rotateHint} {
+	for _, want := range []string{"INJI_ESIGNET_DB_PASSWORD", "vca_inji-esignet-db", "INJI_MIMOTO_KEYSTORE_PASSWORD", rotateHint} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the run does not say %q:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "=certify") {
+	if strings.Contains(out, "=esignet") || strings.Contains(out, "=mimoto") {
 		t.Error("the run printed a password")
 	}
 	// The doctor then passes the stack and asks for a rotation.
@@ -409,7 +417,7 @@ func TestSetupKeepsTheOldPasswordsOfExistingVolumes(t *testing.T) {
 		t.Fatalf("second setup = %d\n%s", status, errOut)
 	}
 	again, err := ReadStackEnv(deploy, configv1.Dpg_DPG_INJI)
-	if err != nil || again["INJI_DB_PASSWORD"] != "certify" {
+	if err != nil || again["INJI_ESIGNET_DB_PASSWORD"] != "esignet" {
 		t.Fatalf("again = %v %v", again, err)
 	}
 	// A first run without Docker writes new secrets and says so.

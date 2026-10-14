@@ -4,7 +4,7 @@ This page records the state of every decision in the architecture
 decision records. The root record set is [ADR.md](../../ADR.md). It
 holds ADR-001 to ADR-031. The records from ADR-032 on are files in
 [adr](adr), listed in the [index](adr.md). The page covers ADR-001 to
-ADR-083, one row per decision.
+ADR-084, one row per decision.
 
 The status values are:
 
@@ -879,12 +879,23 @@ A row that is not `Done` carries a note.
 | ADR-083 | 5 The browser store signs a VP JWT around a bound jwt_vc_json credential | Done | `vca/services/wallet-portal/internal/holderkey/holderkey.go`, `vca/services/wallet-portal/internal/service/binding.go` | `TestBrowserStoreSignsAVPJWTForJwtVcJson` pins it. wallet.js signs the input the portal hands it. |
 | ADR-083 | 6 An mDoc of the browser store stays unbound | Done | `vca/docs/wallet-portal.md`, `vca/docs/verifier-policy.md` | VCA skips an mDoc with a device signature and leaves it to the stack verifier. |
 
+## ADR-084: A volume that this release cannot serve stops deploy
+
+| ADR | Decision | Status | Where | Note |
+|---|---|---|---|---|
+| ADR-084 | 1 A stack volume names what this release changed inside it | Done | `vca/internal/cli/upgradesecrets.go` | `StackVolume.Rebuilt` holds it for `vca_inji-certify-db` and `vca_inji-verify-db`. `TestRebuiltVolumesAreTheOnesWhoseLayoutChanged` pins the set against the stack file. |
+| ADR-084 | 2 Setup and upgrade-secrets give such a volume no old password | Done | `vca/internal/cli/upgradesecrets.go` | `TestSetupDoctorAndDeployRefuseAVolumeThisReleaseCannotServe` and `TestUpgradeSecretsLeavesAVolumeThisReleaseCannotServe` pin it. |
+| ADR-084 | 3 The doctor fails the stack with the commands | Done | `vca/internal/cli/upgradesecrets.go` | The same test pins the doctor line. |
+| ADR-084 | 4 Deploy runs the stack secrets check before compose up | Done | `vca/internal/cli/deploy.go`, `vca/internal/cli/upgradesecrets.go` | `checkStackVolumes` reads the volumes through the output runner. The same test pins that compose never runs. |
+| ADR-084 | 5 A default password that no volume holds fails the check | Done | `vca/internal/cli/upgradesecrets.go` | `TestDeployRefusesADefaultPasswordThatNoVolumeHolds` pins it. |
+| ADR-084 | 6 VCA removes no volume | Done | `vca/internal/cli/upgradesecrets.go` | `RemoveVolumeCommands` prints the commands. No code calls `docker volume rm`. |
+
 ## Counts
 
 | Status | Decisions |
 |---|---|
-| Done | 420 |
+| Done | 426 |
 | Partial | 19 |
 | Deferred | 3 |
 | Not started | 5 |
-| Total | 447 |
+| Total | 453 |

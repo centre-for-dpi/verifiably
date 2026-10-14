@@ -63,3 +63,4 @@ each decision of each record.
 - [ADR-081: Consent equals disclosure on every holder path](adr/ADR-081-consent-equals-disclosure.md)
 - [ADR-082: The browser store claims with the authorization code flow](adr/ADR-082-browser-store-authorization-code.md)
 - [ADR-083: A verifier policy requires holder binding](adr/ADR-083-holder-binding-required.md)
+- [ADR-084: A volume that this release cannot serve stops deploy](adr/ADR-084-volumes-of-another-layout.md)

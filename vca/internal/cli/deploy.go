@@ -134,6 +134,11 @@ func lifecycle(ctx context.Context, opts DeployOptions, action []string) error {
 	if err := checkComposeRelease(opts.Root, opts.Build); err != nil {
 		return err
 	}
+	if action[0] == "up" {
+		if err := checkStackVolumes(ctx, opts); err != nil {
+			return err
+		}
+	}
 	for _, p := range opts.Pairs {
 		if action[0] == "up" {
 			if err := checkContainerNames(ctx, opts, p); err != nil {

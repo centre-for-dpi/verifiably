@@ -877,16 +877,33 @@ Other values stay.
 The command prints one line per value and no password.
 `vca doctor` fails a volume older than the stamp with another password.
 It passes a volume with its old password and asks you to rotate it.
+It fails a default password that no volume holds, so a new volume
+starts on a generated one.
+
+Two volumes of the earlier release cannot serve this release on any
+password (ADR-084).
+The earlier release ran the Certify database as the user `certify` in
+the database `certify`.
+This release runs it as the user `postgres` in `inji_certify`.
+Its init files lay the schema out at the first start of the volume.
+The earlier Inji Verify database had no `init.sql`, so it has no schema
+`verify`.
+Setup, `vca dpg upgrade-secrets`, `vca doctor` and `vca deploy` name
+such a volume and print two lines for it.
+One saves the volume as a tar file in the working directory.
+One removes it.
+`vca deploy` stops before `docker compose up` while the volume exists.
+VCA removes no volume itself.
 
 | Volume | Variable |
 |---|---|
 | `vca_waltid-db` | `WALTID_DB_PASSWORD` |
-| `vca_inji-certify-db` | `INJI_DB_PASSWORD` |
+| `vca_inji-certify-db` | `INJI_DB_PASSWORD` (the earlier volume cannot serve this release, see above) |
 | `vca_inji-certify-keys` | `INJI_CERTIFY_KEYSTORE_PASSWORD` |
 | `vca_inji-esignet-db` | `INJI_ESIGNET_DB_PASSWORD` |
 | `vca_inji-mimoto-db` | `INJI_MIMOTO_DB_PASSWORD` |
 | `vca_inji-mimoto-keys` | `INJI_MIMOTO_KEYSTORE_PASSWORD` |
-| `vca_inji-verify-db` | `INJI_VERIFY_DB_PASSWORD` |
+| `vca_inji-verify-db` | `INJI_VERIFY_DB_PASSWORD` (the earlier volume cannot serve this release, see above) |
 | `vca_credebl-db` | `CREDEBL_DB_PASSWORD` |
 
 Rotate an old database password soon after the upgrade:

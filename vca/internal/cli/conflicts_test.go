@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 )
 
 // injiIssuerPair returns the issuer and Inji pair.
@@ -110,13 +111,30 @@ type outputScript struct {
 	configErr error
 	ps        string
 	psErr     error
-	calls     [][]string
+	// volumes holds the stack volumes of the host by their docker name
+	// and the time docker made them.
+	volumes map[string]time.Time
+	calls   [][]string
 }
 
 func (s *outputScript) run(_ context.Context, name string, args []string) (string, error) {
 	s.calls = append(s.calls, append([]string{name}, args...))
 	if len(args) > 1 && args[0] == "compose" {
 		return s.config, s.configErr
+	}
+	if len(args) > 1 && args[0] == "volume" {
+		if s.psErr != nil {
+			return "", s.psErr
+		}
+		volume := args[len(args)-1]
+		if args[1] == "ls" {
+			volume = strings.TrimPrefix(volume, "name=")
+			if _, ok := s.volumes[volume]; ok {
+				return volume + "\n", nil
+			}
+			return "", nil
+		}
+		return s.volumes[volume].UTC().Format(time.RFC3339) + "\n", nil
 	}
 	return s.ps, s.psErr
 }
@@ -143,18 +161,33 @@ func TestDeployStopsOnAContainerNameConflict(t *testing.T) {
 	if len(rec.calls) != 0 {
 		t.Errorf("compose up ran %d times after a conflict", len(rec.calls))
 	}
-	if len(script.calls) != 2 {
-		t.Fatalf("got %d docker calls", len(script.calls))
+	// The volume reads of the stack secrets check come first (ADR-084),
+	// then the configuration and the container list.
+	calls := nonVolumeCalls(script.calls)
+	if len(calls) != 2 {
+		t.Fatalf("got %d docker calls besides the volume reads: %v", len(calls), calls)
 	}
-	config := strings.Join(script.calls[0], " ")
+	config := strings.Join(calls[0], " ")
 	for _, want := range []string{"--project-name vca", "--profile issuer-inji", "config --format json"} {
 		if !strings.Contains(config, want) {
 			t.Errorf("config call has no %q: %s", want, config)
 		}
 	}
-	if ps := strings.Join(script.calls[1], " "); !strings.Contains(ps, "ps --all --format") {
+	if ps := strings.Join(calls[1], " "); !strings.Contains(ps, "ps --all --format") {
 		t.Errorf("ps call: %s", ps)
 	}
+}
+
+// nonVolumeCalls drops the docker volume reads from a list of calls.
+func nonVolumeCalls(calls [][]string) [][]string {
+	var out [][]string
+	for _, call := range calls {
+		if len(call) > 1 && call[1] == "volume" {
+			continue
+		}
+		out = append(out, call)
+	}
+	return out
 }
 
 func TestDeployRunsWhenNoNameConflicts(t *testing.T) {
@@ -172,7 +205,7 @@ func TestDeployRunsWhenNoNameConflicts(t *testing.T) {
 	if len(rec.calls) != 1 {
 		t.Fatalf("compose up ran %d times", len(rec.calls))
 	}
-	if config := strings.Join(script.calls[0], " "); !strings.Contains(config, "compose.build.yaml") {
+	if config := strings.Join(nonVolumeCalls(script.calls)[0], " "); !strings.Contains(config, "compose.build.yaml") {
 		t.Errorf("a build run reads the configuration without the build file: %s", config)
 	}
 }

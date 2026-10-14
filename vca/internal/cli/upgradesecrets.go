@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -34,6 +35,11 @@ type StackVolume struct {
 	// Old is the default password of the stack file before generated
 	// secrets. A volume of that time still holds it.
 	Old string
+	// Rebuilt names what this release changed inside the volume, when a
+	// volume of the release before generated secrets cannot serve this
+	// one even on its old password (ADR-084). Empty means the old volume
+	// works on its old password.
+	Rebuilt string
 }
 
 // Docker returns the name that compose gives the volume.
@@ -47,12 +53,14 @@ func StackVolumes(d configv1.Dpg) []StackVolume {
 		return []StackVolume{{Volume: "waltid-db", Env: "WALTID_DB_PASSWORD", Old: "waltid"}}
 	case configv1.Dpg_DPG_INJI:
 		return []StackVolume{
-			{Volume: "inji-certify-db", Env: "INJI_DB_PASSWORD", Old: "certify"},
+			{Volume: "inji-certify-db", Env: "INJI_DB_PASSWORD", Old: "certify",
+				Rebuilt: "this release runs the Certify database as the user postgres in the database inji_certify, which certify_init.sql and vca_claims.sql lay out at the first start; the earlier release ran it as the user certify in the database certify"},
 			{Volume: "inji-certify-keys", Env: "INJI_CERTIFY_KEYSTORE_PASSWORD", Old: "certify"},
 			{Volume: "inji-esignet-db", Env: "INJI_ESIGNET_DB_PASSWORD", Old: "esignet"},
 			{Volume: "inji-mimoto-db", Env: "INJI_MIMOTO_DB_PASSWORD", Old: "mimoto"},
 			{Volume: "inji-mimoto-keys", Env: "INJI_MIMOTO_KEYSTORE_PASSWORD", Old: "mimoto"},
-			{Volume: "inji-verify-db", Env: "INJI_VERIFY_DB_PASSWORD", Old: "injiverify"},
+			{Volume: "inji-verify-db", Env: "INJI_VERIFY_DB_PASSWORD", Old: "injiverify",
+				Rebuilt: "init.sql of this release creates the schema verify at the first start of the volume; the earlier release had no init.sql"},
 		}
 	case configv1.Dpg_DPG_CREDEBL:
 		return []StackVolume{{Volume: "credebl-db", Env: "CREDEBL_DB_PASSWORD", Old: "credebl"}}
@@ -64,18 +72,49 @@ func StackVolumes(d configv1.Dpg) []StackVolume {
 // password.
 const rotateHint = "Rotate these passwords later. See docs/deploy.md, section Upgrade from shared passwords."
 
-// olderVolume is a volume that predates the secrets of its stack.
-type olderVolume struct {
+// RemoveVolumeCommands returns the two commands that save a volume as a
+// tar file in the working directory and remove it. Only the operator
+// runs them (ADR-084).
+func RemoveVolumeCommands(volume string) []string {
+	return []string{
+		fmt.Sprintf("docker run --rm -v %s:/from:ro -v \"$PWD\":/to alpine tar czf /to/%s.tgz -C /from .", volume, volume),
+		"docker volume rm " + volume,
+	}
+}
+
+// rebuiltHint tells the operator what to do with the volumes that this
+// release cannot serve.
+func rebuiltHint(volumes []string) string {
+	var b strings.Builder
+	b.WriteString("Back each one up and remove it, then run vca deploy again:")
+	for _, name := range volumes {
+		for _, command := range RemoveVolumeCommands(name) {
+			b.WriteString("\n  " + command)
+		}
+	}
+	return b.String()
+}
+
+// volumeReader reads when Docker made a volume. A Probe is one, and so
+// is the deploy command with its output runner.
+type volumeReader interface {
+	VolumeCreated(name string) (time.Time, bool, error)
+}
+
+// volumeState is one stack volume as the host holds it.
+type volumeState struct {
 	StackVolume
-	// Current reports whether the stack .env already holds the old
-	// password.
+	// Exists reports whether Docker holds the volume.
+	Exists bool
+	// Older reports a volume that predates the secrets of the stack.
+	Older bool
+	// Current reports whether the stack .env holds the old password.
 	Current bool
 }
 
-// olderVolumes returns the volumes of one stack that predate the
-// secrets of its .env. values holds the .env; an empty map means no
-// file, so every volume predates it.
-func olderVolumes(probe Probe, d configv1.Dpg, values map[string]string) ([]olderVolume, error) {
+// volumeStates reads every volume of one stack. values holds the .env;
+// an empty map means no file, so every volume predates it.
+func volumeStates(probe volumeReader, d configv1.Dpg, values map[string]string) ([]volumeState, error) {
 	var since time.Time
 	if stamp := values[StackSecretsSinceEnv]; stamp != "" {
 		parsed, err := time.Parse(time.RFC3339, stamp)
@@ -84,16 +123,37 @@ func olderVolumes(probe Probe, d configv1.Dpg, values map[string]string) ([]olde
 		}
 		since = parsed
 	}
-	var out []olderVolume
+	var out []volumeState
 	for _, v := range StackVolumes(d) {
 		created, exists, err := probe.VolumeCreated(v.Docker())
 		if err != nil {
 			return nil, fmt.Errorf("cannot read the volume %s: %w", v.Docker(), err)
 		}
-		if !exists || (!since.IsZero() && !created.Before(since)) {
-			continue
+		out = append(out, volumeState{
+			StackVolume: v,
+			Exists:      exists,
+			Older:       exists && (since.IsZero() || created.Before(since)),
+			Current:     values[v.Env] == v.Old,
+		})
+	}
+	return out, nil
+}
+
+// olderVolume is a volume that predates the secrets of its stack.
+type olderVolume = volumeState
+
+// olderVolumes returns the volumes of one stack that predate the
+// secrets of its .env.
+func olderVolumes(probe volumeReader, d configv1.Dpg, values map[string]string) ([]olderVolume, error) {
+	states, err := volumeStates(probe, d, values)
+	if err != nil {
+		return nil, err
+	}
+	var out []olderVolume
+	for _, s := range states {
+		if s.Older {
+			out = append(out, s)
 		}
-		out = append(out, olderVolume{StackVolume: v, Current: values[v.Env] == v.Old})
 	}
 	return out, nil
 }
@@ -114,28 +174,51 @@ func stackVolumeChecks(opts DoctorOptions) []Check {
 	return out
 }
 
-// stackVolumeCheck checks the volumes of one stack.
-func stackVolumeCheck(probe Probe, d configv1.Dpg, values map[string]string) Check {
+// stackVolumeCheck checks the volumes of one stack. It fails a volume
+// of the release before generated secrets that this release cannot
+// serve (ADR-084), a volume older than the secrets while the .env holds
+// another password, and a default password that no volume needs.
+func stackVolumeCheck(probe volumeReader, d configv1.Dpg, values map[string]string) Check {
 	short := ShortName(d.String())
 	name := "stack secrets " + short
 	fix := "run vca dpg upgrade-secrets --dpg " + short
-	older, err := olderVolumes(probe, d, values)
+	states, err := volumeStates(probe, d, values)
 	if err != nil {
 		return Check{Name: name, Detail: err.Error(), Fix: "start Docker, check " + StackEnvFile(d) + ", and run vca doctor again"}
 	}
-	var stale, kept []string
-	for _, v := range older {
-		if v.Current {
+	var rebuilt, reasons, stale, kept, unused []string
+	for _, v := range states {
+		switch {
+		case v.Older && v.Rebuilt != "":
+			rebuilt = append(rebuilt, v.Docker())
+			reasons = append(reasons, v.Docker()+": "+v.Rebuilt)
+		case v.Older && !v.Current:
+			stale = append(stale, v.Docker())
+		case v.Older:
 			kept = append(kept, v.Docker())
-			continue
+		case !v.Exists && v.Current:
+			unused = append(unused, v.Env)
 		}
-		stale = append(stale, v.Docker())
+	}
+	if len(rebuilt) > 0 {
+		return Check{
+			Name:   name,
+			Detail: "volumes of the release before generated secrets cannot serve this release. " + strings.Join(reasons, ". "),
+			Fix:    rebuiltHint(rebuilt),
+		}
 	}
 	if len(stale) > 0 {
 		return Check{
 			Name:   name,
 			Detail: "volumes older than the generated secrets hold another password: " + strings.Join(stale, ", "),
 			Fix:    fix + " to write their old passwords into " + StackEnvFile(d),
+		}
+	}
+	if len(unused) > 0 {
+		return Check{
+			Name:   name,
+			Detail: "default passwords of the release before generated secrets that no volume holds: " + strings.Join(unused, ", "),
+			Fix:    "remove these lines from " + StackEnvFile(d) + " and run vca setup for the pair again, so the volumes start on generated passwords",
 		}
 	}
 	if len(kept) > 0 {
@@ -155,7 +238,7 @@ func stackVolumeCheck(probe Probe, d configv1.Dpg, values map[string]string) Che
 // read Docker leaves every value as it is and says so. It returns the
 // number of values it set.
 func KeepOldSecrets(probe Probe, stacks map[configv1.Dpg]map[string]string, out io.Writer) int {
-	var lines []string
+	var lines, rebuiltLines, rebuilt []string
 	for _, d := range StackDpgs() {
 		if len(stacks[d]) > 0 {
 			continue
@@ -171,6 +254,15 @@ func KeepOldSecrets(probe Probe, stacks map[configv1.Dpg]map[string]string, out 
 			if !exists {
 				continue
 			}
+			// A volume this release cannot serve gets a new password
+			// like any new volume. The operator removes the old one
+			// first (ADR-084).
+			if v.Rebuilt != "" {
+				rebuilt = append(rebuilt, v.Docker())
+				rebuiltLines = append(rebuiltLines, fmt.Sprintf("%s: %s comes from the release before generated secrets, and this release cannot serve it: %s.",
+					ShortName(d.String()), v.Docker(), v.Rebuilt))
+				continue
+			}
 			values[v.Env] = v.Old
 			lines = append(lines, fmt.Sprintf("%s: %s keeps the password of %s from before generated secrets.",
 				ShortName(d.String()), v.Env, v.Docker()))
@@ -178,6 +270,12 @@ func KeepOldSecrets(probe Probe, stacks map[configv1.Dpg]map[string]string, out 
 		if len(values) > 0 {
 			stacks[d] = values
 		}
+	}
+	for _, line := range rebuiltLines {
+		anyval.DiscardWrite(fmt.Fprintln(out, line))
+	}
+	if len(rebuilt) > 0 {
+		anyval.DiscardWrite(fmt.Fprintln(out, rebuiltHint(rebuilt)))
 	}
 	if len(lines) == 0 {
 		return 0
@@ -237,9 +335,18 @@ func UpgradeSecrets(opts UpgradeOptions) (int, error) {
 		plans = append(plans, plan{d: d, values: values, older: older})
 	}
 	changed := 0
+	var rebuilt []string
 	for _, pl := range plans {
 		var lines []string
 		for _, v := range pl.older {
+			// A volume this release cannot serve keeps no password.
+			// The operator removes it (ADR-084).
+			if v.Rebuilt != "" {
+				rebuilt = append(rebuilt, v.Docker())
+				anyval.DiscardWrite(fmt.Fprintf(opts.Out, "%s: %s comes from the release before generated secrets, and this release cannot serve it: %s.\n",
+					ShortName(pl.d.String()), v.Docker(), v.Rebuilt))
+				continue
+			}
 			if v.Current {
 				continue
 			}
@@ -259,8 +366,13 @@ func UpgradeSecrets(opts UpgradeOptions) (int, error) {
 		}
 		changed += len(lines)
 	}
+	if len(rebuilt) > 0 {
+		anyval.DiscardWrite(fmt.Fprintln(opts.Out, rebuiltHint(rebuilt)))
+	}
 	if changed == 0 {
-		anyval.DiscardWrite(fmt.Fprintln(opts.Out, "No stack volume predates the generated secrets. Nothing changed."))
+		if len(rebuilt) == 0 {
+			anyval.DiscardWrite(fmt.Fprintln(opts.Out, "No stack volume predates the generated secrets. Nothing changed."))
+		}
 		return 0, nil
 	}
 	anyval.DiscardWrite(fmt.Fprintln(opts.Out, rotateHint))
@@ -327,7 +439,24 @@ func refreshWaltidWallet(deploy string, d configv1.Dpg, stackEnv string) error {
 // VolumeCreated asks Docker when a volume was made. A volume that does
 // not exist gives false and no error.
 func (p *SystemProbe) VolumeCreated(name string) (time.Time, bool, error) {
-	list, err := p.Output(p.Ctx, "docker", []string{"volume", "ls", "--quiet", "--filter", "name=" + name})
+	return volumeCreated(p.Ctx, p.Output, name)
+}
+
+// outputVolumes reads the volumes of Docker through an OutputRunner, as
+// the deploy command has one and no Probe.
+type outputVolumes struct {
+	ctx    context.Context
+	output OutputRunner
+}
+
+func (o outputVolumes) VolumeCreated(name string) (time.Time, bool, error) {
+	return volumeCreated(o.ctx, o.output, name)
+}
+
+// volumeCreated lists the volume by its exact name, then reads its
+// creation time.
+func volumeCreated(ctx context.Context, output OutputRunner, name string) (time.Time, bool, error) {
+	list, err := output(ctx, "docker", []string{"volume", "ls", "--quiet", "--filter", "name=" + name})
 	if err != nil {
 		return time.Time{}, false, err
 	}
@@ -340,7 +469,7 @@ func (p *SystemProbe) VolumeCreated(name string) (time.Time, bool, error) {
 	if !found {
 		return time.Time{}, false, nil
 	}
-	out, err := p.Output(p.Ctx, "docker", []string{"volume", "inspect", "--format", "{{.CreatedAt}}", name})
+	out, err := output(ctx, "docker", []string{"volume", "inspect", "--format", "{{.CreatedAt}}", name})
 	if err != nil {
 		return time.Time{}, false, err
 	}
@@ -349,4 +478,31 @@ func (p *SystemProbe) VolumeCreated(name string) (time.Time, bool, error) {
 		return time.Time{}, false, fmt.Errorf("volume %s: cannot read the time %q", name, strings.TrimSpace(out))
 	}
 	return created, true, nil
+}
+
+// checkStackVolumes refuses to start a pair whose stack volumes fail
+// the stack secrets check of the doctor (ADR-084): a volume of the
+// release before generated secrets that this release cannot serve, a
+// volume on another password, or a default password that no volume
+// holds. Without an output runner there is nothing to read.
+func checkStackVolumes(ctx context.Context, opts DeployOptions) error {
+	if opts.Output == nil {
+		return nil
+	}
+	seen := map[configv1.Dpg]bool{}
+	probe := outputVolumes{ctx: ctx, output: opts.Output}
+	for _, p := range opts.Pairs {
+		if seen[p.Dpg] || StackVolumes(p.Dpg) == nil {
+			continue
+		}
+		seen[p.Dpg] = true
+		values, err := ReadStackEnv(filepath.Join(opts.Root, "deploy"), p.Dpg)
+		if err != nil {
+			return fmt.Errorf("deploy %s: %w", p.Name(), err)
+		}
+		if c := stackVolumeCheck(probe, p.Dpg, values); !c.OK {
+			return fmt.Errorf("deploy %s: %s\n%s", p.Name(), c.Detail, c.Fix)
+		}
+	}
+	return nil
 }
