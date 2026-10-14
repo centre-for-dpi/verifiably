@@ -1192,9 +1192,15 @@ table.
 A base domain gets `https://<dpg>-keycloak.<domain>`.
 The Caddyfile of the issuer pair of the stack sends that host name to
 the host port.
-Keycloak reads the `X-Forwarded` headers of the proxy
-(`KC_PROXY_HEADERS=xforwarded`), so its login page and its redirects
-carry the public address.
+Keycloak takes that address as its hostname (`KC_HOSTNAME`), so the
+issuer and the front channel endpoints of its discovery document carry
+the public address even when a service fetches the document on the
+compose network, and the token `iss` matches.
+Its backchannel is dynamic (`KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`), so
+the token and key set endpoints of that document keep the container
+address a service used.
+It reads the `X-Forwarded` headers of the proxy
+(`KC_PROXY_HEADERS=xforwarded`), so its login page works behind TLS.
 A public `VCA_PUBLIC_URL` with no base domain gets `http://<public host>`
 with the host port, with no TLS. Use it for a test only.
 `vca doctor` checks that the host port is free and that the host name

@@ -34,6 +34,14 @@ services:
       # headers. Keycloak builds its URLs from them, so the login page
       # works behind TLS.
       KC_PROXY_HEADERS: xforwarded
+      # The browser reaches Keycloak at VCA_OIDC_PUBLIC_URL, and the
+      # services reach it on the compose network. The fixed hostname puts
+      # the public address into the issuer and the front channel endpoints
+      # of every discovery document, whoever fetches it, and the dynamic
+      # backchannel keeps the token and key set endpoints on the address
+      # of the request, so a service stays on the compose network.
+      KC_HOSTNAME: ${VCA_OIDC_PUBLIC_URL:?set by vca setup}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
     volumes:
       # The stack directory holds one realm per role, vca-<role>-realm.json,
       # which vca setup writes (ADR-035 decision 1). Keycloak imports every

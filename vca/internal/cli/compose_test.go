@@ -459,3 +459,33 @@ func TestMountsRender(t *testing.T) {
 		t.Errorf("MountsFor = %v", got)
 	}
 }
+
+// TestKeycloakOfEveryStackPinsThePublicHostname: the services fetch the
+// discovery document on the compose network, so without a fixed
+// hostname Keycloak would name its container in the issuer and the
+// authorization endpoint, and a browser could reach neither. The
+// hostname is the browser facing address of setup, and the dynamic
+// backchannel keeps the token and key set endpoints on the container.
+func TestKeycloakOfEveryStackPinsThePublicHostname(t *testing.T) {
+	for _, d := range []configv1.Dpg{configv1.Dpg_DPG_WALTID, configv1.Dpg_DPG_INJI, configv1.Dpg_DPG_CREDEBL} {
+		name := "dpg/" + ShortName(d.String()) + ".yaml"
+		data, err := os.ReadFile(filepath.Join(repoRoot(), "deploy", "vca", filepath.FromSlash(name))) // #nosec G304 -- a fixed test path
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc composeDoc
+		if err := yaml.Unmarshal(data, &doc); err != nil {
+			t.Fatal(err)
+		}
+		env := doc.Services[KeycloakContainer(d)].Environment
+		for key, want := range map[string]string{
+			"KC_HOSTNAME":                     "${" + EnvOidcPublicURL + ":?set by vca setup}",
+			"KC_HOSTNAME_BACKCHANNEL_DYNAMIC": "true",
+			"KC_PROXY_HEADERS":                "xforwarded",
+		} {
+			if env[key] != want {
+				t.Errorf("%s %s = %q, want %q", name, key, env[key], want)
+			}
+		}
+	}
+}
