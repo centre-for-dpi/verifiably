@@ -130,12 +130,12 @@ The owner must do these steps once, before the job can pass:
    main branch to `main`.
 4. Keep the quality gate "Sonar way" on new code, or set a stricter one.
 5. Give the organisation a plan that covers the size of `vca/`. The free
-   plan allows 50 000 lines of code for the whole organisation, and the
-   first analysis counted 120 114 for `vca/` (Go 116 970). Until then the
-   background task of every analysis fails at the limit, so the job runs
-   with `continue-on-error` and reports only. Once the plan covers it,
-   remove that line from the job and the suffix of its name, so the gate
-   blocks again.
+   plan allows 50 000 lines of code for the whole organisation. The
+   first analysis counted 120 114 lines for `vca/` (Go 116 970). Until
+   then the background task of every analysis fails at the limit. So the
+   job runs with `continue-on-error` and reports only. Once the plan
+   covers it, remove that line from the job and the suffix of its name.
+   The gate then blocks again.
 
 The scan job trims the coverage report to the analysed code before the
 scan. The full report covers every package and exceeds 20 MB. The

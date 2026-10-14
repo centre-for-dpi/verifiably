@@ -274,6 +274,7 @@ func RunChecks(opts DoctorOptions) []Check {
 	out = append(out, publicURLChecks(opts)...)
 	out = append(out, stackVolumeChecks(opts)...)
 	if opts.Deploy != "" {
+		out = append(out, StackEnvChecks(opts.Deploy, opts.Pairs)...)
 		out = append(out, PeerChecks(opts.Deploy, opts.Pairs)...)
 	}
 	return out
