@@ -9,6 +9,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/centre-for-dpi/vc-adapters/core/oidc"
 )
 
 // Persister saves and loads one named JSON document. A service supplies
@@ -148,13 +150,41 @@ func (r *Registry) Put(p Provider) (Provider, error) {
 
 // Seed stores the seeded provider when the registry has no record with
 // its id, so a stored record, edited through the admin RPCs, survives a
-// restart (ADR-035 decision 2).
+// restart (ADR-035 decision 2). A stored record that still names the one
+// realm of an earlier setup at the same Keycloak moves to the realm of
+// the seed, as setup moves the .env of the pair (ADR-035 decision 1),
+// and keeps its other edits.
 func (r *Registry) Seed(p Provider) error {
-	if _, err := r.Get(p.ID); err == nil {
+	stored, err := r.Get(p.ID)
+	if err != nil {
+		_, err := r.Put(p)
+		return err
+	}
+	if !namesLegacyRealm(stored.DiscoveryURL, p.DiscoveryURL) {
 		return nil
 	}
-	_, err := r.Put(p)
+	stored.DiscoveryURL = p.DiscoveryURL
+	stored.Realm = p.Realm
+	stored.ConsoleURL = p.ConsoleURL
+	_, err = r.Put(stored)
 	return err
+}
+
+// legacyRealm is the one realm of every role that an earlier setup
+// wrote, before one realm per role (ADR-035 decision 1).
+const legacyRealm = "vca"
+
+// namesLegacyRealm reports whether stored is the discovery URL of the
+// legacy realm at the Keycloak that seeded names.
+func namesLegacyRealm(stored, seeded string) bool {
+	realm, ok := KeycloakRealmOf(stored)
+	if !ok || realm != legacyRealm {
+		return false
+	}
+	if _, ok := KeycloakRealmOf(seeded); !ok {
+		return false
+	}
+	return oidc.Authority(stored) == oidc.Authority(seeded)
 }
 
 // seededDoc names the document that lists the ids SeedOnce wrote.
