@@ -238,6 +238,18 @@ func TestVCACIRunsSonarCloud(t *testing.T) {
 	if !ok {
 		t.Fatal("sonarcloud does not run sonarqube-scan-action")
 	}
+	trimmed := false
+	for _, step := range job.Steps {
+		if step.Uses == scan.Uses {
+			break
+		}
+		if strings.Contains(step.Run, "coverage.out") && strings.Contains(step.Run, "gen") {
+			trimmed = true
+		}
+	}
+	if !trimmed {
+		t.Error("sonarcloud does not trim the generated code out of coverage.out before the scan")
+	}
 	if scan.With["projectBaseDir"] != "vca" || scan.Env["SONAR_TOKEN"] != "${{ secrets.SONAR_TOKEN }}" {
 		t.Errorf("the scan step = %+v, want projectBaseDir vca and the SONAR_TOKEN secret", scan)
 	}
@@ -351,7 +363,7 @@ func TestSonarProjectPropertiesOfVCA(t *testing.T) {
 		}
 	}
 	excluded := strings.Split(props["sonar.exclusions"], ",")
-	for _, want := range []string{"gen/**", "**/*_test.go", "**/testdata/**", "**/*.min.js", "deploy/**", "dist/**"} {
+	for _, want := range []string{"gen/**", "**/*_test.go", "**/testdata/**", "**/*.min.js", "deploy/**", "dist/**", "coverage.out", "test-output.txt", "golangci-lint-report.xml", ".scannerwork/**"} {
 		if !containsString(excluded, want) {
 			t.Errorf("sonar.exclusions %v does not hold %s", excluded, want)
 		}

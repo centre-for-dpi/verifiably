@@ -303,8 +303,20 @@ jobs:
           name: golangci-lint-report
           path: vca
 
+      # The profile covers every package (-coverpkg=./...). Generated code,
+      # main packages and the kit example are excluded from the Sonar ratio
+      # anyway, so their lines only make the file large and the log noisy
+      # ("is not included in the project, ignoring coverage" per file).
+      - name: Trim the coverage report to the analysed code
+        shell: bash
+        run: |
+          grep -vE '/(gen|cmd)/|/ui/example/' coverage.out > coverage.trimmed
+          mv coverage.trimmed coverage.out
+          wc -l coverage.out
+
       # The project centre-for-dpi_verifiably_vca must exist in SonarCloud,
-      # see vca/sonar-project.properties and vca/docs/ci.md.
+      # with vc-adapter as its main branch until the merge, see
+      # vca/sonar-project.properties and vca/docs/ci.md.
       - name: SonarCloud scan
         uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
         env:

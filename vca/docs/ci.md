@@ -121,7 +121,19 @@ The owner must do these steps once, before the job can pass:
    `centre-for-dpi_verifiably`, the project of `verifiably-go/`.
 2. Turn Automatic Analysis off for the project (Administration, Analysis
    Method). Automatic Analysis cannot read the Go coverage report.
-3. Keep the quality gate "Sonar way" on new code, or set a stricter one.
+3. Set the main branch of the project to `vc-adapter` (Administration,
+   Branches and Pull Requests, rename the main branch). A new project
+   names its main branch `master`. Until the rename, the scan treats
+   `vc-adapter` as a short lived branch. The log then says "Could not
+   find ref 'master'". Such a branch has no reference for new code, so
+   the gate reads the whole tree as new code. After the merge, set the
+   main branch to `main`.
+4. Keep the quality gate "Sonar way" on new code, or set a stricter one.
+
+The scan job trims the coverage report to the analysed code before the
+scan. The full report covers every package and exceeds 20 MB. The
+scanner drops a source file of that size and warns once per generated
+file.
 
 The repository secret `SONAR_TOKEN` already exists. If the token is a
 project analysis token, give it access to the new project too. Until the
