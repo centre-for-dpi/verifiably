@@ -172,7 +172,11 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '1'
           ignore-unfixed: true
-          scanners: vuln,secret,misconfig
+          # The Dockerfile checks run in vca-ci on the files themselves,
+          # with the scoped ignore file. Run on an image, the same checks
+          # read the image history, where the ignore file cannot name a
+          # path, so an accepted finding would block every release.
+          scanners: vuln,secret
 
       - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
 

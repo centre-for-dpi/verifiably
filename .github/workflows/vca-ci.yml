@@ -280,9 +280,15 @@ jobs:
           retention-days: 7
 
   sonarcloud:
-    name: SonarCloud
+    name: SonarCloud (report-only until the plan covers vca)
     runs-on: ubuntu-latest
     needs: [lint, test]
+    # The free plan of the organisation allows 50 000 lines of code and
+    # vca/ holds about 120 000, so the background task of every analysis
+    # fails at the limit and the gate never answers. The job reports
+    # until a plan covers that size; then remove this line and the
+    # suffix of the name, so the gate blocks again (ADR-006 decision 5).
+    continue-on-error: true
     # Sonar needs SONAR_TOKEN, which a pull request from a fork does not
     # get. Skip rather than fail, so that an outside contribution is not
     # blocked by a missing secret.
@@ -388,6 +394,8 @@ jobs:
           exit-code: '1'
           ignore-unfixed: true
           scanners: vuln,secret,misconfig
+          # Scoped, justified entries only; see the file.
+          trivyignores: vca/.trivyignore.yaml
 
   browser:
     name: wallet.js in Chromium (Playwright)

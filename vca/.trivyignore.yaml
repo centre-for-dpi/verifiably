@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Trivy ignore file of vca/: scoped to named files, each with a reason.
+# The trivy job of .github/workflows/vca-ci.yml reads it through the
+# `trivyignores` input. A finding in any other file still fails the build.
+# Nothing here silences a vulnerability or a secret.
+
+misconfigurations:
+  # DS-0031 flags an ENV whose name looks like a secret. The check reads
+  # the words AUTH and TOKEN in these names. The values are a listen
+  # address and a state directory, set in the open by compose and the
+  # charts as well. No credential is involved: the auth services take
+  # their client secrets from files that setup writes (ADR-055), never
+  # from an ENV in the image.
+  - id: DS-0031
+    paths:
+      - "services/issuer-auth/Dockerfile"
+      - "services/verifier-auth/Dockerfile"
+      - "services/wallet-auth/Dockerfile"
+      - "services/status-token/Dockerfile"
+    statement: >-
+      The ENV names a listen address and a state directory. AUTH and TOKEN
+      name the service, not a secret.

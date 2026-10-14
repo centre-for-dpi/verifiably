@@ -129,6 +129,13 @@ The owner must do these steps once, before the job can pass:
    the gate reads the whole tree as new code. After the merge, set the
    main branch to `main`.
 4. Keep the quality gate "Sonar way" on new code, or set a stricter one.
+5. Give the organisation a plan that covers the size of `vca/`. The free
+   plan allows 50 000 lines of code for the whole organisation, and the
+   first analysis counted 120 114 for `vca/` (Go 116 970). Until then the
+   background task of every analysis fails at the limit, so the job runs
+   with `continue-on-error` and reports only. Once the plan covers it,
+   remove that line from the job and the suffix of its name, so the gate
+   blocks again.
 
 The scan job trims the coverage report to the analysed code before the
 scan. The full report covers every package and exceeds 20 MB. The
@@ -139,6 +146,17 @@ The repository secret `SONAR_TOKEN` already exists. If the token is a
 project analysis token, give it access to the new project too. Until the
 project exists, the SonarCloud job fails, and the merge stays blocked.
 A pull request from a fork gets no secret, so the job skips it.
+
+### Trivy
+
+The trivy job scans `vca/` for vulnerable modules, secrets and Dockerfile
+misconfigurations and blocks on HIGH and CRITICAL. `vca/.trivyignore.yaml`
+holds the accepted findings. Each entry names its files and its reason;
+a finding in any other file still fails. Today it holds one check,
+DS-0031, for four Dockerfiles whose ENV names carry the words AUTH or
+TOKEN. Those ENV set a listen address and a state directory, not a
+secret. The release workflow scans each image for vulnerabilities and
+secrets only; the Dockerfile checks run once, on the files.
 
 ### gosec
 

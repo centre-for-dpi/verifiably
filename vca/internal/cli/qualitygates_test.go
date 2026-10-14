@@ -4,6 +4,7 @@ package cli
 
 import (
 	"bufio"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -31,10 +32,11 @@ type ciTrigger struct {
 }
 
 type ciJob struct {
-	Needs       []string          `yaml:"needs"`
-	If          string            `yaml:"if"`
-	Permissions map[string]string `yaml:"permissions"`
-	Steps       []ciStep          `yaml:"steps"`
+	ContinueOnError bool              `yaml:"continue-on-error"`
+	Needs           []string          `yaml:"needs"`
+	If              string            `yaml:"if"`
+	Permissions     map[string]string `yaml:"permissions"`
+	Steps           []ciStep          `yaml:"steps"`
 }
 
 type ciStep struct {
@@ -215,6 +217,11 @@ func TestVCACILintJobWritesACheckstyleReport(t *testing.T) {
 // TestVCACIRunsSonarCloud checks the SonarCloud job against quality.yml.
 func TestVCACIRunsSonarCloud(t *testing.T) {
 	job := ciJobNamed(t, readVCACI(t), "sonarcloud")
+	// Report-only while the SonarCloud plan is below the size of vca
+	// (docs/ci.md, "SonarCloud"). Drop this check with the flag.
+	if !job.ContinueOnError {
+		t.Error("sonarcloud blocks, but the plan limit makes every analysis fail; see docs/ci.md")
+	}
 	if strings.Join(job.Needs, ",") != "lint,test" {
 		t.Errorf("sonarcloud needs %v, want [lint test]", job.Needs)
 	}
@@ -382,4 +389,53 @@ func containsString(list []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// TestVCACITrivyReadsAScopedIgnoreFile pins the Trivy ignore file of vca:
+// the job names it, and every entry is scoped to named paths with a
+// statement, so a finding elsewhere in the tree still fails the build.
+func TestVCACITrivyReadsAScopedIgnoreFile(t *testing.T) {
+	t.Parallel()
+	job := ciJobNamed(t, readVCACI(t), "trivy")
+	scan, ok := stepThatUses(job, "aquasecurity/trivy-action")
+	if !ok {
+		t.Fatal("trivy does not run trivy-action")
+	}
+	if scan.With["trivyignores"] != "vca/.trivyignore.yaml" {
+		t.Errorf("trivyignores = %q, want vca/.trivyignore.yaml", scan.With["trivyignores"])
+	}
+	var ignore struct {
+		Misconfigurations []struct {
+			ID        string   `yaml:"id"`
+			Paths     []string `yaml:"paths"`
+			Statement string   `yaml:"statement"`
+		} `yaml:"misconfigurations"`
+		Vulnerabilities []any `yaml:"vulnerabilities"`
+		Secrets         []any `yaml:"secrets"`
+	}
+	if err := yaml.Unmarshal([]byte(readText(t, filepath.Join("..", "..", ".trivyignore.yaml"))), &ignore); err != nil {
+		t.Fatalf(".trivyignore.yaml: %v", err)
+	}
+	if len(ignore.Vulnerabilities) != 0 || len(ignore.Secrets) != 0 {
+		t.Errorf("the ignore file silences vulnerabilities or secrets: %d, %d", len(ignore.Vulnerabilities), len(ignore.Secrets))
+	}
+	if len(ignore.Misconfigurations) == 0 {
+		t.Fatal("the ignore file has no misconfiguration entry")
+	}
+	for _, e := range ignore.Misconfigurations {
+		if e.ID != "DS-0031" {
+			t.Errorf("entry %s: only DS-0031 (env names that look like secrets) is expected", e.ID)
+		}
+		if len(e.Paths) == 0 || e.Statement == "" {
+			t.Errorf("entry %s is not scoped to paths with a statement", e.ID)
+		}
+		for _, p := range e.Paths {
+			if !strings.HasPrefix(p, "services/") || !strings.HasSuffix(p, "/Dockerfile") {
+				t.Errorf("entry %s names %q, want one Dockerfile under services/", e.ID, p)
+			}
+			if _, err := os.Stat(filepath.Join("..", "..", p)); err != nil {
+				t.Errorf("entry %s names %q, which does not exist", e.ID, p)
+			}
+		}
+	}
 }

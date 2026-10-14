@@ -85,7 +85,7 @@ A row that is not `Done` carries a note.
 | ADR-006 | 2 Conventional Commits checked in CI | Done | `vca/hack/check-commits.sh` | |
 | ADR-006 | 3 Release workflow on a `v*` tag | Done | `.github/workflows/vca-release.yml` | |
 | ADR-006 | 4 One version for all services | Done | `.github/workflows/vca-release.yml` | |
-| ADR-006 | 5 PR workflow with the full check list | Partial | `.github/workflows/vca-ci.yml`, `vca/sonar-project.properties` | The workflow has no axe job. It has no path filter, so it can be a required check. It runs the SonarCloud quality gate, shellcheck on every script, and a gosec SARIF report. The gosec linter of golangci-lint is the blocking gosec check. Linter fixes run on another branch. |
+| ADR-006 | 5 PR workflow with the full check list | Partial | `.github/workflows/vca-ci.yml`, `vca/sonar-project.properties` | The workflow has no axe job. It has no path filter, so it can be a required check. It runs the SonarCloud quality gate as report only, because the free plan allows 50 000 lines and vca holds 120 000; shellcheck on every script; and a gosec SARIF report. The gosec linter of golangci-lint is the blocking gosec check. Linter fixes run on another branch. |
 | ADR-006 | 6 Workflows at the repository root | Done | `.github/workflows` | |
 | ADR-006 | 7 Nightly contract tests and a kind deploy | Done | `.github/workflows/vca-nightly.yml` | |
 
