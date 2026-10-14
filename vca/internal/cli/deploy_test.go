@@ -323,3 +323,20 @@ func TestDeployRefusesAComposeFileOfAnotherRelease(t *testing.T) {
 		t.Errorf("a missing compose file gave %v, want a hint about the repository root", err)
 	}
 }
+
+// TestDeployWithoutBuildNamesTheBuildFlag pins the hint of a failed up
+// without --build: no release has published the images yet, so the
+// first thing docker does is refuse the pull, and the operator reads
+// what to do instead of "exit status 1".
+func TestDeployWithoutBuildNamesTheBuildFlag(t *testing.T) {
+	root := deployRoot(t, issuerPair())
+	rec := &recorder{fail: errors.New("exit status 1")}
+	err := Deploy(context.Background(), DeployOptions{Root: root, Pairs: []Pair{issuerPair()}, Out: &bytes.Buffer{}, Run: rec.run})
+	if err == nil || !strings.Contains(err.Error(), "--build") || !strings.Contains(err.Error(), "published") {
+		t.Fatalf("got %v, want the --build hint", err)
+	}
+	err = Deploy(context.Background(), DeployOptions{Root: root, Pairs: []Pair{issuerPair()}, Out: &bytes.Buffer{}, Run: rec.run, Build: true})
+	if err == nil || strings.Contains(err.Error(), "--build") {
+		t.Fatalf("a build run got %v, want no --build hint", err)
+	}
+}

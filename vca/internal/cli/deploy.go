@@ -143,6 +143,12 @@ func lifecycle(ctx context.Context, opts DeployOptions, action []string) error {
 		args := ComposeArgsBuild(opts.Root, p, action, opts.Build)
 		anyval.DiscardWrite(fmt.Fprintf(opts.Out, "docker %s\n", strings.Join(args, " ")))
 		if err := opts.Run(ctx, "docker", args); err != nil {
+			if action[0] == "up" && !opts.Build {
+				// Until a release publishes the images, a pull is the
+				// first thing compose does and the first thing that fails.
+				return fmt.Errorf("deploy %s: %w (if docker refused to pull an image, no release has published the images of this version yet: add --build to build them from this checkout, or set %s in deploy/%s/.env to a released tag)",
+					p.Name(), err, VersionEnv, p.Name())
+			}
 			return fmt.Errorf("deploy %s: %w", p.Name(), err)
 		}
 	}
