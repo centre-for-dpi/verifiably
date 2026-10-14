@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,6 +30,16 @@ func (r *recorder) run(_ context.Context, name string, args []string) error {
 // setup run does.
 func writeStackEnvs(t *testing.T, root string) {
 	t.Helper()
+	// The compose file of this binary, as the checkout holds it.
+	if err := os.MkdirAll(filepath.Dir(ComposePath(root)), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ComposePath(root), []byte(RenderCompose()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ComposeBuildPath(root), []byte(RenderComposeBuild()), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, d := range StackDpgs() {
 		path := filepath.Join(root, "deploy", StackEnvFile(d))
 		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
@@ -277,5 +288,38 @@ func TestCheckEnvFileReportsAnUnreadablePath(t *testing.T) {
 	}
 	if err := checkEnvFile(root, issuerPair()); err == nil {
 		t.Fatal("a file in place of the directory passed")
+	}
+}
+
+// TestDeployRefusesAComposeFileOfAnotherRelease pins the guard against a
+// vca binary that is older or newer than the checkout: the compose file
+// of the checkout then names files that setup of this binary does not
+// write, and compose fails with a message about one of them. The deploy
+// stops before docker runs and names the rebuild.
+func TestDeployRefusesAComposeFileOfAnotherRelease(t *testing.T) {
+	root := deployRoot(t, issuerPair())
+	path := ComposePath(root)
+	other := strings.Replace(RenderCompose(), "services:", "# written by another release\nservices:", 1)
+	if err := os.WriteFile(path, []byte(other), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rec := &recorder{}
+	err := Deploy(context.Background(), DeployOptions{Root: root, Pairs: []Pair{issuerPair()}, Out: io.Discard, Run: rec.run})
+	if err == nil {
+		t.Fatal("a compose file of another release passed")
+	}
+	for _, want := range []string{"another release", "go install ./cmd/vca"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q lacks %q", err, want)
+		}
+	}
+	if len(rec.calls) != 0 {
+		t.Error("docker ran anyway")
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := Deploy(context.Background(), DeployOptions{Root: root, Pairs: []Pair{issuerPair()}, Out: io.Discard, Run: rec.run}); err == nil || !strings.Contains(err.Error(), "repository root") {
+		t.Errorf("a missing compose file gave %v, want a hint about the repository root", err)
 	}
 }

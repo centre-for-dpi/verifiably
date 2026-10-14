@@ -411,6 +411,7 @@ The volumes stay, so the data survives.
 | `container name is in use outside the vca compose project` | A container from an older compose project, or one you started by hand, holds a name the pair needs. | Run the `docker rm -f` line that the message prints. Then run `vca deploy` again. |
 | `The container name "/inji-certify" is already in use` | Same cause, reported by an older `vca` binary. | `docker rm -f inji-certify`, then run `vca deploy` again. |
 | `read the compose configuration: … stat deploy/<dpg>/.env: no such file or directory` | The deploy tree comes from a release before the generated stack secrets (ADR-055) or before the service identities (ADR-075). `vca doctor` names each missing file. | Run `vca setup` for the pair again with the same answers. It writes the missing files and keeps the secrets that exist. Then run `vca deploy` again. |
+| `deploy/vca/compose.yaml was written by another release of vca than this binary` | The `vca` binary in your PATH is older or newer than the checkout. `git pull` updates the source, not the binary. | Run `go install ./cmd/vca` from `vca/`, check `vca --version`, then run `vca setup` and `vca deploy` again. |
 
 ## How to check it works
 

@@ -130,6 +130,11 @@ func lifecycle(ctx context.Context, opts DeployOptions, action []string) error {
 		if err := checkEnvFile(opts.Root, p); err != nil {
 			return err
 		}
+	}
+	if err := checkComposeRelease(opts.Root, opts.Build); err != nil {
+		return err
+	}
+	for _, p := range opts.Pairs {
 		if action[0] == "up" {
 			if err := checkContainerNames(ctx, opts, p); err != nil {
 				return err
@@ -193,4 +198,32 @@ func ExecRunner(out, errOut io.Writer) Runner {
 	return func(ctx context.Context, name string, args []string) error {
 		return runCommand(ctx, name, args, out, errOut)
 	}
+}
+
+// checkComposeRelease refuses a compose file that this binary did not
+// render. A vca binary older or newer than the checkout writes a deploy
+// tree that the compose file of the checkout cannot use, and compose
+// then fails on the first file it misses. The check reads the file and
+// compares it with the rendering of this binary, so the message names
+// the cause instead of a missing file.
+func checkComposeRelease(root string, build bool) error {
+	files := []struct{ path, want string }{{ComposePath(root), RenderCompose()}}
+	if build {
+		files = append(files, struct{ path, want string }{ComposeBuildPath(root), RenderComposeBuild()})
+	}
+	for _, f := range files {
+		got, err := os.ReadFile(f.path) // #nosec G304 -- the path is under the deploy directory of the root
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("deploy: %s is missing; run vca from the repository root, or check out the release of this binary (%s)", f.path, EffectiveVersion())
+			}
+			return fmt.Errorf("deploy: %w", err)
+		}
+		if string(got) != f.want {
+			return fmt.Errorf("deploy: %s was written by another release of vca than this binary (%s); "+
+				"rebuild vca from this checkout with go install ./cmd/vca, then run vca setup and vca deploy again",
+				f.path, EffectiveVersion())
+		}
+	}
+	return nil
 }

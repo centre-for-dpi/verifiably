@@ -290,7 +290,7 @@ func NewRootCommand(env Environment) *cobra.Command {
 			"so the CLI, the documentation, and the services never drift.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Version:       Version,
+		Version:       RootCommandVersion(),
 	}
 	root.SetOut(env.Out)
 	root.SetErr(env.ErrOut)
