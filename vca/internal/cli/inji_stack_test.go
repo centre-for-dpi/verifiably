@@ -463,7 +463,10 @@ func TestInjiStackRunsCertifyOnTheVcaStore(t *testing.T) {
 			t.Errorf("%s data provider = %q", name, props["mosip.certify.integration.data-provider-plugin"])
 		}
 	}
-	if !strings.Contains(defaults, "mosip.kernel.keymanager.hsm.config-path=CERTIFY_PKCS12/local.p12") ||
+	// The key store path is absolute and inside the mounted volume: the
+	// image starts in /home/inji, and a relative path would leave the
+	// keys behind on every recreation.
+	if !strings.Contains(defaults, "mosip.kernel.keymanager.hsm.config-path=/home/mosip/CERTIFY_PKCS12/local.p12") ||
 		!strings.Contains(defaults, "mosip.certify.database.hostname=inji-certify-postgres") ||
 		!strings.Contains(defaults, "management.endpoint.health.probes.enabled=true") {
 		t.Error("certify-default.properties does not point Certify at the stack")
