@@ -32,6 +32,11 @@ const (
 	KeycloakAdminEnv = "KEYCLOAK_ADMIN"
 	// KeycloakAdminPasswordEnv names the generated administrator password.
 	KeycloakAdminPasswordEnv = "KEYCLOAK_ADMIN_PASSWORD" //nolint:gosec // G101: a variable name, not a credential
+	// KeycloakHostnameEnv pins the browser facing address of Keycloak.
+	KeycloakHostnameEnv = "KC_HOSTNAME"
+	// KeycloakBackchannelDynamicEnv lets the token and key set endpoints
+	// of a discovery document follow the address of the request.
+	KeycloakBackchannelDynamicEnv = "KC_HOSTNAME_BACKCHANNEL_DYNAMIC"
 	// keycloakAdminUser is the administrator name the CLI writes.
 	keycloakAdminUser = "admin"
 	// legacyRealm is the one realm an earlier setup wrote for every role.
@@ -430,7 +435,7 @@ func KeycloakFiles(p Pair, values, existing map[string]string, random io.Reader)
 	if err != nil {
 		return nil, err
 	}
-	env, err := KeycloakEnv(p.Dpg, existing, random)
+	env, err := KeycloakEnv(p.Dpg, values[EnvOidcPublicURL], existing, random)
 	if err != nil {
 		return nil, err
 	}
@@ -453,8 +458,13 @@ func KeycloakFiles(p Pair, values, existing map[string]string, random io.Reader)
 // KeycloakEnv renders the .env of the Keycloak of one stack. The
 // administrator name is admin. The password comes from existing when an
 // earlier run generated it, else from random. No default password ships
-// (ADR-035 consequence 3).
-func KeycloakEnv(d configv1.Dpg, existing map[string]string, random io.Reader) (string, error) {
+// (ADR-035 consequence 3). hostname is the browser facing address of
+// the Keycloak, VCA_OIDC_PUBLIC_URL of the pair. It pins the hostname,
+// so a discovery document that a service fetches on the compose network
+// names the public address in its issuer and its front channel
+// endpoints, and the dynamic backchannel keeps the token and key set
+// endpoints on the container the service used. Empty pins nothing.
+func KeycloakEnv(d configv1.Dpg, hostname string, existing map[string]string, random io.Reader) (string, error) {
 	user := existing[KeycloakAdminEnv]
 	if user == "" {
 		user = keycloakAdminUser
@@ -473,6 +483,13 @@ func KeycloakEnv(d configv1.Dpg, existing map[string]string, random io.Reader) (
 	b.WriteString("# Sign in to the administration console with these values.\n")
 	b.WriteString(KeycloakAdminEnv + "=" + quoteValue(user) + "\n")
 	b.WriteString(KeycloakAdminPasswordEnv + "=" + quoteValue(password) + "\n")
+	if hostname = strings.TrimRight(strings.TrimSpace(hostname), "/"); hostname != "" {
+		b.WriteString("# The address the browser uses, which every discovery document names\n")
+		b.WriteString("# in its issuer and its front channel endpoints. The backchannel\n")
+		b.WriteString("# follows the request, so a service stays on the compose network.\n")
+		b.WriteString(KeycloakHostnameEnv + "=" + quoteValue(hostname) + "\n")
+		b.WriteString(KeycloakBackchannelDynamicEnv + "=true\n")
+	}
 	return b.String(), nil
 }
 

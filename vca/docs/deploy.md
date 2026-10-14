@@ -1192,7 +1192,8 @@ table.
 A base domain gets `https://<dpg>-keycloak.<domain>`.
 The Caddyfile of the issuer pair of the stack sends that host name to
 the host port.
-Keycloak takes that address as its hostname (`KC_HOSTNAME`), so the
+The `.env` of the Keycloak, which setup writes, pins that address as
+its hostname (`KC_HOSTNAME`), so the
 issuer and the front channel endpoints of its discovery document carry
 the public address even when a service fetches the document on the
 compose network, and the token `iss` matches.
