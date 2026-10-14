@@ -68,7 +68,9 @@ services:
     profiles: [issuer-waltid]
     container_name: waltid-issuer-api
     restart: unless-stopped
-    command: ["--webPort=7002", "--baseUrl=${WALTID_ISSUER_BASE_URL:-http://waltid-issuer-api:7002}"]
+    # The service runnable of the image takes its settings after "--".
+    # Without it, the command line rejects --webPort as no option.
+    command: ["--", "--webPort=7002", "--baseUrl=${WALTID_ISSUER_BASE_URL:-http://waltid-issuer-api:7002}"]
     # The catalogue that vca setup writes in the directory of the issuer
     # pair. It replaces the example list of the release, so the issuer API
     # advertises one entry per wire format and nothing else (ADR-054).
@@ -84,7 +86,8 @@ services:
     profiles: [verifier-waltid]
     container_name: waltid-verifier-api
     restart: unless-stopped
-    command: ["--webPort=7003", "--baseUrl=${WALTID_VERIFIER_BASE_URL:-http://waltid-verifier-api:7003}"]
+    # Settings follow "--", as for waltid-issuer-api.
+    command: ["--", "--webPort=7003", "--baseUrl=${WALTID_VERIFIER_BASE_URL:-http://waltid-verifier-api:7003}"]
     ports:
       - "${VCA_BIND:-0.0.0.0}:${WALTID_VERIFIER_HOST_PORT:-17003}:7003"
     networks:
@@ -100,6 +103,8 @@ services:
     container_name: waltid-verifier-api2
     restart: unless-stopped
     command:
+      # Settings follow "--", as for waltid-issuer-api.
+      - "--"
       - "--webPort=7004"
       - "--clientId=verifier2"
       - "--clientMetadata.client_name=${WALTID_VERIFIER2_CLIENT_NAME:-Verifier}"

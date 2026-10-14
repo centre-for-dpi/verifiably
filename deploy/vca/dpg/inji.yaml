@@ -464,13 +464,21 @@ services:
     ports:
       - "${VCA_BIND:-0.0.0.0}:${INJI_VERIFY_SERVICE_HOST_PORT:-17086}:8080"
     networks:
-      - vca
+      vca:
+        # The nginx of the image of Inji Verify UI proxies to
+        # verify-service:8080.
+        aliases: [verify-service]
 
   inji-verify-ui:
     image: mosipid/inji-verify-ui:0.16.0
     profiles: [verifier-inji]
     container_name: inji-verify-ui
     restart: unless-stopped
+    # The nginx of the image resolves verify-service at its start and
+    # exits when the name is unknown, so the service goes first.
+    depends_on:
+      inji-verify-service:
+        condition: service_started
     environment:
       DEFAULT_TITLE: Inji Verify
       DEFAULT_LANG: en

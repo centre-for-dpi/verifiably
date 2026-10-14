@@ -31,6 +31,7 @@ type composeDoc struct {
 }
 
 type composeService struct {
+	Command     []string          `yaml:"command"`
 	Image       string            `yaml:"image"`
 	Profiles    []string          `yaml:"profiles"`
 	Ports       []string          `yaml:"ports"`

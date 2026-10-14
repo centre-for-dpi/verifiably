@@ -8,7 +8,7 @@ the MPL-2.0 licence, and so do the files derived from them.
 
 | File | Source | Change |
 | --- | --- | --- |
-| `certify-default.properties` | https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/certify-default.properties | The database, the key store password, Inji Verify, the definition URL of the adapter, and the readiness probe of the health check. No authorization server in the base, no Redis password, and a key certificate subject from `vca setup` (ADR-055). Each change carries a `VCA:` comment. |
+| `certify-default.properties` | https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/config/certify-default.properties | The database, the key store password, Inji Verify, the definition URL of the adapter, the readiness probe of the health check, and its path in the auth ignore list (the path pattern parser of the actuator takes `**` only at the end, so `**/actuator/**` of the release admits no probe). No authorization server in the base, no Redis password, and a key certificate subject from `vca setup` (ADR-055). Each change carries a `VCA:` comment. |
 | `certify-vca-store.properties` | The plugin block of https://raw.githubusercontent.com/inji/inji-config/release-0.14.x/certify-postgres-landregistry.properties and the block "Use below properties to use certify as authorization server" of https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/resources/application-local.properties | VCA wrote the file from those lines. The query reads the VCA claims store, and the scope is `vca_credential` (ADR-051). |
 | `certify-authcode.properties` | none | VCA wrote it. The address of `inji-certify-authcode` and the holder authorization server of the adapter (ADR-052). |
 | `certify_init.sql` | https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/certify_init.sql | The insert of the credential configuration of the release is gone. The schema and the key policies stay (ADR-050). |
@@ -25,6 +25,13 @@ the MPL-2.0 licence, and so do the files derived from them.
   a profile of its own after `default`, and the key store under
   `/home/mosip/CERTIFY_PKCS12`. Its Postgres runs `certify_init.sql`:
   https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/docker-compose/docker-compose-injistack/docker-compose.yaml
+- `CredentialConfigurationServiceImpl` reads
+  `mosip.certify.credential-config.issuer.display` as a Spring expression
+  with no default, so Certify starts only when a profile sets it. The
+  release sets it in `application-local.properties`, which the image
+  loads only under the profile `local`:
+  https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/java/io/mosip/certify/services/CredentialConfigurationServiceImpl.java
+  and https://raw.githubusercontent.com/mosip/inji-certify/v0.14.0/certify-service/src/main/resources/application-local.properties
 - The access token filter checks one issuer
   (`mosip.certify.authn.issuer-uri`), one key set
   (`mosip.certify.authn.jwk-set-uri`), and the audiences of

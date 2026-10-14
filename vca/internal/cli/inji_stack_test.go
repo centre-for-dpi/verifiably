@@ -468,6 +468,12 @@ func TestInjiStackRunsCertifyOnTheVcaStore(t *testing.T) {
 		!strings.Contains(defaults, "management.endpoint.health.probes.enabled=true") {
 		t.Error("certify-default.properties does not point Certify at the stack")
 	}
+	// The actuator matches through the path pattern parser, which takes **
+	// only at the end, so **/actuator/** of the release never admits the
+	// readiness probe. The health path is open; the rest stays behind a token.
+	if !strings.Contains(defaults, "mosip.certify.security.ignore-auth-urls=**/actuator/**,/actuator/health/**,") {
+		t.Error("certify-default.properties does not admit the health probe without a token")
+	}
 	certify := stack["inji-certify"]
 	if len(certify.Healthcheck.Test) == 0 || !strings.Contains(strings.Join(certify.Healthcheck.Test, " "), "/v1/certify/actuator/health/readiness") {
 		t.Errorf("inji-certify has no readiness check: %v", certify.Healthcheck.Test)
@@ -542,6 +548,9 @@ func TestCertifyPropertiesNameThePostgresProvider(t *testing.T) {
 		"mosip.certify.data-provider-plugin.did-url":                      "${INJI_CERTIFY_DID}",
 		"mosip.certify.authn.issuer-uri":                                  "${mosip.certify.oauth.issuer}",
 		"mosip.certify.authn.jwk-set-uri":                                 "http://inji-certify:8090/v1/certify/.well-known/jwks.json",
+		// CredentialConfigurationServiceImpl reads the issuer display with
+		// no default; Certify starts without it. The host holds no quote.
+		"mosip.certify.credential-config.issuer.display": "{{'name': '${INJI_KEY_CERT_CN}','locale': 'en'}}",
 	} {
 		if got := store[key]; got != want {
 			t.Errorf("certify-vca-store.properties %s = %q, want %q", key, got, want)
@@ -804,5 +813,19 @@ func TestMimotoRunsNoPlatformSecret(t *testing.T) {
 		if got, ok := certify[key]; !ok || got != want {
 			t.Errorf("certify-default.properties: %s = %q (set %v), want %q", key, got, ok, want)
 		}
+	}
+}
+
+// TestInjiVerifyServiceCarriesTheAliasOfItsUI: the nginx of the image of
+// Inji Verify UI proxies to verify-service:8080, so the service of the
+// stack answers to that name too.
+func TestInjiVerifyServiceCarriesTheAliasOfItsUI(t *testing.T) {
+	stack := readInjiStack(t)
+	verify := stack["inji-verify-service"]
+	if !slices.Contains(networkAliases(verify.Networks, "vca"), "verify-service") {
+		t.Errorf("inji-verify-service has no alias verify-service, which the nginx file of Inji Verify UI names: %v", verify.Networks)
+	}
+	if _, ok := stack["inji-verify-ui"].DependsOn["inji-verify-service"]; !ok {
+		t.Error("inji-verify-ui starts before the service its nginx resolves")
 	}
 }

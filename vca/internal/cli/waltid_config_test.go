@@ -285,3 +285,24 @@ func TestUpgradeSecretsRewritesTheWalletDatabaseFile(t *testing.T) {
 		t.Errorf("the upgrade made the holder directory: %v", err)
 	}
 }
+
+// TestWaltidStackPassesSettingsAfterTheSeparator: the service runnable
+// of the walt.id 0.18.2 images takes --webPort and the rest as config
+// args after "--". Without it the command line rejects them, and the
+// container restarts.
+func TestWaltidStackPassesSettingsAfterTheSeparator(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot(), "deploy", "vca", "dpg", "waltid.yaml")) // #nosec G304 -- a fixed test path
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc composeDoc
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	for _, service := range []string{"waltid-issuer-api", "waltid-verifier-api", "waltid-verifier-api2"} {
+		cmd := doc.Services[service].Command
+		if len(cmd) < 2 || cmd[0] != "--" || !strings.HasPrefix(cmd[1], "--webPort=") {
+			t.Errorf("%s command = %v, want -- then --webPort=...", service, cmd)
+		}
+	}
+}
