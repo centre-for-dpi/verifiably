@@ -673,10 +673,33 @@ func NewSystemProbe(ctx context.Context) *SystemProbe {
 	}
 }
 
-// commandOutput runs one command and returns its standard output.
+// commandOutput runs one command and returns its standard output. When
+// the command fails, the error carries the last lines of its standard
+// error, so the operator reads what docker said and not "exit status 1".
 func commandOutput(ctx context.Context, name string, args []string) (string, error) {
 	out, err := exec.CommandContext(ctx, name, args...).Output() // #nosec G204 -- the CLI builds the arguments
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		if said := lastLines(string(exit.Stderr), 5); said != "" {
+			return string(out), fmt.Errorf("%w: %s", err, said)
+		}
+	}
 	return string(out), err
+}
+
+// lastLines returns the last n non-empty lines of a text, joined by
+// "; ", with the white space trimmed.
+func lastLines(text string, n int) string {
+	var lines []string
+	for _, l := range strings.Split(text, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "; ")
 }
 
 // GoVersion returns the Go version of this binary.

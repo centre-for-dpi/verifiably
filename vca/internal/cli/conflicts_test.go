@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 )
@@ -219,5 +220,25 @@ func TestStatusAndDownSkipTheNameCheck(t *testing.T) {
 	}
 	if len(script.calls) != 0 {
 		t.Errorf("status or down read the compose configuration %d times", len(script.calls))
+	}
+}
+
+// TestAComposeConfigFailureNamesTheDoctor pins the message of a compose
+// configuration that does not read: it carries the words of docker and
+// points the operator at vca doctor, which names a missing env file or
+// peer identity (ADR-075).
+func TestAComposeConfigFailureNamesTheDoctor(t *testing.T) {
+	t.Parallel()
+	opts := DeployOptions{Root: t.TempDir(), Out: io.Discard, Output: func(context.Context, string, []string) (string, error) {
+		return "", errors.New("exit status 1: env file /deploy/issuer-waltid/peer/issuance.env not found")
+	}}
+	err := checkContainerNames(context.Background(), opts, issuerPair())
+	if err == nil {
+		t.Fatal("a failing config gave no error")
+	}
+	for _, want := range []string{"issuer-waltid", "issuance.env not found", "vca doctor"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q lacks %q", err, want)
+		}
 	}
 }

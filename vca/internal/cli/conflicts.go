@@ -127,7 +127,7 @@ func checkContainerNames(ctx context.Context, opts DeployOptions, p Pair) error 
 	configArgs := ComposeArgsBuild(opts.Root, p, []string{"config", "--format", "json"}, opts.Build)
 	configJSON, err := opts.Output(ctx, "docker", configArgs)
 	if err != nil {
-		return fmt.Errorf("deploy %s: read the compose configuration: %w", p.Name(), err)
+		return fmt.Errorf("deploy %s: read the compose configuration: %w (run vca doctor; it names a missing env file or peer identity)", p.Name(), err)
 	}
 	names, err := ComposeContainerNames(configJSON)
 	if err != nil {

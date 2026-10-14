@@ -848,3 +848,18 @@ func TestDoctorChecksTheEsignetLoginPort(t *testing.T) {
 		}
 	}
 }
+
+// TestCommandOutputNamesWhatTheCommandSaid pins the error of a failed
+// command: it carries the last lines of the standard error, so an
+// operator reads why docker compose refused the configuration instead
+// of "exit status 1".
+func TestCommandOutputNamesWhatTheCommandSaid(t *testing.T) {
+	t.Parallel()
+	_, err := commandOutput(context.Background(), "sh", []string{"-c", "echo 'env file /x/.env not found' >&2; exit 1"})
+	if err == nil {
+		t.Fatal("a failing command gave no error")
+	}
+	if !strings.Contains(err.Error(), "env file /x/.env not found") {
+		t.Errorf("error = %q, want the standard error of the command in it", err)
+	}
+}
