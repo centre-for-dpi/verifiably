@@ -124,6 +124,17 @@ func stackSettingNames(d configv1.Dpg) []string {
 	return nil
 }
 
+// stackRequiredNames returns the variables a stack file requires with
+// ${NAME?} that are no secret: the .env names each one on every run,
+// empty when nothing set it, because compose interpolates the stack file
+// for every pair.
+func stackRequiredNames(d configv1.Dpg) []string {
+	if d == configv1.Dpg_DPG_INJI {
+		return []string{EsignetPluginEnv}
+	}
+	return nil
+}
+
 // stackBootstrapNames returns the values of a stack .env that the
 // bootstrap run writes, such as the webhook address of the shared agent
 // of CREDEBL (ADR-058 decision 4). Setup keeps them.
@@ -139,6 +150,9 @@ func stackBootstrapNames(d configv1.Dpg) []string {
 func operatorValues(d configv1.Dpg, existing map[string]string) []string {
 	known := map[string]bool{StackSecretsSinceEnv: true, SchemaFileServerTokenEnv: true}
 	for _, name := range stackSecretNames(d) {
+		known[name] = true
+	}
+	for _, name := range stackRequiredNames(d) {
 		known[name] = true
 	}
 	for _, k := range stackKeys(d) {
@@ -160,7 +174,18 @@ func operatorValues(d configv1.Dpg, existing map[string]string) []string {
 // StackSettings returns the values of the operator that one pair puts in
 // the .env of its stack, keyed by DPG. A value the run left empty is
 // left out, so an earlier value stays.
-func StackSettings(p Pair, values map[string]string) map[configv1.Dpg]map[string]string {
+//
+// esignetPlugin is the plugin of the eSignet of an Inji issuer pair, or
+// empty. The Inji stack file requires the variable for every pair, so the
+// issuer pair writes it into the stack .env, empty when it runs no
+// eSignet (ADR-053 decision 1). Another Inji pair leaves it as it is.
+func StackSettings(p Pair, values map[string]string, esignetPlugin string) map[configv1.Dpg]map[string]string {
+	if p.Dpg == configv1.Dpg_DPG_INJI {
+		if !runsEsignet(p) {
+			return nil
+		}
+		return map[configv1.Dpg]map[string]string{p.Dpg: {EsignetPluginEnv: esignetPlugin}}
+	}
 	if p.Dpg != configv1.Dpg_DPG_CREDEBL {
 		return nil
 	}
@@ -264,6 +289,12 @@ func StackEnv(d configv1.Dpg, existing map[string]string, random io.Reader, now 
 	if len(settings) > 0 {
 		b.WriteString("# The settings of the operator for the containers of the stack.\n")
 		b.WriteString(strings.Join(settings, ""))
+	}
+	if names := stackRequiredNames(d); len(names) > 0 {
+		b.WriteString("# The stack file requires these for every pair. The issuer pair sets them; empty runs no eSignet.\n")
+		for _, name := range names {
+			b.WriteString(name + "=" + quoteValue(existing[name]) + "\n")
+		}
 	}
 	// A value the operator added, such as the mail provider of CREDEBL,
 	// stays as it is.

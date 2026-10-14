@@ -60,9 +60,11 @@ func TestSetupGeneratesStackSecrets(t *testing.T) {
 			t.Errorf("the summary shows %s", name)
 		}
 	}
-	// The secrets and the time they began, nothing else.
-	if len(values) != len(names)+1 || values[StackSecretsSinceEnv] == "" {
-		t.Errorf("the file holds %d values, want %d and the stamp", len(values), len(names))
+	// The secrets, the variables the stack file requires of every pair,
+	// and the time they began, nothing else.
+	wantCount := len(names) + len(stackRequiredNames(configv1.Dpg_DPG_INJI)) + 1
+	if len(values) != wantCount || values[StackSecretsSinceEnv] == "" {
+		t.Errorf("the file holds %d values, want %d and the stamp", len(values), wantCount-1)
 	}
 	if !strings.Contains(plan.Summary(), f.Name) {
 		t.Errorf("the summary does not list %s:\n%s", f.Name, plan.Summary())

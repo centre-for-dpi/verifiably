@@ -229,7 +229,7 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	}
 	// Every stack .env holds its secrets and keys before any file that
 	// reads them renders, so the files and the .env agree.
-	stackValuesByDpg, err := CompleteStacks(req.Stacks, StackSettings(req.Pair, values), req.Random, now())
+	stackValuesByDpg, err := CompleteStacks(req.Stacks, StackSettings(req.Pair, values, esignet[EsignetPluginEnv]), req.Random, now())
 	if err != nil {
 		return Plan{}, err
 	}
