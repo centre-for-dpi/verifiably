@@ -299,7 +299,7 @@ func TestWaltidStackPassesSettingsAfterTheSeparator(t *testing.T) {
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		t.Fatal(err)
 	}
-	for _, service := range []string{"waltid-issuer-api", "waltid-verifier-api", "waltid-verifier-api2"} {
+	for _, service := range []string{"waltid-issuer-api", "waltid-verifier-api", "waltid-verifier-api2", "waltid-wallet-api"} {
 		cmd := doc.Services[service].Command
 		if len(cmd) < 2 || cmd[0] != "--" || !strings.HasPrefix(cmd[1], "--webPort=") {
 			t.Errorf("%s command = %v, want -- then --webPort=...", service, cmd)

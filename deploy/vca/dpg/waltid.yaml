@@ -124,6 +124,9 @@ services:
     profiles: [holder-waltid]
     container_name: waltid-wallet-api
     restart: unless-stopped
+    # The image listens on 3000 by itself. Settings follow "--", as for
+    # waltid-issuer-api.
+    command: ["--", "--webPort=7001"]
     depends_on:
       waltid-postgres:
         condition: service_healthy

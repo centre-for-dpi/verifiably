@@ -221,6 +221,38 @@ type realmClient struct {
 	Attributes                struct {
 		PkceCodeChallengeMethod string `json:"pkce.code.challenge.method"`
 	} `json:"attributes"`
+	// ProtocolMappers add claims to the tokens of the client.
+	ProtocolMappers []realmProtocolMapper `json:"protocolMappers,omitempty"`
+}
+
+// realmProtocolMapper is one protocol mapper of a client.
+type realmProtocolMapper struct {
+	Name            string            `json:"name"`
+	Protocol        string            `json:"protocol"`
+	ProtocolMapper  string            `json:"protocolMapper"`
+	ConsentRequired bool              `json:"consentRequired"`
+	Config          map[string]string `json:"config"`
+}
+
+// realmRolesMapper puts the realm roles of the user into the ID token
+// as realm_access.roles, beside the access token. The auth services
+// read the roles of a login from the ID token (ADR-012 decision 3),
+// and the mapper of the default client scope of Keycloak writes them to
+// the access token only.
+func realmRolesMapper() realmProtocolMapper {
+	return realmProtocolMapper{
+		Name:           "realm roles",
+		Protocol:       "openid-connect",
+		ProtocolMapper: "oidc-usermodel-realm-role-mapper",
+		Config: map[string]string{
+			"claim.name":           "realm_access.roles",
+			"jsonType.label":       "String",
+			"multivalued":          "true",
+			"id.token.claim":       "true",
+			"access.token.claim":   "true",
+			"userinfo.token.claim": "true",
+		},
+	}
 }
 
 // realm is the Keycloak realm of one role that the CLI writes.
@@ -319,6 +351,7 @@ func KeycloakRealm(p Pair, values map[string]string) ([]byte, error) {
 		StandardFlowEnabled: true,
 		RedirectUris:        []string{redirect},
 		WebOrigins:          []string{public},
+		ProtocolMappers:     []realmProtocolMapper{realmRolesMapper()},
 	}
 	if isInjiHolder(p) {
 		// Inji Web logs the holder in through Mimoto, whose provider
