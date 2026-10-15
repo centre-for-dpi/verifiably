@@ -1283,7 +1283,24 @@ The walt.id verifier pair also gets `VCA_WALTID_VERIFIER2_URL`, the
 address `http://waltid-verifier-api2:7004` of verifier API 2.
 Verifier API 2 answers DCQL requests.
 Its host port is 17004, and `WALTID_VERIFIER2_HOST_PORT` changes it.
-`WALTID_VERIFIER2_BASE_URL` sets the address a wallet opens.
+A wallet opens the walt.id issuer API for an offer, and the verifier
+APIs for a presentation request, so setup writes the address of each
+into the `.env` of the pair that runs it: `WALTID_ISSUER_BASE_URL` for
+the issuer pair, `WALTID_VERIFIER_BASE_URL` and
+`WALTID_VERIFIER2_BASE_URL` for the verifier pair. The stack file passes
+each one to its container as the base URL. The addresses follow the
+deployment:
+
+| Container | Local | Base domain |
+|---|---|---|
+| `waltid-issuer-api` | `http://localhost:17002` | `https://waltid-issuer-api.<domain>` |
+| `waltid-verifier-api` | `http://localhost:17003` | `https://waltid-verifier-api.<domain>` |
+| `waltid-verifier-api2` | `http://localhost:17004` | `https://waltid-verifier-api2.<domain>` |
+
+Under a base domain, the Caddyfile of the walt.id issuer pair publishes
+the host of the issuer API, and the Caddyfile of the walt.id verifier
+pair publishes the hosts of both verifier APIs. Run `vca proxy` and
+reload the proxy after setup, as for every site.
 Set `VCA_DPG_URL` yourself when the DPG runs on another host.
 Your value always wins over the default.
 

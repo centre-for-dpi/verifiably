@@ -229,11 +229,15 @@ func TestGeneratedRealmHoldsTheClient(t *testing.T) {
 
 func TestDpgHostPortsNameTheKeycloak(t *testing.T) {
 	ports := DpgHostPorts(issuerPair())
-	if len(ports) != 1 {
+	if len(ports) != 2 {
 		t.Fatalf("got %d ports", len(ports))
 	}
 	if ports[0].Container != "waltid-keycloak" || ports[0].Host != 17010 {
 		t.Errorf("port = %+v", ports[0])
+	}
+	// A wallet opens the issuer API for an offer, so the pair publishes it.
+	if ports[1].Container != "waltid-issuer-api" || ports[1].Host != 17002 || ports[1].Env != "WALTID_ISSUER_HOST_PORT" {
+		t.Errorf("port = %+v", ports[1])
 	}
 	if DpgHostPorts(Pair{}) != nil {
 		t.Error("a pair with no DPG has a host port")

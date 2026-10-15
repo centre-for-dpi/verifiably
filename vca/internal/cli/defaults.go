@@ -161,9 +161,10 @@ func DpgHostPorts(p Pair) []DpgPort {
 	if isInjiHolder(p) {
 		out = append(out, DpgPort{Container: "inji-web", Host: 17085, Env: "INJI_WEB_HOST_PORT", Port: 3004})
 	}
-	if p.Dpg == configv1.Dpg_DPG_WALTID && p.Role == commonv1.Role_ROLE_VERIFIER {
-		// A wallet fetches the requests of verifier-api2 here (P6-W1).
-		out = append(out, DpgPort{Container: "waltid-verifier-api2", Host: 17004, Env: "WALTID_VERIFIER2_HOST_PORT", Port: 7004})
+	// A wallet opens the walt.id issuer API for an offer and the
+	// verifier APIs for a request (P6-W1), so the pair publishes them.
+	for _, site := range waltidSites(p) {
+		out = append(out, site.Port)
 	}
 	if p.Dpg == configv1.Dpg_DPG_CREDEBL && p.Role != commonv1.Role_ROLE_ADMIN {
 		// A verifier outside the host reads the status lists of the

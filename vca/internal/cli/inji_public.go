@@ -398,8 +398,9 @@ type dpgSite struct {
 }
 
 // dpgSites lists the containers of a pair that get a host of their own
-// under a base domain: Inji Web for the Inji holder, and Inji Verify and
-// its page for the Inji verifier.
+// under a base domain: Inji Web for the Inji holder, Inji Verify and
+// its page for the Inji verifier, and the APIs a wallet opens for the
+// walt.id issuer and verifier (waltidSites).
 func dpgSites(p Pair) []dpgSite {
 	switch {
 	case isInjiHolder(p):
@@ -407,7 +408,7 @@ func dpgSites(p Pair) []dpgSite {
 	case p == injiVerifier:
 		return []dpgSite{{Env: InjiVerifyPublicURLEnv, Port: injiVerifyPort}, {Env: InjiVerifyUIPublicURLEnv, Port: injiVerifyUIPort}}
 	default:
-		return nil
+		return waltidSites(p)
 	}
 }
 

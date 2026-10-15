@@ -196,6 +196,10 @@ func BuildPlan(req SetupRequest) (Plan, error) {
 	for name, value := range inji {
 		extra[name] = value
 	}
+	// The wallet facing addresses of the walt.id stack follow it too.
+	for name, value := range WaltidPublicValues(req.Pair, values, req.Domain) {
+		extra[name] = value
+	}
 	// eSignet runs only with the authenticator of the operator. Setup
 	// copies its files under the eSignet directory (ADR-053).
 	esignet, esignetFiles, err := EsignetValues(req.Pair, values, req.ReadFile)
