@@ -369,4 +369,3 @@ func TestSchemaAllowlistIncludesISOmDL(t *testing.T) {
 	}
 	t.Fatalf("expected %q in schemaAllowlistDefault, got %v", want, schemaAllowlistDefault)
 }
-
