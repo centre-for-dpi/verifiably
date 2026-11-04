@@ -67,7 +67,7 @@ func expectedMdlMappingsForProfile(categoryCount int) []struct{ field, conversio
 	return out
 }
 
-// expectedPhotoIdMappings — isoPhotoId. Carries `portrait` as of the F2 fix
+// expectedPhotoIDMappings — isoPhotoId. Carries `portrait` as of the F2 fix
 // (2026-08-31, TODO.md): the profile was missing this exact entry relative
 // to the mDL profiles it is otherwise structurally identical to, so
 // portrait serialized as CBOR text instead of a byte string for every
@@ -76,7 +76,7 @@ func expectedMdlMappingsForProfile(categoryCount int) []struct{ field, conversio
 // describes for booleans. Order matches the real entriesConfigMap in
 // issuer2-profiles.baseline.conf: portrait sits between expiry_date and
 // portrait_capture_date, mirroring the mDL profiles' own ordering.
-var expectedPhotoIdMappings = []struct{ field, conversion string }{
+var expectedPhotoIDMappings = []struct{ field, conversion string }{
 	{"birth_date", "stringToFullDate"},
 	{"issue_date", "stringToFullDate"},
 	{"expiry_date", "stringToFullDate"},
@@ -97,7 +97,7 @@ func TestTrimmedProfileKeepsEveryConversionMapping(t *testing.T) {
 			want = append(want, m.field+"="+m.conversion)
 		}
 	}
-	for _, m := range expectedPhotoIdMappings {
+	for _, m := range expectedPhotoIDMappings {
 		want = append(want, m.field+"="+m.conversion)
 	}
 
@@ -176,35 +176,8 @@ func TestCredentialDataCarriesOnlyTheKeptFields(t *testing.T) {
 	}
 }
 
-// namespaceBlock returns the text between `header` and its matching close
-// brace, so a test can look at one credentialData namespace without matching
-// the entriesConfigMap blocks that sit at the same indent elsewhere.
-func namespaceBlock(t *testing.T, raw, header string) string {
-	t.Helper()
-	start := strings.Index(raw, header)
-	if start < 0 {
-		t.Fatalf("namespace header %q not found — the profile shape changed", header)
-	}
-	rest := raw[start+len(header):]
-	depth := 1
-	for i, r := range rest {
-		switch r {
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return rest[:i]
-			}
-		}
-	}
-	t.Fatalf("unbalanced braces after %q", header)
-	return ""
-}
-
 // allNamespaceBlocks returns the text between EVERY occurrence of `header`
-// and its matching close brace — unlike namespaceBlock, which only finds
-// the first. Needed once a HOCON file legitimately repeats the same
+// and its matching close brace. Needed once a HOCON file legitimately repeats the same
 // namespace header across multiple profile blocks (isoMdl_1cat..isoMdl_4cat
 // each declare their own "org.iso.18013.5.1" = { ... } credentialData).
 func allNamespaceBlocks(t *testing.T, raw, header string) []string {

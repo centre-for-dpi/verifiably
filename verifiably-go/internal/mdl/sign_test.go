@@ -8,6 +8,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/veraison/go-cose"
+
 	"github.com/verifiably/verifiably-go/internal/mdl/pki"
 	"github.com/verifiably/verifiably-go/internal/signer"
 )

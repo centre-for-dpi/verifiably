@@ -80,7 +80,7 @@ func TestBuildClaimsBlockKeepsEnglishFirstWhenDeclared(t *testing.T) {
 	if en < 0 || esDO < 0 || ht < 0 {
 		t.Fatalf("expected all three locales, got:\n%s", got)
 	}
-	if !(en < esDO && esDO < ht) {
+	if en >= esDO || esDO >= ht {
 		t.Errorf("expected en first then the rest sorted (en=%d es-DO=%d ht=%d):\n%s", en, esDO, ht, got)
 	}
 }

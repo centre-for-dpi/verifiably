@@ -392,12 +392,12 @@ func drivingPrivilegeRows(r *http.Request) []mdoc.DrivingPrivilege {
 func validateDrivingPrivilegesCount(filled []mdoc.DrivingPrivilege) error {
 	if len(filled) > mdoc.DrivingPrivilegesMaxCategories {
 		return fmt.Errorf(
-			"Solo se pueden emitir %d categorías de conducción por credencial (ingresaste %d). Quita las categorías sobrantes.",
+			"driving_privileges: solo se pueden emitir %d categorías de conducción por credencial (ingresaste %d). Quita las categorías sobrantes",
 			mdoc.DrivingPrivilegesMaxCategories, len(filled))
 	}
 	if len(filled) == 0 {
 		return fmt.Errorf(
-			"driving_privileges es obligatorio en ISO 18013-5 — ingresa al menos una categoría de conducción antes de emitir.")
+			"driving_privileges es obligatorio en ISO 18013-5 — ingresa al menos una categoría de conducción antes de emitir")
 	}
 	return nil
 }
@@ -494,7 +494,7 @@ func imageFieldValue(r *http.Request, name string) (string, error) {
 	// from the multipart header, not measured.
 	raw, err := io.ReadAll(io.LimitReader(file, maxImageUploadBytes+1))
 	if err != nil {
-		return "", fmt.Errorf("could not read the uploaded %s: %v", strings.ReplaceAll(name, "_", " "), err)
+		return "", fmt.Errorf("could not read the uploaded %s: %w", strings.ReplaceAll(name, "_", " "), err)
 	}
 	if len(raw) == 0 {
 		return strings.TrimSpace(r.FormValue("field_" + name)), nil

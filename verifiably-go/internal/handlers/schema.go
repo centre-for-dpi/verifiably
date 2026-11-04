@@ -419,11 +419,6 @@ type builderData struct {
 	BlankLangRows map[int]int
 }
 
-// blankRowsFor reports how many empty language rows field i should render.
-// A nil map (any handler that didn't populate it) yields zero, so every
-// non-builder caller renders only the rows the labels map produces.
-func (d builderData) blankRowsFor(i int) int { return d.BlankLangRows[i] }
-
 // delegationScenario is a real-world delegated-access relationship preset so an
 // operator picks "Power of Attorney" or "Teacher" rather than hand-assembling the
 // abstract capability schema. It shapes the credential's identity + field set and

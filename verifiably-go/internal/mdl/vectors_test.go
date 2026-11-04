@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
+
 	"github.com/verifiably/verifiably-go/internal/mdl/pki"
 	"github.com/verifiably/verifiably-go/internal/signer"
 )

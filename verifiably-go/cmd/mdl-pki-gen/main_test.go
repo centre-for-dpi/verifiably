@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/x509"
@@ -99,8 +100,15 @@ func TestGeneratedKeyMatchesTheCertifiedKey(t *testing.T) {
 
 	// The private scalar must belong to the same key, or signing fails outright.
 	d := decode("VERIFIABLY_ISSUER2_KEY_D")
-	derivedX, derivedY := elliptic.P256().ScalarBaseMult(d.Bytes())
-	if derivedX.Cmp(certPub.X) != 0 || derivedY.Cmp(certPub.Y) != 0 {
+	priv, err := ecdh.P256().NewPrivateKey(d.FillBytes(make([]byte, 32)))
+	if err != nil {
+		t.Fatalf("VERIFIABLY_ISSUER2_KEY_D is not a valid P-256 scalar: %v", err)
+	}
+	certECDH, err := certPub.ECDH()
+	if err != nil {
+		t.Fatalf("certified public key is not a usable P-256 key: %v", err)
+	}
+	if !priv.PublicKey().Equal(certECDH) {
 		t.Error("VERIFIABLY_ISSUER2_KEY_D is not the private scalar for the certified public key")
 	}
 }

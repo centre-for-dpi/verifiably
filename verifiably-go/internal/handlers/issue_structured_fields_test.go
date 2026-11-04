@@ -527,7 +527,7 @@ func TestValidateDrivingPrivilegesCount(t *testing.T) {
 		if err == nil {
 			t.Fatal("validateDrivingPrivilegesCount(over cap) = nil, want a rejection — EncodeDrivingPrivileges would otherwise silently truncate")
 		}
-		if !strings.Contains(err.Error(), "Solo se pueden emitir") {
+		if !strings.Contains(err.Error(), "solo se pueden emitir") {
 			t.Errorf("error = %q, want it to contain the operator-facing Spanish over-cap message", err.Error())
 		}
 	})
