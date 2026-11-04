@@ -144,7 +144,7 @@ records, agent wallets). Credo agent wallets are stored here too
 ## 8. Deploy + verify
 
 ```bash
-ssh colombo 'cd /root/verifiably/verifiably-go && ./deploy.sh up credebl'   # or: up all
+ssh <your-deploy-host> 'cd /path/to/verifiably-go && ./deploy.sh up credebl'   # or: up all
 ```
 
 Sequence (`scripts/bootstrap-credebl.sh`): `ensure_credebl_env` (write `credebl.env` + secrets) →

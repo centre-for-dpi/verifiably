@@ -10,9 +10,14 @@ RUN apk add --no-cache libpq \
 WORKDIR /app
 COPY citizen_service.py /app/citizen_service.py
 
-# Defaults match the docker-compose wiring: citizens-postgres is reachable by
-# its compose service name on the waltid_default network. Override at
-# `docker run` time (-e CITIZENS_DSN=...) for any other layout.
+# Default matches verifiably-go's main stack: citizens-postgres is reachable
+# by its compose service name on the waltid_default network. Its real
+# password is CITIZENS_PG_PASSWORD from verifiably-go's own .env (generated
+# on `deploy.sh setup`) — "citizens" here only matches a host that predates
+# that variable. This repo's own docker-compose.yml (the standalone ministry
+# scenario) overrides this entirely with its own citizens-db container, so
+# this default only matters for a bare `docker run` against the main stack.
+# Override at `docker run` time (-e CITIZENS_DSN=...) for any other layout.
 ENV CITIZENS_DSN=postgres://citizens:citizens@citizens-postgres:5432/citizens \
     PORT=8099 \
     HOST=0.0.0.0

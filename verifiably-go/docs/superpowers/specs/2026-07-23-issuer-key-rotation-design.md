@@ -204,6 +204,50 @@ llave en el backend de `signer.Provider` elegido, llama
 `ProvisionIssuerKey` seguido de `PublishDIDDocument`, y deja un registro
 auditable (qué `kid` se activó, cuándo, quién lo disparó).
 
+## Cuarto consumidor: mDL (mdoc / ISO 18013-5) — añadido 2026-08-21
+
+Este diseño razona en términos de DIDs y `kid`s, correcto para los tres
+DPGs de arriba porque los tres corren `did:web`. **mdoc no usa DIDs en
+absoluto**: la confianza va por cadena X.509 (IACA → DSC) que el
+verificador valida contra un ancla instalada de antemano. Cuando este
+spec pase a plan de implementación, debe absorber tres requisitos que hoy
+no contempla:
+
+1. **Backend `x509chain` como ciudadano de primera.** `KeyReference`
+   describe dónde vive la llave; mdoc necesita además la cadena de
+   certificados que la acompaña. `Provider.Certificate()` ya está en la
+   interfaz y el plan previo ya nombra `x509chain`, pero ninguno está
+   desarrollado. Un `Provider` para mdoc debe exponer la cadena completa
+   (DSC + IACA), no solo el certificado hoja.
+
+2. **Distribución del ancla IACA — el análogo de `PublishDIDDocument`.**
+   Para mdoc, republicar un `did.json` no sirve de nada: lo que el
+   verificador necesita es el ancla IACA, y hoy se instala **a mano**
+   (confirmado en pruebas de esta sesión: hubo que importar el
+   certificado por la UI de `multipaz-identity-reader` para que aceptara
+   la credencial). La Parte 4 de
+   `docs/superpowers/adr/2026-08-20-mdl-production-path-analysis.md` ya
+   analizó la forma correcta — una lista de anclas versionada y
+   **firmada**, replicando lo que el backend de `multipaz-identity-reader`
+   hace con `GET /trusted-issuers?version=N` — y descartó VICAL como
+   prematuro. `KeyConsumer` necesita un método equivalente para este
+   caso, o `PublishDIDDocument` necesita generalizarse a "publicar el
+   material de confianza que corresponda a este formato".
+
+3. **La ventana multi-`kid` tiene una restricción dura en mdoc.** El
+   equivalente de tolerar dos `kid`s activos es la superposición de
+   validez de dos DSC. ISO/IEC 18013-5 Annex B lo acota: un DSC no puede
+   exceder 457 días de validez ni sobrevivir a la IACA que lo firma
+   (ambos límites ya implementados y con tests en
+   `internal/mdl/pki/pki.go`). La ventana de transición no es libre como
+   en `did:web` — está topada por la vigencia del certificado.
+
+**No bloquea al PR de mDL en curso.** Ese PR usa una llave EC P-256
+estable inyectada para `issuer-api2`, marcada explícitamente como
+provisional, y no introduce mecanismo propio de claves — precisamente
+para no crear un camino paralelo que luego haya que reconciliar con este
+diseño.
+
 ## Fuera de alcance de esta fase
 
 - Backends reales `pkcs11`/`tse`/`azure`/`oci`/`awskms` — la interfaz los

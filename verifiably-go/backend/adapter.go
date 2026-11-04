@@ -202,6 +202,30 @@ type IssueRequest struct {
 	// jwt_vc_json) issuance path; ignored for SD-JWT and mdoc.
 	CredentialData json.RawMessage
 
+	// StructuredData carries claims whose value is NOT a scalar — today
+	// ISO 18013-5's `driving_privileges`, an array of objects. It is keyed by
+	// claim name, and each value is the claim's JSON value verbatim (an array,
+	// an object, whatever the standard says), to be merged alongside the flat
+	// SubjectData entries in the same namespace.
+	//
+	// Why this and not CredentialData: CredentialData replaces the WHOLE
+	// credential body, which is the wrong granularity here. The mdoc path
+	// needs one field to be structured while the other twenty stay flat, and
+	// the operator fills them all on the same form. A whole-body override
+	// would force the handler to reconstruct every flat field itself and
+	// duplicate the profile-merge semantics issuer-api2 already implements.
+	//
+	// Why not widen SubjectData to map[string]any: three other adapters
+	// (credebl, injicertify, the legacy waltid path) iterate SubjectData
+	// directly into their own payloads. Widening it would make a structured
+	// value appear as a stringified blob in a W3C credential with no compile
+	// error to catch it. Keeping the structured values in a SEPARATE field
+	// means an adapter that does not know about them ignores them, which is
+	// the correct behaviour for a format that cannot represent them anyway.
+	//
+	// Honored on the mdoc (issuer-api2) issuance path. Ignored elsewhere.
+	StructuredData map[string]json.RawMessage
+
 	// ValidFrom / ValidUntil, when set (RFC3339), pin the credential's validity
 	// window at issuance instead of the DPG default (walt.id defaults to ~2y
 	// from now). The adapter writes them into the credential body — W3C

@@ -144,9 +144,28 @@ out below with the workaround the verifiably-go inji-proxy applies.
    download the card". Our handler forwards to `inji-certify:8090`,
    optionally patching `credential_definition.@context`.
 
-4. **mDoc (ISO 18013-5) issuance is mock-only** per Inji Certify's own
-   README at v0.14.0. Our `backends.json` strips mDoc from the Farmer
-   catalog; the UI shows only the two LDP formats and SD-JWT.
+4. **mDoc (ISO 18013-5) issuance is real, not mock-only, since 2026-08-25.**
+   This item used to say "mock-only per Inji Certify's own README at
+   v0.14.0" — that was true when written and is no longer true: mso_mdoc
+   (mDL and Photo ID) is now issued for real through Inji Certify's
+   Pre-Auth path, alongside walt.id/issuer-api2 as a second production
+   emitter. `internal/adapters/injicertify/db.go`'s `saveMdocSchema` writes
+   a real `credential_config` row; the mso_mdoc option in the schema
+   builder is offered unconditionally (not gated behind a mock-only
+   warning — `templates/pages/issuer_schema_builder.html`, corrected in
+   commit `b2b9851`). Reaching this took a run of fixes worth knowing about
+   if you touch this path: claims must nest under the real ISO namespace
+   before POSTing (`8b9aba7`), Velocity template markers resolve via
+   bracket-notation nested access (`40fd683`), `ListSchemas` must resolve
+   `driving_privileges`/`portrait`'s real Format (`3ff6b59`), and nginx +
+   Spring Boot's embedded Tomcat both needed their max header size raised
+   for Inji's larger access tokens (`2581b61`, `513327e`, `60befa3`).
+   **Known limitation that IS still real**: Inji Certify's own mdoc
+   conversion does not bstr-encode `portrait` correctly (`d222c33`) — an
+   upstream defect in Inji Certify itself, not something this repo's config
+   can work around; mitigated wallet-side in `cdpi-wallet`. See
+   [`dpg/inji-certify-preauth.md`](dpg/inji-certify-preauth.md) for the
+   operational detail this line summarizes.
 
 5. **Two key aliases in `certify.key_alias`** for `CERTIFY_VC_SIGN_ED25519`
    (one with ref_id `ED25519_SIGN`, one with ref_id NULL). Only the

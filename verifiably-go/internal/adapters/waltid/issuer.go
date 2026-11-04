@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
+	"github.com/verifiably/verifiably-go/internal/mdoc"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
 
@@ -217,9 +218,9 @@ func (a *Adapter) ListSchemas(ctx context.Context, issuerDpg string) ([]vctypes.
 var schemaAllowlistDefault = []string{
 	"Bank Id",
 	"Educational ID",
+	"Iso18013 Drivers License Credential",
 	"Tax Receipt",
 	"University Degree",
-	"Iso18013 Drivers License Credential",
 }
 
 // applySchemaAllowlist filters the walt.id ListSchemas output to the
@@ -481,6 +482,13 @@ func (a *Adapter) SaveCustomSchema(_ context.Context, schema vctypes.Schema) err
 		a.registeredConfigIDs[cid] = cid
 	}
 	a.mu.Unlock()
+	// An mdoc schema issues through issuer-api2, whose configurations are
+	// pre-provisioned per docType — appendCredentialType is a deliberate
+	// no-op for Std=="mso_mdoc" (see its doc comment) and never touches the
+	// legacy catalog above, so there is no per-schema entry here to carry a
+	// name. Push the name into issuer-api2's own metadata instead.
+	// Best-effort by construction — see syncIssuer2DisplayName.
+	a.syncIssuer2DisplayName(schema)
 	if !changed {
 		return nil
 	}
@@ -616,6 +624,26 @@ type issuanceRequest struct {
 // IssueToWallet issues a credential to the holder via OID4VCI. Walt.id returns
 // the offer URI as a plain-text response body.
 func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (backend.IssueToWalletResult, error) {
+	if req.Schema.Std == "mso_mdoc" {
+		// mdoc goes to issuer-api2, NOT the legacy issuer-api the rest of
+		// this function targets. This dispatch MUST happen before
+		// ensureIssuerKey and the legacy configID resolution below: both
+		// depend on a.issuer (legacy issuerBaseUrl), which an mdoc-only
+		// deployment need not configure at all. Gating on them first would
+		// fail with "issuer role not configured (issuerBaseUrl missing)" —
+		// true of the legacy service, irrelevant to mso_mdoc, and pointing
+		// whoever's debugging at the wrong dependency.
+		//
+		// The legacy service also cannot type CBOR at any version
+		// (mDocNameSpacesDataMappingConfig is absent through 0.23.1), so it
+		// would emit birth_date as text instead of tag 1004 and portrait as
+		// text instead of a byte string — a credential no conformant reader
+		// accepts. issuer-api2 also takes a different request shape
+		// (profileId + runtimeOverrides, not credentialConfigurationId +
+		// mdocData) AND returns JSON where the legacy returns bare text, so
+		// this returns directly rather than joining the shared POST below.
+		return a.issueMdocViaIssuer2(ctx, req)
+	}
 	if err := a.ensureIssuerKey(ctx); err != nil {
 		return backend.IssueToWalletResult{}, err
 	}
@@ -675,21 +703,6 @@ func (a *Adapter) IssueToWallet(ctx context.Context, req backend.IssueRequest) (
 		StandardVersion:           strings.ToUpper(a.cfg.StandardVersion),
 	}
 	switch req.Schema.Std {
-	case "mso_mdoc":
-		// mdoc bodies are namespace-keyed: {"<namespace>":{"<field>":"<value>"}}.
-		// walt.id's Kotlin IssuanceRequest rejects the VCDM 2.0 shape with a
-		// JsonConvertException. Namespace is derived from the doctype by
-		// stripping the last dot-segment (e.g. org.iso.18013.5.1.mDL →
-		// org.iso.18013.5.1).
-		// mdoc revocation flows through MSO/IACA, not bitstring/token status
-		// lists, so we don't inject a StatusListBinding here even when one is
-		// passed (the handler shouldn't allocate for mso_mdoc; this is a
-		// belt-and-braces no-op).
-		mdocData, err := buildMdocData(req.Schema, req.SubjectData)
-		if err != nil {
-			return backend.IssueToWalletResult{}, err
-		}
-		ir.MdocData = mdocData
 	case "sd_jwt_vc (IETF)", "sd_jwt_vc":
 		// SD-JWT VC issuance expects credentialData with TOP-LEVEL claim
 		// keys (no VCDM @context / type / credentialSubject wrapping).
@@ -1024,28 +1037,6 @@ func buildSelectiveDisclosureMap(subject map[string]string) json.RawMessage {
 	return b
 }
 
-// buildMdocData constructs the namespace-keyed body walt.id's mdoc issuer
-// expects. Namespace is derived from the credential's doctype (the Schema's
-// base type) by stripping the last dot-segment — mdoc spec convention, so
-// "org.iso.18013.5.1.mDL" → "org.iso.18013.5.1". Every subject field lands
-// under that namespace; walt.id copies them into the mdoc's data elements.
-func buildMdocData(schema vctypes.Schema, subject map[string]string) (json.RawMessage, error) {
-	doctype := schema.BaseType()
-	if doctype == "" {
-		doctype = schema.ID
-	}
-	namespace := doctype
-	if i := strings.LastIndex(doctype, "."); i > 0 {
-		namespace = doctype[:i]
-	}
-	claims := make(map[string]any, len(subject))
-	for k, v := range subject {
-		claims[k] = v
-	}
-	doc := map[string]any{namespace: claims}
-	return json.Marshal(doc)
-}
-
 // buildCredentialData constructs a VCDM 2.0-shaped JSON object from the
 // operator's subject input. Types come from the schema id prefix
 // (the canonical type before the `_format` suffix).
@@ -1156,6 +1147,11 @@ func fieldsForCredentialType(id string) []vctypes.FieldSpec {
 	date := func(name string) vctypes.FieldSpec {
 		return vctypes.FieldSpec{Name: name, Datatype: "string", Format: "date", Required: true}
 	}
+	// opt is the not-required counterpart of str/date; pass format "date" for
+	// date fields, "" otherwise.
+	opt := func(name, format string) vctypes.FieldSpec {
+		return vctypes.FieldSpec{Name: name, Datatype: "string", Format: format, Required: false}
+	}
 	switch base {
 	case "UniversityDegree", "UniversityDegreeCredential":
 		return []vctypes.FieldSpec{str("holder"), str("degree"), str("classification"), date("conferred")}
@@ -1164,9 +1160,57 @@ func fieldsForCredentialType(id string) []vctypes.FieldSpec {
 	case "KycChecksCredential", "KycCredential", "KycDataCredential":
 		return []vctypes.FieldSpec{str("holder"), str("kycComplete"), str("amlScreeningPassed"), date("checkedOn")}
 	case "Iso18013DriversLicenseCredential":
+		// The six required fields are the mandatory ISO/IEC 18013-5 data
+		// elements. The optional ones below are also standard 18013-5
+		// elements that real readers ask for — the Multipaz reader's
+		// "identification" request asks for birth_place, and its age
+		// attestations ask for age_over_18 / age_over_21. Issuing without
+		// them made those requests fail with "field does not exist", which
+		// looks like a wallet bug but is just a credential missing data.
+		//
+		// Nothing filters subject_data against this list on the way to
+		// walt.id — the mdoc issuance path copies whatever it is given — so
+		// these were always issuable via the API. Verified by decoding a signed
+		// mdoc: all sixteen elements below came back in the CBOR. This list
+		// only drives the operator UI, which is why they need to be here to
+		// be offered at all.
+		//
+		// age_over_NN are ISO's age attestations: booleans the issuer
+		// asserts, so a verifier can check "over 18" without learning the
+		// birth date. They are typed as strings because subject_data is a
+		// map[string]string end to end.
 		return []vctypes.FieldSpec{
 			str("family_name"), str("given_name"), date("birth_date"),
-			str("document_number"), str("driving_privileges"), date("expiry_date"),
+			str("document_number"),
+			// driving_privileges is an ARRAY OF OBJECTS in ISO 18013-5, not a
+			// string. Declaring it str() rendered a text box, so an operator
+			// typed "1" and walt.id's profile mapping rejected the offer at
+			// redemption with "Expected to execute conversion from json array,
+			// but input |\"1\"| is not a json array" (TODO.md F4). The Format
+			// routes it to the repeater input and the structured issuance path.
+			{Name: "driving_privileges", Datatype: "string", Format: mdoc.FormatDrivingPrivileges, Required: true},
+			date("expiry_date"),
+			opt("issue_date", "date"), opt("issuing_country", ""),
+			opt("issuing_authority", ""), opt("birth_place", ""),
+			opt("resident_address", ""), opt("nationality", ""),
+			opt("age_over_18", ""), opt("age_over_21", ""),
+			opt("age_in_years", ""), opt("un_distinguishing_sign", ""),
+			// portrait is image bytes. walt.id's profile maps it with
+			// conversionType "base64StringToByteString", so the operator picks
+			// a file and the handler hands over base64 — we never encode CBOR.
+			{Name: "portrait", Datatype: "string", Format: mdoc.FormatImage, Required: false},
+			// portrait_capture_date must be offered even though ISO lists it
+			// optional. The isoMdl profile ships it as "" and issuer-api2
+			// deep-MERGES runtimeOverrides over the profile rather than
+			// replacing it, so a field we never send keeps the profile's empty
+			// string — which its date mapping then fails to parse, killing the
+			// issuance at wallet-redemption time with
+			//   java.time.format.DateTimeParseException: Text '' could not be
+			//   parsed at index 0
+			// The offer still returns 201, so this only surfaces on the
+			// citizen's phone. Every profile date field must therefore be
+			// reachable from the form; see TODO.md F4.
+			opt("portrait_capture_date", "date"),
 		}
 	case "OpenBadgeCredential":
 		return []vctypes.FieldSpec{str("holder"), str("achievement"), date("issuedOn")}
@@ -1231,7 +1275,7 @@ func displayNameFor(id string, cfg credentialConfigurationEntry) string {
 	// space inserted mid-acronym). This also means the schema silently
 	// falls outside schemaAllowlistDefault's curated names, since nothing
 	// there matches the mangled output. Namespace convention mirrors
-	// buildMdocData: strip the doctype's last dot-segment.
+	// mdocNamespaceFor: strip the doctype's last dot-segment.
 	if cfg.Format == "mso_mdoc" {
 		doctype := strings.TrimSpace(cfg.DocType)
 		if doctype == "" {

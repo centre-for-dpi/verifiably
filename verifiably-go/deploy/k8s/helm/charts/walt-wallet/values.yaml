@@ -8,7 +8,7 @@ wallet:
   tokenKey: ""
   image:
     repository: waltid/wallet-api
-    tag: "0.18.2"
+    tag: "0.23.1"
     pullPolicy: IfNotPresent
   service:
     port: 7001

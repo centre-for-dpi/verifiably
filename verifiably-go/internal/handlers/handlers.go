@@ -159,6 +159,16 @@ type H struct {
 	// Set from VERIFIABLY_TRUST_SIGNING_KEY (PEM); an ephemeral key is generated
 	// when the env var is absent so the endpoint always works.
 	TrustSigningKey *ecdsa.PrivateKey
+
+	// MdocCertsDir is the directory holding this deployment's generated mdoc
+	// PKI (deploy/k8s/config/issuer2/certs, mounted into the container at
+	// /app/issuer-api2-config/certs). GET /trust/mdoc-anchors reads iaca.pem
+	// from here per request so a redeploy that regenerates the root is visible
+	// without restarting this process. Empty disables the endpoint with a 503.
+	// Set from VERIFIABLY_MDOC_CERTS_DIR. See internal/handlers/mdoc_anchors.go
+	// for why only the IACA is ever served from this directory — dsc.pem and
+	// issuer2.env (DSC private key) live in it too.
+	MdocCertsDir string
 	// DIDResolver resolves did:web DIDs to their DID Documents.
 	// Used by status list verification (Fase 10) and federation validation (Fase 5).
 	// Wired at startup with a WebResolver (10-minute document cache).
@@ -1240,7 +1250,7 @@ func (h *H) errorToast(w http.ResponseWriter, r *http.Request, msg string) {
 func (h *H) errorToastStatus(w http.ResponseWriter, r *http.Request, status int, msg string) {
 	slog.Warn("handler error", "method", r.Method, "path", r.URL.Path, "msg", msg)
 	if isHTMX(r) {
-		payload, err := json.Marshal(map[string]string{"toast": msg})
+		payload, err := asciiSafeJSON(map[string]string{"toast": msg})
 		if err != nil {
 			// json.Marshal of a simple map[string]string doesn't realistically
 			// fail, but fall back to a plain event so something still fires.
@@ -1252,6 +1262,55 @@ func (h *H) errorToastStatus(w http.ResponseWriter, r *http.Request, status int,
 		return
 	}
 	http.Error(w, msg, status)
+}
+
+// asciiSafeJSON marshals v to JSON and re-escapes every non-ASCII rune as a
+// \uXXXX sequence before returning it.
+//
+// This exists because errorToastStatus puts its JSON payload directly into
+// the HX-Trigger response HEADER, not the body. Browsers expose response
+// headers to JavaScript (XMLHttpRequest.getResponseHeader, which htmx uses
+// internally) decoded as ISO-8859-1/Latin-1 — a fixed behavior of the Fetch/
+// XHR platform, not a bug in htmx or in this server. Any raw UTF-8 multibyte
+// sequence (an accented vowel, an em dash) put straight into a header value
+// comes back to the browser corrupted into mojibake ("categoría" ->
+// "categorÃ­a"), even though the bytes verifiably-go wrote were correct
+// UTF-8 the whole time — confirmed by inspecting the header bytes directly
+// with json.Marshal alone, which is plain UTF-8 and looks fine at the wire
+// level; the corruption happens only when the browser's header-reading API
+// re-interprets those bytes.
+//
+// \uXXXX escapes are pure ASCII, so they survive the header round-trip
+// unchanged, and JSON.parse (which htmx calls on this exact payload)
+// decodes \uXXXX back into the real Unicode character node-for-node — no
+// client-side change needed. This only matters for HX-Trigger and other
+// header-carried payloads; JSON in a normal response BODY is already
+// correct as plain UTF-8 and must not be run through this.
+func asciiSafeJSON(v any) ([]byte, error) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]byte, 0, len(raw))
+	for _, r := range string(raw) {
+		switch {
+		case r <= 127:
+			out = append(out, byte(r))
+		case r > 0xFFFF:
+			// Outside the Basic Multilingual Plane (e.g. an emoji): JSON has
+			// no single \uXXXX escape for these — \u%04x with a code point
+			// above 0xFFFF would print 5+ hex digits, which is not a valid
+			// JSON escape at all. Encode as a UTF-16 surrogate pair instead,
+			// exactly as JSON.stringify / json.Marshal itself would.
+			r -= 0x10000
+			high := 0xD800 + (r >> 10)
+			low := 0xDC00 + (r & 0x3FF)
+			out = append(out, []byte(fmt.Sprintf(`\u%04x\u%04x`, high, low))...)
+		default:
+			out = append(out, []byte(fmt.Sprintf(`\u%04x`, r))...)
+		}
+	}
+	return out, nil
 }
 
 // --- Schema browser + builder (issuer only) ---

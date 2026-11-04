@@ -138,7 +138,7 @@ services:
       retries: 3
 
   hub-verifier-api:
-    image: waltid/verifier-api:${WALTID_VERSION:-0.18.2}
+    image: waltid/verifier-api:${WALTID_VERSION:-0.23.1}
     container_name: hub-verifier-api
     restart: unless-stopped
     profiles:

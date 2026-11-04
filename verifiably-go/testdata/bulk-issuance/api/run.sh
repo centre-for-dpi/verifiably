@@ -15,7 +15,11 @@
 
 set -euo pipefail
 
-export CITIZENS_DSN="${CITIZENS_DSN:-postgres://citizens:citizens@localhost:5435/citizens}"
+# The real password is CITIZENS_PG_PASSWORD from verifiably-go's own .env
+# (generated on `deploy.sh setup`) — export it in your shell before running
+# this, or pass CITIZENS_DSN directly. The "citizens" fallback below only
+# matches a host that predates that variable.
+export CITIZENS_DSN="${CITIZENS_DSN:-postgres://citizens:${CITIZENS_PG_PASSWORD:-citizens}@localhost:5435/citizens}"
 if [[ $# -gt 0 ]]; then
   export CITIZENS_API_TOKEN="$1"
 fi

@@ -1,0 +1,13 @@
+{
+  "name": "mdl-verify-harness",
+  "private": true,
+  "type": "module",
+  "description": "Independent verifier for mdocs emitted by internal/mdl, using @owf/mdoc.",
+  "scripts": {
+    "verify": "node verify.mjs"
+  },
+  "dependencies": {
+    "@owf/cose": "^0.3.0",
+    "@owf/mdoc": "^0.7.0"
+  }
+}
