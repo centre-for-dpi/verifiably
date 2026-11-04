@@ -20,7 +20,7 @@ import { check, sleep } from 'k6';
 import { Counter, Rate } from 'k6/metrics';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:7001';
-const VUS = parseInt(__ENV.VUS || '50');
+const VUS = Number.parseInt(__ENV.VUS || '50', 10);
 const DURATION = __ENV.DURATION || '2m';
 
 export const options = {

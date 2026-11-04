@@ -42,8 +42,8 @@ type Registry interface {
 
 // TrustedIssuer is one entry in the trust registry.
 type TrustedIssuer struct {
-	DID         string   `json:"did"`
-	DisplayName string   `json:"display_name"`
+	DID         string `json:"did"`
+	DisplayName string `json:"display_name"`
 	// Schemas lists the credential schema IDs this issuer is authorised to
 	// issue. An empty slice means "all schemas" (wildcard — use sparingly).
 	Schemas []string `json:"schemas"`

@@ -211,11 +211,11 @@ type apiIssueRequest struct {
 }
 
 type apiIssueResult struct {
-	CredentialID string              `json:"credential_id"`
-	OfferURI     string              `json:"offer_uri"`
-	PIN          string              `json:"pin,omitempty"`
-	Flow         string              `json:"flow"`
-	StatusList   *apiStatusListRef   `json:"status_list,omitempty"`
+	CredentialID string            `json:"credential_id"`
+	OfferURI     string            `json:"offer_uri"`
+	PIN          string            `json:"pin,omitempty"`
+	Flow         string            `json:"flow"`
+	StatusList   *apiStatusListRef `json:"status_list,omitempty"`
 }
 
 type apiStatusListRef struct {
@@ -320,9 +320,9 @@ type apiIssueBulkRequest struct {
 }
 
 type apiIssueBulkResult struct {
-	Accepted int              `json:"accepted"`
-	Rejected int              `json:"rejected"`
-	Rows     []apiBulkRowOut  `json:"rows"`
+	Accepted int             `json:"accepted"`
+	Rejected int             `json:"rejected"`
+	Rows     []apiBulkRowOut `json:"rows"`
 }
 
 type apiBulkRowOut struct {
@@ -439,10 +439,10 @@ func (h *H) APIListCredentials(w http.ResponseWriter, r *http.Request) {
 	})
 	stats := h.IssuanceLog.Summary()
 	apiJSON(w, http.StatusOK, map[string]any{
-		"total":    stats.Total,
-		"active":   stats.Active,
-		"revoked":  stats.Revoked,
-		"items":    items,
+		"total":   stats.Total,
+		"active":  stats.Active,
+		"revoked": stats.Revoked,
+		"items":   items,
 	})
 }
 
@@ -584,9 +584,9 @@ func (h *H) reinstateStoreForBinding(kind, listID string) statuslist.Backend {
 // ── Verify request ────────────────────────────────────────────────────────────
 
 type apiVerifyRequest struct {
-	SchemaID    string                `json:"schema_id"`
-	VerifierDpg string                `json:"verifier_dpg,omitempty"`
-	Fields      []string              `json:"fields,omitempty"`
+	SchemaID    string   `json:"schema_id"`
+	VerifierDpg string   `json:"verifier_dpg,omitempty"`
+	Fields      []string `json:"fields,omitempty"`
 	// Template, when provided, is used verbatim and schema_id is used only to
 	// look up display metadata. This lets hub nodes pass the full OID4VP
 	// template (disclosure, format, field list) without re-deriving it on the

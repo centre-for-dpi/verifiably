@@ -34,7 +34,7 @@ func TestAdminAuthProviders_OffMode404s(t *testing.T) {
 // in this helper, so it's tested separately at the page-render level.
 func TestAddFormVisible_DrivenByMode(t *testing.T) {
 	cases := map[string]bool{
-		"":    true,  // unset → defaults to rw
+		"":    true, // unset → defaults to rw
 		"rw":  true,
 		"ro":  false,
 		"off": false,

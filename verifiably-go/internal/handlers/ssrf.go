@@ -5,6 +5,8 @@ import (
 	"net"
 	"net/url"
 	"strings"
+
+	"github.com/verifiably/verifiably-go/internal/outbound"
 )
 
 // ssrfBlockHost looks up host and returns an error if any resolved IP falls
@@ -56,4 +58,19 @@ func validateOfferURL(raw string) error {
 		return fmt.Errorf("missing host")
 	}
 	return ssrfBlockHost(host)
+}
+
+// The shared 30s client that used to live here is gone: every outbound call it
+// served now goes through internal/outbound, which keeps the timeout and adds
+// the checks a bare client cannot make -- the address is re-checked at dial
+// time, and redirects are re-checked per hop. See (*H).outbound below.
+
+// outbound returns the policy this handler set makes requests under: its own
+// when a caller (or a test) supplied one, otherwise the process-wide policy
+// main() installed from the environment.
+func (h *H) outbound() *outbound.Policy {
+	if h != nil && h.Outbound != nil {
+		return h.Outbound
+	}
+	return outbound.Default()
 }

@@ -106,7 +106,7 @@ func TestStdSelectRerendersTheForm(t *testing.T) {
 		t.Fatalf("render builder form: %v", err)
 	}
 	out := buf.String()
-	sel := out[strings.Index(out, `<select name="std"`):]
+	sel := out[strings.Index(out, `<select id="builder-std" name="std"`):]
 	sel = sel[:strings.Index(sel, "</select>")]
 	for _, want := range []string{
 		`hx-post="/issuer/schema/build/std"`,

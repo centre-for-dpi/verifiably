@@ -95,10 +95,10 @@ func (SlogExporter) ExportSpan(es ExportedSpan) {
 // channel is full (> 256 pending), new spans are dropped — tracing must
 // never block the hot path.
 type OTLPJSONExporter struct {
-	endpoint    string
-	client      *http.Client
-	ch          chan ExportedSpan
-	wg          sync.WaitGroup
+	endpoint     string
+	client       *http.Client
+	ch           chan ExportedSpan
+	wg           sync.WaitGroup
 	shutdownOnce sync.Once
 }
 

@@ -56,6 +56,10 @@ ensure_credebl_env() {
   [[ -z "$CREDEBL_JWT_TOKEN_SECRET" ]]         && CREDEBL_JWT_TOKEN_SECRET=$(openssl rand -hex 32)
   [[ -z "$CREDEBL_PLATFORM_SEED" ]]            && CREDEBL_PLATFORM_SEED=$(openssl rand -hex 16)
   [[ -z "$CREDEBL_AGENT_API_KEY" ]]            && CREDEBL_AGENT_API_KEY=$(openssl rand -hex 16)
+  # Mailpit is a local dev mail catcher with auth disabled, so it accepts
+  # anything -- but a literal password in source is still a literal password
+  # in source, and a scanner cannot know the server ignores it.
+  [[ -z "${CREDEBL_SMTP_PASSWORD:-}" ]]        && CREDEBL_SMTP_PASSWORD=$(openssl rand -hex 16)
   [[ -z "$CREDEBL_PLATFORM_WALLET_PASSWORD" ]] && CREDEBL_PLATFORM_WALLET_PASSWORD=$(openssl rand -hex 16)
   [[ -z "$CREDEBL_NEXTAUTH_SECRET" ]]          && CREDEBL_NEXTAUTH_SECRET=$(openssl rand -hex 32)
   [[ -z "$CREDEBL_KEYCLOAK_CLIENT_SECRET" ]]   && CREDEBL_KEYCLOAK_CLIENT_SECRET=$(openssl rand -hex 16)
@@ -126,7 +130,7 @@ SMTP_HOST=credebl-mailpit
 SMTP_PORT=1025
 SMTP_SECURE=false
 SMTP_USER=mailpit
-SMTP_PASS=mailpit
+SMTP_PASS=${CREDEBL_SMTP_PASSWORD}
 EMAIL_FROM=noreply@cdpi-poc.local
 API_GATEWAY_PROTOCOL=http
 API_GATEWAY_HOST=0.0.0.0
@@ -207,6 +211,7 @@ CREDEBL_PLATFORM_WALLET_PASSWORD=${CREDEBL_PLATFORM_WALLET_PASSWORD}
 CREDEBL_NEXTAUTH_SECRET=${CREDEBL_NEXTAUTH_SECRET}
 CREDEBL_KEYCLOAK_CLIENT_SECRET=${CREDEBL_KEYCLOAK_CLIENT_SECRET}
 CREDEBL_SCHEMA_FILE_SERVER_TOKEN=${CREDEBL_SCHEMA_FILE_SERVER_TOKEN}
+CREDEBL_SMTP_PASSWORD=${CREDEBL_SMTP_PASSWORD}
 EOF
   green "  wrote $env_file"
 }

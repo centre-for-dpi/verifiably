@@ -29,7 +29,7 @@ func encodedListWithBit(t *testing.T, idx int) string {
 // BARE JSON-LD BitstringStatusListCredential (application/json), not a compact
 // JWS. statusBitRevoked must read credentialSubject.encodedList straight off the
 // top-level VC instead of splitting the JSON on '.' as if it were a JWT (which
-// decoded a chunk into binary → the "invalid character ''" 0x8a failure).
+// decoded a chunk into binary → the "invalid character ”" 0x8a failure).
 func TestStatusBitRevoked_BareJSONLD(t *testing.T) {
 	const revIdx = 11711
 	statusVC := map[string]any{

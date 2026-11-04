@@ -9,12 +9,17 @@ metadata:
   name: {{ include "walt-issuer.fullname" . }}
   labels: {{- include "walt-issuer.labels" . | nindent 4 }}
   annotations:
-    {{- with .Values.issuer.ingress.annotations }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
+    {{- /* Merge rather than concatenate. The chart's own values already set
+         cert-manager.io/cluster-issuer (default "selfsigned"), so emitting
+         the global one as a second line produced a DUPLICATE YAML key --
+         invalid YAML that kubeconform rejects and that Kubernetes would
+         resolve by silently taking the last value. global.clusterIssuer is
+         the deployment-wide choice, so it wins over the chart default. */}}
+    {{- $ann := deepCopy (.Values.issuer.ingress.annotations | default dict) }}
     {{- if .Values.global.clusterIssuer }}
-    cert-manager.io/cluster-issuer: {{ .Values.global.clusterIssuer | quote }}
+    {{- $_ := set $ann "cert-manager.io/cluster-issuer" .Values.global.clusterIssuer }}
     {{- end }}
+    {{- toYaml $ann | nindent 4 }}
 spec:
   ingressClassName: {{ .Values.issuer.ingress.className }}
   {{- if .Values.issuer.ingress.tls }}

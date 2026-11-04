@@ -52,6 +52,7 @@
               hx-target="#wallet-body"
               hx-swap="innerHTML"
               style="display:flex;flex-direction:column;gap:0.5rem">
+          <label class="visually-hidden" for="offer-paste">Credential offer URI</label>
           <textarea id="offer-paste" name="offer_uri" rows="2" class="mono"
                     placeholder="openid-credential-offer://?credential_offer_uri=https://…"
                     style="font-size:0.72rem;background:var(--bg);border:1px solid var(--line);padding:0.5rem;color:var(--ink);font-family:'JetBrains Mono',monospace;border-radius:2px;resize:vertical"></textarea>
@@ -106,10 +107,12 @@
       {{/* Toolbar: search + type filter. Client-side — the whole wallet
            list is already on the page, so typing is instant. */}}
       <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap;align-items:center">
+        <label class="visually-hidden" for="wallet-search">Search your credentials</label>
         <input type="search" id="wallet-search" data-wallet-search
                placeholder="Search name, issuer, format, claim value…"
                autocomplete="off"
                style="flex:1;min-width:200px;padding:0.55rem 0.75rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px;font-size:0.85rem">
+        <label class="visually-hidden" for="wallet-format-filter">Filter by credential format</label>
         <select id="wallet-format-filter" data-wallet-format-filter
                 style="padding:0.55rem 0.75rem;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:2px;font-size:0.85rem;min-width:180px">
           <option value="all">all formats</option>

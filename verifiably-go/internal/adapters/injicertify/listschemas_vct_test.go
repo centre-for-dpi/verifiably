@@ -44,7 +44,7 @@ func TestListSchemasPinsVct(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSchemas: %v", err)
 	}
-	byID := map[string]string{}   // id -> Vct
+	byID := map[string]string{}    // id -> Vct
 	stdByID := map[string]string{} // id -> Std
 	fieldsByID := map[string][]string{}
 	for _, s := range schemas {

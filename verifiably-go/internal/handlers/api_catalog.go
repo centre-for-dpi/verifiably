@@ -23,9 +23,9 @@ import (
 // ── Wire types ────────────────────────────────────────────────────────────────
 
 type apiCatalogResult struct {
-	IssuerDPGs            []apiDPGInfo                      `json:"issuer_dpgs"`
-	VerifierDPGs          []apiDPGInfo                      `json:"verifier_dpgs"`
-	CredentialStandards   []string                          `json:"credential_standards"`
+	IssuerDPGs            []apiDPGInfo                       `json:"issuer_dpgs"`
+	VerifierDPGs          []apiDPGInfo                       `json:"verifier_dpgs"`
+	CredentialStandards   []string                           `json:"credential_standards"`
 	VerificationTemplates map[string]apiVerificationTemplate `json:"verification_templates"`
 }
 

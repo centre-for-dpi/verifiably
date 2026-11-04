@@ -36,7 +36,7 @@ type ctr struct {
 type histo struct {
 	name    string
 	ls      string
-	sumNS   atomic.Int64   // sum of observed durations in nanoseconds
+	sumNS   atomic.Int64 // sum of observed durations in nanoseconds
 	count   atomic.Int64
 	buckets [6]atomic.Int64 // len(histoBuckets) upper bounds + 1 for +Inf
 }

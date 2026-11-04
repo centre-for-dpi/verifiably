@@ -28,11 +28,11 @@ type Config struct {
 	// mso_mdoc. Empty disables mdoc issuance with a clear error rather than
 	// silently falling back to the legacy issuer-api, which cannot type CBOR
 	// and would emit a credential no conformant reader accepts.
-	Issuer2BaseURL  string   `json:"issuer2BaseUrl"`
-	VerifierBaseURL string   `json:"verifierBaseUrl"`
-	WalletBaseURL   string   `json:"walletBaseUrl"`
-	StandardVersion string   `json:"standardVersion"` // "draft13" (default) or "draft11"
-	DemoAccount     Account  `json:"demoAccount"`
+	Issuer2BaseURL  string  `json:"issuer2BaseUrl"`
+	VerifierBaseURL string  `json:"verifierBaseUrl"`
+	WalletBaseURL   string  `json:"walletBaseUrl"`
+	StandardVersion string  `json:"standardVersion"` // "draft13" (default) or "draft11"
+	DemoAccount     Account `json:"demoAccount"`
 	// IssuerKey / IssuerDID pin a stable onboarding result so every demo run
 	// issues from the same DID. Both are optional — when empty, the adapter
 	// onboards a new key on first use and caches it in-process. Shape of

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/verifiably/verifiably-go/internal/adapters/injicertify"
+	"github.com/verifiably/verifiably-go/internal/outbound"
 	"github.com/verifiably/verifiably-go/internal/statuslist"
 	"github.com/verifiably/verifiably-go/vctypes"
 )
@@ -32,10 +33,7 @@ const (
 	certifyResourceURL = "http://certify-nginx:80/v1/certify/issuance/credential"
 )
 
-var fieldNameRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
 var nonAlnumRe = regexp.MustCompile(`[^a-z0-9]`)
-
-type schemaField struct{ Name, Label string }
 
 func esignetScopeFile() string      { return os.Getenv("INJI_ESIGNET_SCOPE_FILE") }
 func certifyScopeQueryFile() string { return os.Getenv("INJI_CERTIFY_SCOPE_QUERY_FILE") }
@@ -119,6 +117,52 @@ func registryProviders() []registryProvider {
 	return ps
 }
 
+// --- Outbound destinations for registry calls --------------------------------
+
+// pathSegmentRe admits one safe URL path segment. Entity names arrive from
+// registry configuration and from Sunbird's own schema list, and ids arrive
+// from a request; ".." is a legal single segment that would walk out of the
+// namespace, so every segment is checked before it is joined.
+var pathSegmentRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,127}$`)
+
+// registryURL validates a provider's configured base URL and returns the URL
+// for one endpoint under it, built from the validated parts.
+//
+// The returned value is derived from the check, never the caller's string: the
+// base comes back rebuilt from outbound.Resolve and each segment is joined only
+// after it matches pathSegmentRe. Callers MUST use it -- passing p.URL on after
+// calling this reinstates exactly the path this closes.
+func registryURL(ctx context.Context, base string, segments ...string) (*url.URL, error) {
+	u, err := outbound.Default().Resolve(ctx, outbound.Registry, base)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range segments {
+		if s == "" || s == ".." || !pathSegmentRe.MatchString(s) {
+			return nil, fmt.Errorf("invalid registry path segment %q", s)
+		}
+	}
+	return u.JoinPath(segments...), nil
+}
+
+// registryPathURL is the legacy GET-by-id mode, where the path template is
+// configuration ("/record/") and only the trailing id comes from a request.
+func registryPathURL(ctx context.Context, base, tmpl, id string) (*url.URL, error) {
+	u, err := outbound.Default().Resolve(ctx, outbound.Registry, base)
+	if err != nil {
+		return nil, err
+	}
+	if id == "" || id == ".." || !pathSegmentRe.MatchString(id) {
+		return nil, fmt.Errorf("invalid registry id")
+	}
+	segs := append(strings.Split(strings.Trim(tmpl, "/"), "/"), id)
+	return u.JoinPath(segs...), nil
+}
+
+// registryClient is the client every registry call uses: it re-checks the
+// address at dial time and re-runs the check on each redirect.
+func registryClient() *http.Client { return outbound.Default().Client(outbound.Registry) }
+
 // fetchRegistry looks up one record for a holder from an authoritative registry,
 // returning its fields as flat string claims (all entities merged). Kept for
 // callers/tests that don't need per-entity attribution; the activation
@@ -166,8 +210,12 @@ func fetchRegistryByEntity(ctx context.Context, p registryProvider, id string) m
 		}
 		return out
 	}
-	req, _ := http.NewRequestWithContext(cctx, http.MethodGet, p.URL+p.Path+url.PathEscape(id), nil)
-	resp, err := http.DefaultClient.Do(req)
+	endpoint, err := registryPathURL(cctx, p.URL, p.Path, id)
+	if err != nil {
+		return out
+	}
+	req, _ := http.NewRequestWithContext(cctx, http.MethodGet, endpoint.String(), nil)
+	resp, err := registryClient().Do(req)
 	if err != nil || resp == nil {
 		return out
 	}
@@ -189,11 +237,14 @@ func fetchRegistryByEntity(ctx context.Context, p registryProvider, id string) m
 // {"filters":{}} -> {"data":[{"name":...}]}), so a discover-mode provider auto-finds
 // every entity the registrar console created. Skips the built-in "Schema" + leftover probes.
 func sunbirdSchemas(ctx context.Context, baseURL string) []string {
+	endpoint, err := registryURL(ctx, baseURL, "api", "v1", "Schema", "search")
+	if err != nil {
+		return nil
+	}
 	body, _ := json.Marshal(map[string]any{"filters": map[string]any{}})
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
-		strings.TrimRight(baseURL, "/")+"/api/v1/Schema/search", bytes.NewReader(body))
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := registryClient().Do(req)
 	if err != nil || resp == nil || resp.StatusCode != http.StatusOK {
 		return nil
 	}
@@ -228,10 +279,13 @@ func fetchRegistrySunbird(ctx context.Context, p registryProvider, id string) ma
 	body, _ := json.Marshal(map[string]any{
 		"filters": map[string]any{field: map[string]any{"eq": id}},
 	})
-	endpoint := strings.TrimRight(p.URL, "/") + "/api/v1/" + p.Entity + "/search"
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	endpoint, err := registryURL(ctx, p.URL, "api", "v1", p.Entity, "search")
+	if err != nil {
+		return nil
+	}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := registryClient().Do(req)
 	if err != nil || resp == nil {
 		return nil
 	}
@@ -280,11 +334,14 @@ func flattenRecord(rec map[string]any, stripMeta bool) map[string]string {
 // SearchField when the record names the identity differently) so the provision
 // sink can key certify.vc_subject.
 func searchRegistryAll(ctx context.Context, p registryProvider, entity string) []map[string]string {
+	endpoint, err := registryURL(ctx, p.URL, "api", "v1", entity, "search")
+	if err != nil {
+		return nil
+	}
 	body, _ := json.Marshal(map[string]any{"filters": map[string]any{}})
-	endpoint := strings.TrimRight(p.URL, "/") + "/api/v1/" + entity + "/search"
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := registryClient().Do(req)
 	if err != nil || resp == nil {
 		return nil
 	}
@@ -387,7 +444,7 @@ func (h *H) applyAuthcodeSchema(ctx context.Context, schema vctypes.Schema, owne
 		"mosip.certify.data-provider-plugin.postgres.scope-query-mapping", a.scope)
 	if err := appendBraceEntry(certifyScopeQueryFile(),
 		"mosip.certify.data-provider-plugin.postgres.scope-query-mapping", a.scope, a.scopeQuery); err != nil {
-		return "", fmt.Errorf("Certify scope-query write failed: %w", err)
+		return "", fmt.Errorf("certify scope-query write failed: %w", err)
 	}
 	if err := appendBraceEntry(esignetScopeFile(),
 		"mosip.esignet.supported.credential.scopes", a.scope, "'"+a.scope+"'"); err != nil {
@@ -406,7 +463,7 @@ func (h *H) applyAuthcodeSchema(ctx context.Context, schema vctypes.Schema, owne
 	for _, f := range a.displayOrder {
 		if err := appendPropertyLine(certifyScopeQueryFile(),
 			"mosip.certify.indexed-mappings."+f, "$."+f); err != nil {
-			return "", fmt.Errorf("Certify indexed-mapping write failed: %w", err)
+			return "", fmt.Errorf("certify indexed-mapping write failed: %w", err)
 		}
 	}
 	for _, c := range []string{"inji-certify", "injiweb-esignet"} {
@@ -651,9 +708,10 @@ func (h *H) ReapplyAuthcodeViews(w http.ResponseWriter, r *http.Request) {
 		_, slug := injiConfigKeySlug(vctypes.Schema{AdditionalTypes: []string{key}})
 		// Status URL by format: token list for SD-JWT, bitstring list for W3C ldp_vc.
 		statusURL := ""
-		if format == "vc+sd-jwt" || format == "dc+sd-jwt" {
+		switch format {
+		case "vc+sd-jwt", "dc+sd-jwt":
 			statusURL = h.tokenStatusURL(authcodeVendor)
-		} else if format == "ldp_vc" {
+		case "ldp_vc":
 			statusURL = h.bitstringStatusURL(authcodeVendor)
 		}
 		if err := h.Subjects.ReplaceView(r.Context(), authcodeViewDDL(slug, fields, statusURL != "", statusURL)); err != nil {

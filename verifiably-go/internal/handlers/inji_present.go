@@ -9,6 +9,7 @@
 //     vp_token = issuer SD-JWT + held disclosures + a fresh KB-JWT bound to the
 //     request's nonce/aud (signed with the retained holder key), and
 //     direct-posts it to the request's response_uri.
+//
 // It then polls the verdict via the same FetchPresentationResult the verifier
 // UI uses and renders it.
 package handlers
@@ -31,11 +32,8 @@ import (
 	"time"
 
 	"github.com/verifiably/verifiably-go/backend"
+	"github.com/verifiably/verifiably-go/internal/outbound"
 )
-
-// injiVerifyVendor is the backends.json vendor key for the Inji Verify adapter
-// (matches the "Inji Verify" special-case already used in verifier.go).
-const injiVerifyVendor = "Inji Verify"
 
 // marshalECKeyPEM / parseECKeyPEM serialise the retained holder key.
 func marshalECKeyPEM(key *ecdsa.PrivateKey) (string, error) {
@@ -193,8 +191,17 @@ func (h *H) fetchInjiVPRequest(ctx context.Context, requestURI string) (injiJAR,
 	if ru == "" {
 		return jar, fmt.Errorf("no request_uri in %q", requestURI)
 	}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ru, nil)
-	resp, err := http.DefaultClient.Do(req)
+	// request_uri comes from whoever produced the QR code, which is the one
+	// destination on this service a stranger chooses. It is permitted only if
+	// its host is a registered federation member, or a verifier the deployment
+	// named -- or if the deployment has opted into the development mode that
+	// lifts the list for interop testing.
+	endpoint, err := h.outbound().Resolve(ctx, outbound.Verifier, ru)
+	if err != nil {
+		return jar, err
+	}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	resp, err := h.outbound().Client(outbound.Verifier).Do(req)
 	if err != nil {
 		return jar, err
 	}
@@ -318,9 +325,17 @@ func (h *H) postVPResponse(ctx context.Context, jar injiJAR, vpToken string, des
 		"presentation_submission": {string(psub)},
 		"state":                   {jar.State},
 	}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, jar.ResponseURI, strings.NewReader(form.Encode()))
+	// response_uri arrived inside the request object fetched above, so it is
+	// the same stranger's choice at one remove -- and this request carries the
+	// holder's credential, which makes sending it to the wrong place worse than
+	// fetching from the wrong place.
+	endpoint, err := h.outbound().Resolve(ctx, outbound.Verifier, jar.ResponseURI)
+	if err != nil {
+		return err
+	}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := h.outbound().Client(outbound.Verifier).Do(req)
 	if err != nil {
 		return err
 	}

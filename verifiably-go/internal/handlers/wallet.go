@@ -392,7 +392,8 @@ func isRevocationError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if e, ok := err.(isRev); ok {
+	var e isRev
+	if errors.As(err, &e) {
 		return strings.Contains(e.Error(), "credential has been revoked")
 	}
 	return false

@@ -6,8 +6,8 @@
 #   2. certify.<view>  extraction VIEW over claims jsonb
 #   3. the scope-query-mapping entry for the per-credential scope
 #   4. the eSignet credential-scope additions (SUPPORTED + RESOURCE_MAPPING)
-# Emits SQL to /tmp/flowb-config.sql and prints the scope-query + eSignet scope.
-import base64, json, sys, re
+# Emits SQL to ./flowb-config.sql (override with FLOWB_OUT) and prints the scope-query + eSignet scope.
+import base64, json, os, pathlib, re, sys
 
 SCHEMA = {
     "config_key": "FarmerLandCredential",
@@ -23,7 +23,13 @@ SCHEMA = {
     ],
 }
 if len(sys.argv) > 1:
-    SCHEMA = json.load(open(sys.argv[1]))
+    # Resolve before opening: the argument is a path from the caller, and
+    # symlinks or traversal should not silently redirect what gets parsed.
+    _schema_path = pathlib.Path(sys.argv[1]).resolve(strict=True)
+    if not _schema_path.is_file():
+        sys.exit("schema argument must be a regular file: %s" % _schema_path)
+    with _schema_path.open(encoding="utf-8") as _fh:
+        SCHEMA = json.load(_fh)
 
 VOCAB = "https://vocab.verifiably.local/"
 TYPES = SCHEMA["types"]
@@ -87,7 +93,12 @@ view = ("-- Flow B per-schema extraction view\nCREATE OR REPLACE VIEW certify.%s
 scope_query = "'%s':'select %s from certify.%s where individual_id=:id'" % (
     SCOPE, ", ".join('"%s"' % f for f in FIELDS), VIEW)
 
-open("/tmp/flowb-config.sql", "w").write(view + "\n" + insert)
+# Not /tmp/<predictable name>: that directory is world-writable, so another
+# user can pre-create the path as a symlink and redirect this write. Default to
+# the current directory and let the caller choose with FLOWB_OUT.
+_out = pathlib.Path(os.environ.get("FLOWB_OUT", "flowb-config.sql"))
+with _out.open("w", encoding="utf-8") as _fh:
+    _fh.write(view + "\n" + insert)
 print("SCOPE_QUERY_ENTRY=" + scope_query)
 print("ESIGNET_SCOPE=" + SCOPE)
 print("CONFIG_KEY=" + CONFIG_KEY)

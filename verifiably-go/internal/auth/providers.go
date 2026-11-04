@@ -96,11 +96,11 @@ type UserInfo struct {
 // under "authProviders". Kept vendor-agnostic: a "type" key selects a concrete
 // implementation (currently just "oidc") and the rest is passed straight to it.
 type ProviderConfig struct {
-	ID                 string   `json:"id"`
-	Type               string   `json:"type"`
-	DisplayName        string   `json:"displayName"`
-	Kind               string   `json:"kind"`
-	IssuerURL          string   `json:"issuerUrl"`
+	ID          string `json:"id"`
+	Type        string `json:"type"`
+	DisplayName string `json:"displayName"`
+	Kind        string `json:"kind"`
+	IssuerURL   string `json:"issuerUrl"`
 	// PublicIssuerURL, if set, is the browser-facing form of IssuerURL. The
 	// server fetches /.well-known/openid-configuration via IssuerURL (usually
 	// a docker-internal hostname when verifiably-go runs in a container), but

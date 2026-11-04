@@ -105,21 +105,7 @@ func (c *Client) DoJSON(ctx context.Context, method, path string, body any, out 
 	if err != nil {
 		return fmt.Errorf("%s %s: %w", method, u, err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		b, _ := io.ReadAll(resp.Body)
-		return &StatusError{Method: method, URL: u, Status: resp.StatusCode, Body: string(b)}
-	}
-	if out == nil {
-		io.Copy(io.Discard, resp.Body)
-		return nil
-	}
-	dec := json.NewDecoder(resp.Body)
-	dec.UseNumber()
-	if err := dec.Decode(out); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("decode %s: %w", u, err)
-	}
-	return nil
+	return decodeJSONResponse(resp, method, u, out)
 }
 
 // DoForm sends application/x-www-form-urlencoded with the given values.
@@ -150,13 +136,28 @@ func (c *Client) DoForm(ctx context.Context, method, path string, form url.Value
 	if err != nil {
 		return fmt.Errorf("%s %s: %w", method, u, err)
 	}
+	return decodeJSONResponse(resp, method, u, out)
+}
+
+// decodeJSONResponse is the shared response tail of DoJSON and DoForm: it maps
+// a >=400 status onto a *StatusError carrying the body, so a caller can report
+// what the DPG actually said rather than only that something failed.
+//
+// A nil out means the caller wants the status checked but not the body. The
+// body is still drained to io.Discard rather than abandoned: an unread body
+// means the connection cannot be reused, and this client holds long-lived
+// conversations with four external DPG stacks.
+//
+// UseNumber keeps integral claims integral -- a credential's numeric fields
+// must not round-trip through float64 on the way to a signature check.
+func decodeJSONResponse(resp *http.Response, method, u string, out any) error {
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
 		return &StatusError{Method: method, URL: u, Status: resp.StatusCode, Body: string(b)}
 	}
 	if out == nil {
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil
 	}
 	dec := json.NewDecoder(resp.Body)

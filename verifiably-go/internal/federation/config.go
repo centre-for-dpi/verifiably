@@ -22,10 +22,10 @@ type EcosystemInfo struct {
 type Member struct {
 	// ID is the stable machine identifier used as the vendor key in the Registry.
 	// It becomes the OID4VP state prefix ("dpg:<id>:<inner-state>").
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	DeploymentURL string `json:"deploymentURL"`
-	DID           string `json:"did"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	DeploymentURL string   `json:"deploymentURL"`
+	DID           string   `json:"did"`
 	Roles         []string `json:"roles"`
 
 	// VerifierBackendType selects the adapter used to route OID4VP to this

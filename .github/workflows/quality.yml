@@ -1,0 +1,249 @@
+name: quality
+
+# The code-quality gate: formatting, linting, unit tests with coverage,
+# SonarCloud analysis, and a report-only security scan.
+#
+# Deliberately NOT path-filtered. image.yml is path-filtered because it only
+# needs to run when the image contents change; this workflow is intended to be
+# a *required* status check, and a required check that path-filters itself out
+# leaves PRs permanently "expected — waiting for status".
+#
+# image.yml keeps go build / go vet as a fast pre-gate for the image job. Unit
+# tests live here so there is exactly one place that produces coverage.out.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: verifiably-go
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: format + lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: verifiably-go/go.sum
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l . | grep -v '\.terraform' || true)
+          if [ -n "$unformatted" ]; then
+            echo "::error::these files are not gofmt-clean:"
+            echo "$unformatted"
+            echo "run: gofmt -w \$(gofmt -l .)"
+            exit 1
+          fi
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.13.2
+          working-directory: verifiably-go
+          # The config sets max-issues-per-linter/max-same-issues to 0; the
+          # tree is at zero findings and must stay there.
+          args: --timeout=10m
+
+      # Sonar ingests golangci-lint findings as external issues so the
+      # SonarCloud UI is a single place to read code health. Report-only here
+      # (the step above is the blocking one) — it must not fail the job twice.
+      - name: golangci-lint checkstyle report (for Sonar)
+        if: always()
+        run: |
+          go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 \
+            run --out-format=checkstyle --issues-exit-code=0 ./... \
+            > golangci-lint-report.xml || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: golangci-lint-report
+          path: verifiably-go/golangci-lint-report.xml
+          if-no-files-found: ignore
+
+  test:
+    name: unit tests + coverage
+    runs-on: ubuntu-latest
+
+    # internal/storage/pg is hand-rolled pgx with dynamically-built WHERE
+    # clauses and a hash chain; a fake would only test the fake. The tests skip
+    # themselves when VERIFIABLY_TEST_PG_DSN is unset, so `go test ./...` stays
+    # green on a laptop without Docker.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: verifiably_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      VERIFIABLY_TEST_PG_DSN: postgres://postgres:postgres@localhost:5432/verifiably_test?sslmode=disable
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: verifiably-go/go.sum
+
+      # `shell: bash` is REQUIRED here, not cosmetic. The default Linux shell
+      # for `run:` is `bash -e` WITHOUT pipefail, so `go test | tee` takes
+      # tee's exit status and a failing test suite reports success. That is
+      # exactly what happened on this branch's first run: the PostgreSQL tests
+      # failed on a NOT NULL column and the job went green. Naming the shell
+      # switches on `-eo pipefail`.
+      - name: go test with coverage
+        shell: bash
+        run: |
+          go test ./... \
+            -race \
+            -covermode=atomic \
+            -coverprofile=coverage.out \
+            -coverpkg=./... \
+            2>&1 | tee test-output.txt
+
+      - name: coverage summary
+        run: |
+          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}')
+          echo "total coverage: $total"
+          echo "### Coverage: $total" >> "$GITHUB_STEP_SUMMARY"
+          go tool cover -func=coverage.out \
+            | sort -k3 -t$'\t' \
+            | tail -40 >> "$GITHUB_STEP_SUMMARY"
+
+      # Ratchet: overall coverage must never drop below the recorded floor.
+      # Raise COVERAGE_FLOOR in the same PR that raises real coverage — see
+      # docs/technical-scope.md, Workstream A, for the schedule.
+      - name: coverage floor
+        env:
+          COVERAGE_FLOOR: '31.5'
+        run: |
+          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | tr -d '%')
+          echo "total=$total floor=$COVERAGE_FLOOR"
+          awk -v t="$total" -v f="$COVERAGE_FLOOR" 'BEGIN {
+            if (t + 0 < f + 0) {
+              printf "::error::coverage %s%% is below the floor of %s%%\n", t, f
+              exit 1
+            }
+            printf "coverage %s%% >= floor %s%%\n", t, f
+          }'
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: |
+            verifiably-go/coverage.out
+            verifiably-go/test-output.txt
+
+  sonarcloud:
+    name: SonarCloud
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    # Sonar needs SONAR_TOKEN, which is not exposed to fork PRs. Skip rather
+    # than fail so external contributions aren't blocked by a missing secret.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Sonar's new-code detection and blame annotation need full history.
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage
+          path: verifiably-go
+
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: golangci-lint-report
+          path: verifiably-go
+
+      - name: SonarCloud scan
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: verifiably-go
+
+      # Blocks the PR when the SonarCloud Quality Gate fails. Configure the
+      # gate in SonarCloud (recommended "Sonar way" on New Code: 0 new bugs,
+      # 0 new vulnerabilities, 0 new security hotspots unreviewed, >=80%
+      # coverage on new code, <=3% duplication on new code).
+      - name: Quality Gate
+        uses: SonarSource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          scanMetadataReportFile: verifiably-go/.scannerwork/report-task.txt
+
+  gosec:
+    name: gosec (report-only)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: verifiably-go/go.sum
+
+      # Report-only by design: there is a live backlog of findings (SSRF and
+      # path-traversal taint analysis, cookie attributes, 0644 WriteFile,
+      # crypto/md5) that needs triage rather than a blanket exclusion. Findings
+      # land in the repo's Security tab. Flip -no-fail off once the backlog is
+      # cleared — see docs/technical-scope.md, Workstream A.
+      - name: gosec
+        run: |
+          go run github.com/securego/gosec/v2/cmd/gosec@latest \
+            -no-fail -fmt=sarif -out=gosec.sarif -exclude=G104 ./... || true
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: verifiably-go/gosec.sarif
+          category: gosec
+
+  shellcheck:
+    name: shellcheck (report-only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 8.5k lines of deploy/bootstrap shell run in front of every demo, and
+      # deploy.sh alone is 1.4k lines. Report-only until the backlog is triaged.
+      - name: shellcheck
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          find . -name '*.sh' \
+            -not -path './deploy/k8s/terraform/*/.terraform/*' \
+            -print0 \
+          | xargs -0 shellcheck -S warning -f gcc || true

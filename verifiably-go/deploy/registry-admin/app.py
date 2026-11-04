@@ -19,12 +19,13 @@ import io
 import csv
 import json
 import re
+import asyncio
 import time
 import html
 import threading
 
 import httpx
-from fastapi import FastAPI, Request, UploadFile, File
+from fastapi import FastAPI, Request, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse
 
 VERIFIABLY_SCHEMAS_URL = os.environ.get(
@@ -38,6 +39,27 @@ app = FastAPI(title="Registries Admin Console", docs_url=None, redoc_url=None)
 # ----------------------------------------------------------------------------
 def esc(s):
     return html.escape("" if s is None else str(s))
+
+
+# Sunbird path segments. `entity` and `osid` arrive straight from the request
+# path and are interpolated into /api/v1/{entity}/{osid}, so an unvalidated
+# value walks out of the intended namespace -- ".." is a perfectly legal single
+# path segment, and FastAPI hands it over unchanged. Validate at the boundary
+# and use the RETURNED value, so the tainted one never reaches the URL.
+_SEGMENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+
+
+def seg(value, what="path segment"):
+    m = _SEGMENT_RE.match(value) if isinstance(value, str) else None
+    if m is None or ".." in value:
+        raise HTTPException(status_code=400, detail=f"invalid {what}")
+    # Return the MATCHED span, not the argument. Functionally identical -- the
+    # pattern is anchored -- but it hands back a value derived from the regex
+    # rather than the caller's string, so the returned object is provably the
+    # text that passed validation. Returning `value` left taint analysis
+    # tracing the request input straight through the validator into the URL,
+    # which is why S7044 survived the first fix.
+    return m.group(0)
 
 
 def entity_name(s):
@@ -607,6 +629,7 @@ def home():
 
 @app.get("/credential/{entity}", response_class=HTMLResponse)
 def credential_get(entity: str):
+    entity = seg(entity, "entity")
     s = find_schema(entity)
     if not s:
         return HTMLResponse(page("Not found",
@@ -622,6 +645,7 @@ def credential_get(entity: str):
 
 @app.post("/credential/{entity}", response_class=HTMLResponse)
 async def credential_post(entity: str, request: Request):
+    entity = seg(entity, "entity")
     s = find_schema(entity)
     if not s:
         return HTMLResponse(page("Not found",
@@ -660,6 +684,7 @@ async def credential_post(entity: str, request: Request):
 
 @app.get("/credential/{entity}/{osid}/edit", response_class=HTMLResponse)
 def record_edit_get(entity: str, osid: str):
+    entity, osid = seg(entity, "entity"), seg(osid, "osid")
     s = find_schema(entity)
     if not s:
         return HTMLResponse(page("Not found",
@@ -676,6 +701,7 @@ def record_edit_get(entity: str, osid: str):
 
 @app.post("/credential/{entity}/{osid}/edit", response_class=HTMLResponse)
 async def record_edit_post(entity: str, osid: str, request: Request):
+    entity, osid = seg(entity, "entity"), seg(osid, "osid")
     s = find_schema(entity)
     if not s:
         return HTMLResponse(page("Not found",
@@ -707,6 +733,7 @@ async def record_edit_post(entity: str, osid: str, request: Request):
 
 @app.post("/credential/{entity}/{osid}/delete", response_class=HTMLResponse)
 async def record_delete(entity: str, osid: str):
+    entity, osid = seg(entity, "entity"), seg(osid, "osid")
     s = find_schema(entity)
     if not s:
         return HTMLResponse(page("Not found",
@@ -724,6 +751,7 @@ async def record_delete(entity: str, osid: str):
 
 @app.post("/credential/{entity}/import", response_class=HTMLResponse)
 async def credential_import(entity: str, file: UploadFile = File(...)):
+    entity = seg(entity, "entity")
     s = find_schema(entity)
     if not s:
         return HTMLResponse(page("Not found",
@@ -760,7 +788,10 @@ async def credential_import(entity: str, file: UploadFile = File(...)):
             fail += 1
             if len(errs) < 3:
                 errs.append("http " + str(st) + ": " + txt[:80])
-        time.sleep(0.3)
+        # await, not time.sleep: this runs inside an async handler, so a
+        # blocking sleep stops the event loop and every other request with it.
+        # At 0.3s a row, a thousand-row import froze the console for 5 minutes.
+        await asyncio.sleep(0.3)
     detail = (" &middot; sample errors: " + esc("; ".join(errs))) if errs else ""
     msg = ("CSV import complete: <b>" + str(okc) + "</b> created, <b>" + str(dup)
            + "</b> duplicates, <b>" + str(fail) + "</b> failed." + detail)
@@ -782,6 +813,7 @@ def _ready(entity):
 
 @app.post("/credential/{entity}/import-api", response_class=HTMLResponse)
 async def import_api(entity: str, request: Request):
+    entity = seg(entity, "entity")
     s, err = _ready(entity)
     if err:
         return HTMLResponse(err)
@@ -803,6 +835,7 @@ async def import_api(entity: str, request: Request):
 
 @app.post("/credential/{entity}/import-db", response_class=HTMLResponse)
 async def import_db(entity: str, request: Request):
+    entity = seg(entity, "entity")
     s, err = _ready(entity)
     if err:
         return HTMLResponse(err)
@@ -823,6 +856,7 @@ async def import_db(entity: str, request: Request):
 
 @app.post("/credential/{entity}/import-registry", response_class=HTMLResponse)
 async def import_registry(entity: str, request: Request):
+    entity = seg(entity, "entity")
     s, err = _ready(entity)
     if err:
         return HTMLResponse(err)

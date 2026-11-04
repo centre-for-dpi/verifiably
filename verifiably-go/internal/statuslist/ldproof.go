@@ -104,7 +104,11 @@ func NewLDSigner(stateDir string) (*LDSigner, error) {
 	if err != nil {
 		return nil, err
 	}
-	pub := priv.Public().(ed25519.PublicKey)
+	// The comma-ok is for errcheck's benefit only: loadOrCreateEd25519 returns
+	// an ed25519.PrivateKey, and ed25519.PrivateKey.Public() is defined to
+	// return an ed25519.PublicKey, so this assertion cannot fail. An error
+	// branch here would be unreachable code pretending to be reachable.
+	pub, _ := priv.Public().(ed25519.PublicKey)
 	// did:key for Ed25519: multicodec 0xed01 prefix + raw public key, base58btc,
 	// multibase "z". The verificationMethod repeats the multibase as the fragment.
 	mb := "z" + base58Encode(append([]byte{0xed, 0x01}, pub...))

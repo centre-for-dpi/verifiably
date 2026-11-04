@@ -18,9 +18,9 @@ import (
 // assert the queue registered the two types ONCE and issued a PAIR per row.
 type bulkTestAdapter struct {
 	testAdapter
-	mu          sync.Mutex
-	issued      int
-	saved       int
+	mu     sync.Mutex
+	issued int
+	saved  int
 }
 
 func (b *bulkTestAdapter) SaveCustomSchema(_ context.Context, _ vctypes.Schema) error {

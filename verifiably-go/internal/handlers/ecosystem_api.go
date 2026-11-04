@@ -9,9 +9,9 @@ import (
 
 // ecosystemIssuerStats is the JSON response for GET /api/ecosystem/issuers/{did}/stats.
 type ecosystemIssuerStats struct {
-	IssuerDID  string           `json:"issuer_did"`
-	PeriodDays int              `json:"period_days"`
-	Verified   verificationAgg  `json:"verified"`
+	IssuerDID  string          `json:"issuer_did"`
+	PeriodDays int             `json:"period_days"`
+	Verified   verificationAgg `json:"verified"`
 }
 
 type verificationAgg struct {

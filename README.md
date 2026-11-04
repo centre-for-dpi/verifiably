@@ -1,5 +1,12 @@
 # verifiably
 
+[![quality](https://github.com/centre-for-dpi/verifiably/actions/workflows/quality.yml/badge.svg?branch=main)](https://github.com/centre-for-dpi/verifiably/actions/workflows/quality.yml)
+[![image](https://github.com/centre-for-dpi/verifiably/actions/workflows/image.yml/badge.svg?branch=main)](https://github.com/centre-for-dpi/verifiably/actions/workflows/image.yml)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=centre-for-dpi_verifiably&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=centre-for-dpi_verifiably)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=centre-for-dpi_verifiably&metric=coverage)](https://sonarcloud.io/component_measures?id=centre-for-dpi_verifiably&metric=coverage)
+[![Security](https://sonarcloud.io/api/project_badges/measure?project=centre-for-dpi_verifiably&metric=security_rating)](https://sonarcloud.io/project/security_hotspots?id=centre-for-dpi_verifiably)
+[![Maintainability](https://sonarcloud.io/api/project_badges/measure?project=centre-for-dpi_verifiably&metric=sqale_rating)](https://sonarcloud.io/component_measures?id=centre-for-dpi_verifiably&metric=Maintainability)
+
 A thin, backend-agnostic Go + HTMX UI for issuing, holding, and verifying
 W3C Verifiable Credentials against real DPG (Digital Public Goods) stacks.
 One interface (`backend.Adapter`) drives every screen; swap implementations

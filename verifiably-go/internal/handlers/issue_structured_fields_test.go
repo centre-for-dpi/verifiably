@@ -67,7 +67,7 @@ func TestDrivingPrivilegesRendersRepeaterNotATextBox(t *testing.T) {
 // TestPortraitRendersFilePicker is the same assertion for the image field.
 func TestPortraitRendersFilePicker(t *testing.T) {
 	html := renderIssueFormWithStructured(t, mdlSchemaForTest(), nil)
-	if !strings.Contains(html, `type="file" name="field_portrait__file"`) {
+	if !strings.Contains(html, `type="file" id="claim-portrait" name="field_portrait__file"`) {
 		t.Errorf("portrait does not render a file input — the operator would have to paste base64 by hand")
 	}
 	if !strings.Contains(html, `accept="image/jpeg,image/png"`) {

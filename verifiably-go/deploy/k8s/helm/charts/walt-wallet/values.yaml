@@ -1,5 +1,11 @@
 # Schema mirrors docs/k8s/values-schema.md (wallet-api section).
 wallet:
+  # Token-signing JWK for the wallet's own auth tokens. NO DEFAULT, on purpose:
+  # this used to ship inline, so every deployment that did not override it
+  # signed wallet tokens with the same key. Generate one with
+  # `scripts/gen-demo-pki.sh` (or `openssl genrsa 2048 | scripts/pem-to-jwk.py`)
+  # and supply it from a Secret via ESO in anything that is not a demo.
+  tokenKey: ""
   image:
     repository: waltid/wallet-api
     tag: "0.23.1"
@@ -30,8 +36,8 @@ wallet:
     minAvailable: 1
 
   resources:
-    requests: { cpu: 200m, memory: 512Mi }
-    limits:   { memory: 1Gi }
+    requests: { cpu: 200m, memory: 512Mi, ephemeral-storage: 512Mi }
+    limits:   { memory: 1Gi, ephemeral-storage: 2Gi }  # ephemeral-storage caps disk use so one pod cannot evict the node
 
   livenessProbe:
     httpGet: { path: /swagger/index.html, port: http }

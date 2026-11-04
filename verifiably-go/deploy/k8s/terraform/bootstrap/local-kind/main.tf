@@ -64,7 +64,11 @@ resource "null_resource" "kind_cluster" {
   depends_on = [local_file.kind_config, null_resource.kubeconfig_dir]
 
   provisioner "local-exec" {
-    command = <<-EOT
+    # Terraform defaults local-exec to /bin/sh. On Debian/Ubuntu that is
+    # dash, which has no `set -o pipefail` and aborts with "Illegal option".
+    # macOS /bin/sh is bash, which is why this only failed in CI.
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
       set -euo pipefail
       command -v kind   >/dev/null || { echo "kind not installed (brew install kind)"; exit 127; }
       command -v docker >/dev/null || { echo "docker not installed";                   exit 127; }
@@ -103,7 +107,11 @@ resource "null_resource" "metallb" {
   depends_on = [null_resource.kind_cluster]
 
   provisioner "local-exec" {
-    command = <<-EOT
+    # Terraform defaults local-exec to /bin/sh. On Debian/Ubuntu that is
+    # dash, which has no `set -o pipefail` and aborts with "Illegal option".
+    # macOS /bin/sh is bash, which is why this only failed in CI.
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
       set -euo pipefail
       export KUBECONFIG="${local.kubeconfig_path}"
 

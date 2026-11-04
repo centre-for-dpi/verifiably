@@ -50,7 +50,8 @@ func TestFetchInjiVPRequestParsesPD(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(jar)) }))
 	defer srv.Close()
 
-	got, err := (&H{}).fetchInjiVPRequest(context.Background(), "openid4vp://authorize?request_uri="+url.QueryEscape(srv.URL))
+	h := &H{Outbound: permitting(srv.URL)}
+	got, err := h.fetchInjiVPRequest(context.Background(), "openid4vp://authorize?request_uri="+url.QueryEscape(srv.URL))
 	if err != nil {
 		t.Fatal(err)
 	}

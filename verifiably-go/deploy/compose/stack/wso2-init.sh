@@ -21,7 +21,7 @@ for i in $(seq 1 60); do
     echo "[wso2-init] WSO2 is ready."
     break
   fi
-  if [ "$i" -eq 60 ]; then
+  if [[ "$i" -eq 60 ]]; then
     echo "[wso2-init] ERROR: WSO2 did not start within 5 minutes"
     exit 1
   fi
@@ -40,7 +40,7 @@ try:
 except: pass
 " 2>/dev/null)
 
-if [ -n "$EXISTING_ID" ]; then
+if [[ -n "$EXISTING_ID" ]]; then
   echo "[wso2-init] App '$APP_NAME' already exists (id=$EXISTING_ID)"
 else
   echo "[wso2-init] Creating app '$APP_NAME'..."
@@ -84,7 +84,7 @@ fi
 CLIENT_ID=$(curl -sk "$WSO2_URL/api/server/v1/applications/$EXISTING_ID/inbound-protocols/oidc" \
   -u "$WSO2_ADMIN" 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('clientId',''))" 2>/dev/null)
 
-if [ -n "$CLIENT_ID" ]; then
+if [[ -n "$CLIENT_ID" ]]; then
   echo "[wso2-init] WSO2 client_id: $CLIENT_ID"
   echo "$CLIENT_ID" > "$OUTPUT_FILE"
   echo "[wso2-init] Written to $OUTPUT_FILE"
@@ -107,7 +107,7 @@ try:
 except: print('unknown')
 " 2>/dev/null)
 
-if [ "$SR_STATUS" = "true" ]; then
+if [[ "$SR_STATUS" == "true" ]]; then
   echo "[wso2-init] Self-registration already enabled"
 else
   echo "[wso2-init] Self-registration is '$SR_STATUS' — WSO2 7.0 requires Carbon console to enable."

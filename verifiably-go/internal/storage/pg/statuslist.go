@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/verifiably/verifiably-go/internal/statuslist"
 )
 
@@ -92,12 +93,12 @@ func (s *StatusListStore) Reinstate(index int) error {
 	return s.persist()
 }
 
-func (s *StatusListStore) IsRevoked(index int) bool    { return s.st.IsRevoked(index) }
-func (s *StatusListStore) Size() int                   { return s.st.Size() }
-func (s *StatusListStore) NextFree() int               { return s.st.NextFree() }
-func (s *StatusListStore) GetKind() string             { return s.st.GetKind() }
-func (s *StatusListStore) GetListID() string           { return s.st.GetListID() }
-func (s *StatusListStore) GetPublishURL() string       { return s.st.GetPublishURL() }
+func (s *StatusListStore) IsRevoked(index int) bool { return s.st.IsRevoked(index) }
+func (s *StatusListStore) Size() int                { return s.st.Size() }
+func (s *StatusListStore) NextFree() int            { return s.st.NextFree() }
+func (s *StatusListStore) GetKind() string          { return s.st.GetKind() }
+func (s *StatusListStore) GetListID() string        { return s.st.GetListID() }
+func (s *StatusListStore) GetPublishURL() string    { return s.st.GetPublishURL() }
 
 func (s *StatusListStore) PublishBitstringJWT(key *statuslist.SigningKey) (string, error) {
 	return s.st.PublishBitstringJWT(key)

@@ -50,7 +50,7 @@ if [[ -n "$images_url_env" ]]; then
 fi
 
 # sign-in-button-plugin — idempotent: skip if already extracted
-if [ -f "$plugins_path/sign-in-button-plugin.js" ]; then
+if [[ -f "$plugins_path/sign-in-button-plugin.js" ]]; then
     echo "sign-in-button-plugin.js already exists, skipping extraction."
 else
     echo "unzip plugins.."
@@ -67,7 +67,7 @@ echo "Pre-requisites download completed."
 echo "Replacing public url placeholder with public url"
 
 workingDir=$nginx_dir/html
-if [ -z "$OIDC_UI_PUBLIC_URL" ]; then
+if [[ -z "$OIDC_UI_PUBLIC_URL" ]]; then
   rpCmd="s/_PUBLIC_URL_//g"
   grep -rl '_PUBLIC_URL_' $workingDir | xargs sed -i $rpCmd 2>/dev/null || true
 else

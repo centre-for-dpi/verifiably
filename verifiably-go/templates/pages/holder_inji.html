@@ -31,6 +31,7 @@
   <div style="background:var(--bg-elev);border:1px solid var(--line);border-radius:4px;padding:1.25rem 1.5rem">
     <h3 style="margin:0 0 0.5rem;font-family:'Josefin Sans',sans-serif;font-weight:500;font-size:1rem">{{t "Available credentials" $.Lang}}</h3>
     <p class="subtitle" style="margin:0 0 0.75rem;font-size:0.85rem">{{t "Log in with eSignet to claim a credential — issued by Inji Certify from your registered claims, here in verifiably." $.Lang}}</p>
+    <label class="visually-hidden" for="inji-cred-search">{{t "Search credentials" $.Lang}}</label>
     <input id="inji-cred-search" type="search" oninput="filterInjiCreds()" placeholder="{{t "Search credentials…" $.Lang}}"
            style="width:100%;padding:0.5rem 0.6rem;margin-bottom:0.25rem;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--fg)">
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0.75rem;margin-top:0.75rem">

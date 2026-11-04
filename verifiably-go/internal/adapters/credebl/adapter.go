@@ -109,10 +109,7 @@ func isTransient(err error) bool {
 	// TCP-level failures (connection refused, connection reset, ECONNRESET).
 	// These are safe to retry because no HTTP request reached CREDEBL.
 	var opErr *net.OpError
-	if errors.As(err, &opErr) {
-		return true
-	}
-	return false
+	return errors.As(err, &opErr)
 }
 
 // rewritePublic replaces internal Docker hostnames in s with the public URL

@@ -54,10 +54,10 @@ type Session struct {
 	ExpandedVerifierDpg string
 
 	// Issuer flow state
-	SchemaID         string          // selected schema id
-	Scale            string          // "single" | "bulk"
-	Dest             string          // "wallet" | "pdf"
-	BulkSource       string          // "csv" | "api" | "db" — active bulk source
+	SchemaID   string // selected schema id
+	Scale      string // "single" | "bulk"
+	Dest       string // "wallet" | "pdf"
+	BulkSource string // "csv" | "api" | "db" — active bulk source
 	// IdentityBulkSource is the active source chip on the registrar's identity-
 	// enrolment page (/registrar/identities). Kept separate from BulkSource so a
 	// registrar's source choice doesn't clobber an issuer's, and vice-versa. The
@@ -73,10 +73,10 @@ type Session struct {
 	BulkRows         []map[string]string `json:"-"`
 	BulkColumns      []string            `json:"-"` // detected source columns, stable order
 	BulkLabel        string              `json:"-"` // e.g. "csv" | "api:host" | "registry:Entity"
-	ExpandedSchemaID string          // currently expanded card
-	SchemaFilter     string          // "all" or one of the stds
-	SchemaQuery      string          // current search text
-	CustomSchemas    []vctypes.Schema   // in-session custom schemas
+	ExpandedSchemaID string              // currently expanded card
+	SchemaFilter     string              // "all" or one of the stds
+	SchemaQuery      string              // current search text
+	CustomSchemas    []vctypes.Schema    // in-session custom schemas
 
 	// Issued-credentials list page filter state. Persisted on the session
 	// so that a Revoke action's row-fragment re-render preserves whatever
@@ -91,9 +91,9 @@ type Session struct {
 	WalletPending []vctypes.Credential
 
 	// Verifier state
-	CurrentOID4VPLink      string
-	CurrentOID4VPState     string
-	CurrentOID4VPTemplate  string
+	CurrentOID4VPLink     string
+	CurrentOID4VPState    string
+	CurrentOID4VPTemplate string
 	// Custom template the user assembled via the "Build custom request"
 	// flow. Set by BuildVerifierTemplate; consumed by RequestCustomPresentation
 	// and echoed back to the preview fragment so the user can review what
@@ -132,7 +132,7 @@ type Session struct {
 
 	// InjiClaimedVC / InjiClaimError hold the in-app Inji auth-code claim result
 	// (/holder/wallet/inji). InjiClaimedVC is the issued VC as JSON.
-	InjiClaimedVC  string
+	InjiClaimedVC string
 	// InjiClaimedVCs is the in-app Inji wallet's held credentials (newest-first).
 	// Deliberately NOT json:"-": it IS persisted via the session store so the
 	// wallet survives a restart (the store flushes every 5 s and reloads on boot).
@@ -144,8 +144,8 @@ type Session struct {
 	// to Inji Verify (F21). Persisted (like InjiClaimedVCs) so present survives
 	// a restart; the key is a per-claim demo binding key, not a login secret.
 	InjiHolderKeys map[string]string
-	InjiClaimError string   `json:"-"`
-	InjiClaimCred  string   `json:"-"` // credential_config key being claimed
+	InjiClaimError string `json:"-"`
+	InjiClaimCred  string `json:"-"` // credential_config key being claimed
 	SchemaError    string `json:"-"` // issuer schema-creation flash error
 
 	// Auth: OIDC round-trip state + tokens stored after callback.
@@ -172,7 +172,7 @@ type Session struct {
 	// provider assigns. Used (combined with AuthProvider) as the
 	// partition key for upstream wallet accounts so two users logging
 	// into the same browser session don't collide on an email-less key.
-	UserSubject     string
+	UserSubject string
 
 	// UserClaims holds the string-valued OIDC claims captured at login
 	// (given_name, family_name, birthdate, cedula, nationality, …). Used to
@@ -216,8 +216,8 @@ type Store struct {
 	mu       sync.Mutex
 	sessions map[string]*Session
 
-	dir string   // "" = in-memory only
-	key []byte   // 32-byte AES key; nil when dir == ""
+	dir string // "" = in-memory only
+	key []byte // 32-byte AES key; nil when dir == ""
 }
 
 // NewStore returns a purely in-memory session store (original behaviour).
@@ -308,7 +308,10 @@ func (s *Store) flush() {
 	// Encryption and disk I/O happen after releasing the lock so we don't
 	// block request handlers for the duration of the writes.
 	s.mu.Lock()
-	type pending struct{ id string; data []byte }
+	type pending struct {
+		id   string
+		data []byte
+	}
 	items := make([]pending, 0, len(s.sessions))
 	for id, sess := range s.sessions {
 		data, err := json.Marshal(sess)
@@ -363,7 +366,6 @@ func SessionDecrypt(key, data []byte) ([]byte, error) {
 	}
 	return gcm.Open(nil, data[:ns], data[ns:], nil)
 }
-
 
 func (s *Store) getOrCreate(r *http.Request, w http.ResponseWriter) *Session {
 	s.mu.Lock()

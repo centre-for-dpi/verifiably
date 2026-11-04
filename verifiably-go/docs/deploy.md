@@ -237,6 +237,61 @@ by `deploy.sh cmd_up` in subdomain mode — pin them in `.env` only to override.
 | `SMTP_HOST/PORT/USER/PASSWORD/FROM/FROM_NAME` | `.env` | Real email-OTP for registry-gated activation. `SMTP_PASSWORD` is a **secret** (e.g. a Gmail app password) — never commit it. |
 | `VERIFIABLY_REGISTRIES` | `.env` (JSON array) | Configured external registries (Sunbird RC + federated agency registries) the bulk engine reads from. See [dpg/registries.md](dpg/registries.md). |
 | `VERIFIABLY_REGISTRY_ADMIN_URL` | `.env` | Link to the registry-admin console. |
+| `VERIFIABLY_OUTBOUND_ALLOW` | unset | Comma-separated hosts this deployment may fetch from, beyond what it has already declared. An entry is a host (`registry.gov`), a host and port (`registry.gov:8081`), a full URL, or a leading-dot suffix (`.gov` matches `a.gov`, not `gov`). **An entry with a port permits only that port** — on a Docker network one address carries the whole stack, so allowing the registry on `:8081` must not also allow Postgres on `:5432`. See [Outbound destinations](#outbound-destinations). |
+| `VERIFIABLY_OUTBOUND_DENY` | unset | Comma-separated CIDR prefixes no outbound call may reach, on top of link-local (which already covers `169.254.169.254` on AWS, GCP and Azure) and AWS's IPv6 metadata range. Set this on a cloud whose metadata endpoint is an ordinary address — Alibaba uses `100.100.100.200/32`, Oracle `192.0.0.192/32`. A malformed prefix stops the process at startup rather than being skipped. |
+| `VERIFIABLY_OUTBOUND_DEV_OPEN` | unset | `1` lifts the allowlist for interop testing against an arbitrary INJI Verify or registry. **The process refuses to start if this is set while `VERIFIABLY_PUBLIC_HOST` is not local.** |
+
+### Outbound destinations
+
+Every outbound call this service makes is checked against a policy
+(`internal/outbound`) before it is made, and again while it is in flight. There
+are four purposes, and they are not treated alike:
+
+| Purpose | Destination comes from | Control |
+|---|---|---|
+| Registry | `VERIFIABLY_REGISTRIES` | Validated and rebuilt. The config **is** the allowlist. |
+| Federation | A member `serviceEndpoint` an admin entered | Normalised when it is written; the stored form is what gets used. |
+| Operator fetch | A URL an operator typed into a bulk-import form | Allowlisted. |
+| Verifier | An OID4VP `request_uri`, i.e. whoever made the QR code | Allowlisted. |
+
+**The allowlist is seeded from what you have already configured.** Registries
+named in `VERIFIABLY_REGISTRIES` are importable without being named a second
+time, and a registered federation member is a permitted verifier as soon as it
+is registered — no restart. `VERIFIABLY_OUTBOUND_ALLOW` is for the rest.
+
+A rejection tells the operator which variable to extend:
+
+```
+outbound destination not permitted: "rows.partner.example" is not a permitted
+operator fetch destination (extend VERIFIABLY_OUTBOUND_ALLOW to allow it)
+```
+
+**Why an allowlist and not a private-IP denylist.** `ssrfBlockHost` in
+`internal/handlers/ssrf.go` rejects private, loopback and link-local addresses.
+It is the wrong control here and widening it would break the product: every DPG
+this stack talks to — `certify-nginx`, `walt-issuer`, `credebl-minio`, the
+Sunbird registries — is on a Docker bridge, and `VERIFIABLY_PUBLIC_HOST=172.24.0.1`
+is the documented localhost default. The legitimate destinations *are* the
+private addresses. Only two things are denied for every purpose: cloud metadata, which is never a
+destination this product has, and this deployment's own public host, which would
+be a self-request loop.
+
+Metadata is recognised by asking the address what it is — link-local covers
+`169.254.169.254` on AWS, GCP and Azure, the range around it, its IPv4-mapped
+form, and IPv6 `fe80::/10`. AWS's IPv6 metadata endpoint sits inside the
+unique-local range instead, which is otherwise legitimate here (an IPv6 Docker
+network uses it), so that one prefix is named specifically. A cloud whose
+metadata endpoint is an ordinary address goes in `VERIFIABLY_OUTBOUND_DENY`.
+
+Two checks happen after the URL has been approved, because approving a URL is
+not the same as approving the connection:
+
+- **The address dialled is the one checked.** The policy resolves the host
+  itself and connects to the address it approved. Handing the name to the
+  client would let it resolve again, so a name answering with a good address
+  once and a metadata address a moment later would get through.
+- **Redirects are re-checked per hop.** An allowed host redirecting to
+  `169.254.169.254` is refused at the redirect, not followed.
 
 `INJI_AUTHCODE_CLIENT_KEY_PEM` (the RSA key signing the `client_assertion`) is
 extracted from `oidckeystore.p12` by `scripts/start-container.sh` — a runtime
