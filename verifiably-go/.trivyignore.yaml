@@ -36,3 +36,29 @@ secrets:
       Self-signed demo TLS keys for internal container hostnames; no CA, no
       public DNS name. Replaced by bootstrap-time generation (G.4.5).
     expired_at: 2026-12-31
+
+vulnerabilities:
+  # CVE-2026-78669: golang.org/x/net/http2 -- denial of service via excessive
+  # HTTP/2 SETTINGS frames. Fixed in x/net v0.60.0 (we are on v0.57.0).
+  #
+  # Why it is ignored rather than fixed: v0.60.0 requires Go 1.26, so taking
+  # the fix moves the module's `go` directive from 1.25 to 1.26 and with it
+  # the Dockerfiles (golang:1.25-alpine) and the go-version pins in
+  # image.yml / quality.yml. main deliberately stayed on Go 1.25 (cf44e84f,
+  # "keep the module on Go 1.25"), and that is a project-wide toolchain
+  # decision, not something to bundle into the mDL PR.
+  #
+  # This does NOT say the CVE is harmless here -- exploitability against our
+  # exposed listeners has not been assessed. It says the fix is gated on a
+  # toolchain decision that is still open. main hits the same finding.
+  #
+  # What removes this entry: either upgrading to Go 1.26 (and x/net >= 0.60.0),
+  # or an explicit, recorded decision to accept the risk. The expiry forces
+  # that conversation instead of letting the exception go stale.
+  - id: CVE-2026-78669
+    paths:
+      - "go.mod"
+    statement: >-
+      Fix needs x/net v0.60.0 -> Go 1.26; the Go 1.25 pin is a deliberate
+      project decision still open. Exploitability not yet assessed.
+    expired_at: 2026-12-31
