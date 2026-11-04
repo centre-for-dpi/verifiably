@@ -144,10 +144,10 @@
 
   {{if eq .Std "mso_mdoc"}}
   <div class="field">
-    <label>Document type
+    <label for="builder-doctype">Document type
       <span style="font-size:0.7rem;color:var(--ink-mute);font-weight:400;margin-left:0.25rem">(which ISO document travels inside the mdoc container)</span>
     </label>
-    <select name="doctype"
+    <select id="builder-doctype" name="doctype"
             hx-post="/issuer/schema/build/doctype"
             hx-include="#builder-form-el"
             hx-target="#builder-form"
@@ -271,12 +271,14 @@
 <div style="display:flex;flex-direction:column;gap:0.3rem;padding-left:0.15rem">
   {{range $j, $row := $rows}}
   <div style="display:grid;grid-template-columns:1fr 120px;gap:0.5rem">
-    <input type="text"
+    <label class="visually-hidden" for="field-label-{{$idx}}-{{$j}}">Display text</label>
+    <input id="field-label-{{$idx}}-{{$j}}" type="text"
            name="field_label_{{$idx}}_{{$j}}"
            value="{{$row.Label}}"
            placeholder="Display text — what the holder's wallet shows"
            style="background:var(--bg);border:1px solid var(--line);padding:0.45rem 0.6rem;font-size:0.8rem;color:var(--ink);border-radius:2px">
-    <input type="text"
+    <label class="visually-hidden" for="field-lang-{{$idx}}-{{$j}}">Language code</label>
+    <input id="field-lang-{{$idx}}-{{$j}}" type="text"
            name="field_lang_{{$idx}}_{{$j}}"
            value="{{$row.Lang}}"
            placeholder="en"
@@ -290,12 +292,14 @@
        through the map alone — BlankLangRows carries the count instead. */}}
   {{range $k := intRange $n .Blank}}
   <div style="display:grid;grid-template-columns:1fr 120px;gap:0.5rem">
-    <input type="text"
+    <label class="visually-hidden" for="field-label-{{$idx}}-{{$k}}">Display text</label>
+    <input id="field-label-{{$idx}}-{{$k}}" type="text"
            name="field_label_{{$idx}}_{{$k}}"
            value=""
            placeholder="Display text in another language"
            style="background:var(--bg);border:1px solid var(--line);padding:0.45rem 0.6rem;font-size:0.8rem;color:var(--ink);border-radius:2px">
-    <input type="text"
+    <label class="visually-hidden" for="field-lang-{{$idx}}-{{$k}}">Language code</label>
+    <input id="field-lang-{{$idx}}-{{$k}}" type="text"
            name="field_lang_{{$idx}}_{{$k}}"
            value=""
            placeholder="es-DO"

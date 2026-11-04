@@ -59,7 +59,7 @@ func TestDrivingPrivilegesRendersRepeaterNotATextBox(t *testing.T) {
 	}
 	// The date sub-fields must be real date pickers, not text boxes: walt.id
 	// parses them with stringToFullDate and a free-text date fails at signing.
-	if !strings.Contains(html, `type="date" name="dp_issue_date_0"`) {
+	if !strings.Contains(html, `type="date" id="dp-issued-0" name="dp_issue_date_0"`) {
 		t.Errorf("dp_issue_date_0 is not a date input — a free-text date fails walt.id's stringToFullDate")
 	}
 }

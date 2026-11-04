@@ -152,22 +152,25 @@
                  blank are dropped, so the spare rows below cost nothing. */}}
             <div style="display:flex;flex-direction:column;gap:0.5rem">
               {{range $i := $.DrivingPrivilegeRows}}
+              {{/* Row 0's category input doubles as the target of the field's own
+                   <label for="claim-…"> above, so it keeps that id. */}}
+              {{$catID := printf "dp-category-%d" $i}}{{if eq $i 0}}{{$catID = printf "claim-%s" $fname}}{{end}}
               <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;align-items:end;padding:0.55rem;background:var(--bg-sunk);border:1px solid var(--line);border-radius:4px">
                 <div>
-                  <label style="font-size:0.7rem;color:var(--ink-mute);font-weight:400">Category{{if eq $i 0}} *{{end}}</label>
-                  <input type="text" {{if eq $i 0}}id="claim-{{$fname}}" {{end}}name="dp_vehicle_category_code_{{$i}}"
+                  <label for="{{$catID}}" style="font-size:0.7rem;color:var(--ink-mute);font-weight:400">Category{{if eq $i 0}} *{{end}}</label>
+                  <input type="text" id="{{$catID}}" name="dp_vehicle_category_code_{{$i}}"
                          value="{{index $.DrivingPrivilegeValues (printf "vehicle_category_code_%d" $i)}}"
                          placeholder="A, B, C1…" style="width:100%">
                 </div>
                 <div>
-                  <label style="font-size:0.7rem;color:var(--ink-mute);font-weight:400">Issued</label>
-                  <input type="date" name="dp_issue_date_{{$i}}"
+                  <label for="dp-issued-{{$i}}" style="font-size:0.7rem;color:var(--ink-mute);font-weight:400">Issued</label>
+                  <input type="date" id="dp-issued-{{$i}}" name="dp_issue_date_{{$i}}"
                          value="{{index $.DrivingPrivilegeValues (printf "issue_date_%d" $i)}}"
                          placeholder="YYYY-MM-DD" style="width:100%">
                 </div>
                 <div>
-                  <label style="font-size:0.7rem;color:var(--ink-mute);font-weight:400">Expires</label>
-                  <input type="date" name="dp_expiry_date_{{$i}}"
+                  <label for="dp-expires-{{$i}}" style="font-size:0.7rem;color:var(--ink-mute);font-weight:400">Expires</label>
+                  <input type="date" id="dp-expires-{{$i}}" name="dp_expiry_date_{{$i}}"
                          value="{{index $.DrivingPrivilegeValues (printf "expiry_date_%d" $i)}}"
                          placeholder="YYYY-MM-DD" style="width:100%">
                 </div>
