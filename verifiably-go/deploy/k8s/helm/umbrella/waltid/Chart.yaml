@@ -3,7 +3,7 @@ name: waltid
 description: Verifiably-go waltid scenario — umbrella chart aggregating walt.id + IdP + translator + the Go app + a CNPG Postgres cluster.
 type: application
 version: 0.1.0
-appVersion: "0.18.2"
+appVersion: "0.23.1"
 
 dependencies:
   - name: walt-issuer

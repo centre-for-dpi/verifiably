@@ -1,6 +1,11 @@
 import puppeteer from 'puppeteer-core';
 const BASE = process.env.BASE || 'http://172.24.0.1:8080';
-const CONN = process.env.CONN || 'postgres://citizens:citizens@citizens-postgres:5432/citizens';
+// citizens-postgres's real password is CITIZENS_PG_PASSWORD from .env
+// (generated on `deploy.sh setup`, defaults to the literal "citizens" only
+// on deployments from before that var existed) — 'citizens' here is a
+// fallback for those older hosts, not the expected value on a fresh one.
+const CONN = process.env.CONN ||
+  `postgres://citizens:${process.env.CITIZENS_PG_PASSWORD || 'citizens'}@citizens-postgres:5432/citizens`;
 const QUERY = process.env.QUERY || "SELECT first_name || ' ' || last_name AS holder FROM citizens ORDER BY id LIMIT 5";
 const br = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: 'new',
   args: ['--no-sandbox', '--disable-dev-shm-usage'] });

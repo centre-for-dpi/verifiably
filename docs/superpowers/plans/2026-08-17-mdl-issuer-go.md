@@ -1,5 +1,17 @@
 # Issuer mDL (ISO/IEC 18013-5) en Go — Implementation Plan
 
+> **Superseded (2026-08-21):** este plan fue ejecutado completamente y
+> luego revertido como camino de emisión de PRODUCCIÓN el mismo día que se
+> completó (`d9c15cf` → `ce3e899`) — firmar en el proceso Go rompía la
+> regla "verifiably media, los DPG emiten". El código que este plan produjo
+> (`internal/mdl/`) sigue existiendo y sigue siendo valioso, pero solo como
+> **verificador de conformidad independiente**, nunca como el servicio que
+> firma el mDL de un ciudadano real. Ver
+> `docs/superpowers/adr/2026-08-21-mdl-portrait-path-decision.md` para la
+> decisión final y su razonamiento. Un operador desplegando este sistema no
+> necesita ejecutar nada de este plan — `issuer-api2` (walt.id) es el
+> emisor de producción, ver `docs/deploy.md#mdl-mdoc-issuance-issuer-api2`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Construir en `verifiably-go` un emisor de credenciales mDL conformes a ISO/IEC 18013-5 que produzca `IssuerSigned`/`MobileSecurityObject` firmados y verificables por un verificador independiente.
@@ -79,10 +91,16 @@ Cada archivo tiene una responsabilidad y se puede leer entero de una vez. `cbort
 - Consumes: nada.
 - Produces: el informe con el veredicto y el nivel de seguridad de claves por dispositivo, que alimenta §S-4 del spec.
 
-**Prerrequisitos que hay que tener antes de empezar** (§C.7.0 del spec):
-- **Dos teléfonos Android físicos de fabricantes distintos** (Motorola y Huawei son conocidos como inconsistentes en BLE peripheral).
+**Prerrequisitos que hay que tener antes de empezar** (§C.7.0 del spec — alcance
+revisado: 1 Android + 1 iPhone, no dos Android):
+- **1 Android físico.**
+- **1 iPhone con acceso al pipeline EAS Build del proyecto** (cuenta de Apple
+  Developer y credenciales ya configuradas — confirmado que existen: ya se generó
+  un `.ipa` instalable de `cdpi-wallet`, sin el módulo mdoc, corriendo en ese
+  iPhone).
 - Sniffer BLE (nRF) para la evidencia de canal.
-- JDK + Android Studio (para compilar el reader de contraste).
+- JDK + Android Studio (para compilar el reader de contraste — solo tiene build
+  Android; no se prueba iPhone como reader en esta fase).
 - Dev client de Expo (Expo Go **no** sirve).
 
 - [ ] **Step 1: Compilar el reader de contraste**
@@ -93,39 +111,73 @@ cd multipaz-identity-reader
 ./gradlew :composeApp:assembleDebug
 ```
 
-Instalar el APK en uno de los dos teléfonos. Este reader es la contraparte del spike — no se forkea, se usa tal cual.
+Instalar el APK en el Android. Este reader es la contraparte del spike — no se
+forkea, se usa tal cual. Solo hace de reader en esta fase; no se prueba como holder.
 
-- [ ] **Step 2: Integrar el transporte BLE en un build de prueba de cdpi-wallet**
+- [ ] **Step 2: Integrar el transporte BLE en cdpi-wallet, para AMBAS plataformas**
 
-En `cdpi-wallet`, instalar el paquete **pineado a la versión exacta**:
+Instalar el paquete **pineado a la versión exacta** (es la única versión publicada
+del paquete desescopado de OWF Labs, no `@animo-id/...`):
 
 ```bash
 npm install expo-mdoc-data-transfer@0.2.0-alpha.5
+```
+
+Build local Android:
+```bash
 npx expo prebuild --platform android
 npx expo run:android
 ```
 
-Nota: es el paquete **desescopado** de OWF Labs, no `@animo-id/...`. Es la única versión publicada.
+Build iOS vía EAS (el mismo pipeline que ya produjo el `.ipa` actual):
+```bash
+eas build --platform ios --profile <perfil ya usado para el .ipa existente>
+```
 
-- [ ] **Step 3: Probar el device engagement en los DOS teléfonos**
+Instalar el `.ipa` resultante en el iPhone cuando el build termine.
 
-Con la app holder en **foreground**, generar el QR de engagement y escanearlo con el reader. Registrar por teléfono: si advierte en BLE peripheral server mode, si el reader conecta, y si completa el intercambio.
+- [ ] **Step 3: Probar el device engagement en AMBAS combinaciones de la matriz**
 
-- [ ] **Step 4: Probar chunking y rendimiento con payload sintético**
+Con la app holder en **foreground** en cada plataforma, generar el QR de engagement
+y escanearlo con el reader Android:
 
-Transmitir un payload de **~20 KB** (tamaño realista de un `portrait` JPEG). Medir el tiempo desde el escaneo del QR hasta el resultado.
+| Combinación | Qué registrar |
+|---|---|
+| Holder Android ↔ Reader Android | ¿Advierte en BLE peripheral server mode? ¿El reader conecta? ¿Completa el intercambio? |
+| Holder iPhone ↔ Reader Android | Igual, con el holder en el iPhone. Recordar: la limitación conocida de iOS (overflow area) es solo en *background* — con el holder en foreground no debería aplicar |
 
-Criterio: transmisión **completa y sin corrupción**, en **menos de 5 segundos**.
+No se prueba Android(holder)↔iPhone(reader) ni iPhone↔iPhone en esta fase — el
+reader de contraste no tiene build iOS.
 
-- [ ] **Step 5: Medir el nivel de seguridad de claves de Askar**
+- [ ] **Step 4: Probar chunking y rendimiento con payload sintético, en ambas filas**
 
-En cada teléfono, generar una clave P-256 con `askar` desde el wallet y determinar si queda respaldada por **StrongBox**, **TEE** o **software**. Este dato es entrada obligatoria de §S-4 del spec: si es software, la credencial resultante es clonable y hay que declararlo.
+Transmitir un payload de **~20 KB** (tamaño realista de un `portrait` JPEG) en cada
+combinación de la Step 3. Medir el tiempo desde el escaneo del QR hasta el resultado.
 
-- [ ] **Step 6: Escribir el informe y emitir el veredicto**
+Criterio por fila: transmisión **completa y sin corrupción**, en **menos de 5
+segundos**.
 
-Crear `docs/mdl-fase0-report.md` con: modelo y fabricante de cada teléfono, resultado de engagement, resultado de chunking con tiempos, nivel de seguridad de claves, y **veredicto binario**.
+- [ ] **Step 5: Medir el nivel de seguridad de claves, por plataforma**
 
-**Criterio de aceptación (§C.7.0):** los tres criterios (engagement, chunking, <5 s) pasan **en los dos teléfonos**. Si falla en uno solo, **Fase 0 no pasa**: se documenta el fabricante y se decide con esa evidencia antes de continuar.
+En cada teléfono, generar una clave P-256 con `askar` desde el wallet y determinar
+si queda respaldada por hardware — **StrongBox/TEE** en Android, **Secure
+Enclave** en iOS — o si cae a **software**. Este dato es entrada obligatoria de
+§S-4 del spec: si es software en cualquiera de las dos, la credencial resultante es
+clonable en esa plataforma y hay que declararlo.
+
+- [ ] **Step 6: Escribir el informe y emitir el veredicto por fila**
+
+Crear `docs/mdl-fase0-report.md` con: modelo del Android y modelo/versión de iOS del
+iPhone, resultado de engagement por fila, resultado de chunking con tiempos por
+fila, nivel de seguridad de claves por plataforma, y **veredicto binario por fila**
+(no un veredicto único — las dos filas son independientes).
+
+**Criterio de aceptación (§C.7.0):** los tres criterios (engagement, chunking,
+<5 s) pasan **en una fila** desbloquean el resto del plan **para esa plataforma**.
+Si la fila Android↔Android falla, Fase 0 no pasa y el Plan B es pivotar el
+transporte del holder (ver spec). Si solo falla la fila iPhone↔Android, no es
+bloqueante: se documenta la limitación y el Tramo C continúa Android-only, como
+preveía la versión original del spec.
 
 - [ ] **Step 7: Commit**
 

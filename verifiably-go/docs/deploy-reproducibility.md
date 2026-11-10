@@ -92,10 +92,12 @@ DENIED verdicts shown in the PR screenshots.
   (no hardcoded host); they no-op in legacy mode. Run them after `up` in subdomain mode if you
   use CREDEBL issuance or the walt.id verifier "Status" policy.
 - **Auth-code scope files** (`inji/certify/certify-postgres-dataprovider.properties`,
-  `inji/esignet/credential-scopes.properties`): the committed baseline advertises only the
-  base scope, matching a fresh certify volume. Do NOT commit the runtime-accumulated scopes a
-  running box adds (schemas re-add their own scopes when rebuilt). If a box's working tree has
-  drifted and you wipe the certify volume, restore the baseline first:
-  `scripts/reset-authcode-catalog.sh --yes`.
+  `inji/esignet/credential-scopes.properties`): gitignored runtime files, split from their
+  committed `*.baseline.properties` seeds the same way `issuer2-profiles.conf` is split from
+  `issuer2-profiles.baseline.conf` — `seed_inji_authcode_configs` (scripts/gen-caddy.sh) `cp -n`'s
+  the baseline into place on first `up`, so there is nothing left to accidentally commit: git no
+  longer tracks the runtime path at all. The baseline advertises only the base scope, matching a
+  fresh certify volume. If a box's working tree has drifted and you wipe the certify volume,
+  restore the baseline first: `scripts/reset-authcode-catalog.sh --yes`.
 - **Don't commit deploy-generated config** (`Caddyfile.public`, `backends*.json`,
   `wso2-deployment.toml`, the rendered `*-service.conf`) — all regenerate from `.env` on every `up`.

@@ -74,14 +74,17 @@ SQL
 echo "  dropped certify.vc_subject_* extraction views"
 
 # --- 4+5. restore scope-property lines to their committed baseline ----------
-# Replace only the scope-mapping line(s) in each runtime .properties file with the
-# committed HEAD version of that exact property — every other property untouched.
+# Replace only the scope-mapping line(s) in each runtime .properties file with
+# the *.baseline.properties version of that exact property — every other
+# property untouched. The runtime file itself is gitignored (seeded once from
+# the baseline by seed_inji_authcode_configs, then appended to in place by
+# applyAuthcodeSchema), so the baseline sibling file — not `git show HEAD:` —
+# is the source of truth for "what a fresh install starts with".
 restore_props() {
   local file="$1"; shift
-  local gitpath; gitpath="$(git -C "$VGO" ls-files --full-name -- "$file" 2>/dev/null || true)"
-  if [[ -z "$gitpath" ]]; then echo "  WARN: $file not tracked in git — skipping scope restore"; return; fi
-  local baseline; baseline="$(git -C "$VGO" show "HEAD:$gitpath" 2>/dev/null || true)"
-  [[ -n "$baseline" ]] || { echo "  WARN: no committed baseline for $gitpath — skipping"; return; }
+  local baseline_file="${file%.properties}.baseline.properties"
+  local baseline; baseline="$(cat "$baseline_file" 2>/dev/null || true)"
+  [[ -n "$baseline" ]] || { echo "  WARN: no baseline file at $baseline_file — skipping"; return; }
   BASELINE="$baseline" FILE="$file" KEYS="$*" python3 - <<'PY'
 import os
 baseline = os.environ["BASELINE"].splitlines()
