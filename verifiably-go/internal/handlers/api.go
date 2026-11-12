@@ -156,7 +156,7 @@ func (h *H) apiRecordIssuance(keyName string, schema vctypes.Schema, issuerDpg, 
 	}
 	id := newIssuanceID()
 	hint := ""
-	for _, k := range []string{"fullName", "name", "given_name", "id", "individualId"} {
+	for _, k := range []string{"fullName", "name", "nameEn", "name_en", "nameKh", "name_kh", "given_name", "id", "individualId"} {
 		if v := strings.TrimSpace(subject[k]); v != "" {
 			hint = v
 			break

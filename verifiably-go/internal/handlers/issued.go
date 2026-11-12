@@ -278,7 +278,7 @@ func (h *H) RevokeIssuedCredential(w http.ResponseWriter, r *http.Request) {
 	rec, ok := h.IssuanceLog.Get(id)
 	// Pre-check: if the entry exists but isn't ours, treat it the same as
 	// "not found" so a guess doesn't leak ownership information.
-	if !ok || rec.OwnerKey != owner {
+	if !ok || !mayManageIssued(owner, rec.OwnerKey) {
 		http.Error(w, "credential not found", http.StatusNotFound)
 		return
 	}
@@ -298,7 +298,9 @@ func (h *H) RevokeIssuedCredential(w http.ResponseWriter, r *http.Request) {
 		h.errorToast(w, r, "Revoke: "+err.Error())
 		return
 	}
-	if _, err := h.IssuanceLog.MarkRevoked(id, owner); err != nil {
+	// Use the entry's real owner: for a self-issued credential revoked by an
+	// allowed operator (see self_service_view.go) that is the self-service key.
+	if _, err := h.IssuanceLog.MarkRevoked(id, rec.OwnerKey); err != nil {
 		h.errorToast(w, r, "Mark revoked: "+err.Error())
 		return
 	}
@@ -356,7 +358,7 @@ func (h *H) issuedCredentialsBody(sess *Session, r *http.Request) issuedCredenti
 	// Each DPG track owns its own credentials: scope the list to the currently
 	// selected issuer DPG so a walt.id view never shows CREDEBL/pre-auth entries
 	// even when the same issuer produced them.
-	items := filterIssuedByDpg(h.IssuanceLog.List(filter), sess.IssuerDpg)
+	items := h.withSelfService(owner, filter, sess.IssuerDpg, filterIssuedByDpg(h.IssuanceLog.List(filter), sess.IssuerDpg))
 	// Stats has to be derived from the owner-scoped slice — the global
 	// Summary() across the file would leak counts of other issuers'
 	// credentials onto this issuer's banner ("X total / Y revoked"
@@ -365,7 +367,7 @@ func (h *H) issuedCredentialsBody(sess *Session, r *http.Request) issuedCredenti
 	// To compute the chip-row Stds/Formats we need the unfiltered slice
 	// scoped to this owner + DPG (so the chips show what they could see if they
 	// dropped the std/format filter, not just what the current filter returns).
-	all := filterIssuedByDpg(h.IssuanceLog.List(issuance.Filter{OwnerKey: owner}), sess.IssuerDpg)
+	all := h.withSelfService(owner, issuance.Filter{}, sess.IssuerDpg, filterIssuedByDpg(h.IssuanceLog.List(issuance.Filter{OwnerKey: owner}), sess.IssuerDpg))
 	for _, c := range all {
 		stats.Total++
 		if c.RevokedAt == nil {
