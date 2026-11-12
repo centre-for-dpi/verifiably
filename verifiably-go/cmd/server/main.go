@@ -343,14 +343,25 @@ func main() {
 
 	// Open the PostgreSQL pool once (if configured) so sessions + issuance log
 	// + status lists all share the same connection pool and migration run.
+	//
+	// Postgres often starts after verifiably-go (host reboot, compose without a
+	// health-gated depends_on), so retry for VERIFIABLY_DATABASE_WAIT (default
+	// 60s). If it is still unreachable, stop with an error rather than silently
+	// running on file-backed stores: the operator configured a database, and
+	// trust/issuance/status-list writes made in the meantime would not be in it.
+	// VERIFIABLY_DATABASE_FALLBACK=file restores the old fall-back behaviour.
 	var pgPool *pgxpool.Pool
 	if dsn := os.Getenv("VERIFIABLY_DATABASE_URL"); dsn != "" {
-		p, err := pg.Open(shutCtx, dsn)
-		if err != nil {
-			log.Printf("pg: failed to open (%v) — falling back to file-backed stores", err)
-		} else {
+		p, err := pg.OpenWithRetry(shutCtx, dsn, databaseWait(), log.Printf)
+		switch {
+		case err == nil:
 			log.Printf("storage: PostgreSQL backend active (%s)", maskDSN(dsn))
 			pgPool = p
+		case strings.EqualFold(strings.TrimSpace(os.Getenv("VERIFIABLY_DATABASE_FALLBACK")), "file"):
+			log.Printf("pg: failed to open (%v) — VERIFIABLY_DATABASE_FALLBACK=file: falling back to file-backed stores", err)
+		default:
+			log.Fatalf("pg: failed to open %s (%v). Refusing to start on file-backed stores; "+
+				"fix the database or set VERIFIABLY_DATABASE_FALLBACK=file to allow it", maskDSN(dsn), err)
 		}
 	}
 
@@ -1647,4 +1658,22 @@ func funcMap(tr handlers.Translator) template.FuncMap {
 			return out
 		},
 	}
+}
+
+// databaseWait reads VERIFIABLY_DATABASE_WAIT: how long to keep retrying the
+// PostgreSQL connection at startup. Accepts a Go duration ("90s", "2m") or a
+// whole number of seconds; default 60s. 0 means a single attempt.
+func databaseWait() time.Duration {
+	v := strings.TrimSpace(os.Getenv("VERIFIABLY_DATABASE_WAIT"))
+	if v == "" {
+		return 60 * time.Second
+	}
+	if d, err := time.ParseDuration(v); err == nil && d >= 0 {
+		return d
+	}
+	if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+		return time.Duration(n) * time.Second
+	}
+	log.Printf("VERIFIABLY_DATABASE_WAIT=%q is not a duration; using 60s", v)
+	return 60 * time.Second
 }
